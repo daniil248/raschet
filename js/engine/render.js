@@ -2536,6 +2536,31 @@ export function renderNodes() {
         return 'body';
       };
 
+      // v0.59.868: авто-combining связанных пар «номинал/расчёт» в одну
+      // строку через «/». Пользователь: «помнишь у нас в карточке выводилось
+      // Номинальная мощность, расчетная мощность, с токами через /».
+      // До v0.59.803 это было default; в v0.59.803 split на per-field row.
+      // Сейчас возвращаем combined: если ОБА поля пары включены в пресете —
+      // рендерим одной строкой «Мощность: P_ном / P_расч кВт».
+      // Если только одно — обычная отдельная строка (per-field).
+      // Поле <pair.primary> определяет позицию в zone и custom-label.
+      const PAIRS = [
+        { primary: 'demandKw',  secondary: 'maxKw', label: 'Мощность', unit: 'кВт' },
+        { primary: 'nominalKw', secondary: 'maxKw', label: 'Мощность', unit: 'кВт' },
+        { primary: 'currentA',  secondary: 'maxA',  label: 'Ток',      unit: 'А'   },
+      ];
+      const _consumed = new Set();
+      // Pre-resolve which pairs are active (для consumer-container и других типов).
+      const _activePairs = [];
+      for (const pair of PAIRS) {
+        if (_consumed.has(pair.primary) || _consumed.has(pair.secondary)) continue;
+        if (!_presetVisible.has(pair.primary) || !_presetVisible.has(pair.secondary)) continue;
+        const a = valueMap[pair.primary], b = valueMap[pair.secondary];
+        if (!a || a.v == null || a.v === '' || !b || b.v == null || b.v === '') continue;
+        _activePairs.push(pair);
+        _consumed.add(pair.primary); _consumed.add(pair.secondary);
+      }
+
       const orderedFields = listCardFields(_presetKind, _renderTypeKey);
       const rowsByPos = { header: [], topRight: [], body: [], footer: [] };
       for (const f of orderedFields) {
@@ -2546,6 +2571,23 @@ export function renderNodes() {
         if (f.id === 'tag' || f.id === 'name' || f.id === 'subtitle' ||
             f.id === 'icon' || f.id === 'sourceSubtype' || f.id === 'switchMode' ||
             f.id === 'zonePrefix') continue;
+        // v0.59.868: если поле — primary активной пары, рендерим объединённую строку.
+        const pair = _activePairs.find(p => p.primary === f.id);
+        if (pair) {
+          const a = valueMap[pair.primary], b = valueMap[pair.secondary];
+          const customLabel = _presetActive?.fieldLabels?.[_presetKind]?.[_renderTypeKey]?.[pair.primary];
+          const lbl = (typeof customLabel === 'string' && customLabel.trim())
+            ? customLabel : pair.label;
+          const txt = `${lbl}: ${a.v} / ${b.v}${pair.unit ? ' ' + pair.unit : ''}`;
+          const zid = _zoneAssign[pair.primary] || _defaultZone(pair.primary);
+          const z = _zones.find(x => x.id === zid);
+          const pos = z ? z.position : 'body';
+          if (rowsByPos[pos]) rowsByPos[pos].push(txt);
+          else rowsByPos.body.push(txt);
+          continue;
+        }
+        // Если поле — secondary активной пары, оно уже отрендерено в combined.
+        if (_consumed.has(f.id)) continue;
         const d = valueMap[f.id];
         if (!d || d.v == null || d.v === '') continue;
         const customLabel = _presetActive?.fieldLabels?.[_presetKind]?.[_renderTypeKey]?.[f.id];
