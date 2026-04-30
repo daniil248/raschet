@@ -151,25 +151,81 @@ function _hasAnyConnections(nodeId) {
   return false;
 }
 
+// v0.59.832: cross-check кросс-модульных привязок. SCS-design хранит свой
+// links.v1 в project-namespaced LocalStorage и НЕ синкается с state.conns
+// автоматически. Чтобы защитить стойку от удаления при наличии СКС-связи,
+// читаем scs-design.links.v1 напрямую и ищем nodeId в fromRackId/toRackId.
+// Возвращает {module, count} если узел упомянут где-то, иначе null.
+function _findCrossModuleReferences(nodeId) {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    // Активный проект
+    let pid = null;
+    try { pid = JSON.parse(localStorage.getItem('raschet.activeProjectId.v1') || 'null'); } catch {}
+    if (!pid) pid = 'default';
+    // SCS-design links
+    const _readLinks = (key) => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        const v = JSON.parse(raw);
+        return Array.isArray(v) ? v : (Array.isArray(v?.links) ? v.links : null);
+      } catch { return null; }
+    };
+    const candidates = [
+      `raschet.project.${pid}.scs-design.links.v1`,
+      `scs-design.links.v1`, // legacy non-namespaced
+    ];
+    for (const key of candidates) {
+      const links = _readLinks(key);
+      if (!Array.isArray(links)) continue;
+      let cnt = 0;
+      for (const l of links) {
+        if (!l) continue;
+        if (l.fromRackId === nodeId || l.toRackId === nodeId) cnt++;
+      }
+      if (cnt > 0) return { module: 'СКС-проектирование', count: cnt };
+    }
+  } catch {}
+  return null;
+}
+
 export function deleteNode(id, opts = {}) {
   const n0 = state.nodes.get(id);
   if (!n0) return;
-  // v0.59.831: hard-delete блокируется если есть connections (любая
-  // система — электрика, СКС, данные, климат). Связанный объект
-  // нельзя удалить — сначала надо снять все линии.
+  // v0.59.831: hard-delete блокируется если есть connections в state.conns
+  // или state.sysConns (электрика/инфо-порты/patch-link).
   if (opts.hard && !opts.bypassConnGate && _hasAnyConnections(id)) {
     try {
       const lbl = n0.tag || n0.name || n0.id;
       const _flash = (typeof globalThis !== 'undefined' && globalThis.flash)
         || (typeof window !== 'undefined' && window.flash);
       if (typeof _flash === 'function') {
-        _flash(`«${lbl}» подключён к другим элементам — сначала снимите все связи (электрика/СКС/данные), затем удаляйте.`, 'error');
+        _flash(`«${lbl}» подключён к другим элементам — сначала снимите все линии, затем удаляйте.`, 'error');
       } else if (typeof console !== 'undefined') {
         console.warn('[delete-gate]', 'node has connections:', lbl);
       }
     } catch {}
     try { opts.onBlocked && opts.onBlocked('has-connections'); } catch {}
     return { blocked: 'has-connections' };
+  }
+  // v0.59.832: cross-module check (СКС-проектирование, links.v1).
+  // Стойка может быть упомянута в scs-design.links без своих connections
+  // в state.conns. Удаление в этом случае оставит «висячую» ссылку.
+  if (opts.hard && !opts.bypassConnGate) {
+    const crossRef = _findCrossModuleReferences(id);
+    if (crossRef) {
+      try {
+        const lbl = n0.tag || n0.name || n0.id;
+        const _flash = (typeof globalThis !== 'undefined' && globalThis.flash)
+          || (typeof window !== 'undefined' && window.flash);
+        const msg = `«${lbl}» используется в модуле «${crossRef.module}» (связей: ${crossRef.count}). Удалите связи там перед удалением объекта.`;
+        if (typeof _flash === 'function') _flash(msg, 'error');
+        else console.warn('[delete-gate cross-module]', msg);
+      } catch {}
+      try { opts.onBlocked && opts.onBlocked('cross-module-ref'); } catch {}
+      return { blocked: 'cross-module-ref' };
+    }
   }
   // v0.58.14: «soft delete» с холста — если указан opts.fromPage, удаляем
   // ноду только с этой страницы (pageIds.filter). Если страниц ещё нет —
