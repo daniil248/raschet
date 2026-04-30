@@ -1833,8 +1833,12 @@ export function renderNodes() {
     const g = el('g', { class: cls, transform: `translate(${n.x},${n.y})` });
     g.dataset.nodeId = n.id;
 
-    // Групповой потребитель — стопка карточек
-    const isGroup = n.type === 'consumer' && (n.count || 1) > 1;
+    // Групповой потребитель — стопка карточек.
+    // v0.59.816: contaier-узел всегда отображается стопкой (даже с одним
+    // слотом — это сигнал что вокруг карточки группа, а не одиночный
+    // потребитель).
+    const _isContainer = n.type === 'consumer-container';
+    const isGroup = (n.type === 'consumer' && (n.count || 1) > 1) || _isContainer;
     const groupPeek = isGroup ? 24 : 0;
     if (isGroup) {
       const ox = 6, oy = groupPeek;
@@ -1850,7 +1854,7 @@ export function renderNodes() {
       const _curPage = getCurrentPage();
       const _kind = _curPage ? getPageKind(_curPage) : 'schematic';
       const _preset = _getActiveCardPreset();
-      const _visible = getVisibleFieldIds(_preset, _kind, 'consumer');
+      const _visible = getVisibleFieldIds(_preset, _kind, _isContainer ? 'consumer' : 'consumer');
       const _showKw = _visible.has('demandKw') || _visible.has('maxKw') || _visible.has('nominalKw');
       const _showCount = _visible.has('count');
 
@@ -1858,15 +1862,21 @@ export function renderNodes() {
       const cntEff = consumerCountEffective(n);
       // v0.57.81: для «индивидуальной» группы подпись Σ (N kW, M шт)
       // потому что мощности разные. Для uniform — старый формат N × P = T.
+      // v0.59.816: для consumer-container — всегда Σ-формат (мощность каждого
+      // слота своя, count = slots.length).
       let gLabel = '';
       if (_showKw && _showCount) {
-        gLabel = (n.groupMode === 'individual' && Array.isArray(n.items))
-          ? `Σ ${fmtPower(totalKw)} (${cntEff} шт.)`
-          : `${n.count || 1} × ${fmtPower(n.demandKw)} = ${fmtPower(totalKw)}`;
+        if (_isContainer) {
+          gLabel = `Σ ${fmtPower(totalKw)} (${cntEff} ${cntEff === 1 ? 'слот' : 'слотов'})`;
+        } else {
+          gLabel = (n.groupMode === 'individual' && Array.isArray(n.items))
+            ? `Σ ${fmtPower(totalKw)} (${cntEff} шт.)`
+            : `${n.count || 1} × ${fmtPower(n.demandKw)} = ${fmtPower(totalKw)}`;
+        }
       } else if (_showKw) {
         gLabel = `Σ ${fmtPower(totalKw)}`;
       } else if (_showCount) {
-        gLabel = `${cntEff} шт.`;
+        gLabel = _isContainer ? `${cntEff} ${cntEff === 1 ? 'слот' : 'слотов'}` : `${cntEff} шт.`;
       }
       if (gLabel && n.phaseDistribution && !n.serialMode && _visible.has('phase')) {
         const pd = n.phaseDistribution;
@@ -1923,9 +1933,23 @@ export function renderNodes() {
     // Иконка потребителя по подтипу — в правом верхнем углу карточки.
     // Для группы с serialMode — дополнительно ряд мелких иконок вдоль нижнего края.
     // v0.59.801: фильтр по preset (поле 'icon').
-    if (n.type === 'consumer' && GLOBAL.showConsumerIcons !== false && _presetShowIcon) {
+    // v0.59.816: для consumer-container — иконка по subtype первого linked-члена
+    // (т.к. сам контейнер не имеет своего subtype). Если slots пустые —
+    // используем 'custom'.
+    if ((n.type === 'consumer' || n.type === 'consumer-container') && GLOBAL.showConsumerIcons !== false && _presetShowIcon) {
+      let _iconSubtype = n.consumerSubtype || 'custom';
+      if (n.type === 'consumer-container' && Array.isArray(n.slots)) {
+        for (const s of n.slots) {
+          if (s && s.kind === 'linked' && s.nodeId) {
+            const a = state.nodes.get(s.nodeId);
+            if (a && a.consumerSubtype) { _iconSubtype = a.consumerSubtype; break; }
+          } else if (s && s.kind === 'placeholder' && s.subtype) {
+            _iconSubtype = s.subtype; break;
+          }
+        }
+      }
       const iconG = el('g', { transform: `translate(${w - 22},16)`, class: 'node-icon' });
-      drawConsumerIconTo(iconG, n.consumerSubtype || 'custom');
+      drawConsumerIconTo(iconG, _iconSubtype);
       g.appendChild(iconG);
       // Serial-mode: нарисовать ряд мелких иконок по низу карточки
       const count = Math.max(1, Number(n.count) || 1);
