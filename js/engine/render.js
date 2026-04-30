@@ -566,20 +566,12 @@ export function renderProjectRegistry() {
     const hay = `${n.tag || ''} ${n.name || ''} ${n.type || ''}`.toLowerCase();
     return hay.includes(filterQ);
   };
-  // v0.59.784: группы с populated linkedAliases — это контейнеры, а не
-  // отдельные элементы. Скрываем их из реестра, в списке остаются ТОЛЬКО
-  // их linked-аliases как самостоятельные строки. Раньше группа отображалась
-  // через effectiveTag = первый alias-tag, что давало визуальную коллизию
-  // (alias SR02 и группа displayed как SR02 — две строки с одинаковым
-  // обозначением, юзер: «стойки (в группе) просто пропали»).
-  const filtered = all.filter(n => {
-    if (!matches(n)) return false;
-    if (n.type === 'consumer' && Array.isArray(n.linkedAliases)
-        && n.linkedAliases.some(aid => aid && state.nodes.has(aid))) {
-      return false;
-    }
-    return true;
-  });
+  // v0.59.790 — REVERT v0.59.784: группа-контейнер ОСТАЁТСЯ в реестре
+  // (это «оболочка» в новой модели — юзер 2026-04-30: «ты зачем то скрыл
+  // групповые потребители контейнеры, вместо позиций из неразмещенных»).
+  // Из «Неразмещённые» прячутся только контейнерируемые позиции
+  // (linkedAlias != null) — это уже реализовано в renderUnplacedList.
+  const filtered = all.filter(matches);
   const byType = new Map();
   for (const n of filtered) {
     const t = n.type || 'other';
