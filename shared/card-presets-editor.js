@@ -160,6 +160,7 @@ function _presetCardHtml(p, activeId, selectedId) {
     <div class="cpe-preset-actions">
       ${!isActive ? `<button class="cpe-btn-sm" data-action="activate" data-id="${escAttr(p.id)}">⚡ Активировать</button>` : ''}
       ${!isSystem ? `<button class="cpe-btn-sm" data-action="rename" data-id="${escAttr(p.id)}">✎ Переименовать</button>` : ''}
+      ${!isSystem ? `<button class="cpe-btn-sm" data-action="reset-all" data-id="${escAttr(p.id)}" title="Сбросить ВСЕ зоны и подписи в этом пресете (всех типов всех режимов). Активные поля не трогаются.">↺ Сбросить всё</button>` : ''}
       ${isSystem ? `<button class="cpe-btn-sm" data-action="duplicate" data-id="${escAttr(p.id)}">📋 Скопировать</button>` : ''}
       ${!isSystem ? `<button class="cpe-btn-sm cpe-btn-danger" data-action="delete" data-id="${escAttr(p.id)}">🗑 Удалить</button>` : ''}
     </div>
@@ -466,6 +467,17 @@ function wire(host) {
       const action = btn.dataset.action;
       const id = btn.dataset.id;
       if (action === 'activate') { setUserActivePresetId(id); render(host); wire(host); }
+      else if (action === 'reset-all') {
+        const cur = getPresetById(id);
+        if (!cur || cur.system) return;
+        if (!confirm(`Сбросить ВСЕ зоны и подписи в пресете «${cur.name}»? Активные поля останутся как есть.`)) return;
+        delete cur.zoneLayout;
+        delete cur.fieldLabels;
+        const all = loadUserPresets();
+        const idx = all.findIndex(p => p.id === id);
+        if (idx >= 0) { all[idx] = cur; saveUserPresets(all); }
+        render(host); wire(host);
+      }
       else if (action === 'rename') {
         const cur = getPresetById(id);
         const newName = prompt('Новое имя пресета:', cur?.name || '');
