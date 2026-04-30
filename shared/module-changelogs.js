@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.880', date: '2026-04-30', items: [
+      '🔒 <b>Поле «Иконка типа» зафиксировано в зоне «Иконка» (topRight)</b>. По репорту: «иконка попадает всегда в зону иконка ???» — пользователь обнаружил что в его пресете icon оказался в Подвале.',
+      '• <b>Editor</b>: при попытке drop иконки в любую зону кроме topRight — toast «🔒 Поле icon фиксировано в зоне topRight», assignment ставится в topRight автоматически.',
+      '• <b>Migration</b>: getZoneLayout() при загрузке проверяет — если у пользователя в LS icon уже сохранён в footer/body/header (с предыдущих версий, где разрешали drop куда угодно), миграция возвращает в topRight.',
+      '• <b>Render на канвасе</b>: для fixed-zone полей (icon) ИГНОРИРУЕМ user-assignment в render.js, всегда topRight. Иначе старые данные в LS продолжали бы рендерить icon в footer.',
+      '• <b>FIXED_ZONE_FIELDS</b> — табличка для будущих расширений. Сейчас один icon, но архитектура позволяет добавить ещё (например, switchMode, sourceSubtype если потребуется).',
+      'Файлы: <code>shared/card-presets-editor.js</code> (FIXED_ZONE_FIELDS, isFieldFixedZone, миграция в getZoneLayout, проверка в drop-handler zone и chip-on-chip), <code>js/engine/render.js</code> (_FIXED_ZONE_FIELDS + _effZone helper, замена _zoneAssign[fid] || _defaultZone(fid) → _effZone(fid)).',
+    ] },
     { version: '0.59.879', date: '2026-04-30', items: [
       '🏷 <b>Однозначные подписи полей в редакторе пресетов</b>. По репорту: «по подписям параметров не понятно к чему относится тот или иной параметр, например Ток (А) это номинальный ток или расчетный?». Раньше «Мощность» / «Макс.» / «Ток» — двусмысленно.',
       '• consumer: «Мощность» → <b>«Установл. мощность (кВт)»</b> (Pуст), «Макс.» → <b>«Расчётная мощность (кВт, с Ки)»</b> (Pрасч), «Номинал» → <b>«Номинальная мощность (кВт)»</b> (Pном).',

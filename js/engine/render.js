@@ -2528,13 +2528,20 @@ export function renderNodes() {
         { id: 'footer',   position: 'footer'   },
       ];
       const _zoneAssign = _zoneLayout?.assignments || {};
+      // v0.59.880: для полей с фиксированной зоной (icon → topRight) НЕ
+      // используем пользовательский assignment — даже если он сохранён
+      // в LS из старой версии. Иначе если у юзера было перетащено icon
+      // в footer, оно так и продолжит туда попадать.
+      const _FIXED_ZONE_FIELDS = { icon: 'topRight' };
       const _defaultZone = (fid) => {
+        if (_FIXED_ZONE_FIELDS[fid]) return _FIXED_ZONE_FIELDS[fid];
         if (fid === 'tag' || fid === 'name' || fid === 'subtitle' ||
             fid === 'sourceSubtype' || fid === 'switchMode' || fid === 'zonePrefix') return 'header';
-        if (fid === 'icon') return 'topRight';
         if (fid === 'count') return 'footer';
         return 'body';
       };
+      // Получить эффективную зону: для fixed-zone полей игнорируем assignment.
+      const _effZone = (fid) => _FIXED_ZONE_FIELDS[fid] || _zoneAssign[fid] || _defaultZone(fid);
 
       // v0.59.868: авто-combining связанных пар «номинал/расчёт» в одну
       // строку через «/». Пользователь: «помнишь у нас в карточке выводилось
@@ -2616,7 +2623,7 @@ export function renderNodes() {
             // разные единицы (или одна без) — каждое со своей: «val1 unit1 / val2 unit2»
             txt = `${lbl}: ${a.v}${unitA ? ' ' + unitA : ''} / ${b.v}${unitB ? ' ' + unitB : ''}`;
           }
-          const zid = _zoneAssign[pair.primary] || _defaultZone(pair.primary);
+          const zid = _effZone(pair.primary);
           const z = _zones.find(x => x.id === zid);
           const pos = z ? z.position : 'body';
           if (rowsByPos[pos]) rowsByPos[pos].push(txt);
@@ -2632,7 +2639,7 @@ export function renderNodes() {
           ? customLabel : shortLabel(_presetKind, _renderTypeKey, f.id);
         const unit = (d.unit != null) ? d.unit : fieldUnit(_presetKind, _renderTypeKey, f.id);
         const txt = `${label}: ${d.v}${unit ? ' ' + unit : ''}`;
-        const zid = _zoneAssign[f.id] || _defaultZone(f.id);
+        const zid = _effZone(f.id);
         const z = _zones.find(x => x.id === zid);
         const pos = z ? z.position : 'body';
         if (rowsByPos[pos]) rowsByPos[pos].push(txt);

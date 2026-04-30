@@ -75,6 +75,17 @@ function defaultZoneAssignment(fieldId) {
   return 'body';
 }
 
+// v0.59.880: поля с «фиксированной зоной» — нельзя перетащить в другую.
+// icon всегда в topRight, count в footer и т.п. Если у пользователя в
+// сохранённом layout оказались эти поля в другой зоне (предыдущая версия
+// разрешала drop куда угодно), миграция в getZoneLayout их вернёт.
+const FIXED_ZONE_FIELDS = {
+  icon: 'topRight',
+};
+function isFieldFixedZone(fieldId) {
+  return Object.prototype.hasOwnProperty.call(FIXED_ZONE_FIELDS, fieldId);
+}
+
 function getZoneLayout(preset, kind, type) {
   const layouts = preset.zoneLayout || (preset.zoneLayout = {});
   if (!layouts[kind]) layouts[kind] = {};
@@ -93,6 +104,14 @@ function getZoneLayout(preset, kind, type) {
   // v0.59.875: backward-compat — добавляем rowGroups если его нет
   if (!layouts[kind][type].rowGroups || typeof layouts[kind][type].rowGroups !== 'object') {
     layouts[kind][type].rowGroups = {};
+  }
+  // v0.59.880: миграция fixed-zone полей — если кто-то уже бросил icon
+  // в другую зону (например, в footer), вернём в её родную (topRight).
+  const a = layouts[kind][type].assignments || {};
+  for (const [fid, fixedZone] of Object.entries(FIXED_ZONE_FIELDS)) {
+    if (a[fid] && a[fid] !== fixedZone) {
+      a[fid] = fixedZone;
+    }
   }
   return layouts[kind][type];
 }
@@ -983,10 +1002,19 @@ function _wireDragDrop(modal, host) {
       }
       _dragFieldId = null;
       if (!fid) return;
-      const targetZoneId = z.dataset.zoneId;
+      let targetZoneId = z.dataset.zoneId;
       const sel = getPresetById(_state.selectedPresetId);
       if (!sel || sel.system) return;
       const kind = _state.activeModeTab, type = _state.activeTypeTab;
+      // v0.59.880: для полей с фиксированной зоной (icon → topRight)
+      // игнорируем drop-target, силой ставим домашнюю зону.
+      if (isFieldFixedZone(fid)) {
+        const fixed = FIXED_ZONE_FIELDS[fid];
+        if (targetZoneId !== fixed) {
+          cpeToast('🔒 Поле «' + fid + '» фиксировано в зоне «' + fixed + '»', 'warn');
+          targetZoneId = fixed;
+        }
+      }
       const fields = listCardFields(kind, type);
       const required = requiredFieldIds(kind, type);
       const current = new Set(sel.perMode?.[kind]?.perType?.[type] || fields.map(f => f.id));
@@ -1031,7 +1059,15 @@ function _wireDragDrop(modal, host) {
       if (!targetFid || fid === targetFid) return;
       // zone того chip'а на который дропнули
       const zoneEl = chip.closest('.cpe-zone');
-      const targetZoneId = zoneEl ? zoneEl.dataset.zoneId : (chip.dataset.fromZone || null);
+      let targetZoneId = zoneEl ? zoneEl.dataset.zoneId : (chip.dataset.fromZone || null);
+      // v0.59.880: fixed-zone fields — игнорируем target, ставим в родную.
+      if (isFieldFixedZone(fid)) {
+        const fixed = FIXED_ZONE_FIELDS[fid];
+        if (targetZoneId !== fixed) {
+          cpeToast('🔒 Поле «' + fid + '» фиксировано в зоне «' + fixed + '»', 'warn');
+          targetZoneId = fixed;
+        }
+      }
       const sel = getPresetById(_state.selectedPresetId);
       if (!sel || sel.system) return;
       const kind = _state.activeModeTab, type = _state.activeTypeTab;
