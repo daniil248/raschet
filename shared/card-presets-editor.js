@@ -235,15 +235,122 @@ function _renderFieldsTabSplit(sel, isSystem) {
         </div>`).join('')}
       </div>
 
-      <!-- Right column: card preview with zones -->
+      <!-- Right column: card preview with zones + rendered sample -->
       <div class="cpe-split-right">
         <div class="cpe-preview-header">
           <span style="font-size:11px;font-weight:600;color:#374151">Предпросмотр карточки <code>${escHtml(type)}</code></span>
-          <span class="muted" style="font-size:10.5px">Перетащите чипы между зонами или из левого списка.</span>
+          <span class="muted" style="font-size:10.5px">Перетащите чипы между зонами.</span>
         </div>
         ${_renderCardPreview(sel, kind, type, fields, activeIds, required, layout)}
+        <div class="cpe-rendered-preview-wrap">
+          <div class="cpe-rendered-preview-head">
+            <span style="font-size:11px;font-weight:600;color:#374151">📐 Как выглядит на схеме (с примерными данными):</span>
+          </div>
+          ${_renderSampleCard(sel, kind, type, fields, activeIds, required)}
+        </div>
       </div>
     </div>
+  </div>`;
+}
+
+// v0.59.806: рендер sample-карточки с примерными данными — пользователь
+// видит результат пресета как на канвасе.
+function _renderSampleCard(sel, kind, type, fields, activeIds, required) {
+  // Sample values per type
+  const sample = {
+    consumer: {
+      tag: 'SR1', name: 'Стойка',
+      demandKw: '8.8', kvAOrVA: '9.2', currentA: '39.9',
+      maxKw: '7.0', maxA: '31.7', freeKw: '1.8', freeA: '8.3',
+      cosPhi: '0.95', voltage: '400', phase: '3ph',
+      breakerIn: '50', cableSpec: 'ВВГнг 5×16', deltaUPct: '0.8',
+      count: '8', subtitle: 'Серверная стойка · вх 2',
+      nominalKw: '8.8',
+    },
+    panel: {
+      tag: 'ГРЩ1', name: 'Главный распред. щит',
+      capacityA: '630', currentA: '420', maxKw: '230', maxA: '460',
+      freeKw: '110', freeA: '170', marginPct: '33.3', kSim: '0.85',
+      switchMode: 'auto', sectionsCount: '2', subtitle: 'In 630 А · 2 секции',
+    },
+    source: {
+      tag: 'TP1', name: 'Трансформатор',
+      sourceSubtype: 'transformer', voltage: '10000', snomKva: '630',
+      capacityKw: '600', currentA: '32', maxKw: '400', maxA: '21',
+      freeKw: '230', freeA: '12', sscMva: '250', ukPct: '4.5',
+      subtitle: 'Трансформатор Sном 630',
+    },
+    generator: {
+      tag: 'G1', name: 'ДГУ',
+      capacityKw: '500', snomKva: '625', currentA: '0', maxKw: '0',
+      maxA: '0', freeKw: '500', freeA: '720', backupMode: 'резерв',
+      triggerInfo: '2', subtitle: 'Генератор 500 кВт',
+    },
+    ups: {
+      tag: 'UPS1', name: 'ИБП IT',
+      kva: '120', kw: '108', autonomyMin: '15', currentA: '155',
+      maxKw: '90', maxA: '129', freeKw: '18', freeA: '26',
+      redundancy: 'N+1', subtitle: 'ИБП · КПД 95%',
+    },
+    zone: { tag: 'Z1', name: 'Зона 1' },
+    channel: { tag: 'CH1', name: 'Лоток LM-300', cableSpec: 'F · 30°C · 50м' },
+  }[type] || { tag: 'X1', name: 'Sample' };
+
+  // Labels (short for canvas-style display)
+  const LABELS = {
+    consumer: { demandKw: 'Мощность', nominalKw: 'Номинал', kvAOrVA: 'кВА', currentA: 'Ток',
+      maxKw: 'Макс.', maxA: 'Макс. ток', freeKw: 'Свободно', freeA: 'Своб. ток',
+      cosPhi: 'cos φ', voltage: 'U', phase: 'Фаза', breakerIn: 'Автомат',
+      cableSpec: 'Кабель', deltaUPct: 'ΔU', count: '×' },
+    panel: { capacityA: 'Номинал', currentA: 'Ток', maxKw: 'Макс.', maxA: 'Макс. ток',
+      freeKw: 'Свободно', freeA: 'Своб. ток', marginPct: 'Запас',
+      kSim: 'Kисп', switchMode: 'Режим', sectionsCount: 'Секций' },
+    source: { sourceSubtype: 'Тип', voltage: 'U', snomKva: 'Sном', capacityKw: 'Pном',
+      currentA: 'Ток', maxKw: 'Макс.', maxA: 'Макс. ток',
+      freeKw: 'Свободно', freeA: 'Своб. ток', sscMva: 'Sкз', ukPct: 'uк' },
+    generator: { capacityKw: 'Pном', snomKva: 'Sном', currentA: 'Ток',
+      maxKw: 'Макс.', maxA: 'Макс. ток', freeKw: 'Свободно', freeA: 'Своб. ток',
+      backupMode: 'Режим', triggerInfo: 'Триггеры' },
+    ups: { kva: 'Sном', kw: 'Pном', autonomyMin: 'Автономия', currentA: 'Ток',
+      maxKw: 'Макс.', maxA: 'Макс. ток', freeKw: 'Свободно', freeA: 'Своб. ток',
+      redundancy: 'Резерв' },
+  };
+  const UNITS = {
+    demandKw: 'кВт', nominalKw: 'кВт', kvAOrVA: 'кВА', currentA: 'А', maxKw: 'кВт',
+    maxA: 'А', freeKw: 'кВт', freeA: 'А', voltage: 'В', breakerIn: 'А',
+    deltaUPct: '%', count: 'шт.', capacityA: 'А', marginPct: '%', sectionsCount: 'секц.',
+    snomKva: 'кВА', capacityKw: 'кВт', sscMva: 'МВА', ukPct: '%',
+    kva: 'кВА', kw: 'кВт', autonomyMin: 'мин', triggerInfo: 'триг.',
+  };
+
+  // Tag, name show only if active (always required so always shown)
+  const showTag = activeIds.has('tag') || required.has('tag');
+  const showName = activeIds.has('name') || required.has('name');
+  const showSubtitle = activeIds.has('subtitle') || activeIds.has('sourceSubtype') ||
+    activeIds.has('switchMode');
+  const showIcon = activeIds.has('icon');
+
+  // Build rows (only fields that are visible AND have sample value)
+  const rows = [];
+  for (const f of fields) {
+    if (f.id === 'tag' || f.id === 'name' || f.id === 'subtitle' ||
+        f.id === 'icon' || f.id === 'zonePrefix' || f.id === 'memberCount') continue;
+    if (!activeIds.has(f.id)) continue;
+    const val = sample[f.id];
+    if (val == null || val === '') continue;
+    const customLabel = sel.fieldLabels?.[kind]?.[type]?.[f.id];
+    const lbl = (typeof customLabel === 'string' && customLabel.trim())
+      ? customLabel : (LABELS[type]?.[f.id] || f.label);
+    const unit = UNITS[f.id] || '';
+    rows.push(`${escHtml(lbl)}: ${escHtml(val)}${unit ? ' ' + escHtml(unit) : ''}`);
+  }
+
+  return `<div class="cpe-sample-card">
+    ${showIcon ? '<div class="cpe-sample-icon">▣</div>' : ''}
+    ${showTag ? `<div class="cpe-sample-tag">${escHtml(sample.tag)}</div>` : ''}
+    ${showName ? `<div class="cpe-sample-name">${escHtml(sample.name)}</div>` : ''}
+    ${showSubtitle && sample.subtitle ? `<div class="cpe-sample-subtitle muted">${escHtml(sample.subtitle)}</div>` : ''}
+    ${rows.length ? `<div class="cpe-sample-rows">${rows.map(r => `<div class="cpe-sample-row">${r}</div>`).join('')}</div>` : '<div class="cpe-sample-empty muted">— нет дополнительных полей —</div>'}
   </div>`;
 }
 
@@ -838,5 +945,34 @@ const CPE_CSS = `
 .cpe-chip-x:hover { color: #7f1d1d; }
 .cpe-dragging { opacity: 0.5; }
 .cpe-preview-legend { font-size: 11px; line-height: 1.4; padding: 6px 8px; background: #f9fafb; border-radius: 3px; margin-top: 8px; }
+
+/* v0.59.806: rendered sample card preview */
+.cpe-rendered-preview-wrap {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px dashed #cbd5e1;
+}
+.cpe-rendered-preview-head { margin-bottom: 6px; }
+.cpe-sample-card {
+  position: relative;
+  border: 2px solid #1e40af; border-radius: 6px;
+  padding: 10px 14px;
+  background: #fff;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 11px;
+  line-height: 1.4;
+  min-height: 80px;
+}
+.cpe-sample-icon {
+  position: absolute; top: 8px; right: 12px;
+  font-size: 18px; color: #94a3b8;
+}
+.cpe-sample-tag { font-size: 14px; font-weight: 700; color: #1e3a8a; }
+.cpe-sample-name { font-size: 12px; color: #475569; margin-top: 2px; }
+.cpe-sample-subtitle { font-size: 10.5px; margin-top: 2px; color: #94a3b8; font-style: italic; }
+.cpe-sample-rows { margin-top: 8px; padding-top: 6px; border-top: 1px solid #e5e7eb; display: flex; flex-direction: column; gap: 2px; }
+.cpe-sample-row { font-size: 11px; color: #1f2937; font-variant-numeric: tabular-nums; }
+.cpe-sample-empty { font-size: 11px; padding: 6px 0; font-style: italic; }
+
 .muted { color: #6b7280; }
 `;
