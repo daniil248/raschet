@@ -1853,6 +1853,12 @@ function recalc() {
     //   3. Согласованность: ток на консьюмере и ток на линии — одно и то же.
     if (toN.type === 'consumer') {
       c._loadA = consumerRatedCurrent(toN);
+    } else if (toN.type === 'consumer-container') {
+      // v0.59.829 (1.28.20): для контейнера — total = Σ slot loads, ток
+      // через линию = computeCurrentA(total, U, cos, ...). Эквивалентно
+      // групповому потребителю с count=N.
+      const totalKw = consumerTotalDemandKw(toN);
+      c._loadA = totalKw > 0 ? computeCurrentA(totalKw, U, cos, threePhase, _isDC) : 0;
     } else {
       c._loadA = c._loadKw > 0 ? computeCurrentA(c._loadKw, U, cos, threePhase, _isDC) : 0;
     }
@@ -1860,7 +1866,7 @@ function recalc() {
     // === Расчётный ток для подбора кабеля (максимальный по всем сценариям) ===
     // Кабель должен выдержать максимально возможную нагрузку через ДАННУЮ связь.
     let maxKwDownstream;
-    if (toN.type === 'consumer') {
+    if (toN.type === 'consumer' || toN.type === 'consumer-container') {
       maxKwDownstream = consumerTotalDemandKw(toN);
     } else if (toN.type === 'ups') {
       // Для линии К ИБП: макс. нагрузка = min(номинал, share_downstream) / КПД + charge
@@ -1902,9 +1908,11 @@ function recalc() {
     // правильный U. Не пересчитываем заново.
     const maxCurrent = (toN.type === 'consumer')
       ? consumerNominalCurrent(toN)
-      : (maxKwDownstream > 0
-          ? computeCurrentA(maxKwDownstream, U, cos, threePhase, _isDC)
-          : 0);
+      : (toN.type === 'consumer-container')
+        ? (maxKwDownstream > 0 ? computeCurrentA(maxKwDownstream, U, cos, threePhase, _isDC) : 0)
+        : (maxKwDownstream > 0
+            ? computeCurrentA(maxKwDownstream, U, cos, threePhase, _isDC)
+            : 0);
     c._maxKw = maxKwDownstream;
     c._maxA = maxCurrent;
 
@@ -1924,6 +1932,11 @@ function recalc() {
     let baseGrouping = Number(c.grouping) || GLOBAL.defaultGrouping;
     if (toN.type === 'consumer' && (Number(toN.count) || 1) > 1) {
       baseGrouping = Math.max(baseGrouping, Number(toN.count) || 1);
+    }
+    // v0.59.829 (1.28.20): consumer-container — каждый slot = отдельный
+    // кабель в том же лотке. baseGrouping = кол-во slots.
+    if (toN.type === 'consumer-container' && Array.isArray(toN.slots) && toN.slots.length > 1) {
+      baseGrouping = Math.max(baseGrouping, toN.slots.length);
     }
     let grouping = baseGrouping;
 
@@ -1978,6 +1991,12 @@ function recalc() {
     let conductorsInParallel = 1;
     if (toN.type === 'consumer' && (Number(toN.count) || 1) > 1 && !toN.serialMode) {
       conductorsInParallel = Number(toN.count) || 1;
+    }
+    // v0.59.829 (1.28.20): consumer-container — N параллельных проводников
+    // (по числу slots), как у группового потребителя count=N. Каждый slot =
+    // отдельный кабель от общего автомата.
+    if (toN.type === 'consumer-container' && Array.isArray(toN.slots) && toN.slots.length > 1) {
+      conductorsInParallel = toN.slots.length;
     }
 
     const cableType = c.cableType || GLOBAL.defaultCableType;
@@ -2066,15 +2085,31 @@ function recalc() {
         // Передаём margin и breakerCurve прямо в selectCable — координация
         // In ≤ Iz и I2 ≤ 1.45·Iz выполняется внутри (IEC 60364-4-43).
         const calcMethod = getMethod(GLOBAL.calcMethod);
-        const _consInrush = (toN && toN.type === 'consumer') ? (Number(toN.inrushFactor) || 1) : 1;
-        const _consMP = (toN && toN.type === 'consumer' && typeof toN.breakerMarginPct === 'number') ? toN.breakerMarginPct : null;
+        // v0.59.829 (1.28.20): для consumer-container — наследуем inrush/
+        // marginPct/curveHint от первого linked-члена (контейнер сам этих
+        // параметров не имеет).
+        const _toFirstLinked = (toN && toN.type === 'consumer-container' && Array.isArray(toN.slots))
+          ? (() => { for (const s of toN.slots) {
+              if (s && s.kind === 'linked' && s.nodeId) {
+                const a = state.nodes.get(s.nodeId);
+                if (a) return a;
+              }
+            } return null; })()
+          : null;
+        const _consInrush = (toN && toN.type === 'consumer') ? (Number(toN.inrushFactor) || 1)
+                          : (_toFirstLinked ? (Number(_toFirstLinked.inrushFactor) || 1) : 1);
+        const _consMP = (toN && toN.type === 'consumer' && typeof toN.breakerMarginPct === 'number') ? toN.breakerMarginPct
+                       : (_toFirstLinked && typeof _toFirstLinked.breakerMarginPct === 'number') ? _toFirstLinked.breakerMarginPct
+                       : null;
         const _lineMP = (typeof c.breakerMarginPct === 'number') ? c.breakerMarginPct : null;
         const _sizingMarginPct = Math.max(
           Number(GLOBAL.breakerMinMarginPct) || 0,
           _lineMP != null ? _lineMP : (_consMP != null ? _consMP : autoBreakerMargin(_consInrush))
         );
         // Подсказка по кривой — влияет на I2ratio в coordination check
-        const _consCurveHint = (toN && toN.type === 'consumer' && toN.curveHint) ? toN.curveHint : null;
+        const _consCurveHint = (toN && toN.type === 'consumer' && toN.curveHint) ? toN.curveHint
+                              : (_toFirstLinked && _toFirstLinked.curveHint) ? _toFirstLinked.curveHint
+                              : null;
         const _curveForSizing = c.breakerCurve || _consCurveHint || autoBreakerCurve(_consInrush, 0);
 
         let sizingCurrent = maxCurrent;
@@ -2198,7 +2233,10 @@ function recalc() {
         //   непараллельная (par=1)                → 'individual' (эквивалентно)
         const _isGroupLoadSize = (toN.type === 'consumer'
           && (Number(toN.count) || 1) > 1
-          && !toN.serialMode);
+          && !toN.serialMode)
+          || (toN.type === 'consumer-container'
+              && Array.isArray(toN.slots)
+              && toN.slots.length > 1);
         // Приоритет режима защиты: line-override → GLOBAL → 'individual'
         const _protGlobal = GLOBAL.parallelProtection === 'common' ? 'common' : 'individual';
         const _protLine = (c.parallelProtection === 'common' || c.parallelProtection === 'individual')
@@ -2608,9 +2646,13 @@ function recalc() {
     // InTotal (общий), а InPerLine пересчитываем как manualIn/parallel (окр. вверх
     // по стандартному ряду), чтобы оба значения были согласованы.
     if (_manualIn > 0) {
+      // v0.59.829: расширено на consumer-container
       const _isGroupLoadManual = (toN.type === 'consumer'
         && (Number(toN.count) || 1) > 1
-        && !toN.serialMode);
+        && !toN.serialMode)
+        || (toN.type === 'consumer-container'
+            && Array.isArray(toN.slots)
+            && toN.slots.length > 1);
       const _protLineEffM = (c.parallelProtection === 'common' || c.parallelProtection === 'individual')
         ? c.parallelProtection : null;
       const _effProtIndivM = _protLineEffM ? (_protLineEffM === 'individual') : _protIndivGlobal;
@@ -2633,7 +2675,10 @@ function recalc() {
     // Определяем тип параллельности: групповая нагрузка или парцелльная линия
     const isGroupLoad = (toN.type === 'consumer'
       && (Number(toN.count) || 1) > 1
-      && !toN.serialMode);
+      && !toN.serialMode)
+      || (toN.type === 'consumer-container'
+          && Array.isArray(toN.slots)
+          && toN.slots.length > 1);
 
     // Line-level override режима защиты (c.parallelProtection) имеет
     // приоритет над GLOBAL. Групповые нагрузки всегда per-line.
