@@ -1020,7 +1020,7 @@ function createBatchLinks(n) {
       fromRackId: lastLink.fromRackId, fromDevId: lastLink.fromDevId, fromLabel,
       toRackId: lastLink.toRackId, toDevId: lastLink.toDevId, toLabel,
       fromPort: fromSeq[i], toPort: toSeq[i],
-      cableType: 'cat6a', lengthM: null, note: '', createdAt: Date.now(),
+      cableType: 'cat6a', termination: 'jack', lengthM: null, note: '', createdAt: Date.now(),
       batchId,
     });
   }
@@ -1805,6 +1805,7 @@ function _createLinkFromSelection() {
     toRackId: linkEnd.rackId, toDevId: linkEnd.devId, toLabel: linkEnd.label,
     fromPort, toPort,
     cableType: defCable,
+    termination: 'jack', // v0.59.864: default — разъём (patch cord)
     lengthM: null,
     note: '',
     createdAt: Date.now(),
@@ -1857,6 +1858,7 @@ function renderLinksList() {
   const ct = linksCableFilter || '';
   const fromR = linksFromRackFilter || '';
   const toR = linksToRackFilter || '';
+  const tm = linksTerminationFilter || ''; // v0.59.864
   const missingOnly = !!linksMissingOnly;
   const linkMatchesQuery = l => {
     if (!q) return true;
@@ -1870,6 +1872,7 @@ function renderLinksList() {
   // Полный фильтр (для итоговой таблицы):
   const linkMatches = l => {
     if (ct && (l.cableType || '') !== ct) return false;
+    if (tm && (l.termination || 'jack') !== tm) return false;
     if (missingOnly && l.lengthM != null) return false;
     if (fromR && l.fromRackId !== fromR) return false;
     if (toR && l.toRackId !== toR) return false;
@@ -1882,17 +1885,28 @@ function renderLinksList() {
   // и наоборот — если выбран ct='cat6a', from/to сужаются.
   const matchesExceptFrom = l => {
     if (ct && (l.cableType || '') !== ct) return false;
+    if (tm && (l.termination || 'jack') !== tm) return false;
     if (missingOnly && l.lengthM != null) return false;
     if (toR && l.toRackId !== toR) return false;
     return linkMatchesQuery(l);
   };
   const matchesExceptTo = l => {
     if (ct && (l.cableType || '') !== ct) return false;
+    if (tm && (l.termination || 'jack') !== tm) return false;
     if (missingOnly && l.lengthM != null) return false;
     if (fromR && l.fromRackId !== fromR) return false;
     return linkMatchesQuery(l);
   };
   const matchesExceptCable = l => {
+    if (tm && (l.termination || 'jack') !== tm) return false;
+    if (missingOnly && l.lengthM != null) return false;
+    if (fromR && l.fromRackId !== fromR) return false;
+    if (toR && l.toRackId !== toR) return false;
+    return linkMatchesQuery(l);
+  };
+  // v0.59.864: cross-filter для termination — все остальные фильтры активны.
+  const matchesExceptTerm = l => {
+    if (ct && (l.cableType || '') !== ct) return false;
     if (missingOnly && l.lengthM != null) return false;
     if (fromR && l.fromRackId !== fromR) return false;
     if (toR && l.toRackId !== toR) return false;
@@ -1924,7 +1938,15 @@ function renderLinksList() {
     )
   ).join('');
   const opts = CABLE_TYPES.map(t => `<option value="${t.id}">${escapeHtml(t.label)}</option>`).join('');
-  const anyFilter = q || ct || missingOnly || fromR || toR;
+  // v0.59.864: termination filter + select-options.
+  const termIdsAvailable = new Set(allLinks.filter(matchesExceptTerm).map(l => l.termination || 'jack'));
+  const termFilterOpts = ['<option value="">все способы</option>'].concat(
+    TERMINATION_TYPES.filter(t => termIdsAvailable.has(t.id) || tm === t.id).map(t =>
+      `<option value="${t.id}" ${tm === t.id ? 'selected' : ''}>${escapeHtml(t.label)}</option>`
+    )
+  ).join('');
+  const termRowOpts = TERMINATION_TYPES.map(t => `<option value="${t.id}">${escapeHtml(t.label)}</option>`).join('');
+  const anyFilter = q || ct || tm || missingOnly || fromR || toR;
   // v0.59.590: чистка stale-id'шников из linksSelected (если связи были удалены).
   const validIds = new Set(allLinks.map(l => l.id));
   for (const id of Array.from(linksSelected)) if (!validIds.has(id)) linksSelected.delete(id);
@@ -1971,6 +1993,7 @@ function renderLinksList() {
           <th><select id="sd-links-from" title="Фильтр по источнику (откуда)">${fromOpts}</select></th>
           <th><select id="sd-links-to" title="Фильтр по цели (куда)">${toOpts}</select></th>
           <th><select id="sd-links-ct" title="Тип кабеля">${cableOpts}</select></th>
+          <th><select id="sd-links-tm" title="Способ окончания (разделка / разъём)">${termFilterOpts}</select></th>
           <th><label class="muted" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;white-space:nowrap"><input type="checkbox" id="sd-links-missing" ${missingOnly ? 'checked' : ''}> без длины</label></th>
           <th><input type="search" id="sd-links-q" placeholder="🔍 поиск" value="${escapeHtml(linksQuery || '')}" autocomplete="off" style="width:100%;min-width:120px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font:inherit;font-size:11px"></th>
           <th></th>
@@ -1981,6 +2004,7 @@ function renderLinksList() {
           <th>Откуда (шкаф → устройство)</th>
           <th>Куда (шкаф → устройство)</th>
           <th>Кабель</th>
+          <th title="Способ окончания: разъём (заводской patch), разделка (keystone в кросс), заводская сборка (sealed)">Окончание</th>
           <th>Длина, м</th>
           <th>Заметка</th>
           <th></th>
@@ -2019,6 +2043,9 @@ function renderLinksList() {
                 if (c.ok) return '';
                 return `<div class="sd-link-warn" style="margin-top:4px;font-size:11px;color:#b91c1c" title="${escapeAttr(c.reason)}">⚠ ${escapeHtml(c.reason)}</div>`;
               })()}
+            </td>
+            <td>
+              <select data-act="termination" title="Способ окончания кабеля. Влияет на BOM (керамические вставки/коннекторы) и тип монтажа.">${termRowOpts.replace(`value="${l.termination || 'jack'}"`, `value="${l.termination || 'jack'}" selected`)}</select>
             </td>
             <td>${(() => {
               // v0.59.599 (Phase 16.8/16.9): 🔒/🔓 + tooltip с breakdown.
@@ -2059,11 +2086,12 @@ function renderLinksList() {
     if (q2) { q2.focus(); q2.setSelectionRange(q2.value.length, q2.value.length); }
   });
   document.getElementById('sd-links-ct')?.addEventListener('change', e => { linksCableFilter = e.target.value; renderLinksList(); });
+  document.getElementById('sd-links-tm')?.addEventListener('change', e => { linksTerminationFilter = e.target.value; renderLinksList(); });
   document.getElementById('sd-links-from')?.addEventListener('change', e => { linksFromRackFilter = e.target.value; renderLinksList(); });
   document.getElementById('sd-links-to')?.addEventListener('change', e => { linksToRackFilter = e.target.value; renderLinksList(); });
   document.getElementById('sd-links-missing')?.addEventListener('change', e => { linksMissingOnly = e.target.checked; renderLinksList(); });
   document.getElementById('sd-links-clear')?.addEventListener('click', () => {
-    linksQuery = ''; linksCableFilter = ''; linksMissingOnly = false;
+    linksQuery = ''; linksCableFilter = ''; linksTerminationFilter = ''; linksMissingOnly = false;
     linksFromRackFilter = ''; linksToRackFilter = '';
     renderLinksList();
   });
@@ -2168,6 +2196,8 @@ function renderLinksList() {
   host.querySelectorAll('tr[data-id]').forEach(tr => {
     const id = tr.dataset.id;
     tr.querySelector('[data-act="cable"]').addEventListener('change', e => { updateLink(id, { cableType: e.target.value }); drawLinkOverlay(); });
+    // v0.59.864: per-link termination select (разъём / разделка / заводская сборка).
+    tr.querySelector('[data-act="termination"]')?.addEventListener('change', e => { updateLink(id, { termination: e.target.value }); renderBom(); });
     tr.querySelector('[data-act="length"]').addEventListener('change', e => {
       const v = e.target.value;
       // v0.59.599 (Phase 16.8): ручное редактирование длины автоматически
@@ -2251,6 +2281,34 @@ function renderBom() {
       <td class="num">${r.withoutLen || ''}</td>
     </tr>`);
   }
+
+  // v0.59.864: разбивка по способу окончания. Каждое окончание = 2 точки
+  // (с двух сторон линии): для разъёма — 2 коннектора (RJ45/LC); для
+  // разделки — 2 keystone-модуля + IDC-инструмент (учёт по проекту);
+  // для заводской сборки — 0 расходников (cable assembly уже собран).
+  const byTerm = new Map();
+  for (const l of links) {
+    const id = l.termination || 'jack';
+    if (!byTerm.has(id)) byTerm.set(id, 0);
+    byTerm.set(id, byTerm.get(id) + 1);
+  }
+  const TERM_PARTS = {
+    'jack':           (n) => `2× коннектор RJ45/LC × ${n} = ${n * 2} шт.`,
+    'punchdown':      (n) => `2× keystone-модуль × ${n} = ${n * 2} шт. (+ IDC-инструмент)`,
+    'pre-terminated': (n) => `${n} cable assembly (заводская сборка, без расходников)`,
+  };
+  const termRows = TERMINATION_TYPES
+    .filter(t => byTerm.has(t.id))
+    .map(t => {
+      const n = byTerm.get(t.id);
+      const parts = TERM_PARTS[t.id] ? TERM_PARTS[t.id](n) : '';
+      return `<tr>
+        <td>${escapeHtml(t.label)}</td>
+        <td class="num">${n}</td>
+        <td>${escapeHtml(parts)}</td>
+      </tr>`;
+    }).join('');
+
   host.innerHTML = `
     <table class="sd-bom-table">
       <thead><tr>
@@ -2271,6 +2329,16 @@ function renderBom() {
         </tr>
       </tbody>
     </table>
+    ${termRows ? `
+      <div style="margin-top:14px;font-size:12px;font-weight:600;color:#475569">Разделки и коннекторы</div>
+      <table class="sd-bom-table" style="margin-top:6px">
+        <thead><tr>
+          <th>Способ окончания</th>
+          <th class="num">Линий</th>
+          <th>Расходники (на обе стороны)</th>
+        </tr></thead>
+        <tbody>${termRows}</tbody>
+      </table>` : ''}
   `;
 }
 
@@ -3043,6 +3111,20 @@ let linksMissingOnly = false;
 // со всеми остальными фильтрами (см. MEMORY: cross-filter selects).
 let linksFromRackFilter = '';
 let linksToRackFilter = '';
+// v0.59.864: фильтр способа окончания кабеля (разделка/разъём/pre-term).
+let linksTerminationFilter = '';
+
+// v0.59.864: способ окончания кабеля per-link.
+//   'jack'  — разъём (factory-terminated patch cord, RJ45/LC-LC)
+//   'punchdown' — разделка на месте (keystone module / IDC, под кросс)
+//   'pre-terminated' — заводская сборка (фабричный гермоввод/sealed cassette)
+const TERMINATION_TYPES = [
+  { id: 'jack',           label: 'Разъём (patch)' },
+  { id: 'punchdown',      label: 'Разделка (keystone)' },
+  { id: 'pre-terminated', label: 'Заводская сборка' },
+];
+const TERMINATION_LABEL = Object.fromEntries(TERMINATION_TYPES.map(t => [t.id, t.label]));
+function _termLabel(id) { return TERMINATION_LABEL[id] || (id ? id : 'Разъём (patch)'); }
 // v0.59.589: видимость overlay-линий + провисание (как у реальных кабелей).
 let linksOverlayVisible = (() => {
   try { return localStorage.getItem('scs-design.linksOverlay.visible.v1') !== '0'; } catch { return true; }

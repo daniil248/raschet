@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.864', date: '2026-04-30', items: [
+      '🔌 <b>scs-design: Способ окончания кабеля per-link (разъём / разделка / заводская сборка)</b>. Новое поле <code>link.termination</code> с тремя значениями:',
+      '• <code>jack</code> — Разъём (patch cord, factory-terminated). Default для новых связей.',
+      '• <code>punchdown</code> — Разделка на месте (keystone-модуль / IDC).',
+      '• <code>pre-terminated</code> — Заводская сборка (sealed cable assembly).',
+      '• <b>UI</b>: новая колонка «Окончание» в таблице связей между «Кабель» и «Длина, м». Excel-style фильтр прямо над заголовком (по правилу feedback_column_filters). Per-row select для редактирования.',
+      '• <b>Cross-filter</b>: termination-фильтр кросс-зависим со всеми остальными (cable type / from / to / missing / search) — опции каждого select сужаются по выбранным значениям остальных. По правилу feedback_cross_filter.md.',
+      '• <b>BOM</b>: новая секция «Разделки и коннекторы» — для каждого способа окончания: число линий + расходники на обе стороны (2× коннектор/keystone × N).',
+      'Файл: <code>scs-design/scs-design.js</code> (TERMINATION_TYPES, linksTerminationFilter state, matchesExceptTerm cross-filter, table column + select handler, renderBom раздел).',
+    ] },
     { version: '0.59.863', date: '2026-04-30', items: [
       '⚡ <b>Fix: потребители из consumer-container теперь влияют на ток кабеля до контейнера</b>. По репорту пользователя «потребители с группы не влияют на кабели, а должны».',
       '• <b>Корень бага</b>: в <code>recalc.js</code> цикл walkUp в ~line 1438 фильтровал <code>if (n.type !== \'consumer\') continue;</code> — пропускал <code>consumer-container</code>. Линки внутри контейнера тоже не вносили вклад: их connections были перенаправлены на контейнер в <code>_mergeIntoContainer</code>, и <code>activeInputs(linked)</code> возвращало null → <code>_powered=false</code> → skip. Контейнер сам тоже пропускался из-за фильтра. Итог: <code>conn._loadKw</code> на линии panel→container оставался 0 → cable rated на 0 А.',
