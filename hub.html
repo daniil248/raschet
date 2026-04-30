@@ -236,7 +236,7 @@
     </div>
     <div class="hub-grid" id="hub-grid">
       <h3 class="hub-category" data-cat="manage"><span class="hub-cat-icon">📁</span>Управление проектом<span class="hub-cat-hint">— реестр проектов, справка, навигация</span></h3>
-      <a class="hub-card" href="projects/">
+      <a class="hub-card" data-cat="manage" href="projects/">
         <div class="hub-card-icon purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><line x1="3" y1="11" x2="21" y2="11"/></svg></div>
         <h2>Проекты</h2>
         <p>Центр управления проектами: каждый проект хранит схему, СКС, шкафы, реестры. Конфигураторы — библиотека шаблонов, данные объекта — в проекте</p>
@@ -382,6 +382,27 @@
     var picker = document.getElementById('hub-hidden-picker');
     var hiddenList = document.getElementById('hub-hidden-list');
 
+    // v0.59.861: тематические группы — навешиваем data-cat на каждую карточку
+    // по последнему пройденному <h3.hub-category data-cat="..."> в исходном DOM.
+    // Затем applyLayout() рендерит заголовки между группами в фиксированном
+    // порядке категорий. Внутри группы карточки сортируются по prefs.order.
+    var CATEGORY_ORDER = ['manage', 'design', 'equipment', 'calc', 'catalog'];
+    var categoryHeaders = {}; // cat → <h3>
+    Array.prototype.forEach.call(grid.querySelectorAll('.hub-category'), function (h) {
+      var cat = h.dataset.cat;
+      if (cat) categoryHeaders[cat] = h;
+    });
+    (function _autoTagCategories() {
+      var currentCat = CATEGORY_ORDER[0];
+      Array.prototype.forEach.call(grid.children, function (el) {
+        if (el.classList && el.classList.contains('hub-category') && el.dataset.cat) {
+          currentCat = el.dataset.cat;
+        } else if (el.classList && el.classList.contains('hub-card')) {
+          if (!el.dataset.cat) el.dataset.cat = currentCat;
+        }
+      });
+    })();
+
     var allCards = Array.prototype.slice.call(grid.querySelectorAll('.hub-card'));
     // ключ карточки = её href
     allCards.forEach(function (c) { c.dataset.hubKey = c.getAttribute('href') || c.querySelector('h2')?.textContent || ''; });
@@ -432,9 +453,23 @@
       defaultOrder.forEach(function (k) { if (order.indexOf(k) < 0) order.push(k); });
       // отсеять ключи, которых больше нет
       order = order.filter(function (k) { return defaultOrder.indexOf(k) >= 0; });
+      // v0.59.861: рендер по группам. Идём по CATEGORY_ORDER, перед каждой
+      // группой вставляем её <h3.hub-category>, затем все карточки этой
+      // категории в порядке `order`. Ключ карточки → element ищем один раз.
+      var elByKey = {};
+      allCards.forEach(function (c) { elByKey[c.dataset.hubKey] = c; });
+      CATEGORY_ORDER.forEach(function (cat) {
+        var head = categoryHeaders[cat];
+        if (head) grid.appendChild(head);
+        order.forEach(function (k) {
+          var el = elByKey[k];
+          if (el && el.dataset.cat === cat) grid.appendChild(el);
+        });
+      });
+      // Если есть карточки без признанной категории — скидываем в конец без хедера.
       order.forEach(function (k) {
-        var el = grid.querySelector('.hub-card[data-hub-key="' + CSS.escape(k) + '"]');
-        if (el) grid.appendChild(el);
+        var el = elByKey[k];
+        if (el && CATEGORY_ORDER.indexOf(el.dataset.cat) < 0) grid.appendChild(el);
       });
       // скрытые
       allCards.forEach(function (c) {
@@ -445,6 +480,15 @@
         } else {
           c.style.display = '';
         }
+      });
+      // v0.59.861: hide пустых заголовков (если все карточки группы скрыты).
+      CATEGORY_ORDER.forEach(function (cat) {
+        var head = categoryHeaders[cat];
+        if (!head) return;
+        var visibleCount = allCards.filter(function (c) {
+          return c.dataset.cat === cat && c.style.display !== 'none';
+        }).length;
+        head.style.display = visibleCount > 0 ? '' : 'none';
       });
       renderHiddenPicker();
     }
