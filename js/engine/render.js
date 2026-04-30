@@ -51,7 +51,7 @@ function resolveChannelLabel(n) {
 import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight, portPos, getNodeGeometryMm } from './geometry.js';
 import { effectiveOn, selectMode, deleteMode } from './modes.js';
 import { recalc } from './recalc.js';
-import { effectiveTag } from './zones.js';
+import { effectiveTag, effectiveName } from './zones.js';
 import { fmt, fmtPower, escHtml, escAttr } from './utils.js';
 import { snapshot, notifyChange } from './history.js';
 import { computeCurrentA, nodeVoltage, nodeCalcVoltage, isThreePhase, cableVoltageClass, consumerTotalDemandKw, consumerCountEffective } from './electrical.js';
@@ -1916,8 +1916,9 @@ export function renderNodes() {
     const displayTag = effectiveTag(n);
     if (displayTag) g.appendChild(text(12, 16, displayTag, 'node-tag'));
 
-    // Имя
-    g.appendChild(text(12, 33, n.name || '(без имени)', 'node-title'));
+    // Имя (v0.59.811: для shell-группы — имя первого alias-узла,
+    // как и tag — чтобы не было рассинхронизации tag/name)
+    g.appendChild(text(12, 33, effectiveName(n) || n.name || '(без имени)', 'node-title'));
 
     // Иконка потребителя по подтипу — в правом верхнем углу карточки.
     // Для группы с serialMode — дополнительно ряд мелких иконок вдоль нижнего края.
@@ -2412,32 +2413,86 @@ export function renderNodes() {
         };
         labelMap = null;
       }
-      // v0.59.807: используем shortLabel и fieldUnit из registry —
-      // единый источник истины для подписи и единицы измерения.
-      // valueMap.unit оставлен для вычисляемых единиц если потребуются,
-      // но default — fieldUnit(kind, type, fieldId).
+      // v0.59.811: per-field rendering распределяется по zoneLayout.
+      // Каждое поле может быть в зоне header / topRight / body / footer
+      // (по preset.zoneLayout.assignments или default-логике). Это позволяет
+      // пользователю реально размещать поля по зонам карточки. Раньше всё
+      // шло линейно в body. Пользователь: «карточка не изменяет зоны
+      // информации и не соответствует карточке на поле».
+      const _zoneLayout = _presetActive?.zoneLayout?.[_presetKind]?.[n.type];
+      const _zones = _zoneLayout?.zones || [
+        { id: 'header',   position: 'header'   },
+        { id: 'topRight', position: 'topRight' },
+        { id: 'body',     position: 'body'     },
+        { id: 'footer',   position: 'footer'   },
+      ];
+      const _zoneAssign = _zoneLayout?.assignments || {};
+      const _defaultZone = (fid) => {
+        if (fid === 'tag' || fid === 'name' || fid === 'subtitle' ||
+            fid === 'sourceSubtype' || fid === 'switchMode' || fid === 'zonePrefix') return 'header';
+        if (fid === 'icon') return 'topRight';
+        if (fid === 'count') return 'footer';
+        return 'body';
+      };
+
       const orderedFields = listCardFields(_presetKind, n.type);
-      const rows = [];
+      const rowsByPos = { header: [], topRight: [], body: [], footer: [] };
       for (const f of orderedFields) {
         if (!_presetVisible.has(f.id)) continue;
+        // Skip fields, отрендеренные отдельно (tag/name/subtitle/icon уже
+        // выше). Их пользователь тоже может «положить в зону», но
+        // визуально они уже в стандартных позициях canvas-карточки.
+        if (f.id === 'tag' || f.id === 'name' || f.id === 'subtitle' ||
+            f.id === 'icon' || f.id === 'sourceSubtype' || f.id === 'switchMode' ||
+            f.id === 'zonePrefix') continue;
         const d = valueMap[f.id];
         if (!d || d.v == null || d.v === '') continue;
         const customLabel = _presetActive?.fieldLabels?.[_presetKind]?.[n.type]?.[f.id];
         const label = (typeof customLabel === 'string' && customLabel.trim())
           ? customLabel : shortLabel(_presetKind, n.type, f.id);
         const unit = (d.unit != null) ? d.unit : fieldUnit(_presetKind, n.type, f.id);
-        rows.push(`${label}: ${d.v}${unit ? ' ' + unit : ''}`);
+        const txt = `${label}: ${d.v}${unit ? ' ' + unit : ''}`;
+        const zid = _zoneAssign[f.id] || _defaultZone(f.id);
+        const z = _zones.find(x => x.id === zid);
+        const pos = z ? z.position : 'body';
+        if (rowsByPos[pos]) rowsByPos[pos].push(txt);
+        else rowsByPos.body.push(txt);
       }
-      // Render rows стопкой снизу + статус-строка над load-блоком
+
       const lineH = 12;
       const baseY = NODE_H - 12;
       const statusOffset = statusLine ? lineH : 0;
-      for (let i = 0; i < rows.length; i++) {
-        const y = baseY - statusOffset - (rows.length - 1 - i) * lineH;
-        g.appendChild(text(12, y, rows[i], loadCls + ' node-load-row'));
+      // Body: стопка снизу
+      const bodyRows = rowsByPos.body;
+      const footerRows = rowsByPos.footer;
+      const footerH = footerRows.length ? lineH : 0;
+      for (let i = 0; i < bodyRows.length; i++) {
+        const y = baseY - statusOffset - footerH - (bodyRows.length - 1 - i) * lineH;
+        g.appendChild(text(12, y, bodyRows[i], loadCls + ' node-load-row'));
       }
       if (statusLine) {
-        g.appendChild(text(12, baseY, statusLine, loadCls + ' node-load-status'));
+        g.appendChild(text(12, baseY - footerH, statusLine, loadCls + ' node-load-status'));
+      }
+      // Footer: одна строка внизу карточки (под bodyRows и status)
+      if (footerRows.length) {
+        g.appendChild(text(12, baseY, footerRows.join(' · '), loadCls + ' node-load-row'));
+      }
+      // TopRight: стек справа сверху, маленький шрифт, right-align
+      let trY = 16;
+      for (const r of rowsByPos.topRight) {
+        const t = text(w - 8, trY, r, loadCls + ' node-load-row');
+        t.setAttribute('text-anchor', 'end');
+        t.setAttribute('font-size', '10');
+        g.appendChild(t);
+        trY += 11;
+      }
+      // Header extras: маленькие строки ниже subtitle (если есть)
+      let hY = 60;
+      for (const r of rowsByPos.header) {
+        const t = text(12, hY, r, loadCls + ' node-load-row');
+        t.setAttribute('font-size', '10');
+        g.appendChild(t);
+        hY += 11;
       }
     } else if (_presetShowLoadInfo) {
       // Legacy combined rows для остальных типов (panel/source/generator/ups/channel)
@@ -2735,16 +2790,18 @@ export function renderNodes() {
         }
       }
       if (newDiverged > 0) {
-        // Маленький значок-кружок с ⚠ слева от иконки (24×24 px). Не
-        // конфликтует с margin-warn-tri (она у panel'ов).
-        const cx = 14, cy = 14, r = 10;
+        // v0.59.811: badge перенесён в правый нижний угол карточки —
+        // раньше был на (14,14) что перекрывало tag (Пользователь:
+        // «⚠ icon перекрывает обозначение»). Теперь в углу около
+        // footer'а, не мешает чтению tag/name.
+        const cx = w - 14, cy = NODE_H - 14, r = 9;
         const circle = el('circle', { class: 'alias-diverge-badge', cx, cy, r,
           fill: '#fde68a', stroke: '#92400e', 'stroke-width': 1.5 });
         g.appendChild(circle);
         const exc = text(cx, cy + 4, '!', 'alias-diverge-bang');
         exc.setAttribute('text-anchor', 'middle');
         exc.setAttribute('font-weight', '700');
-        exc.setAttribute('font-size', '13');
+        exc.setAttribute('font-size', '12');
         exc.setAttribute('fill', '#92400e');
         g.appendChild(exc);
         const title = el('title', {});

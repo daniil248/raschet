@@ -298,37 +298,64 @@ function _renderSampleCard(sel, kind, type, fields, activeIds, required) {
     channel: { tag: 'CH1', name: 'Лоток LM-300', cableSpec: 'F · 30°C · 50м' },
   }[type] || { tag: 'X1', name: 'Sample' };
 
-  // v0.59.807: labels и units берутся из registry (shortLabel/fieldUnit) —
-  // единый источник истины для редактора и canvas-render'а.
+  // v0.59.811: sample-карточка теперь использует zoneLayout — поля
+  // отображаются в той зоне (header/topRight/body/footer), куда их
+  // расположил пользователь. Раньше всё рендерилось линейно.
+  const layout = getZoneLayout(sel, kind, type);
+  const layoutZones = layout.zones || DEFAULT_ZONES;
+  const layoutAssign = layout.assignments || {};
 
-  // Tag, name show only if active (always required so always shown)
-  const showTag = activeIds.has('tag') || required.has('tag');
-  const showName = activeIds.has('name') || required.has('name');
-  const showSubtitle = activeIds.has('subtitle') || activeIds.has('sourceSubtype') ||
-    activeIds.has('switchMode');
-  const showIcon = activeIds.has('icon');
-
-  // Build rows (only fields that are visible AND have sample value)
-  const rows = [];
+  // Распределяем активные поля по зонам (по position)
+  const zonesByPos = { header: [], topRight: [], body: [], footer: [] };
   for (const f of fields) {
-    if (f.id === 'tag' || f.id === 'name' || f.id === 'subtitle' ||
-        f.id === 'icon' || f.id === 'zonePrefix' || f.id === 'memberCount') continue;
-    if (!activeIds.has(f.id)) continue;
+    if (!activeIds.has(f.id) && !required.has(f.id)) continue;
+    const zid = layoutAssign[f.id] || defaultZoneAssignment(f.id);
+    const z = layoutZones.find(x => x.id === zid);
+    const pos = z ? z.position : 'body';
+    if (!zonesByPos[pos]) zonesByPos[pos] = [];
+    zonesByPos[pos].push(f);
+  }
+
+  // Render одного поля в текущем sample-card (с разной visualization
+  // для tag / name / subtitle / icon / прочих)
+  const renderField = (f) => {
+    if (f.id === 'tag') return sample.tag ? `<div class="cpe-sample-tag">${escHtml(sample.tag)}</div>` : '';
+    if (f.id === 'name') return sample.name ? `<div class="cpe-sample-name">${escHtml(sample.name)}</div>` : '';
+    if (f.id === 'subtitle' || f.id === 'sourceSubtype' || f.id === 'switchMode') {
+      return sample.subtitle ? `<div class="cpe-sample-subtitle muted">${escHtml(sample.subtitle)}</div>` : '';
+    }
+    if (f.id === 'icon') return '<div class="cpe-sample-icon-inline">▣</div>';
+    if (f.id === 'zonePrefix' || f.id === 'memberCount') return '';
     const val = sample[f.id];
-    if (val == null || val === '') continue;
+    if (val == null || val === '') return '';
     const customLabel = sel.fieldLabels?.[kind]?.[type]?.[f.id];
     const lbl = (typeof customLabel === 'string' && customLabel.trim())
       ? customLabel : registryShortLabel(kind, type, f.id);
     const unit = fieldUnit(kind, type, f.id);
-    rows.push(`${escHtml(lbl)}: ${escHtml(val)}${unit ? ' ' + escHtml(unit) : ''}`);
-  }
+    return `<div class="cpe-sample-row">${escHtml(lbl)}: ${escHtml(val)}${unit ? ' ' + escHtml(unit) : ''}</div>`;
+  };
 
-  return `<div class="cpe-sample-card">
-    ${showIcon ? '<div class="cpe-sample-icon">▣</div>' : ''}
-    ${showTag ? `<div class="cpe-sample-tag">${escHtml(sample.tag)}</div>` : ''}
-    ${showName ? `<div class="cpe-sample-name">${escHtml(sample.name)}</div>` : ''}
-    ${showSubtitle && sample.subtitle ? `<div class="cpe-sample-subtitle muted">${escHtml(sample.subtitle)}</div>` : ''}
-    ${rows.length ? `<div class="cpe-sample-rows">${rows.map(r => `<div class="cpe-sample-row">${r}</div>`).join('')}</div>` : '<div class="cpe-sample-empty muted">— нет дополнительных полей —</div>'}
+  const renderZone = (pos) => zonesByPos[pos].map(renderField).filter(Boolean).join('');
+  const headerHtml = renderZone('header');
+  const topRightHtml = renderZone('topRight');
+  const bodyHtml = renderZone('body');
+  const footerHtml = renderZone('footer');
+
+  return `<div class="cpe-sample-card cpe-sample-card-zoned">
+    <div class="cpe-sample-row-top">
+      <div class="cpe-sample-zone cpe-sample-zone-header">
+        ${headerHtml || '<div class="cpe-sample-empty muted">пусто</div>'}
+      </div>
+      <div class="cpe-sample-zone cpe-sample-zone-topright">
+        ${topRightHtml || '<div class="cpe-sample-empty muted">—</div>'}
+      </div>
+    </div>
+    <div class="cpe-sample-zone cpe-sample-zone-body">
+      ${bodyHtml || '<div class="cpe-sample-empty muted">— тело пусто —</div>'}
+    </div>
+    <div class="cpe-sample-zone cpe-sample-zone-footer">
+      ${footerHtml || ''}
+    </div>
   </div>`;
 }
 
@@ -960,16 +987,28 @@ const CPE_CSS = `
   line-height: 1.4;
   min-height: 80px;
 }
-.cpe-sample-icon {
-  position: absolute; top: 8px; right: 12px;
-  font-size: 18px; color: #94a3b8;
+.cpe-sample-card-zoned {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 8px;
 }
+.cpe-sample-row-top { display: flex; gap: 8px; align-items: flex-start; }
+.cpe-sample-zone {
+  background: #fafbff;
+  border: 1px dashed #cbd5e1;
+  border-radius: 4px;
+  padding: 4px 6px;
+  min-height: 24px;
+}
+.cpe-sample-zone-header { flex: 1; }
+.cpe-sample-zone-topright { width: 110px; }
+.cpe-sample-zone-body { min-height: 30px; padding: 6px 8px; }
+.cpe-sample-zone-footer { padding: 4px 6px; min-height: 18px; }
+.cpe-sample-icon-inline { font-size: 16px; color: #94a3b8; }
 .cpe-sample-tag { font-size: 14px; font-weight: 700; color: #1e3a8a; }
 .cpe-sample-name { font-size: 12px; color: #475569; margin-top: 2px; }
 .cpe-sample-subtitle { font-size: 10.5px; margin-top: 2px; color: #94a3b8; font-style: italic; }
-.cpe-sample-rows { margin-top: 8px; padding-top: 6px; border-top: 1px solid #e5e7eb; display: flex; flex-direction: column; gap: 2px; }
-.cpe-sample-row { font-size: 11px; color: #1f2937; font-variant-numeric: tabular-nums; }
-.cpe-sample-empty { font-size: 11px; padding: 6px 0; font-style: italic; }
+.cpe-sample-row { font-size: 11px; color: #1f2937; font-variant-numeric: tabular-nums; padding: 1px 0; }
+.cpe-sample-empty { font-size: 10px; padding: 2px 0; font-style: italic; }
 
 .muted { color: #6b7280; }
 `;

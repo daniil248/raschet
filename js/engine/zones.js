@@ -106,19 +106,36 @@ export function isAliasOfShell(n) { return !!_shellOf(n); }
 // потребителей должна иметь обозначение по обозначению первого экземпляра
 // (не размещенного а по сортировке)». Для остальных — просто n.tag.
 function _baseTag(n) {
-  if (n && Array.isArray(n.linkedAliases) && n.linkedAliases.length > 0) {
-    let firstTag = '';
-    for (const aid of n.linkedAliases) {
-      if (!aid) continue;
-      const a = state.nodes.get(aid);
-      if (!a || !a.tag) continue;
-      if (!firstTag || a.tag.localeCompare(firstTag, undefined, { numeric: true, sensitivity: 'base' }) < 0) {
-        firstTag = a.tag;
-      }
-    }
-    if (firstTag) return firstTag;
-  }
+  const first = _firstSortedAlias(n);
+  if (first && first.tag) return first.tag;
   return (n && n.tag) || '';
+}
+
+// v0.59.811: возвращает первый по натуральной сортировке alias-узел
+// внутри shell-группы (если есть). Используется для derived display
+// данных (tag, name, etc).
+function _firstSortedAlias(n) {
+  if (!n || !Array.isArray(n.linkedAliases) || n.linkedAliases.length === 0) return null;
+  let first = null;
+  for (const aid of n.linkedAliases) {
+    if (!aid) continue;
+    const a = state.nodes.get(aid);
+    if (!a || !a.tag) continue;
+    if (!first || a.tag.localeCompare(first.tag, undefined, { numeric: true, sensitivity: 'base' }) < 0) {
+      first = a;
+    }
+  }
+  return first;
+}
+
+// v0.59.811: эффективное имя узла. Для shell-группы с linkedAliases —
+// имя первого alias-узла (как и effectiveTag). Иначе n.name.
+// Пользователь: «обозначается по первому потребителю в группе» —
+// аналогично применяется к name, чтобы tag и name не рассинхронизировались.
+export function effectiveName(n) {
+  const first = _firstSortedAlias(n);
+  if (first && first.name) return first.name;
+  return (n && n.name) || '';
 }
 
 // Эффективное обозначение с учётом полной цепочки зон: «G1.S2.PNL1».
