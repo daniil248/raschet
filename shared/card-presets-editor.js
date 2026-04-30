@@ -454,22 +454,30 @@ function _renderCardPreview(sel, kind, type, fields, activeIds, required, layout
           const _displayLabel = _customLabel || f.label;
           // v0.59.873: draggable=true теперь ТОЛЬКО на grip-span.
           // v0.59.875: 🔗 кнопка для группировки в одну строку с другим полем.
-          //   Если f.id — primary группы → бэйдж «🔗→ secondary», клик разгруппирует.
-          //   Если f.id — secondary в чужой группе → бэйдж «🔗← primary», клик отвяжет.
-          //   Иначе — кнопка «🔗» (присоединить к primary в этой зоне).
+          // v0.59.879: rowGroups теперь поддерживает 3+ полей в одной строке —
+          //   layout.rowGroups[primary] = массив secondary-полей. Старый
+          //   формат (строка) поддержан как backward-compat.
           const _rowGroups = layout.rowGroups || {};
-          const _isPrimary = !!_rowGroups[f.id];
+          const _secondaryArray = (() => {
+            const v = _rowGroups[f.id];
+            if (Array.isArray(v)) return v;
+            if (typeof v === 'string' && v) return [v]; // legacy
+            return null;
+          })();
+          const _isPrimary = !!_secondaryArray && _secondaryArray.length > 0;
           let _secondaryOf = null;
           for (const [pid, sid] of Object.entries(_rowGroups)) {
-            if (sid === f.id) { _secondaryOf = pid; break; }
+            const arr = Array.isArray(sid) ? sid : (typeof sid === 'string' ? [sid] : []);
+            if (arr.includes(f.id)) { _secondaryOf = pid; break; }
           }
           const _groupedClass = (_isPrimary || _secondaryOf) ? ' cpe-chip-grouped' : '';
           let _groupBtnHtml = '';
           if (!required.has(f.id)) {
             if (_isPrimary) {
-              _groupBtnHtml = `<button type="button" class="cpe-chip-group cpe-chip-grouped-primary" data-field-id="${escAttr(f.id)}" title="В одной строке с «${escAttr(_rowGroups[f.id])}». Клик — разгруппировать.">🔗→</button>`;
+              const _list = (_secondaryArray || []).join(', ');
+              _groupBtnHtml = `<button type="button" class="cpe-chip-group cpe-chip-grouped-primary" data-field-id="${escAttr(f.id)}" title="Primary строки. В строке также: «${escAttr(_list)}». Клик — разгруппировать всё.">🔗+</button>`;
             } else if (_secondaryOf) {
-              _groupBtnHtml = `<button type="button" class="cpe-chip-group cpe-chip-grouped-secondary" data-field-id="${escAttr(f.id)}" title="В строке с «${escAttr(_secondaryOf)}». Клик — отвязать.">🔗←</button>`;
+              _groupBtnHtml = `<button type="button" class="cpe-chip-group cpe-chip-grouped-secondary" data-field-id="${escAttr(f.id)}" title="В строке с primary «${escAttr(_secondaryOf)}». Клик — отвязать.">🔗←</button>`;
             } else {
               _groupBtnHtml = `<button type="button" class="cpe-chip-group" data-field-id="${escAttr(f.id)}" title="Объединить с другим полем зоны в одну строку через «/». Открывает меню выбора.">🔗</button>`;
             }
@@ -739,12 +747,22 @@ function wire(host) {
       const layout = getZoneLayout(sel, kind, type);
       if (!layout.rowGroups) layout.rowGroups = {};
       const rg = layout.rowGroups;
-      // Если уже primary — разгруппировать.
+      // v0.59.879: поддержка array-secondaries.
+      // Если уже primary (rg[fid] существует) — разгруппировать всю строку.
       if (rg[fid]) { delete rg[fid]; saveZoneLayout(sel, kind, type, layout); render(host); wire(host); cpeToast('🔗 Группа разорвана', 'ok'); return; }
-      // Если secondary — отвязать (удалить запись где value === fid).
+      // Если secondary в чужой группе — отвязать (удалить fid из массива
+      // primary; если массив опустел — удалить запись primary целиком).
       let wasSecondary = false;
       for (const [pid, sid] of Object.entries(rg)) {
-        if (sid === fid) { delete rg[pid]; wasSecondary = true; break; }
+        const arr = Array.isArray(sid) ? sid : (typeof sid === 'string' ? [sid] : []);
+        const idx = arr.indexOf(fid);
+        if (idx >= 0) {
+          arr.splice(idx, 1);
+          if (arr.length === 0) delete rg[pid];
+          else rg[pid] = arr;
+          wasSecondary = true;
+          break;
+        }
       }
       if (wasSecondary) { saveZoneLayout(sel, kind, type, layout); render(host); wire(host); cpeToast('🔗 «' + fid + '» отвязано от группы', 'ok'); return; }
       // Иначе — открываем popup со списком кандидатов в той же зоне.
@@ -817,8 +835,18 @@ function _openGroupPickerPopup(anchorBtn, sel, kind, type, primaryFid, host) {
   const requiredSet = new Set(requiredFieldIds(kind, type));
   const fields = listCardFields(kind, type);
   const activeIds = new Set(sel.perMode?.[kind]?.perType?.[type] || fields.map(f => f.id));
+  // v0.59.879: занятые поля — все primaries И все secondaries (включая
+  // массивы). Кандидаты — поля той же зоны, не required, не уже занятые.
   const used = new Set();
-  for (const [pid, sid] of Object.entries(layout.rowGroups || {})) { used.add(pid); used.add(sid); }
+  for (const [pid, sid] of Object.entries(layout.rowGroups || {})) {
+    used.add(pid);
+    const arr = Array.isArray(sid) ? sid : (typeof sid === 'string' ? [sid] : []);
+    for (const x of arr) used.add(x);
+  }
+  // primaryFid сам может уже быть primary в случае добавления 3-го поля.
+  // Тогда его НЕ исключаем (он inititator), но secondaries уже добавленные —
+  // не предлагаем.
+  used.delete(primaryFid);
   const candidates = fields.filter(f => {
     if (f.id === primaryFid) return false;
     if (!activeIds.has(f.id)) return false;
@@ -836,23 +864,46 @@ function _openGroupPickerPopup(anchorBtn, sel, kind, type, primaryFid, host) {
       + candidates.map(f => `<button type="button" class="cpe-group-popup-item" data-secondary="${escAttr(f.id)}">${escHtml(f.label)} <code class="muted">${escHtml(f.id)}</code></button>`).join('');
   }
   document.body.appendChild(popup);
-  // Позиционирование рядом с anchorBtn
-  const rect = anchorBtn.getBoundingClientRect();
+  // Позиционирование рядом с anchorBtn — с clamping в viewport.
+  // v0.59.879: раньше popup мог уйти за правый/нижний край (anchor близко
+  // к границе экрана) и быть невидимым. Теперь подбираем left/top так,
+  // чтобы весь popup помещался: flip-left если не влезает справа,
+  // flip-up если не влезает снизу.
   popup.style.position = 'fixed';
-  popup.style.top = (rect.bottom + 4) + 'px';
-  popup.style.left = Math.max(8, rect.left) + 'px';
+  popup.style.visibility = 'hidden'; // измерим размер прежде чем показывать
+  popup.style.left = '0';
+  popup.style.top = '0';
   popup.style.zIndex = 11000;
+  const pw = popup.offsetWidth || 240;
+  const ph = popup.offsetHeight || 200;
+  const vw = window.innerWidth || document.documentElement.clientWidth;
+  const vh = window.innerHeight || document.documentElement.clientHeight;
+  const rect = anchorBtn.getBoundingClientRect();
+  let left = rect.left;
+  let top = rect.bottom + 4;
+  if (left + pw > vw - 8) left = Math.max(8, vw - pw - 8);
+  if (top + ph > vh - 8) top = Math.max(8, rect.top - ph - 4); // flip-up
+  popup.style.left = left + 'px';
+  popup.style.top = top + 'px';
+  popup.style.visibility = '';
   // Клики
   popup.querySelectorAll('[data-secondary]').forEach(btn => {
     btn.addEventListener('click', () => {
       const secondaryFid = btn.dataset.secondary;
       const lay = getZoneLayout(sel, kind, type);
       lay.rowGroups = lay.rowGroups || {};
-      lay.rowGroups[primaryFid] = secondaryFid;
+      // v0.59.879: rowGroups[primary] всегда хранится как массив.
+      const existing = lay.rowGroups[primaryFid];
+      let arr;
+      if (Array.isArray(existing)) arr = existing.slice();
+      else if (typeof existing === 'string' && existing) arr = [existing];
+      else arr = [];
+      if (!arr.includes(secondaryFid)) arr.push(secondaryFid);
+      lay.rowGroups[primaryFid] = arr;
       saveZoneLayout(sel, kind, type, lay);
       popup.remove();
       render(host); wire(host);
-      cpeToast('🔗 Объединено: «' + primaryFid + ' / ' + secondaryFid + '»', 'ok');
+      cpeToast('🔗 Объединено: «' + primaryFid + ' + ' + secondaryFid + '» (' + (arr.length + 1) + ' полей в строке)', 'ok');
     });
   });
   // Закрытие при клике вне или Esc

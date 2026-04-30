@@ -2553,18 +2553,17 @@ export function renderNodes() {
       // Pre-resolve which pairs are active (для consumer-container и других типов).
       const _activePairs = [];
       // v0.59.875: user-controlled rowGroups имеют ПРИОРИТЕТ над auto-PAIRS.
-      // Формат layout.rowGroups: { primaryFid: secondaryFid }. Если у пользователя
-      // в пресете явно задана пара (например через 🔗 в редакторе), она
-      // предпочитается. Затем добавляются auto-PAIRS только для тех полей,
-      // которые ещё не покрыты user-rowGroups.
+      // Формат layout.rowGroups: { primaryFid: secondaryFid (string) }.
+      // Если у пользователя в пресете явно задана пара — она предпочитается.
+      // Backward-compat: array принимается, берём первый элемент.
       const _userRowGroups = (_zoneLayout && _zoneLayout.rowGroups && typeof _zoneLayout.rowGroups === 'object') ? _zoneLayout.rowGroups : {};
-      for (const [primaryFid, secondaryFid] of Object.entries(_userRowGroups)) {
+      for (const [primaryFid, sval] of Object.entries(_userRowGroups)) {
+        const secondaryFid = Array.isArray(sval) ? sval[0] : sval;
         if (!primaryFid || !secondaryFid) continue;
         if (_consumed.has(primaryFid) || _consumed.has(secondaryFid)) continue;
         if (!_presetVisible.has(primaryFid) || !_presetVisible.has(secondaryFid)) continue;
         const a = valueMap[primaryFid], b = valueMap[secondaryFid];
         if (!a || a.v == null || a.v === '' || !b || b.v == null || b.v === '') continue;
-        // Используем shortLabel поля primary как метку, юнит — primary's unit (или secondary's если совпадают).
         _activePairs.push({
           primary: primaryFid,
           secondary: secondaryFid,
