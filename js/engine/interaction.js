@@ -2188,6 +2188,27 @@ export function initInteraction() {
     if (from && !to) clearLinkHover();
   });
 
+  // v0.59.825 (1.28.20 Phase 8): dblclick на consumer-container открывает
+  // модалку состава (карточки членов как обычные consumer-карточки).
+  // Пользователь: «По клику на группе лучше открывать модальное окно где
+  // отображаются обычные карточки потребителей, так понятней».
+  svg.addEventListener('dblclick', e => {
+    const tgt = e.target && e.target.closest && e.target.closest('[data-node-id]');
+    if (!tgt) return;
+    const nid = tgt.getAttribute('data-node-id');
+    if (!nid) return;
+    const n = state.nodes.get(nid);
+    if (!n || n.type !== 'consumer-container') return;
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const insp = window.__raschetInspector;
+      if (insp && typeof insp.openContainerMembersModal === 'function') {
+        insp.openContainerMembersModal(n);
+      }
+    } catch {}
+  });
+
   // ---- Зум колесом ----
   svg.addEventListener('wheel', e => {
     e.preventDefault();

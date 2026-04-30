@@ -47,6 +47,7 @@ import {
   phaseFieldConsumer, sourceStatusBlock, panelStatusBlock,
   consumerCurrentsBlock, prioritySection, statusBlock, upsStatusBlock,
   saveNodeAsPreset, bindInspectorDeps, setSelectionHook,
+  openContainerMembersModal,
 } from './inspector.js';
 import { openConnTccDirect } from './inspector/conn.js';
 import { initInteraction, bindInteractionDeps } from './interaction.js';
@@ -347,6 +348,8 @@ function persistUserConsumerCatalog() {
 if (typeof window !== 'undefined') {
   window.__raschetRenderInspector = () => renderInspector();
   window.__raschetPersistUserCatalog = persistUserConsumerCatalog;
+  // v0.59.825: bridge для dblclick handler в interaction.js
+  window.__raschetInspector = { openContainerMembersModal };
 }
 
 // === Связывание зависимостей (late-binding) ===

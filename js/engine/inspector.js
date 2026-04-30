@@ -1239,6 +1239,259 @@ export function renderInspectorNode(n) {
   }
 }
 
+// v0.59.825 (1.28.20 Phase 8): модалка состава контейнера. По двойному
+// клику на контейнере на canvas (или из инспектора) — открывает список
+// карточек членов (как обычные consumer-карточки в инспекторе).
+export function openContainerMembersModal(container) {
+  if (!container || container.type !== 'consumer-container') return;
+  const modal = document.getElementById('modal-container-members');
+  const body = document.getElementById('container-members-body');
+  const title = document.getElementById('container-members-title');
+  if (!modal || !body) return;
+  if (title) title.textContent = `Состав контейнера ${effectiveTag(container) || ''}`;
+  const slots = Array.isArray(container.slots) ? container.slots : [];
+  const h = [];
+  // Σ-подсводка
+  let totalKw = 0, linkedCount = 0, phCount = 0;
+  for (const s of slots) {
+    if (!s) continue;
+    if (s.kind === 'linked' && s.nodeId) {
+      const a = state.nodes.get(s.nodeId);
+      if (a) { totalKw += (Number(a.demandKw) || 0) * Math.max(1, Number(a.count) || 1); linkedCount++; }
+    } else if (s.kind === 'placeholder') {
+      totalKw += Number(s.demandKw) || 0; phCount++;
+    }
+  }
+  h.push(`<div style="padding:8px 12px;background:#f5f7fa;border-bottom:1px solid #e0e7ee;font-size:13px">
+    Σ <b>${totalKw.toFixed(2)} кВт</b> · реальных потребителей: <b>${linkedCount}</b> · placeholder-слотов: <b>${phCount}</b>
+  </div>`);
+  if (!slots.length) {
+    h.push('<div style="padding:24px;text-align:center;color:#778899">Контейнер пуст. Drop потребителя на канвасе сюда — добавится.</div>');
+  } else {
+    h.push('<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;padding:12px">');
+    slots.forEach((s, i) => {
+      if (!s) return;
+      if (s.kind === 'linked' && s.nodeId) {
+        const a = state.nodes.get(s.nodeId);
+        if (!a) {
+          h.push(`<div style="padding:12px;background:#fee;border:1px solid #f87171;border-radius:6px;color:#991b1b">
+            Слот #${i + 1}: битая ссылка
+            <button type="button" data-cm-remove="${escAttr(String(i))}" style="margin-top:8px;padding:3px 10px;font-size:11px;border:1px solid #94a3b8;background:#fff;border-radius:3px;cursor:pointer">× Удалить</button>
+          </div>`);
+          return;
+        }
+        const tag = effectiveTag(a) || a.tag || a.id;
+        const name = a.name || '';
+        const kw = Number(a.demandKw) || 0;
+        const cnt = Math.max(1, Number(a.count) || 1);
+        const sub = a.consumerSubtype || 'custom';
+        const cos = a.cosPhi || 0.95;
+        const phase = a.phase || '3ph';
+        const v = Number(a.voltage) || 400;
+        h.push(`<div style="padding:10px 12px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;align-items:center;gap:6px;border-bottom:1px solid #f1f5f9;padding-bottom:5px">
+            <span style="flex:1;font-weight:600;font-size:14px">${escHtml(tag)}</span>
+            <span style="color:#778899;font-size:11px">#${i + 1}</span>
+          </div>
+          <div style="font-size:12px;color:#334155;margin-bottom:4px">${escHtml(name)} · <span style="color:#64748b">${escHtml(sub)}</span></div>
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 8px;font-size:11px;color:#475569;align-items:center">
+            <span>P:</span><b>${cnt > 1 ? `${cnt}×${kw}` : kw} кВт</b>
+            <span>cos φ:</span><b>${cos}</b>
+            <span>Фаза:</span><b>${escHtml(phase)} · ${v} В</b>
+          </div>
+          <div style="display:flex;gap:4px;margin-top:6px">
+            <button type="button" data-cm-edit="${escAttr(a.id)}" style="flex:1;padding:4px 8px;font-size:11px;border:1px solid #2563eb;background:#dbeafe;color:#1e40af;border-radius:4px;cursor:pointer" title="Открыть полный инспектор члена">⚙ Редактировать</button>
+            <button type="button" data-cm-extract="${escAttr(String(i))}" style="padding:4px 8px;font-size:11px;border:1px solid #94a3b8;background:#fff;border-radius:4px;cursor:pointer" title="Извлечь как standalone-потребителя">↗</button>
+            <button type="button" data-cm-unlink="${escAttr(String(i))}" style="padding:4px 8px;font-size:11px;border:1px solid #94a3b8;background:#fff;border-radius:4px;cursor:pointer" title="Разъединить (member → placeholder)">✂</button>
+            <button type="button" data-cm-remove="${escAttr(String(i))}" style="padding:4px 8px;font-size:11px;border:1px solid #ef4444;background:#fff;color:#b91c1c;border-radius:4px;cursor:pointer" title="Удалить из группы">×</button>
+          </div>
+        </div>`);
+      } else if (s.kind === 'placeholder') {
+        h.push(`<div style="padding:10px 12px;background:#fef9c3;border:1px solid #facc15;border-radius:6px;display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;align-items:center;gap:6px;border-bottom:1px solid #fde68a;padding-bottom:5px">
+            <span style="flex:1;font-weight:600;font-size:13px;color:#92400e"><i>placeholder</i></span>
+            <span style="color:#92400e;font-size:11px">#${i + 1}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 8px;font-size:11px;color:#78350f;align-items:center">
+            <span>P:</span><input type="number" data-cm-kw="${escAttr(String(i))}" value="${Number(s.demandKw) || 0}" min="0" step="0.5" style="padding:1px 4px;font-size:11px;width:80px"> кВт
+            <span>cos φ:</span><input type="number" data-cm-cos="${escAttr(String(i))}" value="${Number(s.cosPhi) || 0.95}" min="0.1" max="1" step="0.01" style="padding:1px 4px;font-size:11px;width:80px">
+            <span>Тип:</span><b>${escHtml(s.subtype || 'custom')}</b>
+            <span>Фаза:</span><b>${escHtml(s.phase || '3ph')} · ${Number(s.voltage) || 400} В</b>
+          </div>
+          <div style="display:flex;gap:4px;margin-top:6px">
+            <button type="button" data-cm-materialize="${escAttr(String(i))}" style="flex:1;padding:4px 8px;font-size:11px;border:1px solid #16a34a;background:#dcfce7;color:#15803d;border-radius:4px;cursor:pointer" title="Создать реальный consumer-узел">⊕ Материализовать</button>
+            <button type="button" data-cm-remove="${escAttr(String(i))}" style="padding:4px 8px;font-size:11px;border:1px solid #ef4444;background:#fff;color:#b91c1c;border-radius:4px;cursor:pointer" title="Удалить slot">×</button>
+          </div>
+        </div>`);
+      }
+    });
+    h.push('</div>');
+  }
+  h.push('<div style="padding:12px;border-top:1px solid #e0e7ee;display:flex;gap:8px;justify-content:flex-end">');
+  h.push('<button type="button" id="cm-add-placeholder" style="padding:6px 14px;font-size:12px;border:1px solid #2563eb;background:#dbeafe;color:#1e40af;border-radius:4px;cursor:pointer">➕ Добавить placeholder-слот</button>');
+  h.push('</div>');
+  body.innerHTML = h.join('');
+  modal.classList.remove('hidden');
+  // wire-up actions (re-uses _wireContainerSlots-like logic, но на body модалки)
+  _wireContainerMembersModal(container, body, modal);
+}
+function _wireContainerMembersModal(n, body, modal) {
+  // Edit member full inspector — выбираем член, закрываем модалку, открываем
+  // обычный consumer-modal через openConsumerParamsModal.
+  body.querySelectorAll('[data-cm-edit]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const aid = btn.getAttribute('data-cm-edit');
+      const a = state.nodes.get(aid);
+      if (!a) return;
+      modal.classList.add('hidden');
+      // open standard consumer params modal
+      try {
+        // временно показать узел на canvas (через containerId он скрыт)
+        // — открываем full inspector через select+modal
+        selectNode(a.id);
+        openConsumerParamsModal(a);
+      } catch {}
+    });
+  });
+  // Extract / Unlink / Remove / Materialize / inline-edit / Add placeholder —
+  // повторяем логику _wireContainerSlots но на body модалки.
+  const refresh = () => {
+    openContainerMembersModal(n);
+    _render();
+    notifyChange();
+  };
+  body.querySelectorAll('[data-cm-extract]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.getAttribute('data-cm-extract'));
+      if (!Array.isArray(n.slots) || !Number.isFinite(idx) || idx < 0 || idx >= n.slots.length) return;
+      const slot = n.slots[idx];
+      if (!slot || slot.kind !== 'linked' || !slot.nodeId) return;
+      const a = state.nodes.get(slot.nodeId);
+      if (!a) return;
+      snapshot('container-extract:' + n.id + ':' + a.id);
+      delete a.containerId;
+      a.pageIds = state.currentPageId ? [state.currentPageId] : [];
+      a.x = (Number(n.x) || 0) + 240 + idx * 20;
+      a.y = (Number(n.y) || 0);
+      n.slots.splice(idx, 1);
+      if (!n.slots.length) {
+        try { _deleteNode(n.id, { hard: true, silent: true }); } catch {}
+        modal.classList.add('hidden');
+        _render(); notifyChange();
+        return;
+      }
+      refresh();
+    });
+  });
+  body.querySelectorAll('[data-cm-unlink]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.getAttribute('data-cm-unlink'));
+      if (!Array.isArray(n.slots) || !Number.isFinite(idx) || idx < 0 || idx >= n.slots.length) return;
+      const slot = n.slots[idx];
+      if (!slot || slot.kind !== 'linked' || !slot.nodeId) return;
+      const a = state.nodes.get(slot.nodeId);
+      if (!a) return;
+      snapshot('container-unlink:' + n.id + ':#' + idx);
+      n.slots[idx] = {
+        kind: 'placeholder',
+        demandKw: Number(a.demandKw) || 0,
+        cosPhi: Number(a.cosPhi) || 0.95,
+        phase: a.phase || '3ph',
+        voltage: Number(a.voltage) || 400,
+        voltageLevelIdx: Number(a.voltageLevelIdx) || 0,
+        subtype: a.consumerSubtype || 'custom',
+        kUse: Number(a.kUse) || 1,
+      };
+      try { _deleteNode(a.id, { hard: true, silent: true, force: true }); } catch {}
+      refresh();
+    });
+  });
+  body.querySelectorAll('[data-cm-remove]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.getAttribute('data-cm-remove'));
+      if (!Array.isArray(n.slots) || !Number.isFinite(idx) || idx < 0 || idx >= n.slots.length) return;
+      const slot = n.slots[idx];
+      snapshot('container-removeslot:' + n.id + ':#' + idx);
+      if (slot && slot.kind === 'linked' && slot.nodeId) {
+        try { _deleteNode(slot.nodeId, { hard: true, silent: true, force: true }); } catch {}
+      }
+      n.slots.splice(idx, 1);
+      if (!n.slots.length) {
+        try { _deleteNode(n.id, { hard: true, silent: true }); } catch {}
+        modal.classList.add('hidden');
+        _render(); notifyChange();
+        return;
+      }
+      refresh();
+    });
+  });
+  body.querySelectorAll('[data-cm-materialize]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.getAttribute('data-cm-materialize'));
+      if (!Array.isArray(n.slots) || !Number.isFinite(idx) || idx < 0 || idx >= n.slots.length) return;
+      const slot = n.slots[idx];
+      if (!slot || slot.kind !== 'placeholder') return;
+      snapshot('container-materialize:' + n.id + ':#' + idx);
+      const newId = uid();
+      const newConsumer = {
+        id: newId, type: 'consumer', name: 'Потребитель', tag: nextFreeTag('consumer'),
+        x: Number(n.x) || 0, y: Number(n.y) || 0,
+        demandKw: Number(slot.demandKw) || 0, cosPhi: Number(slot.cosPhi) || 0.95,
+        phase: slot.phase || '3ph', voltage: Number(slot.voltage) || 400,
+        voltageLevelIdx: Number(slot.voltageLevelIdx) || 0,
+        consumerSubtype: slot.subtype || 'custom', kUse: Number(slot.kUse) || 1,
+        inputs: 1, outputs: 0, count: 1, priorities: [1, 2],
+        containerId: n.id, pageIds: [],
+      };
+      state.nodes.set(newId, newConsumer);
+      n.slots[idx] = { kind: 'linked', nodeId: newId };
+      refresh();
+    });
+  });
+  body.querySelectorAll('[data-cm-kw]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const idx = Number(inp.getAttribute('data-cm-kw'));
+      if (!Array.isArray(n.slots) || !Number.isFinite(idx)) return;
+      const slot = n.slots[idx];
+      if (!slot || slot.kind !== 'placeholder') return;
+      snapshot('container-slot-kw:' + n.id + ':#' + idx);
+      slot.demandKw = Math.max(0, Number(inp.value) || 0);
+      _render(); notifyChange();
+    });
+  });
+  body.querySelectorAll('[data-cm-cos]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const idx = Number(inp.getAttribute('data-cm-cos'));
+      if (!Array.isArray(n.slots) || !Number.isFinite(idx)) return;
+      const slot = n.slots[idx];
+      if (!slot || slot.kind !== 'placeholder') return;
+      snapshot('container-slot-cos:' + n.id + ':#' + idx);
+      slot.cosPhi = Math.max(0.1, Math.min(1, Number(inp.value) || 0.95));
+      _render(); notifyChange();
+    });
+  });
+  const addBtn = document.getElementById('cm-add-placeholder');
+  if (addBtn) {
+    addBtn.addEventListener('click', () => {
+      snapshot('container-addplaceholder:' + n.id);
+      if (!Array.isArray(n.slots)) n.slots = [];
+      let demandKw = 5, cosPhi = 0.95, phase = '3ph', voltage = 400, vIdx = 0, subtype = 'custom';
+      for (const s of n.slots) {
+        if (s && s.kind === 'linked' && s.nodeId) {
+          const a = state.nodes.get(s.nodeId);
+          if (a) { demandKw = Number(a.demandKw) || demandKw; cosPhi = Number(a.cosPhi) || cosPhi; phase = a.phase || phase; voltage = Number(a.voltage) || voltage; vIdx = Number(a.voltageLevelIdx) || vIdx; subtype = a.consumerSubtype || subtype; break; }
+        }
+      }
+      n.slots.push({ kind: 'placeholder', demandKw, cosPhi, phase, voltage, voltageLevelIdx: vIdx, subtype });
+      refresh();
+    });
+  }
+  // close handlers
+  modal.querySelectorAll('.modal-close').forEach(btn => {
+    btn.addEventListener('click', () => { modal.classList.add('hidden'); }, { once: true });
+  });
+}
+
 // v0.59.822: обработчики slot-actions в инспекторе consumer-container.
 function _wireContainerSlots(n) {
   // Click по строке linked-slot — открыть инспектор члена.
