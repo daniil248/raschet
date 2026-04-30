@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet — Вход</title>
+  <link rel="stylesheet" href="shared/app-header.css">
+  <script src="firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="shared/auth.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: #1f2937;
+      background: linear-gradient(135deg, #eef2ff 0%, #f8fafc 100%);
+      -webkit-font-smoothing: antialiased;
+    }
+    body { display: flex; flex-direction: column; min-height: 100vh; padding: 24px; }
+    .login-wrap {
+      flex: 1;
+      display: grid;
+      grid-template-columns: minmax(320px, 420px) 1fr;
+      gap: 32px;
+      align-items: center;
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .login-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 32px;
+      box-shadow: 0 8px 28px rgba(15, 23, 42, 0.10);
+      border: 1px solid #e2e8f0;
+    }
+    .login-logo {
+      font-size: 28px;
+      font-weight: 700;
+      color: #1e40af;
+      margin-bottom: 4px;
+    }
+    .login-subtitle {
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 24px;
+    }
+    .login-h2 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1e293b;
+      margin-bottom: 12px;
+    }
+    .login-text {
+      font-size: 13px;
+      color: #475569;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+    .signin-btn {
+      width: 100%;
+      padding: 12px 20px;
+      border: 1px solid #2563eb;
+      background: #2563eb;
+      color: #fff;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: background 0.15s;
+    }
+    .signin-btn:hover { background: #1d4ed8; }
+    .signin-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .signin-warn {
+      margin-top: 14px;
+      padding: 10px 12px;
+      background: #fef3c7;
+      border: 1px solid #facc15;
+      color: #78350f;
+      border-radius: 6px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .modules-overview {
+      padding: 20px;
+    }
+    .modules-overview h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1e293b;
+      margin-bottom: 8px;
+    }
+    .modules-overview p.lead {
+      font-size: 14px;
+      color: #475569;
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+    .modules-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .module-card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 14px;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+    }
+    .module-card h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1e40af;
+      margin-bottom: 4px;
+    }
+    .module-card p {
+      font-size: 12px;
+      color: #64748b;
+      line-height: 1.5;
+    }
+    .footer {
+      margin-top: 24px;
+      text-align: center;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+    @media (max-width: 800px) {
+      .login-wrap { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="login-wrap">
+    <!-- Login card -->
+    <div class="login-card">
+      <div class="login-logo">⚡ Raschet</div>
+      <div class="login-subtitle">Платформа электротехнических расчётов</div>
+      <div class="login-h2">Вход в систему</div>
+      <div class="login-text">
+        Доступ к проектам, конструктору схем, конфигураторам и реестрам открывается после авторизации. Используйте Google-аккаунт компании.
+      </div>
+      <button id="login-btn" class="signin-btn" disabled>
+        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+          <path fill="#fff" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84c-.21 1.13-.84 2.09-1.79 2.73v2.27h2.9c1.7-1.56 2.69-3.87 2.69-6.64z" opacity=".95"/>
+          <path fill="#fff" d="M9 18c2.43 0 4.47-.81 5.96-2.18l-2.9-2.27c-.81.55-1.84.87-3.06.87-2.34 0-4.32-1.58-5.03-3.71H.96v2.34C2.44 15.97 5.48 18 9 18z" opacity=".75"/>
+          <path fill="#fff" d="M3.97 10.71c-.18-.55-.29-1.13-.29-1.71s.1-1.16.29-1.71V4.95H.96A8.997 8.997 0 0 0 0 9c0 1.45.35 2.83.96 4.05l3.01-2.34z" opacity=".55"/>
+          <path fill="#fff" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0 5.48 0 2.44 2.03.96 4.95L3.97 7.3C4.68 5.16 6.66 3.58 9 3.58z" opacity=".4"/>
+        </svg>
+        <span id="login-btn-text">Загрузка…</span>
+      </button>
+      <div id="login-warn" class="signin-warn" style="display:none">
+        ⚠ Firebase не настроен. Авторизация недоступна — обратитесь к администратору проекта.
+      </div>
+      <div class="footer">© Raschet · v0.59.837</div>
+    </div>
+    <!-- Modules overview (admin-editable) -->
+    <div class="modules-overview">
+      <h2>Что есть в платформе</h2>
+      <p class="lead">Полный стек инструментов для проектирования инженерных систем ЦОД и промышленных объектов: от концепции до BOM.</p>
+      <div id="modules-grid" class="modules-grid"></div>
+    </div>
+  </main>
+  <script type="module">
+    // Default overview content (admin-editable: stored in LocalStorage
+    // 'raschet.loginOverview.v1' as JSON {modules: [{title, desc}, ...]}).
+    // Если в LocalStorage есть value — используем его; иначе — defaults.
+    const DEFAULT_MODULES = [
+      { title: '🏗 Проекты', desc: 'Реестр проектов, namespace для всех модулей.' },
+      { title: '⚡ Конструктор схем', desc: 'Однолинейная схема, расчёт токов, подбор кабелей и автоматов (IEC, ПУЭ).' },
+      { title: '🔋 ИБП-конфигуратор', desc: 'Подбор источника бесперебойного питания, расчёт автономии.' },
+      { title: '🔌 PDU-конфигуратор', desc: 'Распределители питания для стойки, типы Basic/Metered/Switched.' },
+      { title: '🗄 Конфигуратор стойки', desc: 'Размещение оборудования по юнитам, BOM, кабельные органайзеры.' },
+      { title: '🌐 СКС / Слаботочка', desc: 'Меж-шкафные связи, патч-панели, расчёт длин.' },
+      { title: '❄ HVAC / климат', desc: 'Психрометрия, расчёт ХОЛО производительности.' },
+      { title: '🛡 Конфигуратор АГПТ', desc: 'Газовое пожаротушение, расчёт массы агента.' },
+      { title: '🏭 Технолог ЦОД', desc: 'Концепция стоек, варианты, передача в проектирование.' },
+      { title: '📦 Каталоги', desc: 'Справочники изделий: трансформаторы, ИБП, АКБ, кабели.' },
+      { title: '🔁 Логистика', desc: 'Складская сетка, инвентаризация, перемещения.' },
+    ];
+    function loadOverview() {
+      try {
+        const raw = localStorage.getItem('raschet.loginOverview.v1');
+        if (raw) {
+          const v = JSON.parse(raw);
+          if (Array.isArray(v?.modules)) return v.modules;
+        }
+      } catch {}
+      return DEFAULT_MODULES;
+    }
+    function renderOverview() {
+      const grid = document.getElementById('modules-grid');
+      if (!grid) return;
+      const mods = loadOverview();
+      grid.innerHTML = mods.map(m => `
+        <div class="module-card">
+          <h3>${m.title || ''}</h3>
+          <p>${m.desc || ''}</p>
+        </div>`).join('');
+    }
+    renderOverview();
+
+    // Auth wire-up
+    const btn = document.getElementById('login-btn');
+    const btnText = document.getElementById('login-btn-text');
+    const warn = document.getElementById('login-warn');
+    function updateLoginUI() {
+      const Auth = window.Auth;
+      if (!Auth) {
+        btnText.textContent = 'Авторизация недоступна';
+        warn.style.display = 'block';
+        btn.disabled = true;
+        return;
+      }
+      if (Auth.currentUser) {
+        // Уже залогинен — редирект на запрошенную страницу или hub
+        const next = new URLSearchParams(location.search).get('next') || 'hub.html';
+        location.replace(next);
+        return;
+      }
+      if (!Auth.isFirebaseReady) {
+        btnText.textContent = 'Firebase не настроен';
+        warn.style.display = 'block';
+        btn.disabled = true;
+        return;
+      }
+      btnText.textContent = 'Войти через Google';
+      btn.disabled = false;
+    }
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btnText.textContent = 'Открываю окно входа…';
+      try {
+        await window.Auth.signIn();
+      } catch (e) {
+        btnText.textContent = 'Ошибка: ' + (e.message || 'Войти через Google');
+        btn.disabled = false;
+      }
+    });
+    if (window.Auth) {
+      window.Auth.init();
+      window.Auth.onAuthChange(updateLoginUI);
+      updateLoginUI();
+    } else {
+      setTimeout(updateLoginUI, 500);
+    }
+  </script>
+</body>
+</html>
