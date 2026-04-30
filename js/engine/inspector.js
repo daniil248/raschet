@@ -1406,7 +1406,9 @@ function _wireContainerMembersModal(n, body, modal) {
         subtype: a.consumerSubtype || 'custom',
         kUse: Number(a.kUse) || 1,
       };
-      try { _deleteNode(a.id, { hard: true, silent: true, force: true }); } catch {}
+      // Consumer НЕ удаляется — отправляется в реестр (unplaced)
+      delete a.containerId;
+      a.pageIds = [];
       refresh();
     });
   });
@@ -1417,7 +1419,9 @@ function _wireContainerMembersModal(n, body, modal) {
       const slot = n.slots[idx];
       snapshot('container-removeslot:' + n.id + ':#' + idx);
       if (slot && slot.kind === 'linked' && slot.nodeId) {
-        try { _deleteNode(slot.nodeId, { hard: true, silent: true, force: true }); } catch {}
+        // Consumer НЕ удаляется — в реестр (unplaced).
+        const a = state.nodes.get(slot.nodeId);
+        if (a) { delete a.containerId; a.pageIds = []; }
       }
       n.slots.splice(idx, 1);
       if (!n.slots.length) {
@@ -1535,7 +1539,10 @@ function _wireContainerSlots(n) {
       notifyChange();
     });
   });
-  // Разъединить slot — slot становится placeholder со спекой члена.
+  // Разъединить slot — consumer становится unplaced (в реестре), slot
+  // конвертируется в placeholder со спекой бывшего члена. Consumer НЕ
+  // удаляется (пользователь: «электрик максимум мог их выкинуть из
+  // группы, но не мог удалить их с проекта»).
   inspectorBody.querySelectorAll('[data-slot-unlink]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1546,7 +1553,7 @@ function _wireContainerSlots(n) {
       const a = state.nodes.get(slot.nodeId);
       if (!a) return;
       snapshot('container-unlink:' + n.id + ':#' + idx);
-      // Сохраняем спеку в slot, удаляем consumer-узел из state.nodes
+      // Сохраняем спеку в slot
       n.slots[idx] = {
         kind: 'placeholder',
         demandKw: Number(a.demandKw) || 0,
@@ -1557,14 +1564,20 @@ function _wireContainerSlots(n) {
         subtype: a.consumerSubtype || 'custom',
         kUse: Number(a.kUse) || 1,
       };
-      // Удаляем сам consumer-узел
-      try { _deleteNode(a.id, { hard: true, silent: true, force: true }); } catch {}
+      // Consumer-узел остаётся в проекте, но без containerId — он
+      // в реестре как unplaced (pageIds=[]). Пользователь сам решит
+      // что с ним делать.
+      delete a.containerId;
+      a.pageIds = [];
       _render();
       renderInspector();
       notifyChange();
     });
   });
-  // Удалить slot.
+  // Удалить slot. Для linked-slot: consumer возвращается в реестр (НЕ
+  // удаляется). Для placeholder: просто убирается. Если linked-consumer
+  // имеет connections — гарантированно НЕ удалится (защита в deleteNode),
+  // он становится unplaced. Контейнер с пустыми slots авто-удаляется.
   inspectorBody.querySelectorAll('[data-slot-remove]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1572,9 +1585,10 @@ function _wireContainerSlots(n) {
       if (!Array.isArray(n.slots) || !Number.isFinite(idx) || idx < 0 || idx >= n.slots.length) return;
       const slot = n.slots[idx];
       snapshot('container-removeslot:' + n.id + ':#' + idx);
-      // Если slot был linked, удаляем consumer-узел
       if (slot && slot.kind === 'linked' && slot.nodeId) {
-        try { _deleteNode(slot.nodeId, { hard: true, silent: true, force: true }); } catch {}
+        // НЕ удаляем consumer — отправляем в реестр (unplaced)
+        const a = state.nodes.get(slot.nodeId);
+        if (a) { delete a.containerId; a.pageIds = []; }
       }
       n.slots.splice(idx, 1);
       if (!n.slots.length) {

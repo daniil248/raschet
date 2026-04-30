@@ -131,9 +131,46 @@ export function createNode(type, x, y, opts) {
 // Можно отключить подтверждение через GLOBAL.confirmDeleteNode = false
 // или передать opts.silent=true (используется для программных удалений
 // из каскада — secondStage, linkedOutdoorId и т.п.).
+// v0.59.831 (1.28.20 / 1.28.6 partial): защита от удаления связанного
+// объекта. Пользователь: «Если кто то что то уже подключил хоть к чему,
+// ни кто, даже владелец не может удалить объект». Hard-delete блокируется
+// если у узла есть ЛЮБЫЕ connections (state.conns или sysConns). Это
+// защищает SCS/Data/HVAC и любую кросс-доменную привязку.
+// opts.bypassConnGate=true — обход для очень узких случаев (миграции).
+function _hasAnyConnections(nodeId) {
+  for (const c of state.conns.values()) {
+    if (c._internalIntegratedUps) continue;
+    if (c.from?.nodeId === nodeId || c.to?.nodeId === nodeId) return true;
+  }
+  if (state.sysConns) {
+    for (const sc of state.sysConns.values()) {
+      if (sc.fromNodeId === nodeId || sc.toNodeId === nodeId) return true;
+      if (sc.from?.nodeId === nodeId || sc.to?.nodeId === nodeId) return true;
+    }
+  }
+  return false;
+}
+
 export function deleteNode(id, opts = {}) {
   const n0 = state.nodes.get(id);
   if (!n0) return;
+  // v0.59.831: hard-delete блокируется если есть connections (любая
+  // система — электрика, СКС, данные, климат). Связанный объект
+  // нельзя удалить — сначала надо снять все линии.
+  if (opts.hard && !opts.bypassConnGate && _hasAnyConnections(id)) {
+    try {
+      const lbl = n0.tag || n0.name || n0.id;
+      const _flash = (typeof globalThis !== 'undefined' && globalThis.flash)
+        || (typeof window !== 'undefined' && window.flash);
+      if (typeof _flash === 'function') {
+        _flash(`«${lbl}» подключён к другим элементам — сначала снимите все связи (электрика/СКС/данные), затем удаляйте.`, 'error');
+      } else if (typeof console !== 'undefined') {
+        console.warn('[delete-gate]', 'node has connections:', lbl);
+      }
+    } catch {}
+    try { opts.onBlocked && opts.onBlocked('has-connections'); } catch {}
+    return { blocked: 'has-connections' };
+  }
   // v0.58.14: «soft delete» с холста — если указан opts.fromPage, удаляем
   // ноду только с этой страницы (pageIds.filter). Если страниц ещё нет —
   // элемент переходит в реестр (pageIds=[]), не уничтожается. Хард-удаление
