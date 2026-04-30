@@ -1870,11 +1870,14 @@ function recalc() {
     if (toN.type === 'consumer') {
       c._loadA = consumerRatedCurrent(toN);
     } else if (toN.type === 'consumer-container') {
-      // v0.59.829 (1.28.20): для контейнера — total = Σ slot loads, ток
-      // через линию = computeCurrentA(total, U, cos, ...). Эквивалентно
-      // групповому потребителю с count=N.
-      const totalKw = consumerTotalDemandKw(toN);
-      c._loadA = totalKw > 0 ? computeCurrentA(totalKw, U, cos, threePhase, _isDC) : 0;
+      // v0.59.881: c._loadA для контейнера согласован с c._loadKw (= Pрасч
+      // через walkUp от consumerCalcDemandKw). Раньше использовалось
+      // consumerTotalDemandKw (Pуст) — это давало рассогласование между
+      // «Текущая P» (была Pрасч) и «Текущий I» (был от Pуст). Пользователь:
+      // «как это понимать, в одном месте мощность 9.2, в другом 8.2 — не
+      // клеится» / «откуда 39 кВт». Теперь: Текущая P и Текущий I оба
+      // из Pрасч, Расчётный I (для подбора кабеля) — из Pуст.
+      c._loadA = c._loadKw > 0 ? computeCurrentA(c._loadKw, U, cos, threePhase, _isDC) : 0;
     } else {
       c._loadA = c._loadKw > 0 ? computeCurrentA(c._loadKw, U, cos, threePhase, _isDC) : 0;
     }
