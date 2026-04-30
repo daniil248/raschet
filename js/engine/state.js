@@ -126,6 +126,14 @@ export function isOnCurrentPage(obj) {
   if (obj.linkedAlias && state.nodes && state.nodes.get && state.nodes.get(obj.linkedAlias)) {
     return false;
   }
+  // v0.59.815: новая модель — consumer внутри consumer-container скрыт с
+  // холста (показывается только сам контейнер). Сами члены доступны
+  // через инспектор контейнера + остаются в реестре как самостоятельные
+  // потребители со своими параметрами.
+  if (obj.containerId && state.nodes && state.nodes.get) {
+    const _c = state.nodes.get(obj.containerId);
+    if (_c && _c.type === 'consumer-container') return false;
+  }
   const pids = obj.pageIds;
   // v0.59.331: разделяем два случая:
   //  - pageIds === undefined — legacy-узел, в миграции до pages, показываем везде;

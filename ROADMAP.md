@@ -1,6 +1,6 @@
 # Raschet — Roadmap архитектурного развития платформы
 
-> **Статус:** v0.59.810 (2026-04-30). Фаза 1.27 — «Проекты» полностью закрыта (1.27.1–5: scs-design/schema/scs-config/inventory неймспейс + status filter + export). Фаза 1.28 — POR-registry, cross-discipline reconciliation закрыта (1.28.7/10–19). Фаза 19 (пресеты карточек) полностью закрыта (19.1–6 + v2 редактор с draggable-modal/zones/editable-labels/sample-preview). 1.24.18 (collapsible tables в scs-config) закрыто. Фаза 20 (Технолог ЦОД): базовый скелет + nav + catalog-picker + multi-variant compare + handoff в schematic + ПЗ, открыто 20.7 (план зала). Local/Online switcher. Центр помощи с 21 статьёй + кнопка ❓ в общей шапке.
+> **Статус:** v0.59.815 (2026-04-30). Фаза 1.27 — «Проекты» полностью закрыта (1.27.1–5: scs-design/schema/scs-config/inventory неймспейс + status filter + export). Фаза 1.28 — POR-registry, cross-discipline reconciliation закрыта (1.28.7/10–19); 1.28.20 (новый node-type `consumer-container` как организационная обёртка) — Phase 1 foundation сделана. Фаза 19 (пресеты карточек) полностью закрыта (19.1–6 + v2 редактор с draggable-modal/zones/editable-labels/sample-preview). 1.24.18 (collapsible tables в scs-config) закрыто. Фаза 20 (Технолог ЦОД): базовый скелет + nav + catalog-picker + multi-variant compare + handoff в schematic + ПЗ, открыто 20.7 (план зала). Local/Online switcher. Центр помощи с 21 статьёй + кнопка ❓ в общей шапке.
 
 > **Правило ведения:** roadmap обновляется ПОСТОЯННО — при появлении новой фичи / задачи и при закрытии любого этапа. Hotfix'ы (regressions, мелкие правки UX) НЕ попадают в roadmap, только содержательная функциональность. Это правило зафиксировано пользователем 2026-04-29.
 
@@ -301,6 +301,52 @@ in-tab Map + cross-tab через storage event.
     экспорт SVG/PNG.
   - Сам `n.tag` группы не меняется (остаётся уникальным для save/load
     и nextFreeTag) — только display-derived.
+
+- [~] **1.28.20** — Контейнер потребителей как отдельный node-type (НОВАЯ модель, активна с v0.59.815) 🟡
+  - Пользователь (2026-04-30): «давай текущий групповой потребитель преобразуем
+    в контейнер простых (одиночных) потребителей. Вид остается такой же, но
+    сам групповой потребитель не фиксируется в реестрах и не считается
+    потребителем, а только контейнером. Входящие в него потребители
+    управляются как обычный потребитель. Контейнер может содержать слоты
+    заглушки, когда настоящие потребители еще не определены, но считать
+    и планировать уже нужно».
+  - Также (2026-04-30): «объект контейнер потребителей принимает обозначение
+    объекта с самым младшим обозначением (по сортировке)».
+  - Уточнение (2026-04-30): требование с template/maxCount/маской — это про
+    «Концепция стоек» в Технолог-ЦОД, а не про схематический контейнер.
+    Схематический контейнер — без своих параметров, каждый слот независим.
+  - **Концепция:** в схематическом редакторе появляется новый тип узла
+    `consumer-container`. Контейнер сам — НЕ потребитель: нет demandKw/
+    cosPhi/phase, не учитывается в реестре как consumer, не считается
+    потребителем напрямую в recalc/POR/BOM. Каждый слот — независимая
+    сущность: либо ссылка на реальный consumer-узел (linked, скрыт с
+    canvas), либо placeholder-спецификация (без id, anonymous). Tag
+    контейнера = младший tag среди linked-членов.
+  - **Phase 1 — Foundation (закрыто v0.59.815):**
+    - DEFAULTS для `consumer-container` в constants.js
+    - Helpers в zones.js: containerLinkedConsumers, containerPlaceholders,
+      containerSlotCount, isInContainer, _firstSortedAlias расширен для
+      нового типа
+    - state.isOnCurrentPage скрывает consumer с containerId
+    - electrical.consumerTotalDemandKw/CountEffective раскрывают slots
+    - TAG_PREFIX для нового типа = 'GR'
+  - **Открыто (следующие коммиты):**
+    - Phase 2: render контейнера как stacked card (использует effectiveTag/
+      Name из linked-членов); contained consumers скрыты с canvas
+    - Phase 3: drop-merge — drop consumer на consumer/контейнер создаёт/
+      пополняет контейнер (без template-constraints, любые параметры)
+    - Phase 4: инспектор контейнера — слоты (linked rows + placeholder rows)
+      + cross-discipline merge с другим контейнером
+    - Phase 5: миграция legacy-shell (linkedAliases) → контейнер + members
+      на загрузке проекта
+    - Phase 6: registry/POR/BOM — контейнер скрыт как consumer; его linked-
+      члены отображаются как самостоятельные элементы; placeholders отдельной
+      строкой «слот ×N» в реестре контейнера
+    - Phase 7: connection ports — контейнер принимает вход от родительского
+      шкафа; вход «расщепляется» на linked-членов (учёт нагрузки в recalc)
+  - **Не входит в задачу 1.28.20:** sync с «Концепция стоек» в Технолог-ЦОД
+    (отдельная задача в Фазе 20 — концепт-группа порождает контейнер на
+    схеме при handoff'е).
 
 - [x] **1.28.19** — Shell-container model (закрыто v0.59.793: effective-getters в zones.js + alias-modal lock с inheritance banner)
   - Юзер: «элемент размещенный в групповом потребителе (контейнере) не

@@ -265,6 +265,22 @@ export function isNodeDC(n) {
 // n.items = [{name, demandKw}, …]. Для uniform (по умолчанию) —
 // старая формула demandKw × count.
 export function consumerTotalDemandKw(n) {
+  // v0.59.815: для consumer-container — раскрываем slots[]:
+  //   linked: реальный consumer-узел вкладывает свои consumerTotalDemandKw;
+  //   placeholder: инлайн-спека вкладывает demandKw как «один прибор».
+  if (n && n.type === 'consumer-container' && Array.isArray(n.slots)) {
+    let sum = 0;
+    for (const s of n.slots) {
+      if (!s) continue;
+      if (s.kind === 'linked' && s.nodeId) {
+        const a = state.nodes && state.nodes.get && state.nodes.get(s.nodeId);
+        if (a) sum += consumerTotalDemandKw(a);
+      } else if (s.kind === 'placeholder') {
+        sum += Number(s.demandKw) || 0;
+      }
+    }
+    return sum;
+  }
   if (n && n.groupMode === 'individual' && Array.isArray(n.items)) {
     let sum = 0;
     for (const it of n.items) sum += Number(it?.demandKw) || 0;
@@ -277,6 +293,10 @@ export function consumerTotalDemandKw(n) {
 
 // Количество приборов в группе — для individual берётся длина items.
 export function consumerCountEffective(n) {
+  // v0.59.815: для consumer-container — длина slots[]
+  if (n && n.type === 'consumer-container' && Array.isArray(n.slots)) {
+    return Math.max(1, n.slots.length);
+  }
   if (n && n.groupMode === 'individual' && Array.isArray(n.items)) {
     return Math.max(1, n.items.length);
   }

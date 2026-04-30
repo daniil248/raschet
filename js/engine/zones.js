@@ -105,6 +105,10 @@ export function isAliasOfShell(n) { return !!_shellOf(n); }
 // в естественной сортировке (SR01 < SR02 < SR10). Пользователь: «группа
 // потребителей должна иметь обозначение по обозначению первого экземпляра
 // (не размещенного а по сортировке)». Для остальных — просто n.tag.
+// v0.59.815: для consumer-container — обозначение младшего linked-consumer'а
+// (placeholders без tag не участвуют). Пользователь: «объект контейнер
+// потребителей принимает обозначение объекта с самым младшим обозначением
+// (по сортировке)».
 function _baseTag(n) {
   const first = _firstSortedAlias(n);
   if (first && first.tag) return first.tag;
@@ -114,8 +118,25 @@ function _baseTag(n) {
 // v0.59.811: возвращает первый по натуральной сортировке alias-узел
 // внутри shell-группы (если есть). Используется для derived display
 // данных (tag, name, etc).
+// v0.59.815: расширено для нового типа 'consumer-container' — собирает
+// linked-consumer-узлы из slots[].
 function _firstSortedAlias(n) {
-  if (!n || !Array.isArray(n.linkedAliases) || n.linkedAliases.length === 0) return null;
+  if (!n) return null;
+  // Новая модель: consumer-container с slots[]
+  if (n.type === 'consumer-container' && Array.isArray(n.slots)) {
+    let first = null;
+    for (const s of n.slots) {
+      if (!s || s.kind !== 'linked' || !s.nodeId) continue;
+      const a = state.nodes.get(s.nodeId);
+      if (!a || !a.tag) continue;
+      if (!first || a.tag.localeCompare(first.tag, undefined, { numeric: true, sensitivity: 'base' }) < 0) {
+        first = a;
+      }
+    }
+    return first;
+  }
+  // Legacy модель: shell consumer с linkedAliases
+  if (!Array.isArray(n.linkedAliases) || n.linkedAliases.length === 0) return null;
   let first = null;
   for (const aid of n.linkedAliases) {
     if (!aid) continue;
@@ -126,6 +147,36 @@ function _firstSortedAlias(n) {
     }
   }
   return first;
+}
+
+// v0.59.815: helpers для работы с consumer-container.
+// containerLinkedConsumers — массив реальных consumer-узлов из linked-слотов.
+// containerPlaceholders — массив placeholder-спецификаций (kind:'placeholder').
+// containerSlotCount — общее число слотов (linked + placeholder).
+// isInContainer — true если consumer-узел является членом какого-либо контейнера
+//   (т.е. имеет n.containerId, указывающий на существующий container).
+export function containerLinkedConsumers(container) {
+  if (!container || container.type !== 'consumer-container' || !Array.isArray(container.slots)) return [];
+  const out = [];
+  for (const s of container.slots) {
+    if (!s || s.kind !== 'linked' || !s.nodeId) continue;
+    const a = state.nodes.get(s.nodeId);
+    if (a) out.push(a);
+  }
+  return out;
+}
+export function containerPlaceholders(container) {
+  if (!container || container.type !== 'consumer-container' || !Array.isArray(container.slots)) return [];
+  return container.slots.filter(s => s && s.kind === 'placeholder');
+}
+export function containerSlotCount(container) {
+  if (!container || container.type !== 'consumer-container' || !Array.isArray(container.slots)) return 0;
+  return container.slots.length;
+}
+export function isInContainer(n) {
+  if (!n || !n.containerId) return false;
+  const c = state.nodes.get(n.containerId);
+  return !!(c && c.type === 'consumer-container');
 }
 
 // v0.59.811: эффективное имя узла. Для shell-группы с linkedAliases —
