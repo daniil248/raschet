@@ -223,9 +223,10 @@ function _renderFieldsTabSplit(sel, isSystem) {
             const isReq = required.has(f.id);
             const isOn = activeIds.has(f.id) || isReq;
             const inZone = layout.assignments[f.id] || (isOn ? defaultZoneAssignment(f.id) : null);
+            const customLabel = sel.fieldLabels?.[kind]?.[type]?.[f.id] || '';
             return `<div class="cpe-field-row${isReq ? ' cpe-field-required' : ''}${!isOn ? ' cpe-field-off' : ''}" draggable="${isOn ? 'true' : 'false'}" data-field-id="${escAttr(f.id)}">
               <input type="checkbox" data-field-id="${escAttr(f.id)}" ${isOn ? 'checked' : ''}${isReq ? ' disabled' : ''}>
-              <span class="cpe-field-label">${escHtml(f.label)}</span>
+              <input type="text" class="cpe-field-label-input" data-field-id="${escAttr(f.id)}" value="${escAttr(customLabel || f.label)}" placeholder="${escAttr(f.label)}" title="Подпись на карточке (кликните и измените). Пустое поле = вернуть стандартную подпись «${escAttr(f.label)}»">
               <code class="cpe-field-id muted">${escHtml(f.id)}</code>
               ${isReq ? '<span class="cpe-field-req">обяз.</span>' : ''}
               ${inZone && isOn ? `<span class="cpe-field-zone-mark muted" title="Текущая зона">→ ${escHtml(_zoneLabel(layout, inZone))}</span>` : ''}
@@ -271,10 +272,15 @@ function _renderCardPreview(sel, kind, type, fields, activeIds, required, layout
         <span class="cpe-zone-cnt muted">(${(byZone[z.id] || []).length})</span>
       </div>
       <div class="cpe-zone-chips">
-        ${(byZone[z.id] || []).map(f => `<span class="cpe-chip${required.has(f.id) ? ' cpe-chip-req' : ''}" draggable="true" data-field-id="${escAttr(f.id)}" data-from-zone="${escAttr(z.id)}" title="${escAttr(f.id)} — перетащите в другую зону">
-          ${escHtml(f.label)}
-          ${!required.has(f.id) ? `<button type="button" class="cpe-chip-x" data-field-id="${escAttr(f.id)}" title="Убрать из зоны (поле останется выключенным)">×</button>` : ''}
-        </span>`).join('')}
+        ${(byZone[z.id] || []).map(f => {
+          // v0.59.802: использовать custom label если есть в пресете
+          const _customLabel = sel.fieldLabels?.[_state.activeModeTab]?.[_state.activeTypeTab]?.[f.id];
+          const _displayLabel = _customLabel || f.label;
+          return `<span class="cpe-chip${required.has(f.id) ? ' cpe-chip-req' : ''}" draggable="true" data-field-id="${escAttr(f.id)}" data-from-zone="${escAttr(z.id)}" title="${escAttr(f.id)} — перетащите в другую зону">
+            ${escHtml(_displayLabel)}
+            ${!required.has(f.id) ? `<button type="button" class="cpe-chip-x" data-field-id="${escAttr(f.id)}" title="Убрать из зоны (поле останется выключенным)">×</button>` : ''}
+          </span>`;
+        }).join('')}
         ${(byZone[z.id] || []).length === 0 ? '<span class="cpe-zone-empty muted">пусто</span>' : ''}
       </div>
     </div>`).join('');
@@ -404,6 +410,30 @@ function wire(host) {
     });
   });
 
+  // v0.59.802: editable field labels — change → save в preset.fieldLabels
+  root.querySelectorAll('input.cpe-field-label-input').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const fid = inp.dataset.fieldId;
+      const sel = getPresetById(_state.selectedPresetId);
+      if (!sel || sel.system) return;
+      const kind = _state.activeModeTab, type = _state.activeTypeTab;
+      if (!sel.fieldLabels) sel.fieldLabels = {};
+      if (!sel.fieldLabels[kind]) sel.fieldLabels[kind] = {};
+      if (!sel.fieldLabels[kind][type]) sel.fieldLabels[kind][type] = {};
+      const v = (inp.value || '').trim();
+      if (v) sel.fieldLabels[kind][type][fid] = v;
+      else delete sel.fieldLabels[kind][type][fid];
+      // Persist user preset
+      const all = loadUserPresets();
+      const idx = all.findIndex(p => p.id === sel.id);
+      if (idx >= 0) { all[idx] = sel; saveUserPresets(all); }
+      // Re-render preview (chips with new labels)
+      render(host); wire(host);
+    });
+    // Не пускать drag когда курсор в input — иначе edit невозможен
+    inp.addEventListener('mousedown', e => e.stopPropagation());
+  });
+
   // Drag-drop fields → zones
   _wireDragDrop(root, host);
 
@@ -496,42 +526,74 @@ function _wireDraggable(modal, host) {
 }
 
 // ─── Drag-drop fields → zones
+// v0.59.802: используем module-scope _dragFieldId вместо dataTransfer.
+// Раньше data-transfer с custom MIME 'text/x-cpe-field-id' не всегда
+// возвращал данные при getData (особенно если chip содержит nested
+// button × — events не пробрасываются как ожидается). Теперь — простая
+// глобальная переменная состояния drag, плюс fallback через
+// data-field-id на e.target.closest('[data-field-id]').
+// Пользователь: «перемещение между зонами тоже не работает».
+let _dragFieldId = null;
+
 function _wireDragDrop(modal, host) {
   // Drag start: chip или field-row
   modal.querySelectorAll('.cpe-chip[draggable="true"], .cpe-field-row[draggable="true"]').forEach(el => {
     el.addEventListener('dragstart', e => {
+      // Не начинать drag если событие в кнопке × внутри chip — её клик
+      // должен обрабатываться отдельно как удаление.
+      if (e.target.closest && e.target.closest('button.cpe-chip-x')) {
+        e.preventDefault();
+        return;
+      }
       const fid = el.dataset.fieldId;
-      e.dataTransfer.setData('text/x-cpe-field-id', fid);
-      e.dataTransfer.effectAllowed = 'move';
+      _dragFieldId = fid;
+      // Попытаться записать в dataTransfer (для cross-browser совместимости),
+      // но НЕ полагаемся на это — основной канал — module-scope variable.
+      try { e.dataTransfer.setData('text/plain', fid); } catch {}
+      try { e.dataTransfer.effectAllowed = 'move'; } catch {}
       el.classList.add('cpe-dragging');
     });
-    el.addEventListener('dragend', () => el.classList.remove('cpe-dragging'));
+    el.addEventListener('dragend', () => {
+      el.classList.remove('cpe-dragging');
+      _dragFieldId = null;
+    });
   });
   // Drop targets — zones
   modal.querySelectorAll('.cpe-zone').forEach(z => {
-    z.addEventListener('dragover', e => {
+    z.addEventListener('dragenter', e => {
       e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
       z.classList.add('cpe-zone-hover');
     });
-    z.addEventListener('dragleave', () => z.classList.remove('cpe-zone-hover'));
+    z.addEventListener('dragover', e => {
+      e.preventDefault();
+      try { e.dataTransfer.dropEffect = 'move'; } catch {}
+      z.classList.add('cpe-zone-hover');
+    });
+    z.addEventListener('dragleave', e => {
+      // Снимаем hover только если уходим за границы зоны (не к child)
+      if (e.relatedTarget && z.contains(e.relatedTarget)) return;
+      z.classList.remove('cpe-zone-hover');
+    });
     z.addEventListener('drop', e => {
       e.preventDefault();
       z.classList.remove('cpe-zone-hover');
-      const fid = e.dataTransfer.getData('text/x-cpe-field-id');
+      // Источник — module-scope (надёжнее) или fallback dataTransfer
+      let fid = _dragFieldId;
+      if (!fid) {
+        try { fid = e.dataTransfer.getData('text/plain'); } catch {}
+      }
+      _dragFieldId = null;
       if (!fid) return;
       const targetZoneId = z.dataset.zoneId;
       const sel = getPresetById(_state.selectedPresetId);
       if (!sel || sel.system) return;
       const kind = _state.activeModeTab, type = _state.activeTypeTab;
-      // Ensure field is selected (turn on if not)
       const fields = listCardFields(kind, type);
       const required = requiredFieldIds(kind, type);
       const current = new Set(sel.perMode?.[kind]?.perType?.[type] || fields.map(f => f.id));
       current.add(fid);
       for (const r of required) current.add(r);
       setUserPresetFields(sel.id, kind, type, Array.from(current));
-      // Update zone assignment
       const layout = getZoneLayout(sel, kind, type);
       layout.assignments[fid] = targetZoneId;
       saveZoneLayout(sel, kind, type, layout);
@@ -710,6 +772,20 @@ const CPE_CSS = `
 .cpe-field-row.cpe-field-required { background: #fef3c7; border-color: #fcd34d; cursor: default; }
 .cpe-field-row.cpe-field-off { opacity: 0.55; cursor: default; }
 .cpe-field-label { flex: 1; }
+.cpe-field-label-input {
+  flex: 1; min-width: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  font: inherit; font-size: 11.5px; color: #1f2937;
+  padding: 2px 5px; border-radius: 3px;
+}
+.cpe-field-label-input:hover { border-color: #cbd5e1; background: #fff; }
+.cpe-field-label-input:focus {
+  border-color: #4f46e5;
+  background: #fff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
+}
 .cpe-field-id { font-size: 10px; }
 .cpe-field-zone-mark { font-size: 9.5px; padding: 1px 5px; background: #eef2ff; color: #4f46e5; border-radius: 2px; }
 .cpe-field-req { font-size: 9.5px; color: #92400e; font-weight: 600; padding: 1px 5px; background: #fbbf24; border-radius: 2px; }

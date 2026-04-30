@@ -1883,22 +1883,27 @@ export function renderNodes() {
     // v0.59.801 (Phase 19.4 fix): per-node preset visibility flags.
     // Считаем один раз и используем для subtitle / icon / load-блока.
     // Пользователь: «я включил только иконку, а отобразилось все».
+    // v0.59.802: hoisted _presetVisible / _presetKind для использования
+    // в per-field rendering (consumer ниже).
     let _presetShowSubtitle = true;
     let _presetShowIcon = true;
     let _presetShowLoadInfo = true;
+    let _presetVisible = null;
+    let _presetKind = 'schematic';
+    let _presetActive = null;
     {
       const _curPage = getCurrentPage();
-      const _kind = _curPage ? getPageKind(_curPage) : 'schematic';
-      const _preset = _getActiveCardPreset();
-      const _vis = getVisibleFieldIds(_preset, _kind, n.type);
+      _presetKind = _curPage ? getPageKind(_curPage) : 'schematic';
+      _presetActive = _getActiveCardPreset();
+      _presetVisible = getVisibleFieldIds(_presetActive, _presetKind, n.type);
       const _ELECTRICAL = ['demandKw', 'kvAOrVA', 'currentA', 'maxKw', 'maxA',
         'nominalKw', 'cosPhi', 'phase', 'voltage', 'breakerIn', 'cableSpec',
         'deltaUPct', 'capacityA', 'snomKva', 'sscMva', 'ukPct', 'kva', 'kw',
         'autonomyMin', 'marginPct'];
-      _presetShowLoadInfo = _ELECTRICAL.some(id => _vis.has(id));
-      _presetShowSubtitle = _vis.has('subtitle') || _vis.has('sourceSubtype') ||
-        _vis.has('switchMode');
-      _presetShowIcon = _vis.has('icon');
+      _presetShowLoadInfo = _ELECTRICAL.some(id => _presetVisible.has(id));
+      _presetShowSubtitle = _presetVisible.has('subtitle') ||
+        _presetVisible.has('sourceSubtype') || _presetVisible.has('switchMode');
+      _presetShowIcon = _presetVisible.has('icon');
     }
 
     // v0.58.16: полоска «Системы» вдоль верхнего края карточки — сегменты
@@ -2286,9 +2291,91 @@ export function renderNodes() {
       drawBundlingIcon(g, w - 82, n.bundling || 'touching');
     }
 
-    // Рендер: либо одной строкой (consumer/channel/устаревший формат),
-    // v0.59.801 (Phase 19.4 fix): использует _presetShowLoadInfo (вычислен выше).
-    if (_presetShowLoadInfo) {
+    // v0.59.802 (Phase 19.4 deeper): per-field rendering для consumer.
+    // Раньше combined rows «Номинальная / Расчётная / Свободно» не
+    // соответствовали выбору полей — пользователь выбирал только demandKw
+    // и видел все 3 строки с kVA/A которые не выбирал. Пользователь:
+    // «не соотносятся выбранные свойства и отображение на лайауте».
+    // Теперь: каждое selected поле = отдельная строка «label: value».
+    if (_presetShowLoadInfo && n.type === 'consumer') {
+      // Per-field display for consumer
+      const cnt = consumerCountEffective(n);
+      const _isUniformGroup = cnt > 1 && n.groupMode !== 'individual';
+      const cos = Math.max(0.1, Math.min(1, Number(n.cosPhi) || 0.92));
+      const Ucalc = nodeCalcVoltage(n);
+      const PnomTotal = consumerTotalDemandKw(n);
+      const Pnom = _isUniformGroup ? (PnomTotal / cnt) : PnomTotal;
+      const Inom = (Pnom > 0 && Ucalc) ? computeCurrentA(Pnom, Ucalc, cos, isThreePhase(n)) : 0;
+      const Snom = Pnom > 0 ? Pnom / cos : 0;
+      const PcalcTotal = Number(n._loadKw) || 0;
+      const Pcalc = _isUniformGroup ? (PcalcTotal / cnt) : PcalcTotal;
+      const Icalc = _isUniformGroup ? ((Number(n._loadA) || 0) / cnt) : (Number(n._loadA) || 0);
+      const Scalc = Pcalc > 0 ? Pcalc / cos : 0;
+      const _vdrop = Number(n._deltaUPct) || 0;
+      const _free = (k) => n[k];
+      const fmtDigits = (v) => Number.isFinite(v) ? fmt(v) : null;
+      // Map fieldId → { label, value }
+      const FIELD_DISPLAY = {
+        demandKw:   { v: fmtDigits(Pnom),  unit: 'кВт' },
+        nominalKw:  { v: fmtDigits(Pnom),  unit: 'кВт' },
+        kvAOrVA:    { v: fmtDigits(Snom),  unit: 'кВА' },
+        currentA:   { v: fmtDigits(Inom),  unit: 'А' },
+        maxKw:      { v: fmtDigits(Pcalc), unit: 'кВт' },
+        maxA:       { v: fmtDigits(Icalc), unit: 'А' },
+        cosPhi:     { v: cos.toFixed(2),   unit: '' },
+        voltage:    { v: Ucalc ? fmt(Ucalc) : null, unit: 'В' },
+        phase:      { v: n.phase || '', unit: '' },
+        breakerIn:  { v: Number.isFinite(Number(n.breakerIn)) && n.breakerIn ? String(n.breakerIn) : null, unit: 'А' },
+        cableSpec:  { v: n._cableSpec || null, unit: '' },
+        deltaUPct:  { v: Number.isFinite(_vdrop) ? _vdrop.toFixed(1) : null, unit: '%' },
+        count:      { v: (Number(n.count) || 1) > 1 ? String(n.count) : null, unit: 'шт.' },
+      };
+      // Сборка row'ов в порядке как в registry — стабильность layout
+      const rows = [];
+      const allFields = listCardFields ? null : null; // skip — уже в зарегистрированном порядке через iteration
+      const ORDER = ['demandKw', 'nominalKw', 'kvAOrVA', 'currentA', 'maxKw', 'maxA',
+        'cosPhi', 'voltage', 'phase', 'breakerIn', 'cableSpec', 'deltaUPct', 'count'];
+      const fieldDef = (id) => {
+        // Ищем в registry для label (см. card-fields-registry.js consumer)
+        const labels = {
+          demandKw: 'Мощность',
+          nominalKw: 'Номинал',
+          kvAOrVA: 'кВА',
+          currentA: 'Ток',
+          maxKw: 'Макс.',
+          maxA: 'Макс. ток',
+          cosPhi: 'cos φ',
+          voltage: 'U',
+          phase: 'Фаза',
+          breakerIn: 'Автомат',
+          cableSpec: 'Кабель',
+          deltaUPct: 'ΔU',
+          count: '×',
+        };
+        return labels[id] || id;
+      };
+      for (const id of ORDER) {
+        if (!_presetVisible.has(id)) continue;
+        const d = FIELD_DISPLAY[id];
+        if (!d || d.v == null || d.v === '') continue;
+        // Effective label: предусмотрен per-preset override (зарезервировано)
+        const customLabel = _presetActive?.fieldLabels?.[_presetKind]?.[n.type]?.[id];
+        const label = (typeof customLabel === 'string' && customLabel.trim()) ? customLabel : fieldDef(id);
+        rows.push(`${label}: ${d.v}${d.unit ? ' ' + d.unit : ''}`);
+      }
+      // Render rows стопкой снизу
+      const lineH = 12;
+      const baseY = NODE_H - 12;
+      const statusOffset = statusLine ? lineH : 0;
+      for (let i = 0; i < rows.length; i++) {
+        const y = baseY - statusOffset - (rows.length - 1 - i) * lineH;
+        g.appendChild(text(12, y, rows[i], loadCls + ' node-load-row'));
+      }
+      if (statusLine) {
+        g.appendChild(text(12, baseY, statusLine, loadCls + ' node-load-status'));
+      }
+    } else if (_presetShowLoadInfo) {
+      // Legacy combined rows для остальных типов (panel/source/generator/ups/channel)
       if (loadLines && loadLines.length) {
         const lineCount = loadLines.length;
         const baseY = NODE_H - 12;
