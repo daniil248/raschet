@@ -1026,6 +1026,38 @@ export function renderInspectorNode(n) {
       h.push('</div>');
     }
     h.push(statusBlock(n));
+  } else if (n.type === 'consumer-container') {
+    // v0.59.818 (1.28.20 Phase 4 minimal): инспектор контейнера потребителей.
+    // Показывает список слотов: linked (real consumer-узел) или placeholder
+    // (анонимная спека). Полный редактор будет в Phase 4 — пока заглушка
+    // чтобы выбор контейнера не показывал пустоту.
+    const slots = Array.isArray(n.slots) ? n.slots : [];
+    h.push('<div class="inspector-section"><h4>Контейнер потребителей</h4>');
+    h.push('<div class="muted" style="font-size:11px;margin-bottom:6px">Контейнер сам не считается потребителем. Слоты внутри — независимые сущности (реальные consumer-узлы или placeholder-спецификации).</div>');
+    if (!slots.length) {
+      h.push('<div class="muted" style="font-size:12px">Контейнер пуст. Drop потребителя сюда — добавится как слот.</div>');
+    } else {
+      h.push('<div style="display:flex;flex-direction:column;gap:4px;font-size:12px">');
+      slots.forEach((s, i) => {
+        if (!s) return;
+        if (s.kind === 'linked' && s.nodeId) {
+          const a = state.nodes.get(s.nodeId);
+          if (a) {
+            const tag = a.tag || a.id;
+            const name = a.name || '';
+            const kw = Number(a.demandKw) || 0;
+            h.push(`<div style="padding:4px 6px;background:#f5f7fa;border-radius:4px;display:flex;justify-content:space-between"><span><b>${escHtml(tag)}</b> ${escHtml(name)}</span><span class="muted">#${i + 1} · ${kw} кВт</span></div>`);
+          } else {
+            h.push(`<div style="padding:4px 6px;background:#fee;border-radius:4px;color:#991b1b">Слот #${i + 1}: битая ссылка ${escHtml(s.nodeId)}</div>`);
+          }
+        } else if (s.kind === 'placeholder') {
+          h.push(`<div style="padding:4px 6px;background:#fef3c7;border-radius:4px;display:flex;justify-content:space-between"><span><i>placeholder</i></span><span class="muted">#${i + 1} · ${Number(s.demandKw) || 0} кВт</span></div>`);
+        }
+      });
+      h.push('</div>');
+    }
+    h.push('<div class="muted" style="font-size:11px;margin-top:8px">⚙ Полный редактор слотов (drag-drop / split / merge / cross-discipline) — Phase 4 (1.28.20).</div>');
+    h.push('</div>');
   }
 
   // v0.58.49: подсказка про режим «В работе» перенесена на вкладку «Общее».
