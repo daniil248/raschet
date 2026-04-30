@@ -227,15 +227,17 @@ function _renderFieldsTabSplit(sel, isSystem) {
         ${Object.keys(byGroup).map(g => `<div class="cpe-fields-group">
           <h4>${escHtml(groupLabel(g))}</h4>
           ${byGroup[g].map(f => {
-            // v0.59.830: чекбокс убран — добавление/удаление через drag-drop
-            // в зону / ×-кнопку. Поле всегда draggable. Если поле уже в
-            // карточке — показываем ✓ маркер, иначе нет.
+            // v0.59.873: draggable=true теперь ТОЛЬКО на grip-handle (не на
+            // всей строке). Раньше draggable на parent → click по lable-input
+            // или ✓-маркер мог триггерить browser-drag и подавлять click-
+            // события. Теперь только тянуть за «⋮⋮» — клик по другим
+            // элементам строки не интерферирует с HTML5 DnD.
             const isReq = required.has(f.id);
             const isOn = activeIds.has(f.id) || isReq;
             const inZone = layout.assignments[f.id] || (isOn ? defaultZoneAssignment(f.id) : null);
             const customLabel = sel.fieldLabels?.[kind]?.[type]?.[f.id] || '';
-            return `<div class="cpe-field-row${isReq ? ' cpe-field-required' : ''}${!isOn ? ' cpe-field-off' : ''}" draggable="true" data-field-id="${escAttr(f.id)}">
-              <span class="cpe-field-handle" title="Перетащите в зону карточки справа">⋮⋮</span>
+            return `<div class="cpe-field-row${isReq ? ' cpe-field-required' : ''}${!isOn ? ' cpe-field-off' : ''}" data-field-id="${escAttr(f.id)}">
+              <span class="cpe-field-handle" draggable="true" data-field-id="${escAttr(f.id)}" title="Перетащите в зону карточки справа">⋮⋮</span>
               <span class="cpe-field-on-mark" title="${isOn ? 'В карточке' : 'Не в карточке'}" style="font-weight:600;color:${isOn ? '#16a34a' : '#cbd5e1'};font-size:13px;width:14px;display:inline-block;text-align:center">${isOn ? '✓' : '·'}</span>
               <input type="text" class="cpe-field-label-input" data-field-id="${escAttr(f.id)}" value="${escAttr(customLabel || f.label)}" placeholder="${escAttr(f.label)}" title="Подпись на карточке (кликните и измените). Пустое поле = вернуть стандартную подпись «${escAttr(f.label)}»">
               <code class="cpe-field-id muted">${escHtml(f.id)}</code>
@@ -410,8 +412,11 @@ function _renderCardPreview(sel, kind, type, fields, activeIds, required, layout
           // v0.59.802: использовать custom label если есть в пресете
           const _customLabel = sel.fieldLabels?.[_state.activeModeTab]?.[_state.activeTypeTab]?.[f.id];
           const _displayLabel = _customLabel || f.label;
-          return `<span class="cpe-chip${required.has(f.id) ? ' cpe-chip-req' : ''}" draggable="true" data-field-id="${escAttr(f.id)}" data-from-zone="${escAttr(z.id)}" data-chip-pos="${idx}" title="${escAttr(f.id)} — перетащите в другую зону или измените порядок">
-            <span class="cpe-chip-grip" title="перетащить">⋮⋮</span>
+          // v0.59.873: draggable=true теперь ТОЛЬКО на grip-span. Сам chip
+          // не draggable — клик по labelу/×-кнопке не провоцирует
+          // browser-drag и × надёжно отрабатывает.
+          return `<span class="cpe-chip${required.has(f.id) ? ' cpe-chip-req' : ''}" data-field-id="${escAttr(f.id)}" data-from-zone="${escAttr(z.id)}" data-chip-pos="${idx}" title="${escAttr(f.id)}">
+            <span class="cpe-chip-grip" draggable="true" data-field-id="${escAttr(f.id)}" data-from-zone="${escAttr(z.id)}" title="Перетащите в другую зону">⋮⋮</span>
             ${escHtml(_displayLabel)}
             ${!required.has(f.id) ? `<button type="button" class="cpe-chip-x" data-field-id="${escAttr(f.id)}" title="Удалить поле из карточки">×</button>` : ''}
           </span>`;
@@ -717,15 +722,12 @@ function _wireDraggable(modal, host) {
 let _dragFieldId = null;
 
 function _wireDragDrop(modal, host) {
-  // Drag start: chip или field-row
-  modal.querySelectorAll('.cpe-chip[draggable="true"], .cpe-field-row[draggable="true"]').forEach(el => {
+  // v0.59.873: draggable=true перенесён с chip/field-row на grip-handle
+  // (cpe-chip-grip / cpe-field-handle). Это окончательный фикс конфликта
+  // draggable parent + click child — клик по × и подписи теперь не
+  // подавляется browser-drag-detection.
+  modal.querySelectorAll('.cpe-chip-grip[draggable="true"], .cpe-field-handle[draggable="true"]').forEach(el => {
     el.addEventListener('dragstart', e => {
-      // Не начинать drag если событие в кнопке × внутри chip — её клик
-      // должен обрабатываться отдельно как удаление.
-      if (e.target.closest && e.target.closest('button.cpe-chip-x')) {
-        e.preventDefault();
-        return;
-      }
       const fid = el.dataset.fieldId;
       _dragFieldId = fid;
       // Попытаться записать в dataTransfer (для cross-browser совместимости),
@@ -789,8 +791,9 @@ function _wireDragDrop(modal, host) {
   });
   // v0.59.830: drop на конкретный chip — вставить ПЕРЕД ним в order
   // (для drag-reorder внутри зоны или перемещения между зонами с
-  // конкретной позицией).
-  modal.querySelectorAll('.cpe-chip[draggable="true"]').forEach(chip => {
+  // конкретной позицией). v0.59.873: chip больше не draggable=true,
+  // селектор изменён.
+  modal.querySelectorAll('.cpe-chip[data-field-id]').forEach(chip => {
     chip.addEventListener('dragover', e => {
       e.preventDefault();
       try { e.dataTransfer.dropEffect = 'move'; } catch {}
@@ -1069,14 +1072,18 @@ const CPE_CSS = `
 .cpe-zone-cnt { font-size: 9.5px; }
 .cpe-zone-chips { display: flex; flex-wrap: wrap; gap: 4px; min-height: 22px; }
 .cpe-zone-empty { font-size: 10px; padding: 4px; font-style: italic; }
+/* v0.59.873: chip больше не draggable=true — cursor default. Тянуть
+   только за grip. Click на × и подписи теперь не подавляется browser-drag. */
 .cpe-chip {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 2px 7px;
   background: #dbeafe; color: #1e3a8a; border: 1px solid #93c5fd; border-radius: 11px;
-  font-size: 10.5px; cursor: grab;
+  font-size: 10.5px;
 }
 .cpe-chip:hover { background: #bfdbfe; }
 .cpe-chip-req { background: #fef3c7; color: #78350f; border-color: #fcd34d; }
+.cpe-chip-grip { cursor: grab; user-select: none; }
+.cpe-chip-grip:active { cursor: grabbing; }
 .cpe-chip-x {
   background: none; border: none; cursor: pointer;
   color: #c62828; font-size: 12px; padding: 0 2px;

@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.873', date: '2026-04-30', items: [
+      '🐛 <b>Финальный фикс drag-drop и × в редакторе пресетов карточек</b>. По репорту: «в самой карточке перетаскивание работает но вот с палитры на карточку не перетаскивается и с карточки по крестику не удаляется».',
+      '• <b>Корень бага</b>: <code>draggable="true"</code> стоял на ВСЁМ chip (span) и ВСЁМ field-row (div). Браузер интерпретировал mousedown на любом дочернем элементе (× кнопка, label-input) как начало drag — событие click подавлялось, drop с палитры в зону тоже не отрабатывал стабильно (HTML5 DnD конфликтовал с click delegation).',
+      '• <b>Fix</b>: <code>draggable="true"</code> теперь только на ВЫДЕЛЕННОМ grip-handle:',
+      '  Чип в карточке: <code>span.cpe-chip-grip</code> (символ ⋮⋮)',
+      '  Поле в палитре: <code>span.cpe-field-handle</code> (символ ⋮⋮)',
+      '• Сам chip и сам field-row больше НЕ draggable. Кликать по любому месту чипа (label, ×, фон) теперь не провоцирует browser-drag — клики идут нормально, × надёжно удаляет поле, drag-with-mouse работает только при захвате за «⋮⋮».',
+      '• <b>Selectors</b>: dragstart-listeners перекинуты с <code>.cpe-chip[draggable="true"]</code> на <code>.cpe-chip-grip[draggable="true"]</code>. Drop-on-chip handler — на <code>.cpe-chip[data-field-id]</code> (chip больше не draggable, селектор изменён).',
+      '• <b>CSS</b>: cursor:grab перенесён с .cpe-chip на .cpe-chip-grip; .cpe-chip больше нейтральный.',
+      'Файл: <code>shared/card-presets-editor.js</code> — render chip/field-row, _wireDragDrop selectors, CSS .cpe-chip-grip.',
+    ] },
     { version: '0.59.872', date: '2026-04-30', items: [
       '🔌 <b>Модалка «Порты устройства» теперь видит меж-шкафные связи СКС</b>. Расширение v0.59.870.',
       '• Раньше показывались только внутри-шкафные патчкорды (<code>currentMatrix</code>). Теперь дополнительно читается <code>scs-design.links.v1</code> проекта — связи где <code>fromRackId/toRackId === currentRackId</code> и <code>fromDevId/toDevId === devId</code>.',
