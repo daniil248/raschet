@@ -38,6 +38,27 @@
 .sc-section h2 { margin: 0 0 8px; font-size: 15px; }
 .sc-hint { font-size: 12px; margin: 0 0 10px; }
 
+/* v0.59.809 (ROADMAP 1.24.18): collapsible sections via <details>. */
+details.sc-section-details { padding: 0; }
+details.sc-section-details > summary {
+  list-style: none; cursor: pointer;
+  padding: 12px 16px;
+  border-radius: 6px;
+  user-select: none;
+  display: flex; align-items: center; gap: 8px;
+}
+details.sc-section-details > summary::-webkit-details-marker { display: none; }
+details.sc-section-details > summary::before {
+  content: '▸';
+  font-size: 12px; color: #64748b;
+  transition: transform 0.15s;
+}
+details.sc-section-details[open] > summary::before { transform: rotate(90deg); }
+details.sc-section-details > summary:hover { background: #f8fafc; }
+details.sc-section-details[open] > summary { border-bottom: 1px solid #e2e8f0; }
+details.sc-section-details > *:not(summary) { padding: 12px 16px; margin: 0; }
+details.sc-section-details > *:not(summary):last-child { padding-bottom: 14px; padding-top: 0; }
+
 .sc-btn {
   font-size: 12px; padding: 4px 10px; border: 1px solid #cbd5e1; background: #fff;
   border-radius: 4px; cursor: pointer; color: #0f172a;

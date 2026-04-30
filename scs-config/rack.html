@@ -260,38 +260,42 @@
           <div id="sc-unitmap" class="sc-unitmap"></div>
         </section>
 
-        <section class="sc-section">
-          <h2>🔌 Размещение в стойке</h2>
+        <!-- v0.59.809 (ROADMAP 1.24.18): таблицы СКС и питания сворачиваемые
+             через <details>. Карта юнитов выше остаётся всегда видимой,
+             а таблицы открываются по клику. Это снижает визуальную
+             перегруженность при редактировании на карте. -->
+        <details class="sc-section sc-section-details">
+          <summary><h2 style="display:inline-block;margin:0">🔌 Размещение в стойке (таблица)</h2></summary>
           <p class="sc-hint muted">Каждая единица занимает N U сверху вниз. Позиция <b>U</b> — верхний юнит устройства. Красная метка — конфликт.</p>
           <table class="sc-contents" id="sc-contents"></table>
           <div class="sc-tools">
             <button type="button" id="sc-auto" class="sc-btn" title="Авто-укладка сверху вниз без зазоров">⬇ Авто-укладка</button>
           </div>
-        </section>
+        </details>
 
-        <section class="sc-section">
-          <h2>🧵 СКС-матрица (патч-корды)</h2>
+        <details class="sc-section sc-section-details">
+          <summary><h2 style="display:inline-block;margin:0">🧵 СКС-матрица (патч-корды)</h2></summary>
           <p class="sc-hint muted">Простой список соединений «порт A ↔ порт B» для BOM патч-кордов.</p>
           <table class="sc-matrix" id="sc-matrix"></table>
           <div class="sc-tools">
             <button type="button" id="sc-matrix-add" class="sc-btn">+ соединение</button>
           </div>
-        </section>
+        </details>
 
-        <section class="sc-section">
-          <h2>⚠ Проверки</h2>
+        <details class="sc-section sc-section-details" open>
+          <summary><h2 style="display:inline-block;margin:0">⚠ Проверки</h2></summary>
           <div id="sc-warn"></div>
-        </section>
+        </details>
 
-        <section class="sc-section">
-          <h2>📊 BOM по оборудованию</h2>
+        <details class="sc-section sc-section-details">
+          <summary><h2 style="display:inline-block;margin:0">📊 BOM по оборудованию</h2></summary>
           <table class="sc-bom" id="sc-bom"></table>
           <div class="sc-tools">
             <button type="button" id="sc-bom-csv" class="sc-btn">CSV</button>
             <button type="button" id="sc-export-config" class="sc-btn" title="Сохранить всю конфигурацию СКС активного проекта (стойки, содержимое, матрица, тележка, склад) в JSON-файл">⬇ Экспорт</button>
             <button type="button" id="sc-import-config" class="sc-btn" title="Загрузить конфигурацию СКС из JSON-файла в активный проект">⬆ Импорт<input type="file" id="sc-import-file" accept="application/json,.json" hidden></button>
           </div>
-        </section>
+        </details>
       </main>
 
       <!-- ========== ПРАВЫЙ САЙДБАР: каталог + тележка + склад (resizable) ========== -->

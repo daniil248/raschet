@@ -210,9 +210,13 @@ function _emitChanged() {
 export function createUserPreset(name, fromPresetId = 'full') {
   const src = getPresetById(fromPresetId) || SYSTEM_PRESET_BY_ID.full;
   const id = 'preset-' + Math.random().toString(36).slice(2, 10);
+  // v0.59.809: при дубликации копируем ВСЕ свойства (perMode + fieldLabels +
+  // zoneLayout). Раньше только perMode → user-копия теряла зоны и подписи.
   const p = {
     id, name: name || 'Без имени', system: false,
-    perMode: JSON.parse(JSON.stringify(src.perMode)),
+    perMode: JSON.parse(JSON.stringify(src.perMode || {})),
+    fieldLabels: src.fieldLabels ? JSON.parse(JSON.stringify(src.fieldLabels)) : {},
+    zoneLayout: src.zoneLayout ? JSON.parse(JSON.stringify(src.zoneLayout)) : {},
   };
   const all = loadUserPresets();
   all.push(p);
