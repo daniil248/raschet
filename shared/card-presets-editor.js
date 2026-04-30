@@ -607,13 +607,36 @@ function wire(host) {
     });
   });
 
-  // Chip × — remove field from zone (turn off)
+  // Chip × — remove field from zone (turn off).
+  // v0.59.866: используем delegation на root (не на кнопку), чтобы клик
+  // ловился ДО того как браузер передаст mousedown в HTML5-drag родителя
+  // (chip имеет draggable="true", и при mousedown на дочернем button
+  // браузер мог интерпретировать как drag-grab — клик не срабатывал).
+  // Дополнительно навешиваем mousedown stopPropagation на каждую × кнопку,
+  // чтобы parent dragstart не запускался при клике по ней.
   root.querySelectorAll('button.cpe-chip-x').forEach(b => {
-    b.addEventListener('click', (e) => {
+    b.addEventListener('mousedown', (e) => { e.stopPropagation(); });
+    b.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
+    // draggable="false" на самой кнопке — гарантия, что браузер не пытается
+    // её drag'ать и не пожирает click.
+    b.setAttribute('draggable', 'false');
+  });
+  // Delegated click — переживёт re-render одной зоны и работает даже
+  // если кнопка добавлена позже.
+  if (!root._cpeChipXBound) {
+    root._cpeChipXBound = true;
+    root.addEventListener('click', (e) => {
+      const b = e.target.closest && e.target.closest('button.cpe-chip-x');
+      if (!b || !root.contains(b)) return;
       e.stopPropagation();
+      e.preventDefault();
       const fid = b.dataset.fieldId;
       const sel = getPresetById(_state.selectedPresetId);
-      if (!sel || sel.system) return;
+      if (!sel) return;
+      if (sel.system) {
+        try { console.warn('[card-presets] системный пресет нельзя редактировать — нажмите 📋 Скопировать'); } catch {}
+        return;
+      }
       const kind = _state.activeModeTab, type = _state.activeTypeTab;
       const fields = listCardFields(kind, type);
       const required = requiredFieldIds(kind, type);
@@ -627,7 +650,7 @@ function wire(host) {
       saveZoneLayout(sel, kind, type, layout);
       render(host); wire(host);
     });
-  });
+  }
 
   // Import file
   const importFile = root.querySelector('input[data-action="import-file"]');

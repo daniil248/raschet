@@ -54,7 +54,7 @@ import { recalc } from './recalc.js';
 import { effectiveTag, effectiveName } from './zones.js';
 import { fmt, fmtPower, escHtml, escAttr } from './utils.js';
 import { snapshot, notifyChange } from './history.js';
-import { computeCurrentA, nodeVoltage, nodeCalcVoltage, isThreePhase, cableVoltageClass, consumerTotalDemandKw, consumerCountEffective } from './electrical.js';
+import { computeCurrentA, nodeVoltage, nodeCalcVoltage, isThreePhase, cableVoltageClass, consumerTotalDemandKw, consumerCountEffective, consumerCalcDemandKw, containerHomogeneity } from './electrical.js';
 import { rsToast, rsPrompt } from '../../shared/dialog.js';
 
 let _renderInspector;
@@ -1885,14 +1885,24 @@ export function renderNodes() {
 
       const totalKw = consumerTotalDemandKw(n);
       const cntEff = consumerCountEffective(n);
-      // v0.57.81: для «индивидуальной» группы подпись Σ (N kW, M шт)
-      // потому что мощности разные. Для uniform — старый формат N × P = T.
-      // v0.59.816: для consumer-container — всегда Σ-формат (мощность каждого
-      // слота своя, count = slots.length).
+      // v0.59.866: для consumer-container — если все члены однородны
+      // (одинаковые demandKw/cosPhi/voltage/phase/kUse), отображаем как
+      // обычную групповую нагрузку «N × P = T» (то же, что и uniform group).
+      // Если есть отличия — Σ (N шт.) + ⚠. Пользователь: «8 слотов лучше
+      // не использовать выводи как для простого группового потребителя.
+      // Если хоть у одного потребителя отличающиеся данные, нужно выводить
+      // предупреждение».
+      const _homo = _isContainer ? containerHomogeneity(n) : null;
+      const _isMixed = _homo && !_homo.homogeneous;
       let gLabel = '';
       if (_showKw && _showCount) {
         if (_isContainer) {
-          gLabel = `Σ ${fmtPower(totalKw)} (${cntEff} ${cntEff === 1 ? 'слот' : 'слотов'})`;
+          if (_homo && _homo.homogeneous && _homo.count > 1 && _homo.common && _homo.common.demandKw > 0) {
+            gLabel = `${_homo.count} × ${fmtPower(_homo.common.demandKw)} = ${fmtPower(totalKw)}`;
+          } else {
+            gLabel = `Σ ${fmtPower(totalKw)} (${cntEff} шт.)`;
+            if (_isMixed) gLabel += ' ⚠';
+          }
         } else {
           gLabel = (n.groupMode === 'individual' && Array.isArray(n.items))
             ? `Σ ${fmtPower(totalKw)} (${cntEff} шт.)`
@@ -1900,8 +1910,9 @@ export function renderNodes() {
         }
       } else if (_showKw) {
         gLabel = `Σ ${fmtPower(totalKw)}`;
+        if (_isMixed) gLabel += ' ⚠';
       } else if (_showCount) {
-        gLabel = _isContainer ? `${cntEff} ${cntEff === 1 ? 'слот' : 'слотов'}` : `${cntEff} шт.`;
+        gLabel = `${cntEff} шт.${_isMixed ? ' ⚠' : ''}`;
       }
       if (gLabel && n.phaseDistribution && !n.serialMode && _visible.has('phase')) {
         const pd = n.phaseDistribution;

@@ -5,7 +5,7 @@ import { getMethod, calcVoltageDrop, findMinSizeForVdrop } from '../methods/inde
 import { getEcoMethod } from '../methods/economic/index.js';
 import { nodeVoltage, nodeVoltageLN, nodeCalcVoltage, isThreePhase, nodeWireCount, cableWireCount, computeCurrentA,
          consumerNominalCurrent, consumerRatedCurrent, consumerInrushCurrent,
-         consumerTotalDemandKw, consumerCountEffective, consumerGroupItems,
+         consumerTotalDemandKw, consumerCountEffective, consumerCalcDemandKw, consumerGroupItems,
          upsChargeKw, sourceImpedance, isNodeDC, effectiveUpsCapacity } from './electrical.js';
 import { CONSUMER_CATALOG, STARTER_TYPES } from './constants.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
@@ -1435,25 +1435,25 @@ function recalc() {
   }
 
   for (const n of state.nodes.values()) {
-    // v0.59.863: consumer-container тоже участвует в walkUp. Без этого
-    // линия от panel к контейнеру оставалась с _loadKw=0 (cable 0 А),
-    // потому что linked-консьюмеры контейнера не имеют собственных
-    // активных входов (их connections были перенаправлены на контейнер
-    // в _mergeIntoContainer), а сам контейнер раньше пропускался.
-    // consumerTotalDemandKw(n) уже корректно раскрывает slots[] для
-    // консьюмер-контейнера — суммирует linked + placeholder demand.
+    // v0.59.863: consumer-container тоже участвует в walkUp.
     if (n.type !== 'consumer' && n.type !== 'consumer-container') continue;
     const ai = activeInputs(n.id);
     n._powered = ai !== null;
     if (!n._powered) continue;
-    // Суммарная расчётная мощность потребителя:
-    //   Pрасч = demandKw × count × Ки × loadFactor
-    // Раньше здесь НЕ учитывался Ки — из-за этого сумма по источникам
-    // расходилась с полем Pрасч в отчёте и с _powerP на самом потребителе.
-    // Теперь всё считается по одной формуле.
-    const kUse = Number(n.kUse) || 1;
-    const factor = effectiveLoadFactor(n);
-    const total = consumerTotalDemandKw(n) * kUse * factor;
+    // v0.59.866: для контейнера — per-slot Ки aggregation (consumerCalcDemandKw).
+    // У самого контейнера kUse не задан — раньше получали Pрасч=Σ×1×1=Pуст
+    // (расчётная нагрузка не отличалась от установленной). Теперь
+    // consumerCalcDemandKw(container) суммирует demandKw × Ки каждого
+    // linked-члена и placeholder'а. Карточка покажет правильное Pрасч
+    // (например 65.6 кВт × 0.854 = 56 кВт вместо ошибочных 65.6).
+    let total;
+    if (n.type === 'consumer-container') {
+      total = consumerCalcDemandKw(n);
+    } else {
+      const kUse = Number(n.kUse) || 1;
+      const factor = effectiveLoadFactor(n);
+      total = consumerTotalDemandKw(n) * kUse * factor;
+    }
     n._loadKw = total;
     walkUp(n.id, total);
   }

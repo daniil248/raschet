@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.866', date: '2026-04-30', items: [
+      '⚡ <b>Карточка контейнера потребителей теперь рендерится как обычная групповая нагрузка</b>. По репорту пользователя: «8 слотов лучше не использовать выводи как для простого группового потребителя». Если все linked-члены однородны (одинаковые demandKw/cosPhi/voltage/phase/kUse) — формат <code>N × P = T</code> вместо <code>Σ T (N слотов)</code>.',
+      '• <b>⚠ Warning при неоднородных данных</b>. По репорту: «Если хоть у одного потребителя отличающиеся данные, нужно выводить предупреждение». Helper <code>containerHomogeneity(n)</code> в electrical.js — возвращает {homogeneous, count, common, mismatches[]}. Если есть отличия → формат <code>Σ T (N шт.) ⚠</code>.',
+      '• <b>Расчётная мощность контейнера учитывает Ки каждого члена</b>. По репорту: «расчётная мощность не попадает в карточку группы». Раньше recalc.js использовал <code>container.kUse</code> (которого нет — kUse=1 → Pрасч=Pуст). Теперь <code>consumerCalcDemandKw(container)</code> суммирует <code>demandKw × Ки</code> per linked-член и placeholder. Поле «Макс.» на карточке (maxKw) теперь правильно показывает расчётную нагрузку.',
+      '• <b>Fix drag-drop и × в редакторе пресетов карточек</b>. По репорту: «перетаскивание не работает, удаление не работает». Конфликт draggable=true родителя и click дочерней кнопки × — браузер интерпретировал mousedown на × как drag-grab. Фикс: delegated click handler на root + mousedown/pointerdown stopPropagation на самой кнопке + draggable=false на ней.',
+      'Файлы: <code>js/engine/electrical.js</code> (consumerCalcDemandKw + containerHomogeneity), <code>js/engine/recalc.js</code> (использует consumerCalcDemandKw для container), <code>js/engine/render.js</code> (gLabel: N × P = T для однородных, ⚠ для mixed), <code>shared/card-presets-editor.js</code> (delegated click + mousedown stopPropagation).',
+    ] },
     { version: '0.59.865', date: '2026-04-30', items: [
       '⚡ <b>Fix: 5 жил кабеля до consumer-container с 1ph членами</b>. По репорту пользователя со скриншотами: контейнер из 8 потребителей 1ph 230В получал кабель 5×10мм² (как для 3ph), а одиночная стойка 1ph — корректные 3×10мм².',
       '• <b>Корень бага</b>: в <code>electrical.js::cableWireCount</code> фазы определялись как <code>toN?.phase || \'3ph\'</code>. Для consumer-container <code>phase</code> не задано (контейнер сам фазой не управляет — она наследуется от членов через <code>_firstLinkedMember</code>). Дефолт \'3ph\' давал phases=3 → countWires вернул 3+N+PE=5 жил.',

@@ -388,6 +388,109 @@ export function consumerTotalDemandKw(n) {
   return per * cnt;
 }
 
+// v0.59.866: расчётная мощность группы/контейнера/одиночного потребителя
+// с учётом Ки (utilization factor) каждого члена. Это и есть «расчётная
+// нагрузка», которую должна отображать карточка группы — пользователь:
+// «расчетная мощность не попадает в карточку группы».
+//
+// Контейнер: per-slot — для linked берём a.demandKw × count × a.kUse;
+//            для placeholder — s.demandKw × (s.kUse || 1).
+// Group individual: Σ item.demandKw × (item.kUse || n.kUse).
+// Uniform group / single: P × count × kUse.
+export function consumerCalcDemandKw(n) {
+  if (n && n.type === 'consumer-container' && Array.isArray(n.slots)) {
+    let sum = 0;
+    for (const s of n.slots) {
+      if (!s) continue;
+      if (s.kind === 'linked' && s.nodeId) {
+        const a = state.nodes && state.nodes.get && state.nodes.get(s.nodeId);
+        if (a) sum += consumerCalcDemandKw(a);
+      } else if (s.kind === 'placeholder') {
+        const ku = (s.kUse != null) ? Number(s.kUse) : 1;
+        sum += (Number(s.demandKw) || 0) * (Number.isFinite(ku) ? ku : 1);
+      }
+    }
+    return sum;
+  }
+  const ku = (n && n.kUse != null) ? Number(n.kUse) : 1;
+  const kuSafe = Number.isFinite(ku) ? ku : 1;
+  if (n && n.groupMode === 'individual' && Array.isArray(n.items)) {
+    let sum = 0;
+    for (const it of n.items) {
+      const itemKu = (it?.kUse != null) ? Number(it.kUse) : kuSafe;
+      sum += (Number(it?.demandKw) || 0) * (Number.isFinite(itemKu) ? itemKu : 1);
+    }
+    return sum;
+  }
+  const per = Number(n?.demandKw) || 0;
+  const cnt = Math.max(1, Number(n?.count) || 1);
+  return per * cnt * kuSafe;
+}
+
+// v0.59.866: проверка однородности параметров слотов контейнера.
+// Возвращает { homogeneous, count, common, mismatches[] }:
+//   homogeneous — все linked-члены и placeholder'ы имеют одинаковые
+//                 demandKw, cosPhi, voltage, phase, kUse;
+//   count        — число slot'ов;
+//   common       — параметры первого slot'а (если homogeneous=true);
+//   mismatches[] — список различающихся полей.
+//
+// Если slots пуст — homogeneous=true, count=0.
+// Используется для решения: рендерить как простую группу (count×P) или
+// как «Σ с предупреждением» (mixed).
+export function containerHomogeneity(n) {
+  if (!n || n.type !== 'consumer-container' || !Array.isArray(n.slots)) {
+    return { homogeneous: true, count: 0, common: null, mismatches: [] };
+  }
+  const slots = n.slots.filter(Boolean);
+  if (!slots.length) return { homogeneous: true, count: 0, common: null, mismatches: [] };
+  const _slotParams = (s) => {
+    if (s.kind === 'linked' && s.nodeId) {
+      const a = state.nodes && state.nodes.get && state.nodes.get(s.nodeId);
+      if (!a) return null;
+      return {
+        demandKw: Number(a.demandKw) || 0,
+        cosPhi:   Number(a.cosPhi) || 0.95,
+        voltage:  Number(a.voltage) || 0,
+        phase:    a.phase || '3ph',
+        kUse:     a.kUse != null ? Number(a.kUse) : 1,
+      };
+    }
+    if (s.kind === 'placeholder') {
+      return {
+        demandKw: Number(s.demandKw) || 0,
+        cosPhi:   Number(s.cosPhi) || 0.95,
+        voltage:  Number(s.voltage) || 0,
+        phase:    s.phase || '3ph',
+        kUse:     s.kUse != null ? Number(s.kUse) : 1,
+      };
+    }
+    return null;
+  };
+  const params = slots.map(_slotParams).filter(Boolean);
+  if (!params.length) return { homogeneous: true, count: slots.length, common: null, mismatches: [] };
+  const common = params[0];
+  const mismatches = new Set();
+  const eq = (a, b, tol = 0) => {
+    if (typeof a === 'number' && typeof b === 'number') return Math.abs(a - b) <= tol * Math.max(1, Math.abs(a), Math.abs(b));
+    return a === b;
+  };
+  for (let i = 1; i < params.length; i++) {
+    const p = params[i];
+    if (!eq(p.demandKw, common.demandKw, 0.001)) mismatches.add('demandKw');
+    if (!eq(p.cosPhi, common.cosPhi, 0.001)) mismatches.add('cosPhi');
+    if (!eq(p.voltage, common.voltage, 0.001)) mismatches.add('voltage');
+    if (p.phase !== common.phase) mismatches.add('phase');
+    if (!eq(p.kUse, common.kUse, 0.001)) mismatches.add('kUse');
+  }
+  return {
+    homogeneous: mismatches.size === 0,
+    count: slots.length,
+    common,
+    mismatches: Array.from(mismatches),
+  };
+}
+
 // Количество приборов в группе — для individual берётся длина items.
 export function consumerCountEffective(n) {
   // v0.59.815: для consumer-container — длина slots[]
