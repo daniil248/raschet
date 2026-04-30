@@ -1081,8 +1081,9 @@ export function renderInspectorNode(n) {
       });
       h.push('</div>');
     }
-    h.push('<div style="display:flex;gap:6px;margin-top:8px">');
-    h.push('<button type="button" id="btn-add-placeholder" class="full-btn" style="padding:5px 10px;font-size:12px">➕ Placeholder-слот</button>');
+    h.push('<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">');
+    h.push('<button type="button" id="btn-add-placeholder" class="full-btn" style="flex:1;padding:5px 10px;font-size:12px">➕ Placeholder-слот</button>');
+    h.push('<button type="button" id="btn-container-to-consumer" class="full-btn" style="flex:1;padding:5px 10px;font-size:12px;background:#fff7ed;border:1px solid #fb923c;color:#9a3412" title="Свернуть контейнер в одиночный групповой потребитель count=N (как «10 лампочек × 50Вт»)">⇆ В группового потребителя</button>');
     h.push('</div>');
     h.push('</div>');
   }
@@ -1633,6 +1634,89 @@ function _wireContainerSlots(n) {
       notifyChange();
     });
   });
+  // v0.59.827 (Phase 9): convert container → uniform group consumer.
+  const convBtn = document.getElementById('btn-container-to-consumer');
+  if (convBtn) {
+    convBtn.addEventListener('click', async () => {
+      if (!Array.isArray(n.slots) || !n.slots.length) return;
+      // Собираем параметры: средний kW, cosPhi от первого linked-члена / placeholder
+      let totalKw = 0, count = n.slots.length;
+      let cosPhi = 0.95, phase = '3ph', voltage = 400, vIdx = 0, subtype = 'custom';
+      let firstSet = false;
+      for (const s of n.slots) {
+        if (!s) continue;
+        if (s.kind === 'linked' && s.nodeId) {
+          const a = state.nodes.get(s.nodeId);
+          if (a) {
+            totalKw += (Number(a.demandKw) || 0) * Math.max(1, Number(a.count) || 1);
+            if (!firstSet) {
+              cosPhi = Number(a.cosPhi) || cosPhi;
+              phase = a.phase || phase;
+              voltage = Number(a.voltage) || voltage;
+              vIdx = Number(a.voltageLevelIdx) || vIdx;
+              subtype = a.consumerSubtype || subtype;
+              firstSet = true;
+            }
+          }
+        } else if (s.kind === 'placeholder') {
+          totalKw += Number(s.demandKw) || 0;
+          if (!firstSet) {
+            cosPhi = Number(s.cosPhi) || cosPhi;
+            phase = s.phase || phase;
+            voltage = Number(s.voltage) || voltage;
+            vIdx = Number(s.voltageLevelIdx) || vIdx;
+            subtype = s.subtype || subtype;
+            firstSet = true;
+          }
+        }
+      }
+      const avgKw = count > 0 ? totalKw / count : 0;
+      // Подтверждение — destructive
+      const ok = await rsConfirm({
+        title: 'Преобразовать в группового потребителя?',
+        text: `Все ${count} слотов будут заменены одним consumer-узлом с count=${count}, demandKw=${avgKw.toFixed(2)} кВт. Индивидуальные tag/name членов будут потеряны. Линии (если есть) сохранятся.`,
+      });
+      if (!ok) return;
+      snapshot('container-to-consumer:' + n.id);
+      // Создаём одиночный consumer на месте контейнера
+      const newId = uid();
+      const newConsumer = {
+        id: newId, type: 'consumer', name: 'Групповой потребитель',
+        tag: nextFreeTag('consumer'),
+        x: Number(n.x) || 0, y: Number(n.y) || 0,
+        demandKw: avgKw, cosPhi, phase, voltage, voltageLevelIdx: vIdx,
+        consumerSubtype: subtype, kUse: 1,
+        inputs: Math.max(1, Number(n.inputs) || 1), outputs: 0,
+        count, priorities: [1, 2],
+        pageIds: Array.isArray(n.pageIds) ? n.pageIds.slice() : [],
+        positionsByPage: n.positionsByPage ? JSON.parse(JSON.stringify(n.positionsByPage)) : undefined,
+      };
+      state.nodes.set(newId, newConsumer);
+      // Re-route connections container.id → newId
+      for (const c of state.conns.values()) {
+        if (c.from && c.from.nodeId === n.id) c.from.nodeId = newId;
+        if (c.to   && c.to.nodeId   === n.id) c.to.nodeId   = newId;
+      }
+      if (state.sysConns) {
+        for (const sc of state.sysConns.values()) {
+          if (sc.fromNodeId === n.id) sc.fromNodeId = newId;
+          if (sc.toNodeId   === n.id) sc.toNodeId   = newId;
+        }
+      }
+      // Удаляем все linked-member узлы
+      for (const s of n.slots) {
+        if (s && s.kind === 'linked' && s.nodeId && state.nodes.has(s.nodeId)) {
+          try { _deleteNode(s.nodeId, { hard: true, silent: true, force: true }); } catch {}
+        }
+      }
+      // Удаляем сам контейнер
+      try { _deleteNode(n.id, { hard: true, silent: true, force: true }); } catch {}
+      selectNode(newId);
+      _render();
+      notifyChange();
+      try { flash(`Контейнер свёрнут в группового потребителя count=${count}`, 'success'); } catch {}
+    });
+  }
   // Add placeholder.
   const addBtn = document.getElementById('btn-add-placeholder');
   if (addBtn) {
