@@ -1,6 +1,6 @@
 # Raschet — Roadmap архитектурного развития платформы
 
-> **Статус:** v0.59.820 (2026-04-30). Фаза 1.27 — «Проекты» полностью закрыта (1.27.1–5: scs-design/schema/scs-config/inventory неймспейс + status filter + export). Фаза 1.28 — POR-registry, cross-discipline reconciliation закрыта (1.28.7/10–19); 1.28.20 (новый node-type `consumer-container` как организационная обёртка) — Phase 1 (foundation) + Phase 2 (render) сделаны. Фаза 19 (пресеты карточек) полностью закрыта (19.1–6 + v2 редактор с draggable-modal/zones/editable-labels/sample-preview). 1.24.18 (collapsible tables в scs-config) закрыто. Фаза 20 (Технолог ЦОД): базовый скелет + nav + catalog-picker + multi-variant compare + handoff в schematic + ПЗ, открыто 20.7 (план зала). Local/Online switcher. Центр помощи с 21 статьёй + кнопка ❓ в общей шапке.
+> **Статус:** v0.59.821 (2026-04-30). Фаза 1.27 — «Проекты» полностью закрыта (1.27.1–5: scs-design/schema/scs-config/inventory неймспейс + status filter + export). Фаза 1.28 — POR-registry, cross-discipline reconciliation закрыта (1.28.7/10–19); 1.28.20 (новый node-type `consumer-container` как организационная обёртка) — Phase 1 (foundation) + Phase 2 (render) сделаны. Фаза 19 (пресеты карточек) полностью закрыта (19.1–6 + v2 редактор с draggable-modal/zones/editable-labels/sample-preview). 1.24.18 (collapsible tables в scs-config) закрыто. Фаза 20 (Технолог ЦОД): базовый скелет + nav + catalog-picker + multi-variant compare + handoff в schematic + ПЗ, открыто 20.7 (план зала). Local/Online switcher. Центр помощи с 21 статьёй + кнопка ❓ в общей шапке.
 
 > **Правило ведения:** roadmap обновляется ПОСТОЯННО — при появлении новой фичи / задачи и при закрытии любого этапа. Hotfix'ы (regressions, мелкие правки UX) НЕ попадают в roadmap, только содержательная функциональность. Это правило зафиксировано пользователем 2026-04-29.
 
@@ -349,10 +349,12 @@ in-tab Map + cross-tab через storage event.
       placeholder.subtype). Если slots пустые — 'custom'.
     - effectiveTag/Name контейнера автоматически = младший tag/name
       среди linked-членов (placeholders без tag не участвуют)
-  - **Phase 5 dormant — Migration helper (закрыто v0.59.817):**
-    - serialization.js: `_migrateLegacyShellsToContainers()` готов, но
-      НЕ ВЫЗЫВАЕТСЯ. Включится после Phase 6 (recalc/registry поддержка
-      нового типа), иначе нагрузки сломаются на legacy-проектах.
+  - **Phase 5 — Migration ENABLED (закрыто v0.59.821):**
+    - serialization.js `_migrateLegacyShellsToContainers()` теперь
+      вызывается на каждый load. Legacy shell-aliases группы автоматически
+      становятся consumer-container со slots. Один-раз на проект.
+    - render.js registry: badge «↪ контейнер X» для членов контейнера
+      (через containerId), как и раньше для linkedAlias.
   - **Phase 4 stub — Inspector (закрыто v0.59.818):**
     - inspector.js: при выборе consumer-container показывает список
       слотов (linked-узлы с tag/name/kW + placeholder-строки). Полный

@@ -596,16 +596,22 @@ export function renderProjectRegistry() {
       // v0.59.768: linked-aliased узлы числятся размещёнными через группу
       // (не отдельно). Показываем «↪ в группе X» вместо «нигде».
       const _aliasParent = n.linkedAlias ? state.nodes.get(n.linkedAlias) : null;
+      // v0.59.821 (1.28.20): consumer внутри consumer-container получает
+      // тот же badge «↪ в контейнере X», что и legacy-alias. После миграции
+      // legacy linkedAlias очищен, используется containerId.
+      const _containerParent = (!_aliasParent && n.containerId) ? state.nodes.get(n.containerId) : null;
+      const _parent = _aliasParent || _containerParent;
       // v0.59.774: показываем effectiveTag группы (= первый экземпляр по
       // сортировке), а не raw n.tag. Юзер: «группа потребителей должна
       // иметь обозначение по обозначению первого экземпляра».
-      const _aliasParentTag = _aliasParent ? (effectiveTag(_aliasParent) || _aliasParent.tag || _aliasParent.id) : '';
-      const placement = _aliasParent
-        ? `<span class="pal-reg-badge pal-reg-badge-pages" title="Связан с группой ${esc(_aliasParentTag)} (учтён там)" style="background:#dbeafe;color:#1e40af">↪ ${esc(_aliasParentTag || 'группа')}</span>`
+      const _parentTag = _parent ? (effectiveTag(_parent) || _parent.tag || _parent.id) : '';
+      const _parentLabel = _containerParent ? 'контейнер' : 'группа';
+      const placement = _parent
+        ? `<span class="pal-reg-badge pal-reg-badge-pages" title="В составе ${_parentLabel}а ${esc(_parentTag)} (учтён там)" style="background:#dbeafe;color:#1e40af">↪ ${esc(_parentTag || _parentLabel)}</span>`
         : (pids.length === 0
           ? '<span class="pal-reg-badge pal-reg-badge-none" title="Не размещён ни на одной странице">нигде</span>'
           : `<span class="pal-reg-badge pal-reg-badge-pages" title="Размещён на ${pids.length} стр.">${pids.length}</span>`);
-      const placeBtn = (onPage || _aliasParent)
+      const placeBtn = (onPage || _parent)
         ? ''
         : `<button type="button" class="pal-reg-place" data-place-id="${esc(n.id)}" title="Добавить на текущую страницу">＋</button>`;
       const connCount = _nodeConnCount(n.id);
@@ -623,7 +629,7 @@ export function renderProjectRegistry() {
       // экземпляр перетащить еще раз, так не пойдет». Перетаскивание
       // блокируется и в render-разметке (draggable=false) и в interaction.js
       // dragstart (preventDefault) — двойной guard.
-      const _isAliased = !!_aliasParent;
+      const _isAliased = !!_parent;
       return `<div class="pal-reg-item" draggable="${_isAliased ? 'false' : 'true'}" data-reg-id="${esc(n.id)}" ${_isAliased ? 'data-linked-alias="1"' : ''} title="${_isAliased ? 'Связан с группой — снимите связь чтобы перетащить' : 'Клик — открыть свойства, Ctrl+клик — центрировать на схеме, drag — разместить на текущей странице'}" style="${_isAliased ? 'opacity:0.7;cursor:not-allowed' : ''}">
         <span class="pal-unplaced-icon">${_unplacedTypeIcon(n)}</span>
         <span class="pal-unplaced-tag">${esc(tag)}</span>

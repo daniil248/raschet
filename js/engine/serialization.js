@@ -256,10 +256,12 @@ export function deserialize(data) {
     }
     state.conns.set(c.id, c);
   }
-  // v0.59.817: миграция legacy shell-групп подготовлена, но НЕ активна —
-  // recalc.js пока не умеет раскрывать contaner.slots (Phase 6 не сделан).
-  // Включить вызов после расширения recalc/registries на 'consumer-container'.
-  // _migrateLegacyShellsToContainers();
+  // v0.59.821 (1.28.20 Phase 5 ENABLED): миграция legacy shell-групп
+  // активна. Phase 6 baseline (v0.59.819) поддерживает раскрытие slots[]
+  // в collectDownstreamConsumers/simpleDownstream/UPS-aggregation —
+  // достаточно для корректного подбора панели/ИБП. Per-line breaker/cable
+  // derivation для container-членов — extended Phase 6, следующий коммит.
+  _migrateLegacyShellsToContainers();
   state.modes = data.modes || [];
   state.activeModeId = data.activeModeId || null;
   setIdSeq(Math.max(data.nextId || 1, 1));
