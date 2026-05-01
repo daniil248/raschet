@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.903', date: '2026-04-30', items: [
+      '🎨 <b>Унификация оформления модулей</b>. По репорту: «у новых модулей нет однотипно как для всех модулей футера, оформление должно быть одинаковым; и почему раздел проекты в темных тонах».',
+      '• <b>Footer</b> подключён в <code>meteo/</code> и <code>tech-workspace/</code> — стандартный <code>shared/module-footer.js</code> с APP_VERSION + changelog (как в cable, battery, mdc-config и других модулях).',
+      '• <b>Projects: переход с тёмной темы на светлую</b>. До v0.59.903 <code>projects.css</code> использовал #141922 background и тёмные кнопки — выбивалось из общего стиля платформы. Переписано на светлую тему с теми же цветовыми токенами что у остальных модулей (#fff фон, #4f46e5 accent, #e5e7eb borders).',
+      'Файлы: <code>meteo/index.html</code> (mountModuleFooter), <code>tech-workspace/index.html</code> (mountModuleFooter), <code>projects/projects.css</code> (полный rewrite на светлую тему).',
+    ] },
     { version: '0.59.902', date: '2026-04-30', items: [
       '🚨 <b>Hotfix: графики растут в высоту бесконечно</b>. Известный Chart.js bug — <code>responsive:true; maintainAspectRatio:false</code> без явной высоты у родителя → ResizeObserver loop, canvas каждый tick прибавляет высоту.',
       '• Fix: каждый Chart.js canvas обёрнут в <code>.mt-chart-box { height: 280px }</code> (фиксированная высота), canvas внутри — <code>width:100%!important; height:100%!important</code>.',
