@@ -198,7 +198,9 @@ body.psy-dragging *::after {
 .psy-proc-edit-modal {
   background: #fff;
   border-radius: 6px;
-  width: min(380px, 96vw);
+  /* v0.59.953: ширина 460px чтобы computed-блок и type-specific
+     поля не наезжали и сохранялась читаемость на desktop. */
+  width: min(460px, 96vw);
   max-height: 92vh;
   overflow-y: auto;
   box-shadow: 0 4px 24px rgba(0,0,0,0.2);

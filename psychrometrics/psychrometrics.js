@@ -702,6 +702,7 @@ function openProcessEditor(procIdx) {
       </div>
       <div class="psy-proc-edit-body" id="psy-proc-edit-body"></div>
       <div class="psy-proc-edit-actions">
+        <button type="button" class="psy-wiz-btn psy-proc-edit-wizard" title="Открыть мастер процесса с пресетами оборудования">🧙 Через мастер</button>
         <button type="button" class="psy-wiz-btn psy-proc-edit-ok psy-wiz-primary">Готово</button>
       </div>
     </div>`;
@@ -713,6 +714,21 @@ function openProcessEditor(procIdx) {
   // v0.59.951: триггерим update() чтобы computed-блок (Δ состояний,
   // Q/qw) сразу заполнился актуальными значениями для новой DOM-карточки.
   try { update(); } catch {}
+  // v0.59.953: «🧙 Через мастер» — закрывает модалку и открывает
+  // wizard step 2 для текущего типа. По репорту: «при открытии
+  // карточки процесса внутри можно запустить мастер процесса и
+  // изменить данные через мастер». Применённые в wizard поля
+  // создают новый процесс (старый можно удалить если нужно), либо
+  // если type совпадает и это R/M — настройки можно скопировать.
+  overlay.querySelector('.psy-proc-edit-wizard').addEventListener('click', () => {
+    overlay.remove();
+    rerenderCycle();
+    if (pr.type && pr.type !== 'none') {
+      try { openWizardStep2(pr.type); } catch (e) { console.error('[wizardStep2]', e); }
+    } else {
+      try { openProcessWizard(); } catch (e) { console.error('[wizard]', e); }
+    }
+  });
   const close = () => {
     overlay.remove();
     rerenderCycle();  // диаграмма + sidebar обновляются
@@ -891,6 +907,13 @@ function procArrow(pr, i) {
       <button type="button" title="Удалить связь" data-act="del-edge" data-i="${i}"
               style="background:transparent;border:0;color:#c62828;cursor:pointer;font-size:14px;padding:0 4px;">✕</button>
     </div>
+    <!-- v0.59.953: Δ-блок ПЕРЕНЕСЁН в начало карточки — сразу видно
+         текущие Q/qw/ΔT при открытии. Раньше был внизу — пришлось
+         бы скроллить. -->
+    <div data-role="proc-computed" style="margin-bottom:4px;padding:5px 7px;background:#f0f4f8;border:1px solid #d4d9e0;border-radius:3px;font-size:10px;line-height:1.5;color:#37474f;display:none">
+      <div data-role="proc-computed-row" style="font-weight:600;color:#263238;margin-bottom:2px">📊 Δ состояний и нагрузка:</div>
+      <div data-role="proc-computed-deltas">—</div>
+    </div>
     <label style="font-size:10px;color:#455a64"><span>от узла</span>
       <select data-col="fromIdx" data-i="${i}">${nodeOpts(fromI)}</select>
     </label>
@@ -922,14 +945,6 @@ function procArrow(pr, i) {
     ${pr.type === 'M' ? mixControls(pr, i) : ''}
     ${pr.type === 'R' ? recupControls(pr, i) : ''}
     ${pr.type === 'C' ? coolControls(pr, i) : ''}
-    <!-- v0.59.951: блок computed-параметров — расчётная Δ-разница состояний.
-         По репорту: «в карточке процесса нужно сразу отображать расчетные
-         параметры если пользователь изменил значения в точке». Обновляется
-         в refreshProcCardComputed() после каждого update(). -->
-    <div data-role="proc-computed" style="margin-top:6px;padding:5px 7px;background:#f0f4f8;border:1px solid #d4d9e0;border-radius:3px;font-size:10px;line-height:1.5;color:#37474f;display:none">
-      <div data-role="proc-computed-row" style="font-weight:600;color:#263238;margin-bottom:2px">📊 Δ состояний и нагрузка:</div>
-      <div data-role="proc-computed-deltas">—</div>
-    </div>
     <div data-role="proc-warn" style="display:none;margin-top:6px;padding:4px 6px;background:#fff3e0;border:1px solid #ffb74d;border-radius:3px;font-size:10px;line-height:1.3;color:#bf360c;"></div>
   `;
   return el;
