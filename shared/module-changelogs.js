@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.926', date: '2026-04-30', items: [
+      '📁 <b>Named cycles теперь сохраняют canvas view (zoom/pan)</b>. При сохранении цикла под именем (v0.59.921) snapshot включает <code>canvasView { tx, ty, scale }</code>. При загрузке восстанавливается точно такой же ракурс — пользователь видит сцену так же как сохранил.',
+      '• Если у сохранённого цикла нет canvasView (старые) — fallback на auto-fit.',
+      '• Toast говорит «(восстановлен view)» когда применилась сохранённая раскладка.',
+      'Файл: <code>psychrometrics/psychrometrics.js</code>.',
+    ] },
     { version: '0.59.925', date: '2026-04-30', items: [
       '🟩 <b>Comfort zone toggle + ⚠ warning icons на связях</b>:',
       '• Checkbox «🟩 ASHRAE 55 comfort zone» в верхних настройках диаграммы. Default ON, persists в LS (<code>psy.showComfortZone</code>). Click — мгновенно показывает/скрывает зелёный polygon.',

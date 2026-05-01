@@ -2592,12 +2592,15 @@ function wire() {
       if (v === '__save__') {
         const name = await psyPrompt('Название цикла', 'Например: Лето расч., Зима расч., Расчётный режим');
         if (!name) return;
+        // v0.59.926: сохраняем также canvasView (zoom/pan) — при загрузке
+        // восстанавливаем точно такой же ракурс canvas.
         cycles[name.trim()] = JSON.parse(JSON.stringify({
           points: S.points, procs: S.procs, zones: S.zones,
+          canvasView: S.canvasView || null,
         }));
         saveNamedCycles(cycles);
         refreshNamedCyclesList();
-        psyToast(`💾 Сохранён цикл «${name}»`, 'ok');
+        psyToast(`💾 Сохранён цикл «${name}» (с view)`, 'ok');
       } else if (v === '__manage__') {
         const names = Object.keys(cycles);
         if (!names.length) { psyToast('Нет сохранённых циклов.', 'info'); return; }
@@ -2615,8 +2618,25 @@ function wire() {
         S.procs = JSON.parse(JSON.stringify(snap.procs || []));
         S.zones = JSON.parse(JSON.stringify(snap.zones || []));
         rerenderCycle();
-        setTimeout(() => fitCanvas(), 100);
-        psyToast(`📁 Загружен цикл «${v}»`, 'ok');
+        // v0.59.926: восстановить сохранённый canvas view, либо auto-fit
+        if (snap.canvasView && Number.isFinite(snap.canvasView.scale)) {
+          S.canvasView = JSON.parse(JSON.stringify(snap.canvasView));
+          // Применить view вручную (apply() в замыкании wireInfiniteCanvas — недоступна здесь)
+          const canvas = document.getElementById('psy-canvas');
+          const inner = document.getElementById('psy-canvas-inner');
+          if (canvas && inner) {
+            const cv = S.canvasView;
+            inner.style.transform = `translate3d(${cv.tx}px, ${cv.ty}px, 0) scale(${cv.scale})`;
+            const lab = document.getElementById('psy-canvas-zoom');
+            if (lab) lab.textContent = Math.round(cv.scale * 100) + '%';
+            const gridSize = 20 * cv.scale;
+            canvas.style.backgroundSize = `${gridSize}px ${gridSize}px`;
+            canvas.style.backgroundPosition = `${cv.tx}px ${cv.ty}px`;
+          }
+        } else {
+          setTimeout(() => fitCanvas(), 100);
+        }
+        psyToast(`📁 Загружен цикл «${v}»${snap.canvasView ? ' (восстановлен view)' : ''}`, 'ok');
       }
     });
   }
