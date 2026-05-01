@@ -110,9 +110,17 @@
           <input type="checkbox" id="psy-ru-names" style="margin:0;">
           <span>Русские названия параметров</span>
         </label>
-        <label class="psy-field psy-inline" style="flex-direction:row;gap:6px;align-items:center;" title="Показать на i-d диаграмме зону теплового комфорта по ASHRAE 55-2017 (23–26°C × 30–60% RH).">
-          <input type="checkbox" id="psy-comfort-zone" style="margin:0;" checked>
-          <span>🟩 ASHRAE 55 comfort zone</span>
+        <label class="psy-field psy-inline" style="flex-direction:row;gap:6px;align-items:center;" title="Показать на i-d диаграмме зону: офисный комфорт (ASHRAE 55) или ЦОД-классы по ASHRAE TC 9.9 (Recommended / A1 / A2 / A3 / A4).">
+          <span>🟩 Зона:</span>
+          <select id="psy-comfort-zone-select" style="font-size:11px;padding:2px 4px">
+            <option value="">— нет —</option>
+            <option value="ashrae55">ASHRAE 55 (комфорт офис)</option>
+            <option value="tc99-rec" selected>TC 9.9 Recommended (ЦОД)</option>
+            <option value="tc99-a1">TC 9.9 A1 (стандартное IT)</option>
+            <option value="tc99-a2">TC 9.9 A2 (IT с расш. диапазоном)</option>
+            <option value="tc99-a3">TC 9.9 A3 (volume servers)</option>
+            <option value="tc99-a4">TC 9.9 A4 (макс. диапазон)</option>
+          </select>
         </label>
       </div>
     </div>

@@ -1408,21 +1408,32 @@ function escHtml(s) {
    Диаграмма
    ======================================================================== */
 
-// v0.59.922: ASHRAE 55-2017 thermal comfort polygon в координатах диаграммы.
-// Упрощённая модель: 4 угла прямоугольника 23–26°C × 30–60% RH.
-// (Точная зона требует расчёта PMV/PPD для каждой T+W; здесь box approximation.)
-function computeComfortZonePolygon(P, X, Y) {
-  // 4 угла: (Tmin,RHmin) → (Tmax,RHmin) → (Tmax,RHmax) → (Tmin,RHmax)
-  const Tmin = 23, Tmax = 26, RHmin = 0.30, RHmax = 0.60;
+// v0.59.929: каталог зон для overlay на i-d диаграмме.
+//   ASHRAE 55-2017 — комфорт-зона офиса (T × RH bounds)
+//   ASHRAE TC 9.9 (2021) — ЦОД-классы Recommended / A1 / A2 / A3 / A4
+//     (упрощённые прямоугольники T × RH; в реальности есть max DP corner — но
+//     для визуального ориентира box достаточен.)
+const COMFORT_ZONES = {
+  'ashrae55':  { Tmin: 23, Tmax: 26, RHmin: 0.30, RHmax: 0.60, label: 'ASHRAE 55', stroke: '#16a34a', fill: 'rgba(22,163,74,0.12)' },
+  'tc99-rec':  { Tmin: 18, Tmax: 27, RHmin: 0.30, RHmax: 0.60, label: 'TC 9.9 Recommended', stroke: '#15803d', fill: 'rgba(22,163,74,0.12)' },
+  'tc99-a1':   { Tmin: 15, Tmax: 32, RHmin: 0.20, RHmax: 0.80, label: 'TC 9.9 A1',  stroke: '#1e40af', fill: 'rgba(59,130,246,0.10)' },
+  'tc99-a2':   { Tmin: 10, Tmax: 35, RHmin: 0.20, RHmax: 0.80, label: 'TC 9.9 A2',  stroke: '#7c3aed', fill: 'rgba(124,58,237,0.10)' },
+  'tc99-a3':   { Tmin:  5, Tmax: 40, RHmin: 0.08, RHmax: 0.85, label: 'TC 9.9 A3',  stroke: '#b45309', fill: 'rgba(180,83,9,0.10)' },
+  'tc99-a4':   { Tmin:  5, Tmax: 45, RHmin: 0.08, RHmax: 0.90, label: 'TC 9.9 A4',  stroke: '#b91c1c', fill: 'rgba(185,28,28,0.10)' },
+};
+
+function computeComfortZonePolygon(P, X, Y, zoneId) {
+  const z = COMFORT_ZONES[zoneId];
+  if (!z) return null;
   const corners = [
-    [Tmin, RHmin], [Tmax, RHmin], [Tmax, RHmax], [Tmin, RHmax],
+    [z.Tmin, z.RHmin], [z.Tmax, z.RHmin], [z.Tmax, z.RHmax], [z.Tmin, z.RHmax],
   ];
   try {
     const pts = corners.map(([T, RH]) => {
       const W = humidityRatio(T, RH, P);
       return `${X(W).toFixed(1)},${Y(T).toFixed(1)}`;
     });
-    return pts.join(' ');
+    return { points: pts.join(' '), zone: z };
   } catch { return null; }
 }
 
@@ -1442,15 +1453,19 @@ function renderChart(sts) {
   _chartCtx = { X, Y, opts };
   let overlay = arrowDefs();
 
-  // v0.59.922: ASHRAE 55-2017 comfort zone overlay (для офисов, IT-залов).
-  // Зелёная полупрозрачная зона 23–26°C × 30–60% RH (упрощённая прямоугольная).
-  // Включается через S.showComfortZone (default true).
-  if (S.showComfortZone !== false) {
-    const cz = computeComfortZonePolygon(S.P, X, Y);
+  // v0.59.929: zone overlay (ASHRAE 55 или TC 9.9 A1-A4 / Recommended).
+  // S.comfortZoneId — ключ из COMFORT_ZONES; пустой → ничего не рисуем.
+  const zoneId = S.comfortZoneId || (S.showComfortZone !== false ? 'tc99-rec' : '');
+  if (zoneId) {
+    const cz = computeComfortZonePolygon(S.P, X, Y, zoneId);
     if (cz) {
+      const z = cz.zone;
+      // Подпись посередине по T_max (на правой границе зоны)
+      const labelX = X(humidityRatio(z.Tmax, z.RHmax, S.P)) + 6;
+      const labelY = Y(z.Tmax) - 4;
       overlay += `<g class="psy-comfort-zone" pointer-events="none">
-        <polygon points="${cz}" fill="rgba(22,163,74,0.12)" stroke="#16a34a" stroke-width="0.8" stroke-dasharray="4,3"/>
-        <text x="${(X(0.008) + X(0.011)) / 2}" y="${Y(28)}" text-anchor="middle" font-size="9" fill="#15803d" font-weight="600">ASHRAE 55 comfort</text>
+        <polygon points="${cz.points}" fill="${z.fill}" stroke="${z.stroke}" stroke-width="1" stroke-dasharray="5,3"/>
+        <text x="${labelX}" y="${labelY}" font-size="10" fill="${z.stroke}" font-weight="700">${escAttr(z.label)}</text>
       </g>`;
     }
   }
@@ -1673,8 +1688,33 @@ function drawProcessPath(ctx, a, b, type, color) {
     // Смешение: прямая от a к b (линия смеси — отрезок на плоскости)
     pts.push([X(b.W), Y(b.T)]);
   } else if (type === 'R') {
-    // Рекуператор: d=const (W=const), по вертикали до b.T
-    pts.push([X(a.W), Y(b.T)]);
+    // v0.59.929 fix: рекуператор не может пересекать кривую насыщения 100% RH.
+    // Когда t падает ниже точки росы, образуется конденсат — путь идёт по
+    // линии насыщения. Раньше рисовали прямо до b.T при d=const — невозможно.
+    if (b.T < a.Td - 0.05 && b.W < a.W - 1e-6) {
+      // Cool along d=const до dewpoint, потом по линии насыщения до конечного W
+      const Tdew = a.Td;
+      pts.push([X(a.W), Y(Tdew)]);
+      const steps = 10;
+      for (let k = 1; k <= steps; k++) {
+        const T = Tdew + (b.T - Tdew) * (k / steps);
+        const W = humidityRatio(T, 1.0, a.P);
+        pts.push([X(W), Y(T)]);
+      }
+    } else if (b.T < a.Td - 0.05) {
+      // Если b.W не меньше a.W — clamp по линии насыщения
+      const Tdew = a.Td;
+      pts.push([X(a.W), Y(Tdew)]);
+      const steps = 10;
+      for (let k = 1; k <= steps; k++) {
+        const T = Tdew + (b.T - Tdew) * (k / steps);
+        const W = Math.min(b.W || a.W, humidityRatio(T, 1.0, a.P));
+        pts.push([X(W), Y(T)]);
+      }
+    } else {
+      // Сенсибельный режим (без конденсата) — по d=const до b.T
+      pts.push([X(a.W), Y(b.T)]);
+    }
   } else if (type === 'C') {
     // охлаждение с осушением: если dW < 0 — сначала по W=const до tр, затем по φ=100%
     if (b.W < a.W - 1e-6) {
@@ -2157,19 +2197,17 @@ function wire() {
     });
   }
 
-  // v0.59.925: переключатель ASHRAE 55 comfort zone
-  const czCb = $('psy-comfort-zone');
-  if (czCb) {
-    // Read saved preference (default: true)
+  // v0.59.929: select зоны на i-d (ASHRAE 55 / TC 9.9 A1-A4 / Recommended)
+  const czSel = $('psy-comfort-zone-select');
+  if (czSel) {
     try {
-      const saved = localStorage.getItem('psy.showComfortZone');
-      if (saved === '0') S.showComfortZone = false;
-      else S.showComfortZone = true;
-    } catch { S.showComfortZone = true; }
-    czCb.checked = S.showComfortZone !== false;
-    czCb.addEventListener('change', () => {
-      S.showComfortZone = czCb.checked;
-      try { localStorage.setItem('psy.showComfortZone', S.showComfortZone ? '1' : '0'); } catch {}
+      const saved = localStorage.getItem('psy.comfortZoneId');
+      S.comfortZoneId = saved != null ? saved : 'tc99-rec';  // default — Recommended для ЦОД
+    } catch { S.comfortZoneId = 'tc99-rec'; }
+    czSel.value = S.comfortZoneId || '';
+    czSel.addEventListener('change', () => {
+      S.comfortZoneId = czSel.value;
+      try { localStorage.setItem('psy.comfortZoneId', S.comfortZoneId); } catch {}
       rerenderCycle();
     });
   }
