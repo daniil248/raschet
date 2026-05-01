@@ -519,6 +519,15 @@ function renderCanvasLinks() {
       <circle r="10" fill="#fff" stroke="${color}" stroke-width="1.5"/>
       <text y="3.5" text-anchor="middle" font-size="11" font-weight="700" fill="${color}">${pr.type||'X'}</text>
     </g>`;
+    // v0.59.949: имя процесса под бейджем (если задано). По репорту:
+    // «в демо-цикле ЦОД не нашел нагрева от стоек» — explicit name
+    // делает IT-нагрузку и др. явно видимыми.
+    const labelName = pr.name || PROC_SHORT_NAME_GLOBAL[pr.type] || '';
+    if (labelName) {
+      out += `<text x="${bx}" y="${by + 24}" text-anchor="middle"
+              font-size="11" fill="${color}" font-weight="600"
+              paint-order="stroke" stroke="#fff" stroke-width="3">${escAttr(labelName)}</text>`;
+    }
     // v0.59.925: ⚠ icon если есть feasibility-warning (proc._wizWarn)
     if (pr._wizWarn) {
       out += `<g transform="translate(${bx + 14},${by - 10})">
@@ -2311,11 +2320,11 @@ const DEMOS = {
       ];
       S.procs = [
         // R-приток: 0 → 1 (теплообмен с вытяжкой ref=3, η=0.65)
-        { type:'R', Q:'', qw:'', fromIdx: 0, toIdx: 1, recupWith: '3', recupEff: '0.65', recupMode: 'sensible' },
+        { type:'R', name:'♻ Рекуп. (приток)', Q:'', qw:'', fromIdx: 0, toIdx: 1, recupWith: '3', recupEff: '0.65', recupMode: 'sensible' },
         // P-калорифер: догревает приток с T(после рекуп.) до +22°C
-        { type:'P', Q:'', qw:'', fromIdx: 1, toIdx: 2 },
+        { type:'P', name:'🔥 Калорифер', Q:'', qw:'', fromIdx: 1, toIdx: 2 },
         // R-вытяжка: 3 → 4 (отдаёт тепло притоку, ref=0)
-        { type:'R', Q:'', qw:'', fromIdx: 3, toIdx: 4, recupWith: '0', recupEff: '0.65', recupMode: 'sensible' },
+        { type:'R', name:'♻ Рекуп. (вытяжка)', Q:'', qw:'', fromIdx: 3, toIdx: 4, recupWith: '0', recupEff: '0.65', recupMode: 'sensible' },
       ];
     }
   },
@@ -2363,25 +2372,24 @@ const DEMOS = {
       ];
       S.procs = [
         // 0→1 R: рекуператор, приточная сторона греется от вытяжной (ref=6).
-        //         η=0.6 — стандартная эффективность пластинчатого рекупа.
-        { type:'R', Q:'', qw:'', fromIdx:0, toIdx:1, recupWith:'6', recupEff:'0.6' },
+        { type:'R', name:'♻ Рекуп. (приток)', Q:'', qw:'', fromIdx:0, toIdx:1, recupWith:'6', recupEff:'0.6' },
         // 1→2 P: догревный калорифер (водяной/электрический). До +18 °C.
-        { type:'P', Q:'', qw:'', fromIdx:1, toIdx:2 },
+        { type:'P', name:'🔥 Догревный калорифер', Q:'', qw:'', fromIdx:1, toIdx:2 },
         // 2→3 M: смешение «догретая свежая + рециркуляция из хол. коридора».
         //         α=0.006 = 300/(300+49700) — доля свежего по массе.
-        { type:'M', Q:'', qw:'', fromIdx:2, toIdx:3, mixWith:'5', mixRatio:'0.006' },
-        // 3→4 X: машзал как чёрный ящик. IT ≈ 200 кВт сенсибельно + люди.
-        //         Тип X (произвольный): t/φ на выходе задан анкером в узле 5.
-        { type:'X', Q:'', qw:'', fromIdx:3, toIdx:4 },
+        { type:'M', name:'🔀 Смешение свеж/рецирк', Q:'', qw:'', fromIdx:2, toIdx:3, mixWith:'5', mixRatio:'0.006' },
+        // 3→4 X: машзал — НАГРЕВ ОТ СТОЕК (IT-нагрузка). По репорту
+        // пользователя: «в демо-цикле ЦОД не нашел нагрева от стоек» —
+        // теперь процесс имеет явное имя «🖥 IT-нагрузка от стоек».
+        // Q вычисляется cascade-ом из point 3 (приток) vs point 4 (горячий
+        // коридор +35°C) — типично ~200 кВт.
+        { type:'X', name:'🖥 IT-нагрузка от стоек ≈200 кВт', Q:'', qw:'', fromIdx:3, toIdx:4 },
         // 4→5 C: CRAC (прецизионный кондиционер). Охлаждение + осушение.
-        //         d₂<d₁ → конденсат показывается синей плашкой автоматически.
-        { type:'C', Q:'', qw:'', fromIdx:4, toIdx:5 },
+        { type:'C', name:'❄ CRAC (прец. охладитель)', Q:'', qw:'', fromIdx:4, toIdx:5 },
         // 5→6 X: тап вытяжки из хол. коридора (d и t как у узла 5).
-        { type:'X', Q:'', qw:'', fromIdx:5, toIdx:6 },
-        // 6→7 R: рекуператор, вытяжная сторона отдаёт тепло (ref=1 —
-        //         температура приточки после рекупа даёт «низкую» точку
-        //         для теплообмена с приточной сторон узла 0→1).
-        { type:'R', Q:'', qw:'', fromIdx:6, toIdx:7, recupWith:'1', recupEff:'0.6' },
+        { type:'X', name:'⤴ Тап вытяжки', Q:'', qw:'', fromIdx:5, toIdx:6 },
+        // 6→7 R: рекуператор, вытяжная сторона отдаёт тепло (ref=1).
+        { type:'R', name:'♻ Рекуп. (вытяжка)', Q:'', qw:'', fromIdx:6, toIdx:7, recupWith:'1', recupEff:'0.6' },
       ];
       // Зоны-подложки: улица / вент. камера приток / машзал / вытяжка.
       S.zones = [
