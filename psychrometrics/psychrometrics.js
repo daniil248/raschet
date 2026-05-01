@@ -655,28 +655,27 @@ function wireGraphHost(hostOrId) {
     if (col && ['V','name','t','rh','x','h','Q','qw'].includes(col)) {
       e.target.dataset.user = '1';
       e.target.dataset.ts = String(performance.now());
-      // v0.59.957: при изменении одного из «парного» поля сбрасываем
-      // user-флаг конфликтующих, чтобы pointState не запоминал устаревшее
-      // значение. По репорту: «почему связанные параметры не пересчитываются
-      // автоматический????».
-      // Логика: pointState приоритезирует d > h > φ. Если user изменяет φ,
-      // но x/h помечены user — pointState использует old x → новый φ
-      // игнорируется. Поэтому:
-      //   • t или rh типит → x/h становятся auto (cleared user-flag)
-      //   • x или h типит → rh становится auto (производное от t+d или t+h)
+      // v0.59.960: для точки можно задать ТОЛЬКО 2 из {t, φ, d, h} (P фиксирован).
+      // По репорту: «почему я могу изменять энтальпию третьим параметром?
+      // разве это возможно?». Если становится 3+ user-flagged — освобождаем
+      // самый СТАРЫЙ user-input (LRU), кроме только что введённого.
       const card = e.target.closest('.psy-point');
-      if (card) {
-        const clearList =
-          col === 't' || col === 'rh' ? ['x', 'h'] :
-          col === 'x' || col === 'h'  ? ['rh']     :
-          [];
-        clearList.forEach(f => {
-          const fInp = card.querySelector(`[data-col="${f}"]`);
-          if (fInp && fInp !== e.target) {
-            fInp.dataset.user = '';
-            fInp.dataset.ts = '0';
-          }
-        });
+      if (card && ['t','rh','x','h'].includes(col)) {
+        const others = ['t','rh','x','h'].filter(f => f !== col);
+        const userOthers = others
+          .map(f => {
+            const inp = card.querySelector(`[data-col="${f}"]`);
+            if (!inp || inp.dataset.user !== '1') return null;
+            return { field: f, inp, ts: Number(inp.dataset.ts) || 0 };
+          })
+          .filter(Boolean);
+        // Если уже 2+ user-flagged (кроме нового col) — clear oldest
+        while (userOthers.length >= 2) {
+          userOthers.sort((a, b) => a.ts - b.ts);  // oldest first
+          const oldest = userOthers.shift();
+          oldest.inp.dataset.user = '';
+          oldest.inp.dataset.ts = '0';
+        }
       }
     }
     update();

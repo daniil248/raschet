@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.960', date: '2026-05-01', items: [
+      '🔢 <b>Spinner-стрелки на number-полях видны всегда</b>. По репорту: «добавь в поля стрелки увеличения уменьшения мышью». Раньше браузерный <code>::-webkit-inner-spin-button</code> показывался только на hover/focus — теперь <code>opacity:1</code> + <code>cursor:pointer</code> делают стрелки кликабельными мышью с первого взгляда. Применено к точкам, процессам, top-row полям.',
+      '🔒 <b>Точка: только 2 из {t, φ, d, h} могут быть user-input</b>. По репорту: «почему я могу изменять энтальпию третьим параметром? разве это возможно?» — физически нет, при фиксированном P только 2 независимых.',
+      '• Раньше: пользователь мог пометить user-флагом 3-4 поля одновременно — pointState приоритезировал d>h>φ, остальные игнорировались, что давало stale state.',
+      '• Fix: при вводе нового поля проверяем кол-во user-flagged. Если 2+ других user — освобождаем самый СТАРЫЙ (LRU по timestamp), кроме только что введённого. Гарантировано ≤2 одновременно user.',
+      '• Сценарий: набираем t=25, потом d=8.22, потом h=51 → t→user, d→user (rh=auto), h→user (clears OLDEST из {t,d}=t) → итого {d, h} user, t auto. Pointer на свежие 2 значения.',
+      'Файлы: <code>psychrometrics/psychrometrics.css</code> (spinner opacity), <code>psychrometrics/psychrometrics.js</code> (wireGraphHost LRU-clear).',
+    ] },
     { version: '0.59.959', date: '2026-05-01', items: [
       '🚧 <b>Critical: зоны на холсте можно перетаскивать и изменять размер</b>. По репорту: «зоны на холсте не перемещаются и не изменяют размер вручную перетаскиванием, это делает их бесполезными».',
       '• Раньше: <code>.psy-cycle</code> — wrapper 100×100% над <code>.psy-canvas-zones</code> (z=0) — имел <code>pointer-events: auto</code> (default). Без видимого фона он intercept-ил ВСЕ клики до того, как они достигали zone-слоя. Зоны были полностью некликабельны.',

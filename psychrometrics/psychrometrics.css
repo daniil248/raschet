@@ -28,6 +28,18 @@
  * v0.59.912: grid background теперь на самом viewport с динамическим
  *  background-position/size — следует за pan/zoom, выглядит бесконечным.
  */
+/* v0.59.960: spinner-стрелки на number-полях видны всегда (по умолчанию
+   только на hover/focus). По репорту: «добавь в поля стрелки увеличения
+   уменьшения мышью». */
+.psy-point input[type="number"]::-webkit-inner-spin-button,
+.psy-proc-arrow input[type="number"]::-webkit-inner-spin-button,
+.psy-top-row input[type="number"]::-webkit-inner-spin-button,
+.psy-panel-title input[type="number"]::-webkit-inner-spin-button {
+  opacity: 1;
+  cursor: pointer;
+  height: 26px;
+}
+
 /* v0.59.950: глобальное отключение выделения текста во время drag-операций.
    По репорту: «очень часто при перетаскивании выделяется текст».
    Активируется JS-кодом через body.classList.add('psy-dragging') в
