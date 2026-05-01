@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.954', date: '2026-05-01', items: [
+      '🐛 <b>Bug-fix: мастер не заполнял конечную точку при заданном target</b>. По репорту: «мастер не заполняет конечную точку, хотя она была задана».',
+      '• Раньше: <code>applyWizard</code> устанавливал <code>proc.tgt = \'t2\'</code> и <code>proc.tgtVal = \'20\'</code>, но cascade читает target из <code>p.tUser</code>/<code>p.rhUser</code>/<code>p.xUser</code>/<code>p.hUser</code> на ТОЧКЕ или <code>proc.Qs</code>/<code>proc.qws</code> на ПРОЦЕССЕ — поля <code>tgt</code>/<code>tgtVal</code> игнорировались. Целевая точка оставалась пустой (t/φ — auto-«—»).',
+      '• Fix: для всех target (t2/phi2/d2/dt/dd/h2) применяется <code>p.tUser=true</code> с записью значения в соответствующее поле точки. Для dt/dd выполняется конверсия в абсолютное (t_in + Δt; W_in + Δd) — cascade сразу видит target.',
+      '• Q/qw уже работали через <code>proc.Qs</code>/<code>proc.qws</code> — без изменений.',
+      'Файл: <code>psychrometrics/psychrometrics.js</code> (applyWizard newPoint target fields).',
+    ] },
     { version: '0.59.953', date: '2026-05-01', items: [
       '📊 <b>Δ-блок наверху карточки процесса (а не внизу)</b>. Раньше user должен был скроллить модалку, чтобы увидеть Q/qw/ΔT. Теперь блок «📊 Δ состояний и нагрузка» — сразу под header, при открытии модалки видно текущие значения мгновенно.',
       '📐 <b>Modal-редактор расширен с 380px до 460px</b>. На desktop ширины не хватало — type-specific блоки (ADP/BF coil, recup-options) сжимались.',

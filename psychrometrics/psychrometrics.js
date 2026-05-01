@@ -3703,11 +3703,38 @@ function applyWizard(pt, overlay, fromIdx) {
     detail = ` ${t2}°C / ${phi2}%`;
   }
   const newName = baseName + detail;
-  const newPoint = { name: newName, t: '', rh: '', x: '', h: '', V: '' };
+  const newPoint = { name: newName, nameUser: true, t: '', rh: '', x: '', h: '', V: '' };
+  // v0.59.954: Bug-fix: cascade читает target из p.tUser/rhUser/xUser/hUser,
+  // а wizard раньше писал только в proc.tgt/tgtVal — cascade их не видел и
+  // целевая точка оставалась пустой. По репорту: «мастер не заполняет
+  // конечную точку, хотя она была задана».
+  // Теперь пишем target ДОПОЛНИТЕЛЬНО в поля целевой точки.
+  const tNow = performance.now();
   if (pt === 'X') {
-    newPoint.t = String(t2); newPoint.tUser = true;
-    newPoint.rh = String(phi2); newPoint.rhUser = true;
+    if (Number.isFinite(t2))   { newPoint.t  = String(t2);   newPoint.tUser  = true; newPoint.tTs  = tNow; }
+    if (Number.isFinite(phi2)) { newPoint.rh = String(phi2); newPoint.rhUser = true; newPoint.rhTs = tNow + 0.01; }
+  } else if (pickedTgt === 't2') {
+    newPoint.t  = String(pickedVal); newPoint.tUser  = true; newPoint.tTs  = tNow;
+  } else if (pickedTgt === 'phi2') {
+    newPoint.rh = String(pickedVal); newPoint.rhUser = true; newPoint.rhTs = tNow;
+  } else if (pickedTgt === 'd2') {
+    newPoint.x  = String(pickedVal); newPoint.xUser  = true; newPoint.xTs  = tNow;
+  } else if (pickedTgt === 'dt') {
+    // Δt → абсолютное t2 на основе t_in (зафиксируем сейчас, чтобы cascade видел)
+    const tIn = Number(fromPt?.t);
+    if (Number.isFinite(tIn)) {
+      newPoint.t = String(tIn + pickedVal); newPoint.tUser = true; newPoint.tTs = tNow;
+    }
+  } else if (pickedTgt === 'dd') {
+    // Δd → абсолютное W2 г/кг на основе W_in
+    const dIn = Number(fromPt?.x);
+    if (Number.isFinite(dIn)) {
+      newPoint.x = String(dIn + pickedVal); newPoint.xUser = true; newPoint.xTs = tNow;
+    }
+  } else if (pickedTgt === 'h2') {
+    newPoint.h = String(pickedVal); newPoint.hUser = true; newPoint.hTs = tNow;
   }
+  // Для Q/qw target — proc.Qs/qws уже установлены выше, cascade читает с proc.
   S.points.push(newPoint);
   proc.toIdx = S.points.length - 1;
   S.procs.push(proc);
