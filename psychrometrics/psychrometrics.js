@@ -1911,7 +1911,14 @@ function renderResults(sts, segs) {
     if (s.qw < 0) sumQwDeh += -s.qw;
   });
   const hY = Math.max(1, Math.min(8784, +S.hoursPerYear || 8760));
-  let sumEheat = 0, sumEcool = 0;
+  // Default COP по типу процесса (≈ российская практика):
+  //   C — chiller/DX охлаждение: COP 3.5 (EER ≈ 12, типичная сред. эффективность)
+  //   P — электрический калорифер: COP 1.0 (электронагрев)
+  //   A — адиабатическое увл.: COP 50 (только насос pump+pad ≈ 2% от cooling effect)
+  //   S — паровое увл. (электр.): COP 1.0
+  //   M/R/X — пассивные/смешение: эл. потребление = 0 (∞ COP)
+  const COP_DEFAULT = { C: 3.5, P: 1.0, A: 50, S: 1.0, M: Infinity, R: Infinity, X: Infinity };
+  let sumEheat = 0, sumEcool = 0, sumEelec = 0;
   segs.forEach((s, i) => {
     const pr = S.procs[i] || {};
     const fromI = edgeFrom(pr, i), toI = edgeTo(pr, i);
@@ -1926,9 +1933,16 @@ function renderResults(sts, segs) {
     const Ekwh = Math.abs(s.Q) * hY;
     if (s.Q > 0) sumEheat += Ekwh;
     if (s.Q < 0) sumEcool += Ekwh;
+    // Электрическое потребление = E_thermal / COP. Для пассивных (R/M/X) → 0.
+    const cop = COP_DEFAULT[s.type] ?? Infinity;
+    const Eelec = Number.isFinite(cop) && cop > 0 ? Ekwh / cop : 0;
+    sumEelec += Eelec;
     const Etxt = Ekwh >= 1000
       ? `${(Ekwh/1000).toFixed(2)} МВт·ч`
       : `${Ekwh.toFixed(0)} кВт·ч`;
+    const tipE = Number.isFinite(cop)
+      ? `Тепловая энергия: |${s.Q.toFixed(2)} кВт| × ${hY} ч/год = ${Ekwh.toFixed(0)} кВт·ч/год.\nЭл. потребление (COP=${cop}): ${Eelec.toFixed(0)} кВт·ч/год.`
+      : `Тепловая энергия: |${s.Q.toFixed(2)} кВт| × ${hY} ч/год = ${Ekwh.toFixed(0)} кВт·ч/год.\nПассивный процесс — эл. потребление ≈ 0.`;
     b2.insertAdjacentHTML('beforeend', `
       <tr style="background:${PROC_COLOR[s.type]||'#eee'}14">
         <td>${fromI+1}→${toI+1}</td><td>${label}</td>
@@ -1939,7 +1953,7 @@ function renderResults(sts, segs) {
         <td>${s.G.toFixed(0)}</td>
         <td style="color:${s.Q>0?'#c62828':'#0277bd'};font-weight:600">${s.Q.toFixed(2)}</td>
         <td style="color:${s.qw>0?'#2e7d32':'#6a1b9a'}">${s.qw.toFixed(3)}</td>
-        <td style="color:${s.Q>0?'#c62828':s.Q<0?'#0277bd':'#555'};font-size:11px" title="|${s.Q.toFixed(2)} кВт| × ${hY} ч/год = ${Ekwh.toFixed(0)} кВт·ч/год">${Etxt}</td>
+        <td style="color:${s.Q>0?'#c62828':s.Q<0?'#0277bd':'#555'};font-size:11px" title="${tipE}">${Etxt}</td>
         <td style="font-size:10px;color:#555">${sign}</td>
       </tr>
     `);
@@ -1969,6 +1983,15 @@ function renderResults(sts, segs) {
           +${fmtE(sumEheat)}<br><span style="font-weight:400;font-size:10px;color:#0277bd">−${fmtE(sumEcool)}</span>
         </td>
         <td style="font-size:10px;color:#37474f">нагрев/охл.<br>увл./осуш.</td>
+      </tr>
+      <tr style="background:#fff3e0;border-top:1px solid #ffcc80">
+        <td colspan="9" style="text-align:right;color:#e65100;font-weight:700"
+            title="Электр. потребление = Σ(E_thermal / COP_default) по умолчательным COP типов: C=3.5 (chiller), P=1.0 (электронагрев), A=50 (адиаб. насос), S=1.0 (электр. пар), R/M/X — пассивные.">
+          ⚡ Эл. потребление (оценка по COP):
+        </td>
+        <td colspan="2" style="color:#e65100;font-weight:700">
+          ≈ ${fmtE(sumEelec)}/год
+        </td>
       </tr>
       ${condKgH > 0.001 ? `
       <tr style="background:#e1f5fe;border-top:1px solid #4fc3f7">
