@@ -1275,6 +1275,8 @@ function readInputs() {
     const hy = nNum(hyEl.value, 8760);
     S.hoursPerYear = Math.max(1, Math.min(8784, hy || 8760));
     try { localStorage.setItem('psy.hoursPerYear', String(S.hoursPerYear)); } catch {}
+    const pctEl = $('psy-hours-year-pct');
+    if (pctEl) pctEl.textContent = `(${(S.hoursPerYear / 8760 * 100).toFixed(0)}% года)`;
   }
   const tmin = nNum($('psy-tmin-chart')?.value, -15);
   const tmax = nNum($('psy-tmax-chart')?.value, 50);
@@ -3208,6 +3210,20 @@ function wire() {
     el.addEventListener('input', update);
     el.addEventListener('change', update);
   });
+
+  // ч/год пресет: select заполняет input → triggers update
+  const hyPreset = $('psy-hours-year-preset');
+  const hyInput = $('psy-hours-year');
+  if (hyPreset && hyInput) {
+    hyPreset.addEventListener('change', () => {
+      const v = +hyPreset.value;
+      if (v > 0) {
+        hyInput.value = v;
+        hyInput.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      hyPreset.value = '';  // reset back to placeholder, не блокируем повторный выбор
+    });
+  }
 
   // Переключатель русских названий
   const ruCb = $('psy-ru-names');

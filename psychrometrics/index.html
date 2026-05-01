@@ -289,10 +289,22 @@
     <div class="psy-panel">
       <div class="psy-panel-title">
         Процессы (тепловая мощность и влагоприток)
-        <span style="margin-left:auto;font-weight:400;color:#607080;font-size:11px;display:inline-flex;align-items:center;gap:4px">
+        <span style="margin-left:auto;font-weight:400;color:#607080;font-size:11px;display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap">
           ч/год:
           <input type="number" id="psy-hours-year" min="1" max="8784" step="1" style="width:64px"
                  title="Количество часов работы в году для расчёта годового энергопотребления (8760 = непрерывно весь год)">
+          <select id="psy-hours-year-preset" style="font-size:11px"
+                  title="Типовые режимы работы оборудования">
+            <option value="">— пресет —</option>
+            <option value="8760">24/7 круглосуточно (8760)</option>
+            <option value="5840">16ч × 365 (5840)</option>
+            <option value="2920">8ч × 365 (2920)</option>
+            <option value="2080">8×5×52 рабочая неделя (2080)</option>
+            <option value="4380">полугодие/сезон (4380)</option>
+            <option value="2200">сезон охлаждения, центр. РФ (2200)</option>
+            <option value="5500">сезон отопления, центр. РФ (5500)</option>
+          </select>
+          <span id="psy-hours-year-pct" style="color:#888;font-size:10px;min-width:48px"></span>
         </span>
       </div>
       <div class="psy-tbl-wrap">
