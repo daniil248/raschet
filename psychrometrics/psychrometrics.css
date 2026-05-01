@@ -256,8 +256,39 @@
 .psy-btn-primary:hover { background: #0d47a1; }
 
 /* Диаграмма */
+.psy-chart-wrap { position: relative; }
 .psy-chart { overflow: auto; border: 1px solid #e0e0e0; border-radius: 4px; background:#fff; position: relative; }
 .psy-chart svg { display: block; width: 100%; height: auto; }
+/* v0.59.934: floating zone-селектор в правом верхнем углу диаграммы
+   (видим во время переключения между TC 9.9 / ASHRAE 55) */
+.psy-chart-zone-ctl {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,0.96);
+  border: 1px solid #cfd8dc;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #263238;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  pointer-events: auto;
+}
+.psy-chart-zone-ctl select {
+  font-size: 11px;
+  padding: 2px 4px;
+  border: 1px solid #b0bec5;
+  border-radius: 3px;
+  background: #fff;
+  color: #263238;
+}
+@media print {
+  .psy-chart-zone-ctl { display: none; }
+}
 /* v0.59.90: CSS-rotate хак удалён. Раньше «развернуть» крутил SVG через
    transform: rotate(-90deg), что ломало hover/click-маппинг и давало
    визуально-повёрнутый лист вместо нормального A4/A3. Теперь ориентация
