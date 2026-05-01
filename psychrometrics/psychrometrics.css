@@ -195,29 +195,33 @@ body.psy-dragging *::after {
 }
 .psy-procs-sidebar-del:hover { color: #b71c1c; background: #ffebee; }
 
-/* Modal-обёртка для редактора процесса (использует ту же стилистику
-   что psy-wiz-overlay, но реальную карточку процесса внутри) */
+/* Modal-обёртка для редактора процесса.
+   v0.59.967: NON-BLOCKING — backdrop прозрачен и pointer-events:none,
+   чтобы пользователь мог редактировать точки на canvas одновременно с
+   процессом в модалке. По репорту: «для такого режима я хочу окно,
+   которое позволит одновременно изменять и данные на холсте и данные
+   в окне, без закрытия». */
 .psy-proc-edit-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.45);
+  background: transparent;
   z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
+  pointer-events: none;
 }
 .psy-proc-edit-modal {
   background: #fff;
   border-radius: 6px;
-  /* v0.59.953: ширина 460px чтобы computed-блок и type-specific
-     поля не наезжали и сохранялась читаемость на desktop. */
   width: min(460px, 96vw);
   max-height: 92vh;
   overflow-y: auto;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.25), 0 0 0 1px rgba(0,0,0,0.08);
   display: flex;
   flex-direction: column;
+  pointer-events: auto;  /* Modal сам ловит клики */
 }
 .psy-proc-edit-head {
   display: flex;

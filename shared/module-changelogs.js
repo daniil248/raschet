@@ -4,6 +4,18 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.967', date: '2026-05-01', items: [
+      '🎯 <b>Modal-редактор процесса non-blocking — можно править canvas одновременно</b>. По репорту: «для такого режима я хочу окно, которое позволит одновременно изменять и данные на холсте и данные в окне, без закрытия».',
+      '• Overlay (.psy-proc-edit-overlay) — теперь <code>background:transparent</code> + <code>pointer-events:none</code> — backdrop не закрывает canvas, клики проходят сквозь.',
+      '• Modal сам имеет <code>pointer-events:auto</code> + box-shadow + 1px outline для отделения от фона.',
+      '• Workflow: открыл модалку процесса → видишь Δ-блок Q/qw/ΔT → правишь t/φ в карточке точки на canvas → modal сразу обновляет computed-параметры → возвращаешься к модалке менять Q/ADP/BF — без закрытия.',
+      '🪄 <b>Wizard pre-fill — все известные значения цели</b>. По репорту: «в мастере, если он запущен из установленной точки, заполняй известные значения».',
+      '• Раньше edit-mode заполнял только user-flagged target поля. Теперь — все computed (t, rh, x, h) target-точки + Q + qw из proc.',
+      '💡 <b>Tooltips на полях wizard</b>. По репорту: «добавь подсказки при наведении для выбора или ввода правильных значений».',
+      '• На каждом label + input — <code>title="..."</code> с подсказкой: типичные значения, диапазон, примечания.',
+      '• Примеры: «η рекуп.: пластинч.~0.65, ротор~0.80», «Bypass factor. DX≈0.15, чиллер≈0.10», «α: 0.3=30% свежего, 0.7=70% свежего».',
+      'Файлы: <code>psychrometrics/psychrometrics.css</code> (overlay non-blocking), <code>psychrometrics/psychrometrics.js</code> (wizard prefill + tooltips).',
+    ] },
     { version: '0.59.966', date: '2026-05-01', items: [
       '🖱 <b>Все модалки draggable (по всему проекту)</b>. По проектной директиве: «все модальные окна кроме модальных окон предупреждений должны быть перемещаемые. Это для всего проекта».',
       '• Новый shared-модуль <code>shared/draggable-modal.js</code> с экспортами <code>makeDraggable(overlay, modalSel, headSel)</code> и <code>autoApply([{overlay, modal, head}, ...])</code>. autoApply использует MutationObserver — drag прицепляется ко всем матчинг-overlay-ам, включая будущие.',

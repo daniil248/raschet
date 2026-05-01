@@ -3674,7 +3674,11 @@ function openWizardStep2(procType, editProcIdx) {
   const backBtn = overlay.querySelector('.psy-wiz-back');
   if (backBtn) backBtn.addEventListener('click', () => { close(); openProcessWizard(); });
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-  // v0.59.956: pre-fill полей из текущего процесса (edit-mode).
+  // v0.59.956/967: pre-fill полей из текущего процесса (edit-mode).
+  // По репорту: «в мастере, если он запущен из установленной точки,
+  // заполняй известные значения». Заполняем ВСЕ доступные значения,
+  // не только user-flagged — пользователь видит текущее состояние и
+  // может переопределить.
   if (editing) {
     const setField = (id, val) => {
       const el = overlay.querySelector('#' + id);
@@ -3689,16 +3693,19 @@ function openWizardStep2(procType, editProcIdx) {
     }
     if (editProc.adp) setField('wz-adp', editProc.adp);
     if (editProc.bf)  setField('wz-bf',  editProc.bf);
+    if (editProc.Q)   setField('wz-Q',   editProc.Q);
+    if (editProc.qw)  setField('wz-qw',  editProc.qw);
     // V — из источника edge
     const srcV = S.points[edgeFrom(editProc, editProcIdx)]?.V;
     if (srcV) setField('wz-V', srcV);
-    // Текущий target → пред-заполнить соответствующее поле
+    // Текущий target → пред-заполнить соответствующее поле.
+    // Берём computed values (не только user) — пользователь видит «что было».
     const tgtPt = S.points[edgeTo(editProc, editProcIdx)];
     if (tgtPt) {
-      if (tgtPt.tUser  && tgtPt.t  !== '') setField('wz-t2',  tgtPt.t);
-      if (tgtPt.rhUser && tgtPt.rh !== '') setField('wz-phi2', tgtPt.rh);
-      if (tgtPt.xUser  && tgtPt.x  !== '') setField('wz-d2',  tgtPt.x);
-      if (tgtPt.hUser  && tgtPt.h  !== '') setField('wz-h2',  tgtPt.h);
+      if (tgtPt.t  !== '' && tgtPt.t  != null) setField('wz-t2',  tgtPt.t);
+      if (tgtPt.rh !== '' && tgtPt.rh != null) setField('wz-phi2', tgtPt.rh);
+      if (tgtPt.x  !== '' && tgtPt.x  != null) setField('wz-d2',  tgtPt.x);
+      if (tgtPt.h  !== '' && tgtPt.h  != null) setField('wz-h2',  tgtPt.h);
     }
   }
   overlay.querySelector('.psy-wiz-apply').addEventListener('click', () => {
@@ -3786,45 +3793,51 @@ function presetSelector(pt) {
 }
 
 function wizardFields(pt) {
+  // v0.59.967: title-tooltips на label-ах + input-ах. По репорту:
+  // «добавь подсказки при наведении для выбора или ввода правильных
+  // значений».
   const NODE_OPTS = S.points.map((p, i) => `<option value="${i}">${i+1}. ${escAttr((p.name||'').slice(0,30))}</option>`).join('');
   const presetUI = presetSelector(pt);
+  // Helper для label с title (tooltip)
+  const lbl = (text, tooltip) =>
+    `<label title="${escAttr(tooltip)}">${text}`;
   if (pt === 'P') return presetUI + `
-    <label>Целевая t₂, °C ⓘ<input type="number" id="wz-t2" step="0.5" placeholder="напр. 22"></label>
-    <label>Прирост Δt, °C ⓘ<input type="number" id="wz-dt" step="0.5" placeholder="напр. +12"></label>
-    <label>Мощность Q, кВт ⓘ<input type="number" id="wz-Q" step="1" placeholder="требуется V м³/ч (см. ниже)"></label>
-    <label>Расход воздуха V, м³/ч (для Q)<input type="number" id="wz-V" step="100" placeholder="опционально"></label>
+    ${lbl('Целевая t₂, °C ⓘ', 'Температура воздуха ПОСЛЕ калорифера. Должна быть ≥ t_in (нагрев).')}<input type="number" id="wz-t2" step="0.5" placeholder="напр. 22" title="Температура после нагрева, °C. ≥ t_in."></label>
+    ${lbl('Прирост Δt, °C ⓘ', 'Насколько ВЫШЕ становится T (положительное число). Δt = t₂ − t_in.')}<input type="number" id="wz-dt" step="0.5" placeholder="напр. +12" title="Прирост температуры (положительный)."></label>
+    ${lbl('Мощность Q, кВт ⓘ', 'Тепловая мощность калорифера. Положительная для нагрева. Требует V для расчёта t.')}<input type="number" id="wz-Q" step="1" placeholder="требуется V м³/ч (см. ниже)" title="Q положит., кВт. Нужен V."></label>
+    ${lbl('Расход воздуха V, м³/ч (для Q)', 'Объёмный расход. Используется для расчёта G_da и обратного перевода Q→Δt.')}<input type="number" id="wz-V" step="100" placeholder="опционально" title="Объёмный расход через калорифер."></label>
   `;
   if (pt === 'C') return presetUI + `
-    <label>Целевая t₂, °C ⓘ<input type="number" id="wz-t2" step="0.5" placeholder="напр. 14"></label>
-    <label>Целевая φ₂, % ⓘ<input type="number" id="wz-phi2" step="1" min="0" max="100" placeholder="напр. 90"></label>
-    <label>Мощность охлаждения Q, кВт (отриц.) ⓘ<input type="number" id="wz-Q" step="1" placeholder="напр. -25"></label>
-    <label>Расход воздуха V, м³/ч (для Q)<input type="number" id="wz-V" step="100" placeholder="опционально"></label>
+    ${lbl('Целевая t₂, °C ⓘ', 'Температура после охладителя. Должна быть НИЖЕ t_in. Если t₂<t_p_in — возможна конденсация.')}<input type="number" id="wz-t2" step="0.5" placeholder="напр. 14" title="t после охладителя, °C. < t_in."></label>
+    ${lbl('Целевая φ₂, % ⓘ', 'Относит. влажность после. С осушением обычно 80-95% (близко к насыщению).')}<input type="number" id="wz-phi2" step="1" min="0" max="100" placeholder="напр. 90" title="φ после, %. С осушением 80-95%."></label>
+    ${lbl('Мощность охлаждения Q, кВт (отриц.) ⓘ', 'Холодопроизводительность. Знак МИНУС (тепло уходит). Q = G_da·Δh.')}<input type="number" id="wz-Q" step="1" placeholder="напр. -25" title="Холодопр-ть, отрицательная. кВт."></label>
+    ${lbl('Расход воздуха V, м³/ч (для Q)', 'Объёмный расход через коил.')}<input type="number" id="wz-V" step="100" placeholder="опционально"></label>
     <hr style="margin:8px 0;border:0;border-top:1px solid #e0e0e0">
-    <label>❄ ADP — T поверхности коил, °C (опц., точная модель)<input type="number" id="wz-adp" step="0.5" placeholder="напр. 10"></label>
-    <label>BF — bypass factor (0..1, тип. 0.15)<input type="number" id="wz-bf" step="0.05" min="0" max="1" placeholder="0.15"></label>
+    ${lbl('❄ ADP — T поверхности коил, °C (опц., точная модель)', 'Apparatus Dew Point — температура коил-поверхности. Конденсация при ADP < t_p входа. Типично 5-10°C для DX, 7-12°C для чиллера.')}<input type="number" id="wz-adp" step="0.5" placeholder="напр. 10" title="T поверхности коил, °C. Типично 5-12°C."></label>
+    ${lbl('BF — bypass factor (0..1, тип. 0.15)', 'Доля воздуха, проходящего БЕЗ контакта с поверхностью. DX: 0.10-0.20, чиллер: 0.05-0.15. Меньше = эффективнее.')}<input type="number" id="wz-bf" step="0.05" min="0" max="1" placeholder="0.15" title="Bypass factor. DX≈0.15, чиллер≈0.10."></label>
   `;
   if (pt === 'A') return presetUI + `
-    <label>Целевая t₂, °C ⓘ<input type="number" id="wz-t2" step="0.5" placeholder="ниже t_in (испарение охлаждает)"></label>
-    <label>Целевая φ₂, % ⓘ<input type="number" id="wz-phi2" step="1" min="0" max="100" placeholder="напр. 90"></label>
-    <label>Прирост Δd, г/кг ⓘ<input type="number" id="wz-dd" step="0.1" placeholder="напр. +3"></label>
+    ${lbl('Целевая t₂, °C ⓘ', 'Температура после увлажнителя. Адиабатическое испарение ОХЛАЖДАЕТ → t₂ < t_in.')}<input type="number" id="wz-t2" step="0.5" placeholder="ниже t_in (испарение охлаждает)" title="t после, °C. Ниже t_in."></label>
+    ${lbl('Целевая φ₂, % ⓘ', 'Относит. влажность после. Зависит от эффективности камеры: пэд η=0.85 → φ≈90%; форсунки → 80%.')}<input type="number" id="wz-phi2" step="1" min="0" max="100" placeholder="напр. 90" title="φ после, % (зависит от η камеры)."></label>
+    ${lbl('Прирост Δd, г/кг ⓘ', 'Сколько влаги добавили (положительное). Δd = d₂ − d_in.')}<input type="number" id="wz-dd" step="0.1" placeholder="напр. +3" title="Прирост d, г/кг."></label>
   `;
   if (pt === 'S') return presetUI + `
-    <label>Целевая d₂, г/кг ⓘ<input type="number" id="wz-d2" step="0.1" placeholder="напр. 8"></label>
-    <label>Прирост Δd, г/кг ⓘ<input type="number" id="wz-dd" step="0.1" placeholder="напр. +2"></label>
-    <label>Влагоприток qw, кг/ч ⓘ<input type="number" id="wz-qw" step="0.1" placeholder="требует V"></label>
-    <label>Расход V, м³/ч (для qw)<input type="number" id="wz-V" step="100" placeholder="опционально"></label>
+    ${lbl('Целевая d₂, г/кг ⓘ', 'Целевое влагосодержание после паровой камеры.')}<input type="number" id="wz-d2" step="0.1" placeholder="напр. 8" title="d₂, г/кг."></label>
+    ${lbl('Прирост Δd, г/кг ⓘ', 'Сколько добавили пара (положительное).')}<input type="number" id="wz-dd" step="0.1" placeholder="напр. +2" title="Δd, г/кг."></label>
+    ${lbl('Влагоприток qw, кг/ч ⓘ', 'Расход пара в кг/ч. q_w = G_da · ΔW.')}<input type="number" id="wz-qw" step="0.1" placeholder="требует V" title="qw, кг/ч пара."></label>
+    ${lbl('Расход V, м³/ч (для qw)', 'Для перевода qw→Δd через массу сухого воздуха.')}<input type="number" id="wz-V" step="100" placeholder="опционально"></label>
   `;
   if (pt === 'M') return presetUI + `
-    <label>С какой точкой смешивать?<select id="wz-mix">${NODE_OPTS}</select></label>
-    <label>Доля исходной (mixRatio, 0..1) ⓘ<input type="number" id="wz-ratio" step="0.05" min="0" max="1" placeholder="напр. 0.7 (рециркуляция)"></label>
+    ${lbl('С какой точкой смешивать?', 'Опорная точка (обычно — рециркуляция из помещения).')}<select id="wz-mix" title="Опорная точка для смешения.">${NODE_OPTS}</select></label>
+    ${lbl('Доля исходной (mixRatio, 0..1) ⓘ', 'α — массовая доля ИСХОДНОГО потока. Остальное (1-α) — от опорной точки. α=0.3 = «30% свежего + 70% возвратного».')}<input type="number" id="wz-ratio" step="0.05" min="0" max="1" placeholder="напр. 0.7 (рециркуляция)" title="α: 0.3=30% свежего, 0.7=70% свежего."></label>
   `;
   if (pt === 'R') return presetUI + `
-    <label>Опорная точка (вытяжка)<select id="wz-recref">${NODE_OPTS}</select></label>
-    <label>КПД рекуператора η (0..1) ⓘ<input type="number" id="wz-eta" step="0.05" min="0" max="1" placeholder="напр. 0.65"></label>
+    ${lbl('Опорная точка (вытяжка)', 'Поток вытяжного воздуха, отдающий тепло (или влагу при энтальпийном режиме).')}<select id="wz-recref" title="Точка-источник тепла (вытяжка).">${NODE_OPTS}</select></label>
+    ${lbl('КПД рекуператора η (0..1) ⓘ', 'Эффективность теплообменника. Пластинч. η=0.55-0.75; роторный энтальп. 0.75-0.85; противоток до 0.90.')}<input type="number" id="wz-eta" step="0.05" min="0" max="1" placeholder="напр. 0.65" title="η рекуп: пластинч.~0.65, ротор~0.80."></label>
   `;
   if (pt === 'X') return `
-    <label>t₂, °C<input type="number" id="wz-t2" step="0.5" placeholder="напр. 24"></label>
-    <label>φ₂, %<input type="number" id="wz-phi2" step="1" min="0" max="100" placeholder="напр. 50"></label>
+    ${lbl('t₂, °C', 'Температура целевой точки.')}<input type="number" id="wz-t2" step="0.5" placeholder="напр. 24"></label>
+    ${lbl('φ₂, %', 'Относит. влажность целевой точки.')}<input type="number" id="wz-phi2" step="1" min="0" max="100" placeholder="напр. 50"></label>
   `;
   return '';
 }
