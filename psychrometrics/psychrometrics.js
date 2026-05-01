@@ -35,6 +35,12 @@ const S = {
   chartFormat: (() => { try { return localStorage.getItem('psy.chartFormat') || 'A4'; } catch { return 'A4'; } })(),
   chartOrient: (() => { try { return localStorage.getItem('psy.chartOrient') || 'landscape'; } catch { return 'landscape'; } })(),
   edgeView: (() => { try { return localStorage.getItem('psy.edgeView') || 'cards'; } catch { return 'cards'; } })(),
+  // v0.59.946: comfortZoneId инициализируется из LS на старте, чтобы первый
+  // рендер диаграммы (в wire() до handler-а czSel) не падал на default
+  // 'tc99-rec', когда пользователь сохранил 'tc99-all' / 'ashrae55' / etc.
+  // Раньше: select_value='tc99-all' но S.comfortZoneId на первом рендере
+  // был undefined → falls back to 'tc99-rec' → видна только Recommended.
+  comfortZoneId: (() => { try { const v = localStorage.getItem('psy.comfortZoneId'); return v != null ? v : 'tc99-rec'; } catch { return 'tc99-rec'; } })(),
   // v0.59.935: Точка 1 — всегда вход с улицы (наружный воздух).
   // По репорту: «пусть точка один будет всегда входная из улицы». Имя
   // сделано generic-ом, чтобы подходило и для зимы, и для лета — конкретный
@@ -2652,13 +2658,11 @@ function wire() {
     });
   }
 
-  // v0.59.929: select зоны на i-d (ASHRAE 55 / TC 9.9 A1-A4 / Recommended)
+  // v0.59.929/946: select зоны (TC 9.9 / ASHRAE 55).
+  // S.comfortZoneId уже загружен из LS в S-инициализаторе (см. вверху файла) —
+  // здесь только синхронизация select.value и change-handler.
   const czSel = $('psy-comfort-zone-select');
   if (czSel) {
-    try {
-      const saved = localStorage.getItem('psy.comfortZoneId');
-      S.comfortZoneId = saved != null ? saved : 'tc99-rec';  // default — Recommended для ЦОД
-    } catch { S.comfortZoneId = 'tc99-rec'; }
     czSel.value = S.comfortZoneId || '';
     czSel.addEventListener('change', () => {
       S.comfortZoneId = czSel.value;

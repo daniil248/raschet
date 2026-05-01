@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.946', date: '2026-05-01', items: [
+      '🐛 <b>Bug-fix: TC 9.9 stack-mode на старте показывал только Recommended</b>. По репорту (debug eval): polyCount=1 при выбранном tc99-all в LS.',
+      '• Раньше: <code>S.comfortZoneId</code> загружался из LS только в обработчике czSel (внутри wire()), а ПЕРВЫЙ <code>update()</code> вызывался ДО этого. На первом render-е <code>S.comfortZoneId</code> был undefined → fallback на default \'tc99-rec\' → видна только одна зона.',
+      '• Fix: comfortZoneId теперь инициализируется из <code>localStorage</code> в IIFE-инициализаторе константы S (вместе с chartFormat/chartOrient/edgeView). Первый рендер сразу видит сохранённое значение, и tc99-all показывает все 5 envelopes (Rec/A1/A2/A3/A4).',
+      'Файл: <code>psychrometrics/psychrometrics.js</code> (S.comfortZoneId initializer + удалён повторный LS-load в czSel handler).',
+    ] },
     { version: '0.59.945', date: '2026-05-01', items: [
       '🌡 <b>Давление P отображается на диаграмме</b>. По репорту: «на диаграмме должно отображаться выбранное давление». Добавлено в подпись нижней оси: «t, °C — Dry-Bulb Temperature  ·  P = 101.32 кПа» (ASHRAE) или «d (W) … · P = … кПа» (ramzin).',
       '📐 <b>h-метки выровнены на одной прямой</b>. По репорту: «подписи сверху стоят криво». Раньше каждая h-метка ставилась в pts[0]/pts[end] полилинии — y зависел от угла линии и менялся «лесенкой». Теперь:',
