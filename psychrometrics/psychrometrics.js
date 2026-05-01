@@ -2174,6 +2174,10 @@ function wire() {
     rerenderCycle();
   });
 
+  // v0.59.906: Мастер процесса — пошаговое добавление с минимальными вводными
+  const wizBtn = $('psy-wizard');
+  if (wizBtn) wizBtn.addEventListener('click', () => openProcessWizard());
+
   // v0.59.900: импорт расчётных точек из активного meteo-датасета.
   // Создаёт две точки: «Лето расч.» (Tdb 0.4% percentile / средняя RH в этом бине)
   // и «Зима расч.» (Tdb 99.6% percentile). Координаты берутся из meteo-api.
@@ -2327,6 +2331,229 @@ function exportCsv() {
   a.download = `id-diagram-${new Date().toISOString().slice(0,10)}.csv`;
   document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 100);
+}
+
+/* ========================================================================
+   v0.59.906: Мастер процесса (Process Wizard) — пошаговое добавление узла
+   и процесса с минимальными исходными данными. Поддерживаемые процессы:
+     P (heat), C (cool), A (adiabatic humid), S (steam humid),
+     M (mixing), R (recovery), X (arbitrary).
+   Каждый имеет минимальные required-поля, остальное считается из физики.
+   ======================================================================== */
+function openProcessWizard() {
+  if (S.points.length === 0) {
+    psyToast('Сначала добавьте начальную точку (входной воздух).', 'warn');
+    return;
+  }
+  const overlay = document.createElement('div');
+  overlay.className = 'psy-wiz-overlay';
+  overlay.innerHTML = `<div class="psy-wiz-modal" role="dialog" aria-modal="true">
+    <div class="psy-wiz-head"><h3>🧙 Мастер процесса</h3>
+      <button type="button" class="psy-wiz-close" title="Закрыть">×</button>
+    </div>
+    <div class="psy-wiz-body">
+      <h4>Шаг 1 — выберите тип процесса</h4>
+      <div class="psy-wiz-types">
+        <button type="button" class="psy-wiz-type" data-pt="P">
+          <b>🔥 Нагрев (P)</b><br><span>d=const, ΔT увеличивает t</span>
+        </button>
+        <button type="button" class="psy-wiz-type" data-pt="C">
+          <b>❄ Охлаждение (C)</b><br><span>с осушением — модель ADP/BF</span>
+        </button>
+        <button type="button" class="psy-wiz-type" data-pt="A">
+          <b>💦 Адиабат. увлажн. (A)</b><br><span>h=const, форсунки/пэды</span>
+        </button>
+        <button type="button" class="psy-wiz-type" data-pt="S">
+          <b>♨ Паровое увлажн. (S)</b><br><span>t=const, +d</span>
+        </button>
+        <button type="button" class="psy-wiz-type" data-pt="M">
+          <b>🔀 Смешение (M)</b><br><span>с другой точкой по доле</span>
+        </button>
+        <button type="button" class="psy-wiz-type" data-pt="R">
+          <b>♻ Рекуператор (R)</b><br><span>теплообмен с вытяжкой по η</span>
+        </button>
+        <button type="button" class="psy-wiz-type" data-pt="X">
+          <b>📍 Произвольный (X)</b><br><span>напрямую t,φ конечной точки</span>
+        </button>
+      </div>
+    </div>
+    <div class="psy-wiz-actions">
+      <button type="button" class="psy-wiz-btn psy-wiz-cancel">Отмена</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector('.psy-wiz-close').addEventListener('click', close);
+  overlay.querySelector('.psy-wiz-cancel').addEventListener('click', close);
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  overlay.querySelectorAll('.psy-wiz-type').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pt = btn.dataset.pt;
+      overlay.remove();
+      openWizardStep2(pt);
+    });
+  });
+}
+
+// Шаг 2 — данные конкретного процесса
+function openWizardStep2(procType) {
+  const fromIdx = S.points.length - 1;
+  const fromName = S.points[fromIdx]?.name || `точка ${fromIdx+1}`;
+  const PROC_LABELS = { P:'🔥 Нагрев', C:'❄ Охлаждение', A:'💦 Адиабат. увлажн.',
+    S:'♨ Паровое увлажн.', M:'🔀 Смешение', R:'♻ Рекуператор', X:'📍 Произвольный' };
+
+  const overlay = document.createElement('div');
+  overlay.className = 'psy-wiz-overlay';
+  overlay.innerHTML = `<div class="psy-wiz-modal" role="dialog">
+    <div class="psy-wiz-head"><h3>🧙 ${PROC_LABELS[procType]} — параметры</h3>
+      <button type="button" class="psy-wiz-close" title="Закрыть">×</button>
+    </div>
+    <div class="psy-wiz-body">
+      <p class="psy-wiz-from">Исходная точка: <b>${escAttr(fromName)}</b> (точка ${fromIdx+1})</p>
+      <h4>Шаг 2 — введите ОДИН известный параметр (остальное рассчитается)</h4>
+      ${wizardFields(procType)}
+      <p class="psy-wiz-hint">Поля помечены ⓘ — заполните любое одно. Остальные оставьте пустыми.</p>
+    </div>
+    <div class="psy-wiz-actions">
+      <button type="button" class="psy-wiz-btn psy-wiz-cancel">Отмена</button>
+      <button type="button" class="psy-wiz-btn psy-wiz-back">← Назад</button>
+      <button type="button" class="psy-wiz-btn psy-wiz-primary psy-wiz-apply">✓ Создать</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector('.psy-wiz-close').addEventListener('click', close);
+  overlay.querySelector('.psy-wiz-cancel').addEventListener('click', close);
+  overlay.querySelector('.psy-wiz-back').addEventListener('click', () => { close(); openProcessWizard(); });
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  overlay.querySelector('.psy-wiz-apply').addEventListener('click', () => {
+    if (applyWizard(procType, overlay, fromIdx)) close();
+  });
+}
+
+function wizardFields(pt) {
+  const NODE_OPTS = S.points.map((p, i) => `<option value="${i}">${i+1}. ${escAttr((p.name||'').slice(0,30))}</option>`).join('');
+  if (pt === 'P') return `
+    <label>Целевая t₂, °C ⓘ<input type="number" id="wz-t2" step="0.5" placeholder="напр. 22"></label>
+    <label>Прирост Δt, °C ⓘ<input type="number" id="wz-dt" step="0.5" placeholder="напр. +12"></label>
+    <label>Мощность Q, кВт ⓘ<input type="number" id="wz-Q" step="1" placeholder="требуется V м³/ч (см. ниже)"></label>
+    <label>Расход воздуха V, м³/ч (для Q)<input type="number" id="wz-V" step="100" placeholder="опционально"></label>
+  `;
+  if (pt === 'C') return `
+    <label>Целевая t₂, °C ⓘ<input type="number" id="wz-t2" step="0.5" placeholder="напр. 14"></label>
+    <label>Целевая φ₂, % ⓘ<input type="number" id="wz-phi2" step="1" min="0" max="100" placeholder="напр. 90"></label>
+    <label>Мощность охлаждения Q, кВт (отриц.) ⓘ<input type="number" id="wz-Q" step="1" placeholder="напр. -25"></label>
+    <label>Расход воздуха V, м³/ч (для Q)<input type="number" id="wz-V" step="100" placeholder="опционально"></label>
+    <hr style="margin:8px 0;border:0;border-top:1px solid #e0e0e0">
+    <label>❄ ADP — T поверхности коил, °C (опц., точная модель)<input type="number" id="wz-adp" step="0.5" placeholder="напр. 10"></label>
+    <label>BF — bypass factor (0..1, тип. 0.15)<input type="number" id="wz-bf" step="0.05" min="0" max="1" placeholder="0.15"></label>
+  `;
+  if (pt === 'A') return `
+    <label>Целевая t₂, °C ⓘ<input type="number" id="wz-t2" step="0.5" placeholder="ниже t_in (испарение охлаждает)"></label>
+    <label>Целевая φ₂, % ⓘ<input type="number" id="wz-phi2" step="1" min="0" max="100" placeholder="напр. 90"></label>
+    <label>Прирост Δd, г/кг ⓘ<input type="number" id="wz-dd" step="0.1" placeholder="напр. +3"></label>
+  `;
+  if (pt === 'S') return `
+    <label>Целевая d₂, г/кг ⓘ<input type="number" id="wz-d2" step="0.1" placeholder="напр. 8"></label>
+    <label>Прирост Δd, г/кг ⓘ<input type="number" id="wz-dd" step="0.1" placeholder="напр. +2"></label>
+    <label>Влагоприток qw, кг/ч ⓘ<input type="number" id="wz-qw" step="0.1" placeholder="требует V"></label>
+    <label>Расход V, м³/ч (для qw)<input type="number" id="wz-V" step="100" placeholder="опционально"></label>
+  `;
+  if (pt === 'M') return `
+    <label>С какой точкой смешивать?<select id="wz-mix">${NODE_OPTS}</select></label>
+    <label>Доля исходной (mixRatio, 0..1) ⓘ<input type="number" id="wz-ratio" step="0.05" min="0" max="1" placeholder="напр. 0.7 (рециркуляция)"></label>
+  `;
+  if (pt === 'R') return `
+    <label>Опорная точка (вытяжка)<select id="wz-recref">${NODE_OPTS}</select></label>
+    <label>КПД рекуператора η (0..1) ⓘ<input type="number" id="wz-eta" step="0.05" min="0" max="1" placeholder="напр. 0.65"></label>
+  `;
+  if (pt === 'X') return `
+    <label>t₂, °C<input type="number" id="wz-t2" step="0.5" placeholder="напр. 24"></label>
+    <label>φ₂, %<input type="number" id="wz-phi2" step="1" min="0" max="100" placeholder="напр. 50"></label>
+  `;
+  return '';
+}
+
+function applyWizard(pt, overlay, fromIdx) {
+  const v = (id) => {
+    const el = overlay.querySelector('#' + id);
+    if (!el) return null;
+    return el.value === '' ? null : Number(el.value);
+  };
+  const proc = { type: pt, Q: '', qw: '', fromIdx };
+  let t2 = v('wz-t2'), phi2 = v('wz-phi2'), dt = v('wz-dt'), dd = v('wz-dd'),
+      d2 = v('wz-d2'), Q = v('wz-Q'), qw = v('wz-qw'), V = v('wz-V'),
+      adp = v('wz-adp'), bf = v('wz-bf'), eta = v('wz-eta'), ratio = v('wz-ratio');
+  let pickedTgt = null, pickedVal = null;
+  // Choose primary target
+  if (Number.isFinite(t2)) { pickedTgt = 't2'; pickedVal = t2; }
+  else if (Number.isFinite(phi2)) { pickedTgt = 'phi2'; pickedVal = phi2; }
+  else if (Number.isFinite(dt)) { pickedTgt = 'dt'; pickedVal = dt; }
+  else if (Number.isFinite(d2)) { pickedTgt = 'd2'; pickedVal = d2; }
+  else if (Number.isFinite(dd)) { pickedTgt = 'dd'; pickedVal = dd; }
+  else if (Number.isFinite(Q)) { pickedTgt = 'Q'; pickedVal = Q; }
+  else if (Number.isFinite(qw)) { pickedTgt = 'qw'; pickedVal = qw; }
+
+  if (pt === 'M') {
+    const mixI = Number(overlay.querySelector('#wz-mix')?.value);
+    if (!Number.isFinite(ratio)) { psyToast('Укажите долю смешения (mixRatio).', 'warn'); return false; }
+    proc.mixWith = String(mixI);
+    proc.mixRatio = String(ratio);
+  } else if (pt === 'R') {
+    const refI = Number(overlay.querySelector('#wz-recref')?.value);
+    if (!Number.isFinite(eta)) { psyToast('Укажите КПД рекуператора η.', 'warn'); return false; }
+    proc.recupWith = String(refI);
+    proc.recupEff = String(eta);
+  } else if (pt === 'X') {
+    if (!Number.isFinite(t2) || !Number.isFinite(phi2)) {
+      psyToast('Для произвольного процесса нужны t₂ и φ₂.', 'warn'); return false;
+    }
+    // X — задаём напрямую конечную точку, не процесс с целью
+    pickedTgt = null;
+  } else {
+    if (!pickedTgt) {
+      psyToast('Введите ОДИН известный параметр (t₂, φ₂, Q, и т.п.).', 'warn');
+      return false;
+    }
+  }
+  if (Number.isFinite(adp)) proc.adp = String(adp);
+  if (Number.isFinite(bf)) proc.bf = String(bf);
+  if (pickedTgt) {
+    proc.tgt = pickedTgt;
+    proc.tgtVal = String(pickedVal);
+    proc.Qs = pickedTgt === 'Q'; proc.qws = pickedTgt === 'qw';
+    if (pickedTgt === 'Q') { proc.Q = String(pickedVal); proc.Qts = Date.now(); }
+    if (pickedTgt === 'qw') { proc.qw = String(pickedVal); proc.qwts = Date.now(); }
+  }
+  if (Number.isFinite(V) && V > 0) {
+    // Запишем V в исходную точку (cascade использует srcNode.V для вычисления массы)
+    const src = S.points[fromIdx]; if (src) src.V = String(V);
+  }
+  // Создаём новую точку и привязываем процесс
+  const newName = ({P:'После нагревателя',C:'После охл./осуш.',A:'После адиабат. увл.',
+    S:'После пар. увл.',M:'После смешения',R:'После рекуператора',X:'Точка'})[pt];
+  const newPoint = { name: newName, t: '', rh: '', x: '', h: '', V: '' };
+  if (pt === 'X') {
+    newPoint.t = String(t2); newPoint.tUser = true;
+    newPoint.rh = String(phi2); newPoint.rhUser = true;
+  }
+  S.points.push(newPoint);
+  proc.toIdx = S.points.length - 1;
+  S.procs.push(proc);
+  rerenderCycle();
+  psyToast(`✓ Создано: ${newName}`, 'ok');
+  return true;
+}
+
+// Глобальный psyToast (nested-копия в wire() остаётся для backward-compat).
+// Использует тот же visual.
+function psyToast(msg, kind = 'info') {
+  const el = document.createElement('div');
+  el.style.cssText = `position:fixed;top:16px;right:16px;z-index:10001;padding:10px 14px;border-radius:5px;font:13px system-ui;color:#f9fafb;box-shadow:0 4px 16px rgba(0,0,0,0.15);max-width:360px;background:${kind==='warn'?'#b45309':kind==='ok'?'#15803d':'#1f2937'};opacity:0;transform:translateY(-8px);transition:opacity .2s,transform .2s`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateY(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 250); }, 2800);
 }
 
 document.addEventListener('DOMContentLoaded', wire);
