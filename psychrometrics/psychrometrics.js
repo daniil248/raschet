@@ -2289,19 +2289,30 @@ const DEMOS = {
     }
   },
   'recup': {
-    label: 'Зима + рекуператор: утилизация тепла',
+    label: 'Зима + рекуператор: 4 точки (приток/вытяжка) + догрев',
     apply: () => {
+      // v0.59.947: переписан под «новое представление рекуператора» —
+      // полная П-схема с притоком и вытяжкой как двумя независимыми
+      // ветками, обменивающимися теплом через R-процессы. Раньше демо
+      // показывало только приточную сторону + dangling вытяжку без
+      // R на ней.
       const now = performance.now();
       S.points = [
-        { name: 'Зима наружный',  nameUser: true, t: -20, tUser: true, tTs: now,   rh: 85, rhUser: true, rhTs: now,   x: '', h: '', V: '' },
-        { name: 'После рекуп.',   nameUser: true, t: '', rh: '', x: '', h: '', V: '' },
-        { name: 'После калорифера',nameUser: true, t: 22, tUser: true, tTs: now+2, rh: '', x: '', h: '', V: '' },
-        { name: 'Вытяжка из пом.', nameUser: true, t: 22, tUser: true, tTs: now+3, rh: 40, rhUser: true, rhTs: now+3, x: '', h: '', V: '' },
+        // Приточная ветка
+        { name: 'Наружный (зима)',          nameUser: true, t: -20, tUser: true, tTs: now,   rh: 85, rhUser: true, rhTs: now,   x: '', h: '', V: '', cx: 40,  cy: 40 },
+        { name: 'После рекуп. (приток)',    nameUser: false,                               t: '', rh: '', x: '', h: '', V: '',                                          cx: 320, cy: 40 },
+        { name: 'После калорифера',         nameUser: true, t: 22, tUser: true, tTs: now+2, rh: '',                                                       x: '', h: '', V: '', cx: 600, cy: 40 },
+        // Вытяжная ветка (отдельный поток)
+        { name: 'Внутренний (вытяжка)',     nameUser: true, t: 22, tUser: true, tTs: now+3, rh: 40, rhUser: true, rhTs: now+3, x: '', h: '', V: '', cx: 40,  cy: 280 },
+        { name: 'После рекуп. (вытяжка)',   nameUser: false,                               t: '', rh: '', x: '', h: '', V: '',                                          cx: 320, cy: 280 },
       ];
       S.procs = [
-        { type:'R', Q:'', qw:'', recupWith:'3', recupEff:'0.65' },
-        { type:'P', Q:'', qw:'' },
-        { type:'none', Q:'', qw:'' },    // вытяжка отдельная ветка (разрыв)
+        // R-приток: 0 → 1 (теплообмен с вытяжкой ref=3, η=0.65)
+        { type:'R', Q:'', qw:'', fromIdx: 0, toIdx: 1, recupWith: '3', recupEff: '0.65', recupMode: 'sensible' },
+        // P-калорифер: догревает приток с T(после рекуп.) до +22°C
+        { type:'P', Q:'', qw:'', fromIdx: 1, toIdx: 2 },
+        // R-вытяжка: 3 → 4 (отдаёт тепло притоку, ref=0)
+        { type:'R', Q:'', qw:'', fromIdx: 3, toIdx: 4, recupWith: '0', recupEff: '0.65', recupMode: 'sensible' },
       ];
     }
   },
