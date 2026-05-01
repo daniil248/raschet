@@ -970,13 +970,20 @@ function procArrow(pr, i) {
   const tsQw = Number.isFinite(+pr.qwts) ? String(pr.qwts) : '0';
   const nodeOpts = (sel) => S.points.map((p, pi) =>
     `<option value="${pi}" ${pi===sel?'selected':''}>${pi+1}. ${escAttr((p.name||'').slice(0,22))}</option>`).join('');
-  // v0.59.951: для P-нагрева q_w структурно всегда 0 (d=const → ΔW=0)
-  // — input убираем, чтобы не сбивать пользователя. По репорту:
-  // «использование для нагрева qw, кг/ч, для меня не понятно? это нужно?»
-  // Также скрываем для S (паровое увлажн.) — там qw тоже однозначно =
-  // m_da·(W₂−W₁), но пользователь обычно задаёт W₂ через φ или через ΔW
-  // на точке, не через qw напрямую.
-  const showQwInput = !['P'].includes(pr.type);
+  // v0.59.951/962: q_w как USER-INPUT имеет смысл только для увлажнителей
+  // (A адиабатич., S паровое) — там оператор задаёт желаемый влагоприток.
+  // По репорту: «в охлаждении я наверное не могу менять количество воды,
+  // либо просто справочное, если я знаю сколько воды выпадает в конденсат
+  // и знаю какая температура при этом достигается, то могу высчитать
+  // мощность кондиционера, но пока это как то призрачно».
+  //   • P нагрев — q_w структурно =0 (d=const)
+  //   • C охлаждение — q_w расчётная (BF-модель из ADP+BF), задание
+  //     конденсата избыточно (over-constrained), вызывает призрачные
+  //     расчёты.
+  //   • M смешение — q_w расчётная (= ΔW × m_da)
+  //   • R рекуператор — q_w расчётная (sensible=0, total=η·ΔW)
+  //   • A/S/X — q_w может быть user-input
+  const showQwInput = ['A', 'S', 'X'].includes(pr.type);
   el.innerHTML = `
     <div class="arr-label" style="display:flex;justify-content:space-between;align-items:center;gap:4px">
       <span>${fromI+1} → ${toI+1}</span>
@@ -1009,9 +1016,16 @@ function procArrow(pr, i) {
       <span data-role="condensate" style="display:none;margin-top:3px;padding:3px 5px;background:#e1f5fe;border:1px solid #4fc3f7;border-radius:3px;font-size:10px;color:#01579b;font-weight:600;"></span>
     </label>
     ` : `
-    <div style="font-size:10px;color:#999;margin-top:2px;font-style:italic;">
-      q<sub>w</sub> = 0 (нагрев d=const, влагу не передаёт)
-      <span data-role="condensate" style="display:none"></span>
+    <div style="font-size:10px;color:#37474f;margin-top:2px">
+      <span style="color:#666">q<sub>w</sub>, кг/ч (расчётная):</span>
+      <span data-role="qw-readonly" style="display:inline-block;margin-left:4px;padding:2px 6px;background:#eceff1;border:1px solid #cfd8dc;border-radius:3px;font-weight:600;font-variant-numeric:tabular-nums">—</span>
+      <div style="font-size:9px;color:#999;font-style:italic;margin-top:2px">
+        ${pr.type === 'P' ? 'Нагрев: d=const → q<sub>w</sub>=0.' : ''}
+        ${pr.type === 'C' ? 'Охлаждение: q<sub>w</sub> = m<sub>да</sub>·ΔW из BF-модели (ADP+BF). Чтобы изменить — измените ADP/BF или цель t.' : ''}
+        ${pr.type === 'M' ? 'Смешение: q<sub>w</sub> = разность W·m<sub>да</sub> от смеси (зависит от mixWith и α).' : ''}
+        ${pr.type === 'R' ? 'Рекуператор: q<sub>w</sub> = 0 (sensible) или η·ΔW (total). Зависит от режима.' : ''}
+      </div>
+      <span data-role="condensate" style="display:none;margin-top:3px;padding:3px 5px;background:#e1f5fe;border:1px solid #4fc3f7;border-radius:3px;font-size:10px;color:#01579b;font-weight:600;"></span>
     </div>
     `}
     <label style="font-size:10px;color:#666;margin-top:4px"><span>V процесса, м³/ч</span>
@@ -2768,6 +2782,13 @@ function fillComputedQW(segs) {
         const val = col === 'Q' ? s.Q.toFixed(2) : s.qw.toFixed(3);
         inp.value = val;
       });
+      // v0.59.962: read-only q_w для C/M/R — пишем в span data-role="qw-readonly"
+      const qwRO = arr.querySelector('[data-role="qw-readonly"]');
+      if (qwRO) {
+        const sgn = s.qw > 0 ? '+' : '';
+        qwRO.textContent = sgn + s.qw.toFixed(3);
+        qwRO.style.color = s.qw > 0.001 ? '#2e7d32' : s.qw < -0.001 ? '#6a1b9a' : '#607080';
+      }
     });
   });
   // v0.59.951: после fill Q/qw — обновляем блок computed-параметров.
