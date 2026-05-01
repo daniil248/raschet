@@ -4,6 +4,19 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.966', date: '2026-05-01', items: [
+      '🖱 <b>Все модалки draggable (по всему проекту)</b>. По проектной директиве: «все модальные окна кроме модальных окон предупреждений должны быть перемещаемые. Это для всего проекта».',
+      '• Новый shared-модуль <code>shared/draggable-modal.js</code> с экспортами <code>makeDraggable(overlay, modalSel, headSel)</code> и <code>autoApply([{overlay, modal, head}, ...])</code>. autoApply использует MutationObserver — drag прицепляется ко всем матчинг-overlay-ам, включая будущие.',
+      '• Применено: psychrometrics (.psy-wiz-overlay + .psy-proc-edit-overlay); meteo station-picker (.mt-modal-overlay); shared app-header storage-settings (.rs-storage-modal-overlay).',
+      '• Реализация: cursor:move на header, mousedown→absolute-pos, mousemove→update left/top, mouseup→cleanup. body.rs-dragging блокирует выделение текста на время drag.',
+      '• ИСКЛЮЧЕНИЕ: confirm/alert модалки (например <code>twConfirm</code>) НЕ перемещаются — там user должен подтвердить «здесь и сейчас».',
+      '🔍 <b>RH-метки rotated along curves (расширенный набор 5..90% шаг 5%)</b> — v0.59.964.',
+      '🖱 <b>Drag-pan диаграммы вместо scroll-bars + reset zoom+pan</b> — v0.59.963.',
+      '🔒 <b>q<sub>w</sub> для C/M/R — read-only расчётная</b> — v0.59.962.',
+      '🔍 <b>Zoom самой диаграммы</b> — v0.59.961.',
+      '🚧 <b>Зоны на холсте перетаскиваются и resize</b> — v0.59.959.',
+      'Файлы: <code>shared/draggable-modal.js</code> (NEW), <code>psychrometrics/psychrometrics.js</code>, <code>meteo/station-picker.js</code>, <code>shared/app-header.js</code>.',
+    ] },
     { version: '0.59.965', date: '2026-05-01', items: [
       '🔍 <b>ADP-точки в таблице «Параметры воздуха по точкам»</b>. По репорту: «точка ADP нигде не описана, добавь её также в таблицу».',
       '• Раньше: ADP-маркер рисовался только на чарте (v0.59.936) — но в таблицах его не было. Пользователь не мог скопировать значения W_sat(ADP)/h_sat(ADP) для расчётов.',

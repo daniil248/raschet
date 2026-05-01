@@ -644,6 +644,15 @@ function renderProcsSidebar() {
   }).join('');
 }
 
+/* v0.59.966: drag для всех модалок проекта вынесен в
+   shared/draggable-modal.js. Здесь только инициализация autoApply
+   с селекторами psychrometrics-модалок. */
+import { autoApply as autoMakeModalsDraggable } from '../shared/draggable-modal.js';
+autoMakeModalsDraggable([
+  { overlay: '.psy-wiz-overlay',       modal: '.psy-wiz-modal',       head: '.psy-wiz-head' },
+  { overlay: '.psy-proc-edit-overlay', modal: '.psy-proc-edit-modal', head: '.psy-proc-edit-head' },
+]);
+
 /* v0.59.939: общий wireGraphHost (был closure в wire(), теперь module-level).
    Принимает либо id, либо элемент DOM. Используется для основной панели
    узлов/связей и для нашей modal-редактора процесса. */
@@ -753,41 +762,7 @@ function openProcessEditor(procIdx) {
   // v0.59.951: триггерим update() чтобы computed-блок (Δ состояний,
   // Q/qw) сразу заполнился актуальными значениями для новой DOM-карточки.
   try { update(); } catch {}
-  // v0.59.955: drag по header. По репорту: «модалки должны перемещаться
-  // мышью». Используем абсолютное позиционирование modal-окна с offset-ом
-  // от центра. Закрытие сбрасывает позицию (modal каждый раз новый).
-  (() => {
-    const head = overlay.querySelector('.psy-proc-edit-head');
-    const modal = overlay.querySelector('.psy-proc-edit-modal');
-    if (!head || !modal) return;
-    let dx = 0, dy = 0, sx = 0, sy = 0, dragging = false;
-    head.addEventListener('mousedown', (e) => {
-      if (e.target.closest('button')) return;
-      dragging = true;
-      sx = e.clientX; sy = e.clientY;
-      const rect = modal.getBoundingClientRect();
-      dx = rect.left; dy = rect.top;
-      // Переключаем модалку из flex-center в абсолютное
-      modal.style.position = 'absolute';
-      modal.style.left = dx + 'px';
-      modal.style.top  = dy + 'px';
-      modal.style.margin = '0';
-      overlay.style.alignItems = 'flex-start';
-      overlay.style.justifyContent = 'flex-start';
-      document.body.classList.add('psy-dragging');
-      e.preventDefault();
-    });
-    document.addEventListener('mousemove', (e) => {
-      if (!dragging) return;
-      modal.style.left = (dx + e.clientX - sx) + 'px';
-      modal.style.top  = (dy + e.clientY - sy) + 'px';
-    });
-    document.addEventListener('mouseup', () => {
-      if (!dragging) return;
-      dragging = false;
-      document.body.classList.remove('psy-dragging');
-    });
-  })();
+  // v0.59.966: drag вынесен в shared/draggable-modal.js (autoApply на init).
   // v0.59.953: «🧙 Через мастер» — закрывает модалку и открывает
   // wizard step 2 для текущего типа. По репорту: «при открытии
   // карточки процесса внутри можно запустить мастер процесса и

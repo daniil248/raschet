@@ -383,6 +383,11 @@ function openStorageModeModal() {
   const userMode = Storage.userMode || 'auto';
   const effective = Storage.effectiveMode || 'local';
   const fbReady = !!(window.Auth && window.Auth.isFirebaseReady);
+  // v0.59.966: drag для модалки настроек хранения
+  // (по проектной директиве: все settings-модалки draggable).
+  import('./draggable-modal.js').then(m => {
+    m.autoApply([{ overlay: '.rs-storage-modal-overlay', modal: '.rs-storage-modal', head: '.rs-storage-modal-head' }]);
+  }).catch(() => {});
   const overlay = document.createElement('div');
   overlay.className = 'rs-storage-modal-overlay';
   overlay.innerHTML = `<div class="rs-storage-modal">
