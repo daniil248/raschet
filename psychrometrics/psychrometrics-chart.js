@@ -92,33 +92,53 @@ export function render(container, opts = {}) {
     }
     if (pts.length > 1) {
       svg += `<polyline points="${pts.map(p=>p[0]+','+p[1]).join(' ')}" fill="none"/>`;
-      // v0.59.941: правильный «head» по style:
-      //   ramzin — верхний-левый конец линии (мин W, макс T) = pts[0]
-      //   ashrae — наоборот, верхний-левый = pts[последний] (мин W соответствует
-      //     максимальному Y, мы хотим точку с НАИМЕНЬШИМ y — она в pts[конец]
-      //     при ASHRAE-mapping, потому что W возрастает по итерации, а Y(W)
-      //     убывает с ростом W). Иначе h-метки наезжают на правую W-ось.
-      const head = isAshrae ? pts[pts.length - 1] : pts[0];
-      enthalpyLabels.push({ x: head[0], y: head[1], h });
+      enthalpyLabels.push({ pts, h });
     }
   }
   svg += `</g>`;
-  // Метки h: для ramzin размещаем чуть выше «головы» (стандартно, на верхнем
-  // конце); для ashrae — чуть СЛЕВА от «головы», text-anchor end, чтобы метки
-  // не лезли в W-ось справа.
+  // v0.59.945: Метки h выровнены по ОДНОЙ прямой:
+  //   ramzin — все на y = marginT - 4 (горизонтальная линия над плот-областью).
+  //     Считаем W где iso-h пересекает T=T_max: W = (h - 1.006·Tmax)/(2501+1.86·Tmax).
+  //     Если W вне [W_min, W_max] — линия не достигает верхнего края, label-имеет
+  //     fallback к pts[0] (как раньше).
+  //   ashrae — все на x = marginL - 4 (вертикальная справа от левой грани).
+  //     Считаем W где iso-h пересекает T=T_min: W = (h - 1.006·Tmin)/(2501+1.86·Tmin).
   for (const lbl of enthalpyLabels) {
-    if (lbl.y < o.marginT + 6) continue;
+    let labelX, labelY, anchor;
     if (isAshrae) {
-      // Не выходим за левую границу плот-области
-      if (lbl.x < o.marginL + 8) continue;
-      svg += `<text x="${lbl.x - 4}" y="${lbl.y - 3}" text-anchor="end"
-               style="font-size:9px;fill:#1565c0;font-weight:600;paint-order:stroke;stroke:#fff;stroke-width:2.5px;">
-               h=${lbl.h}</text>`;
+      // Метка слева от плот-области, на y где iso-h пересекает T=T_min
+      const W_at_Tmin = (lbl.h - 1.006 * o.T_min) / (2501 + 1.86 * o.T_min);
+      if (W_at_Tmin >= o.W_min && W_at_Tmin <= o.W_max) {
+        const [, py] = pos(W_at_Tmin, o.T_min);
+        labelX = o.marginL - 4;
+        labelY = py + 3;
+        anchor = 'end';
+      } else {
+        // fallback — последняя точка (pts[конец])
+        const head = lbl.pts[lbl.pts.length - 1];
+        labelX = head[0] - 4;
+        labelY = head[1] - 3;
+        anchor = 'end';
+      }
     } else {
-      svg += `<text x="${lbl.x + 2}" y="${lbl.y - 3}"
-               style="font-size:9px;fill:#1565c0;font-weight:600;paint-order:stroke;stroke:#fff;stroke-width:2.5px;">
-               h=${lbl.h}</text>`;
+      // ramzin — метка над плот-областью, на x где iso-h пересекает T=T_max
+      const W_at_Tmax = (lbl.h - 1.006 * o.T_max) / (2501 + 1.86 * o.T_max);
+      if (W_at_Tmax >= o.W_min && W_at_Tmax <= o.W_max) {
+        const [px] = pos(W_at_Tmax, o.T_max);
+        labelX = px + 2;
+        labelY = o.marginT - 3;
+        anchor = 'start';
+      } else {
+        // fallback — первая точка
+        const head = lbl.pts[0];
+        labelX = head[0] + 2;
+        labelY = head[1] - 3;
+        anchor = 'start';
+      }
     }
+    svg += `<text x="${labelX}" y="${labelY}" text-anchor="${anchor}"
+             style="font-size:9px;fill:#1565c0;font-weight:600;paint-order:stroke;stroke:#fff;stroke-width:2.5px;">
+             h=${lbl.h}</text>`;
   }
 
   // --- Axes (плот-рамка) ---
@@ -139,10 +159,11 @@ export function render(container, opts = {}) {
       svg += `<text x="${o.marginL + plotW + 6}" y="${py + 3}" text-anchor="start"
                style="font-size:10px;fill:#333;">${(W * 1000).toFixed(0)}</text>`;
     }
-    // Axis titles
+    // Axis titles + давление (v0.59.945)
+    const Pkpa = (o.P / 1000).toFixed(2);
     svg += `<text x="${o.marginL + plotW / 2}" y="${o.height - 8}" text-anchor="middle"
              style="font-size:11px;fill:#555;font-weight:600;">
-             t, °C — Dry-Bulb Temperature</text>`;
+             t, °C — Dry-Bulb Temperature  ·  P = ${Pkpa} кПа</text>`;
     const wLblX = o.marginL + plotW + o.marginR - 6;
     const wLblY = o.marginT + plotH / 2;
     svg += `<text x="${wLblX}" y="${wLblY}" text-anchor="middle"
@@ -197,9 +218,11 @@ export function render(container, opts = {}) {
       svg += `<text x="${px}" y="${o.marginT + plotH + 14}" text-anchor="middle"
                style="font-size:10px;fill:#333;">${(W * 1000).toFixed(0)}</text>`;
     }
+    // v0.59.945: давление в подписи нижней оси
+    const Pkpa = (o.P / 1000).toFixed(2);
     svg += `<text x="${o.marginL + plotW / 2}" y="${o.height - 10}" text-anchor="middle"
              style="font-size:11px;fill:#555;font-weight:600;">
-             d (W), г влаги / кг сух. воздуха</text>`;
+             d (W), г влаги / кг сух. воздуха  ·  P = ${Pkpa} кПа</text>`;
     svg += `<text x="12" y="${o.marginT + plotH / 2}" text-anchor="middle"
              transform="rotate(-90 12 ${o.marginT + plotH / 2})"
              style="font-size:11px;fill:#555;font-weight:600;">t, °C</text>`;

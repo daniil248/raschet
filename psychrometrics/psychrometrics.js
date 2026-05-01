@@ -1278,9 +1278,22 @@ function cascadePass() {
     const p = S.points[dstIdx];
     const src = S.points[srcIdx];
     if (!p || !src) continue;
-    // Авто-имя
+    // Авто-имя. v0.59.946: для R-процесса определяем сторону рекуператора
+    // (приток vs вытяжка) по имени src — иначе оба выхода называются
+    // одинаково «После рекуператора», и непонятно где какой поток.
+    // По репорту: «по рекуператору добавь однозначное понимание с какого
+    // выхода, притока или вытяжки».
     if (!p.nameUser) {
-      p.name = PROC_NAME_OUT[proc.type] || '';
+      if (proc.type === 'R') {
+        const srcName = (src.name || '').toLowerCase();
+        const isSupply = /(нар(уж|ужн)|приток|свеж|улиц)/.test(srcName);
+        const isExhaust = /(вытяжк|внутр|помещ|комн|зал|return)/.test(srcName);
+        if (isSupply)      p.name = 'После рекуп. (приток)';
+        else if (isExhaust) p.name = 'После рекуп. (вытяжка)';
+        else                p.name = PROC_NAME_OUT.R;
+      } else {
+        p.name = PROC_NAME_OUT[proc.type] || '';
+      }
     }
     const aState = pointState(src, S.P);
     if (!aState) continue;
@@ -2938,16 +2951,17 @@ function wire() {
         });
         psyToast(`✓ Добавлена точка «${d.name}» · ${d.t.toFixed(1)}°C, ${Math.round(rh)}%`, 'ok');
       } else {
-        // Точки есть — применяем к ВХОДНОЙ (первой) точке.
-        // Сохраняем пользовательское имя — оно обычно роль-описательное
-        // («Наружный (приток)»), а meteo-режим показываем в toast.
+        // v0.59.945: Точки есть — применяем к ВХОДНОЙ (первой) точке,
+        // имя ТАКЖЕ обновляем (по репорту: «при выборе точки из метео,
+        // записывай ее имя»). Раньше имя сохранялось — но пользователь
+        // ожидает что выбор «Зима расч. Алматы» отразится в названии.
         const inp = S.points[0];
-        const keptName = inp.name || 'Точка 1';
+        inp.name = d.name; inp.nameUser = true;
         inp.t = tStr; inp.tUser = true; inp.tTs = tNow;
         inp.rh = rhStr; inp.rhUser = true; inp.rhTs = tNow;
         inp._meteoTag = d.tag;
         inp.x = ''; inp.h = '';  // сбрасываем — будут пересчитаны из t+rh
-        psyToast(`✓ Точка 1 «${keptName}» ← ${d.shortLabel.replace(/^.. /, '')} · ${d.t.toFixed(1)}°C, ${Math.round(rh)}%`, 'ok');
+        psyToast(`✓ Точка 1 ← «${d.name}» · ${d.t.toFixed(1)}°C, ${Math.round(rh)}%`, 'ok');
       }
       rerenderCycle();
       setTimeout(() => fitCanvas(), 100);
