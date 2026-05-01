@@ -88,10 +88,8 @@
           <span>Макс. φ, %</span>
           <input type="number" id="psy-rhmax" value="100" step="1" min="20" max="100">
         </label>
-        <label class="psy-field psy-inline" title="Температура поверхности холодного теплообменника (воды/хладоносителя). Влияет на процесс C (охлаждение с осушением) при автоподборе точки после испарителя.">
-          <span>t поверхности, °C</span>
-          <input type="number" id="psy-tevap" value="15" step="0.5">
-        </label>
+        <!-- v0.59.911: «t поверхности» убрано — теперь задаётся per-process
+             (ADP в редакторе охладителя). Глобальное поле дублировало смысл. -->
         <label class="psy-field psy-inline" title="Базовый расход воздуха по циклу. Используется, если у конкретного процесса не задан свой V.">
           <span>Базовый расход V, м³/ч</span>
           <input type="number" id="psy-vbase" value="10000" step="100" min="0">
@@ -134,7 +132,15 @@
         <button type="button" id="psy-csv" class="psy-btn" title="Экспорт таблиц «Точки» и «Процессы» в CSV (UTF-8 BOM, разделитель ;)">CSV</button>
       </div>
       <div class="psy-canvas" id="psy-canvas">
-        <div class="psy-canvas-inner">
+        <!-- v0.59.911: floating toolbar для бесконечного canvas -->
+        <div class="psy-canvas-toolbar">
+          <button type="button" class="psy-canvas-tool" data-cv-act="zoom-out" title="Уменьшить (Ctrl+−)">−</button>
+          <span class="psy-canvas-zoom-label" id="psy-canvas-zoom">100%</span>
+          <button type="button" class="psy-canvas-tool" data-cv-act="zoom-in" title="Увеличить (Ctrl++)">+</button>
+          <button type="button" class="psy-canvas-tool" data-cv-act="fit" title="Вписать (двойной клик по фону)">⊞ Fit</button>
+          <button type="button" class="psy-canvas-tool" data-cv-act="reset" title="Сбросить вид (100%)">100%</button>
+        </div>
+        <div class="psy-canvas-inner" id="psy-canvas-inner">
           <div class="psy-canvas-zones" id="psy-canvas-zones"></div>
           <svg class="psy-canvas-links" id="psy-canvas-links"
                xmlns="http://www.w3.org/2000/svg"></svg>

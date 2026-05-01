@@ -239,8 +239,9 @@ function attachZoneDrag(el, z) {
   });
   const onMove = (e) => {
     if (!moving) return;
-    z.cx = Math.max(0, ox + (e.clientX - sx));
-    z.cy = Math.max(0, oy + (e.clientY - sy));
+    const k = (S.canvasView?.scale) || 1;  // v0.59.911: учёт canvas zoom
+    z.cx = Math.max(0, ox + (e.clientX - sx) / k);
+    z.cy = Math.max(0, oy + (e.clientY - sy) / k);
     el.style.left = (z.cx|0) + 'px';
     el.style.top  = (z.cy|0) + 'px';
   };
@@ -261,8 +262,9 @@ function attachZoneResize(el, z) {
   });
   const onMove = (e) => {
     if (!rz) return;
-    z.w = Math.max(60, ow + (e.clientX - sx));
-    z.h = Math.max(60, oh + (e.clientY - sy));
+    const k = (S.canvasView?.scale) || 1;  // v0.59.911: учёт canvas zoom
+    z.w = Math.max(60, ow + (e.clientX - sx) / k);
+    z.h = Math.max(60, oh + (e.clientY - sy) / k);
     el.style.width  = (z.w|0) + 'px';
     el.style.height = (z.h|0) + 'px';
   };
@@ -366,8 +368,10 @@ function attachPointDrag(card, p) {
   });
   const onMove = (e) => {
     if (!moving) return;
-    p.cx = Math.max(0, ox + (e.clientX - sx));
-    p.cy = Math.max(0, oy + (e.clientY - sy));
+    // v0.59.911: учитываем canvas zoom — clientX-delta нужно разделить на scale
+    const k = (S.canvasView?.scale) || 1;
+    p.cx = Math.max(0, ox + (e.clientX - sx) / k);
+    p.cy = Math.max(0, oy + (e.clientY - sy) / k);
     card.style.left = (p.cx|0) + 'px';
     card.style.top  = (p.cy|0) + 'px';
     renderCanvasLinks();
@@ -779,7 +783,10 @@ function readInputs() {
     $('psy-P-kpa').value = (S.P / 1000).toFixed(3);
   }
   S.rhMax  = nNum($('psy-rhmax').value, 100);
-  S.tEvap  = nNum($('psy-tevap').value, 15);
+  // v0.59.911: tEvap-поле убрано из UI (ADP теперь per-process); читаем
+  // из элемента если он есть (legacy), иначе используем сохранённое.
+  const tevapEl = $('psy-tevap');
+  if (tevapEl) S.tEvap = nNum(tevapEl.value, 15);
   S.vBase  = nNum($('psy-vbase').value, 10000);
   const tmin = nNum($('psy-tmin-chart')?.value, -15);
   const tmax = nNum($('psy-tmax-chart')?.value, 50);
@@ -1795,7 +1802,7 @@ function syncTopInputs() {
   $('psy-alt').value    = S.alt;
   $('psy-P-kpa').value  = (S.P/1000).toFixed(3);
   $('psy-rhmax').value  = S.rhMax;
-  $('psy-tevap').value  = S.tEvap;
+  if ($('psy-tevap')) $('psy-tevap').value = S.tEvap;
   $('psy-vbase').value  = S.vBase;
   if ($('psy-tmin-chart')) $('psy-tmin-chart').value = S.tMinChart;
   if ($('psy-tmax-chart')) $('psy-tmax-chart').value = S.tMaxChart;
@@ -2015,6 +2022,7 @@ function wire() {
   renderFormulas();
   renderCycle();
   update();
+  wireInfiniteCanvas();       // v0.59.911: pan/zoom/fit для canvas
 
   // Верхние поля
   ['psy-alt','psy-P-kpa','psy-rhmax','psy-tevap','psy-vbase','psy-tmin-chart','psy-tmax-chart','psy-dmax-chart'].forEach(id => {
@@ -2200,6 +2208,20 @@ function wire() {
       if (picked.manual) {
         psyToast('Для ASHRAE-расчёта нужна станция из каталога. Используйте поиск/карту.', 'warn');
         return;
+      }
+
+      // v0.59.911: auto-fill «Условия объекта» по выбранной станции
+      // (высота над у.м. → atmospheric pressure пересчитывается автоматически)
+      if (picked.elev != null && Number.isFinite(Number(picked.elev))) {
+        const altEl = $('psy-alt');
+        if (altEl) {
+          altEl.value = Math.round(Number(picked.elev));
+          // Имитируем focus+input event чтобы pressure пересчиталось через update()
+          altEl.focus();
+          altEl.dispatchEvent(new Event('input', { bubbles: true }));
+          altEl.blur();
+        }
+        update();  // полный пересчёт чтобы давление обновилось
       }
 
       // Шаг 2: проверим, есть ли уже датасет для этой локации в /meteo/
@@ -2708,6 +2730,170 @@ function applyWizard(pt, overlay, fromIdx) {
   rerenderCycle();
   psyToast(`✓ Создано: ${newName}`, 'ok');
   return true;
+}
+
+// ========================================================================
+// v0.59.911: Бесконечный canvas с pan/zoom/fit (CAD-style)
+// State хранится в S.canvasView = { tx, ty, scale }, persists в LS.
+// Pan: drag пустой области canvas (но не поверх узлов/zones).
+// Zoom: wheel (с origin под курсором).
+// Fit: кнопка ⊞ или dblclick на пустой области — вписывает все узлы.
+// ========================================================================
+function wireInfiniteCanvas() {
+  const canvas = document.getElementById('psy-canvas');
+  const inner  = document.getElementById('psy-canvas-inner');
+  if (!canvas || !inner) return;
+
+  // Восстановить view из LS
+  try {
+    const saved = JSON.parse(localStorage.getItem('psy.canvasView') || 'null');
+    if (saved && Number.isFinite(saved.tx) && Number.isFinite(saved.ty) && Number.isFinite(saved.scale)) {
+      S.canvasView = saved;
+    }
+  } catch {}
+  if (!S.canvasView) S.canvasView = { tx: 0, ty: 0, scale: 1 };
+
+  const apply = (animate = false) => {
+    const v = S.canvasView;
+    if (!animate) inner.classList.add('psy-no-trans');
+    inner.style.transform = `translate3d(${v.tx}px, ${v.ty}px, 0) scale(${v.scale})`;
+    if (!animate) requestAnimationFrame(() => inner.classList.remove('psy-no-trans'));
+    const lab = document.getElementById('psy-canvas-zoom');
+    if (lab) lab.textContent = Math.round(v.scale * 100) + '%';
+    try { localStorage.setItem('psy.canvasView', JSON.stringify(S.canvasView)); } catch {}
+  };
+  apply(true);
+
+  // ─── Pan: mousedown на пустой области canvas (не на point/zone)
+  let panning = false, panStart = null;
+  canvas.addEventListener('mousedown', (e) => {
+    // Только если клик НЕ по узлу/zone/инпуту/кнопке — чтобы не мешать редактированию
+    if (e.target.closest('.psy-point, .psy-canvas-zone, .psy-canvas-toolbar, input, select, button, textarea, .psy-canvas-zone-resize')) return;
+    if (e.button !== 0 && e.button !== 1) return;  // только левая или средняя
+    panning = true;
+    panStart = { x: e.clientX, y: e.clientY, tx: S.canvasView.tx, ty: S.canvasView.ty };
+    canvas.classList.add('psy-panning');
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!panning) return;
+    S.canvasView.tx = panStart.tx + (e.clientX - panStart.x);
+    S.canvasView.ty = panStart.ty + (e.clientY - panStart.y);
+    apply();
+  });
+  window.addEventListener('mouseup', () => {
+    if (!panning) return;
+    panning = false;
+    canvas.classList.remove('psy-panning');
+  });
+
+  // ─── Zoom: wheel с origin под курсором
+  canvas.addEventListener('wheel', (e) => {
+    if (e.target.closest('.psy-canvas-toolbar, input[type="number"]')) return;
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const delta = -e.deltaY;
+    const factor = delta > 0 ? 1.1 : 1 / 1.1;
+    const newScale = Math.max(0.1, Math.min(3.0, S.canvasView.scale * factor));
+    if (newScale === S.canvasView.scale) return;
+    // Сохранить точку под курсором фиксированной
+    const k = newScale / S.canvasView.scale;
+    S.canvasView.tx = mx - k * (mx - S.canvasView.tx);
+    S.canvasView.ty = my - k * (my - S.canvasView.ty);
+    S.canvasView.scale = newScale;
+    apply();
+  }, { passive: false });
+
+  // ─── Fit: кнопка / двойной клик
+  const fit = () => {
+    const points = S.points || [];
+    const zones = S.zones || [];
+    if (!points.length && !zones.length) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of points) {
+      const cx = Number(p.cx) || 0, cy = Number(p.cy) || 0;
+      const w = 200, h = 220;  // PSY_NODE_W/PSY_NODE_H approx
+      if (cx < minX) minX = cx;
+      if (cy < minY) minY = cy;
+      if (cx + w > maxX) maxX = cx + w;
+      if (cy + h > maxY) maxY = cy + h;
+    }
+    for (const z of zones) {
+      const cx = Number(z.cx) || 0, cy = Number(z.cy) || 0;
+      const w = Number(z.w) || 200, h = Number(z.h) || 200;
+      if (cx < minX) minX = cx;
+      if (cy < minY) minY = cy;
+      if (cx + w > maxX) maxX = cx + w;
+      if (cy + h > maxY) maxY = cy + h;
+    }
+    if (!Number.isFinite(minX)) return;
+    const padding = 40;
+    minX -= padding; minY -= padding; maxX += padding; maxY += padding;
+    const cw = canvas.clientWidth, ch = canvas.clientHeight;
+    const contentW = maxX - minX, contentH = maxY - minY;
+    const scale = Math.min(cw / contentW, ch / contentH, 1.5);
+    S.canvasView.scale = Math.max(0.15, scale);
+    S.canvasView.tx = (cw - contentW * S.canvasView.scale) / 2 - minX * S.canvasView.scale;
+    S.canvasView.ty = (ch - contentH * S.canvasView.scale) / 2 - minY * S.canvasView.scale;
+    apply(true);
+  };
+
+  // Toolbar buttons
+  canvas.querySelectorAll('[data-cv-act]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const act = btn.dataset.cvAct;
+      if (act === 'zoom-in') {
+        const cw = canvas.clientWidth, ch = canvas.clientHeight;
+        const factor = 1.2;
+        const newScale = Math.min(3, S.canvasView.scale * factor);
+        const k = newScale / S.canvasView.scale;
+        S.canvasView.tx = cw / 2 - k * (cw / 2 - S.canvasView.tx);
+        S.canvasView.ty = ch / 2 - k * (ch / 2 - S.canvasView.ty);
+        S.canvasView.scale = newScale;
+        apply(true);
+      } else if (act === 'zoom-out') {
+        const cw = canvas.clientWidth, ch = canvas.clientHeight;
+        const factor = 1 / 1.2;
+        const newScale = Math.max(0.15, S.canvasView.scale * factor);
+        const k = newScale / S.canvasView.scale;
+        S.canvasView.tx = cw / 2 - k * (cw / 2 - S.canvasView.tx);
+        S.canvasView.ty = ch / 2 - k * (ch / 2 - S.canvasView.ty);
+        S.canvasView.scale = newScale;
+        apply(true);
+      } else if (act === 'fit') fit();
+      else if (act === 'reset') {
+        S.canvasView = { tx: 0, ty: 0, scale: 1 };
+        apply(true);
+      }
+    });
+  });
+
+  // Двойной клик по пустой области = fit
+  canvas.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.psy-point, .psy-canvas-zone, .psy-canvas-toolbar, input, select, button, textarea')) return;
+    fit();
+  });
+
+  // Клавиатурные шорткаты: Ctrl+0 = reset, Ctrl++/Ctrl+- = zoom, F = fit
+  document.addEventListener('keydown', (e) => {
+    // Только если фокус на canvas (не в инпуте)
+    if (document.activeElement && document.activeElement.matches('input, select, textarea')) return;
+    if (e.ctrlKey && e.key === '0') { S.canvasView = { tx: 0, ty: 0, scale: 1 }; apply(true); e.preventDefault(); }
+    else if (e.ctrlKey && (e.key === '+' || e.key === '=')) {
+      const btn = canvas.querySelector('[data-cv-act="zoom-in"]'); btn?.click(); e.preventDefault();
+    }
+    else if (e.ctrlKey && (e.key === '-' || e.key === '_')) {
+      const btn = canvas.querySelector('[data-cv-act="zoom-out"]'); btn?.click(); e.preventDefault();
+    }
+    else if (e.key === 'f' || e.key === 'F') {
+      // Только если canvas видим в viewport
+      const rect = canvas.getBoundingClientRect();
+      if (rect.top < window.innerHeight && rect.bottom > 0) { fit(); e.preventDefault(); }
+    }
+  });
 }
 
 // Глобальный psyToast (nested-копия в wire() остаётся для backward-compat).

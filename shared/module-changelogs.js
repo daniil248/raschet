@@ -4,6 +4,18 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.911', date: '2026-04-30', items: [
+      '🖼 <b>ID-диаграмма: бесконечный canvas с pan/zoom/fit (CAD-style)</b>. По задаче: «поле должно быть нормальным, бесконечной простыней с зумом и перетаскиванием мыши, без полос прокрутки и вписыванием по клику мышкой».',
+      '• <b>Pan</b>: drag пустой области (cursor: grab → grabbing). Не мешает редактированию узлов / зон / инпутов.',
+      '• <b>Zoom</b>: wheel над canvas (origin под курсором). Диапазон 15%–300%. Также Ctrl++/Ctrl+−.',
+      '• <b>Fit</b>: кнопка «⊞ Fit» в floating-toolbar OR двойной клик по пустой области OR клавиша F. Вписывает все узлы и зоны с padding 40px.',
+      '• <b>Reset</b>: кнопка «100%» OR Ctrl+0 — сбрасывает view к (tx=0, ty=0, scale=1).',
+      '• <b>Floating toolbar</b> в правом верхнем углу: − / 100% (live label) / + / ⊞ Fit / 100% Reset.',
+      '• Внутреннее полотно расширено до 4000×2400 px (с 2400×1200) для размещения больших циклов.',
+      '• <b>Persistence</b>: текущий view сохраняется в LS (<code>psy.canvasView</code>) — раскладка восстанавливается при возврате.',
+      '• <b>Drag узлов и зон корректно учитывает scale</b>: clientX-delta / scale → логические px. Без этой поправки drag «уезжал» при zoom.',
+      'Файлы: <code>psychrometrics/psychrometrics.css</code> (.psy-canvas overflow:hidden + .psy-canvas-toolbar + transform-стили), <code>psychrometrics/index.html</code> (toolbar + #psy-canvas-inner id), <code>psychrometrics/psychrometrics.js</code> (wireInfiniteCanvas + apply/fit/zoom-handlers + drag-fixes).',
+    ] },
     { version: '0.59.910', date: '2026-04-30', items: [
       '🚨 <b>Fix: station-picker рендерился inline-блоком в psychrometrics</b>. По репорту: «так не пойдет запрашивать, где-то внизу и бесконечное количество раз; используй тот же пикер как модуль».',
       '• <b>Корень бага</b>: <code>meteo/station-picker.js</code> использовал CSS-классы <code>.mt-modal-overlay</code> / <code>.mt-station-picker</code> определённые в <code>meteo/meteo.css</code>. При вызове из других модулей (psychrometrics, tech-workspace) этот CSS не подгружался — picker рендерился по дефолтному block-flow на странице вместо modal-overlay (видно в скриншоте: 3 копии «Выбор локации для ASHRAE design points» друг под другом, без модал-обёртки).',

@@ -24,23 +24,67 @@
 /* Карточки цикла */
 /* ПОЛОТНО с узлами (граф-canvas в стиле конструктора схем).
    Узлы позиционируются absolute по p.cx/p.cy; связи — SVG-слой позади. */
+/* v0.59.911: бесконечный canvas с pan/zoom/fit */
 .psy-canvas {
   position: relative;
   width: 100%;
-  height: 640px;
+  height: 70vh;
+  min-height: 480px;
   background: #fafbfc;
   border: 1px solid #cbd5e1;
   border-radius: 4px;
-  overflow: auto;
+  overflow: hidden;        /* нет скроллбаров — только pan/zoom */
+  cursor: grab;
 }
+.psy-canvas:active { cursor: grabbing; }
+.psy-canvas.psy-panning { cursor: grabbing; }
 .psy-canvas-inner {
-  position: relative;
-  width: 2400px;
-  height: 1200px;
+  position: absolute;
+  top: 0; left: 0;
+  width: 4000px;
+  height: 2400px;
   background-image:
     linear-gradient(to right,  #e3e8ee 1px, transparent 1px),
     linear-gradient(to bottom, #e3e8ee 1px, transparent 1px);
   background-size: 20px 20px;
+  transform-origin: 0 0;
+  will-change: transform;
+  transition: transform 0.05s linear;
+}
+.psy-canvas-inner.psy-no-trans { transition: none; }
+
+/* Floating toolbar в верхнем правом углу canvas */
+.psy-canvas-toolbar {
+  position: absolute;
+  top: 10px; right: 10px;
+  z-index: 100;
+  display: flex;
+  gap: 4px;
+  background: rgba(255,255,255,0.95);
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  padding: 4px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+.psy-canvas-tool {
+  padding: 5px 9px;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #374151;
+  font-family: inherit;
+  min-width: 30px;
+}
+.psy-canvas-tool:hover { background: #eff6ff; border-color: #93c5fd; color: #1e40af; }
+.psy-canvas-zoom-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 11.5px;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
 }
 .psy-canvas-zones {
   position: absolute; top: 0; left: 0;
