@@ -2082,6 +2082,14 @@ function wire() {
   try { update(); } catch (e) { console.error('[psy.wire.update]', e); }
   try { wireInfiniteCanvas(); }
   catch (e) { console.error('[wireInfiniteCanvas]', e); }
+  // v0.59.919: при инициальной загрузке если есть точки и сохранённого view нет
+  // (или он скрывает все точки) — auto-fit чтобы пользователь сразу видел граф.
+  try {
+    const hasView = !!S.canvasView && Number.isFinite(+S.canvasView.scale);
+    if (S.points && S.points.length && !hasView) {
+      setTimeout(() => fitCanvas(), 100);
+    }
+  } catch (e) {}
 
   // Верхние поля
   // v0.59.913: null-check — psy-tevap отсутствует в HTML, без проверки
@@ -2255,15 +2263,18 @@ function wire() {
 
   $('psy-add').addEventListener('click', () => {
     try {
-      // v0.59.918: размещаем новую точку в центре viewport (с учётом pan/zoom)
-      // чтобы пользователь её сразу увидел
-      const vp = computeViewportCenter();
-      S.points.push({
-        name:'', t:'', rh:'', x:'', h:'', V:'',
-        cx: vp.x - 100,  // -100 = NODE_W/2 чтобы центр карточки совпал
-        cy: vp.y - 110,
-      });
+      // v0.59.918: рядом с последней — смещаем на 220 px вправо
+      // (если есть точки), чтобы новая не наслаивалась.
+      const last = S.points[S.points.length - 1];
+      const newPt = { name:'', t:'', rh:'', x:'', h:'', V:'' };
+      if (last && Number.isFinite(+last.cx)) {
+        newPt.cx = (+last.cx) + 220;
+        newPt.cy = (+last.cy) || 0;
+      }
+      S.points.push(newPt);
       rerenderCycle();
+      // v0.59.919: auto-fit чтобы новая точка была видна
+      setTimeout(() => fitCanvas(), 50);
     } catch (e) { console.error('[psy-add click]', e); }
   });
 
@@ -2477,6 +2488,7 @@ function wire() {
     const toIdx   = N >= 2 ? N - 1 : 0;
     S.procs.push({ type: 'X', Q:'', qw:'', fromIdx, toIdx });
     rerenderCycle();
+    setTimeout(() => fitCanvas(), 50);  // v0.59.919: видимость новой связи
   });
   const btnAddZone = $('psy-add-zone');
   if (btnAddZone) btnAddZone.addEventListener('click', () => {
@@ -2507,6 +2519,7 @@ function wire() {
     if (!key) return;
     loadDemo(key);
     e.target.value = '';   // reset select
+    setTimeout(() => fitCanvas(), 100);  // v0.59.919: видимость демо-цикла
   });
   const btnCsv = $('psy-csv');
   if (btnCsv) btnCsv.addEventListener('click', exportCsv);
