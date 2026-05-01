@@ -434,20 +434,60 @@ function renderCanvasLinks() {
              marker-end="url(#cv-${pr.type||'X'})"/>`;
     // Бейдж типа процесса на середине кривой
     const bx = (p1.x + p2.x) / 2, by = midY;
+
+    // v0.59.915: для R-процесса — настоящий X-cross символ рекуператора
+    // Показываем 4-портовое устройство с двумя пересекающимися потоками.
+    if (pr.type === 'R') {
+      const refKey = pr.recupWith;
+      const r = refKey != null ? S.points[parseInt(refKey, 10)] : null;
+      if (r) {
+        const rc = centerMid(r);
+        const bc = centerMid(b);
+        // Вытяжной поток ref → exhaust (через тот же teplotechnik)
+        // Рисуем вытяжной как pas-двойную линию параллельную главному
+        const dx = bx, dy = by;
+        // Бокс рекуператора — квадрат вокруг центрального бейджа
+        const boxR = 22;
+        out += `<rect x="${dx - boxR}" y="${dy - boxR}" width="${boxR*2}" height="${boxR*2}" rx="3"
+                fill="#fff" stroke="${color}" stroke-width="2"/>`;
+        // X-cross внутри (пересечение потоков)
+        out += `<line x1="${dx - boxR + 4}" y1="${dy - boxR + 4}" x2="${dx + boxR - 4}" y2="${dy + boxR - 4}"
+                stroke="${color}" stroke-width="2" stroke-dasharray="3,2" opacity="0.7"/>`;
+        out += `<line x1="${dx + boxR - 4}" y1="${dy - boxR + 4}" x2="${dx - boxR + 4}" y2="${dy + boxR - 4}"
+                stroke="${color}" stroke-width="2" stroke-dasharray="3,2" opacity="0.7"/>`;
+        // Подпись η на коробке
+        const eta = pr.recupEff || '?';
+        out += `<text x="${dx}" y="${dy + boxR + 12}" text-anchor="middle" font-size="10" font-weight="600" fill="${color}">η=${eta}</text>`;
+        // Линия выхода вытяжки (от ref-узла к коробке) — пунктирная, чтобы было видно теплоту
+        out += `<line x1="${rc.x}" y1="${rc.y}" x2="${dx}" y2="${dy}"
+                stroke="${color}" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6"/>`;
+        out += `<text x="${(rc.x+dx)/2}" y="${(rc.y+dy)/2 - 4}" text-anchor="middle" font-size="9" fill="${color}" opacity="0.8">вытяжка</text>`;
+        return;  // не рисуем стандартный bage поверх
+      }
+    }
+    // v0.59.915: для M-процесса — символ смешения (Y-junction)
+    if (pr.type === 'M') {
+      const refKey = pr.mixWith;
+      const r = refKey != null ? S.points[parseInt(refKey, 10)] : null;
+      if (r) {
+        const rc = centerMid(r);
+        // Y-shape: основной поток + ref-поток сходятся в b
+        out += `<line x1="${rc.x}" y1="${rc.y}" x2="${p2.x}" y2="${p2.y}"
+                stroke="${color}" stroke-width="1.8" stroke-dasharray="4,3" opacity="0.6"/>`;
+        // Пузырь смешения
+        out += `<g transform="translate(${bx},${by})">
+          <circle r="14" fill="#fff" stroke="${color}" stroke-width="2"/>
+          <text y="4" text-anchor="middle" font-size="13" font-weight="700" fill="${color}">M</text>
+        </g>`;
+        const ratio = pr.mixRatio || '?';
+        out += `<text x="${bx}" y="${by + 26}" text-anchor="middle" font-size="10" font-weight="600" fill="${color}">${ratio}</text>`;
+        return;
+      }
+    }
     out += `<g transform="translate(${bx},${by})">
       <circle r="10" fill="#fff" stroke="${color}" stroke-width="1.5"/>
       <text y="3.5" text-anchor="middle" font-size="11" font-weight="700" fill="${color}">${pr.type||'X'}</text>
     </g>`;
-    // Пунктир к ref-узлу для M/R (граф-граница, не основной поток)
-    const refKey = pr.type === 'M' ? pr.mixWith : (pr.type === 'R' ? pr.recupWith : null);
-    if (refKey != null) {
-      const r = S.points[parseInt(refKey, 10)];
-      if (r) {
-        const rc = centerMid(r), bc = centerMid(b);
-        out += `<line x1="${rc.x}" y1="${rc.y}" x2="${bc.x}" y2="${bc.y}"
-                stroke="${color}" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.55"/>`;
-      }
-    }
   });
   svg.innerHTML = out;
 }
@@ -2211,6 +2251,42 @@ function wire() {
   // v0.59.906: Мастер процесса — пошаговое добавление с минимальными вводными
   const wizBtn = $('psy-wizard');
   if (wizBtn) wizBtn.addEventListener('click', () => openProcessWizard());
+
+  // v0.59.915: Рекуператор-блок — одной кнопкой создаёт 4 точки + 2 R-процесса.
+  // Топология: приток (наружный) → R → приток после → ... + вытяжка (внутр.) →
+  // R(reverse) → вытяжка-наружу. ref-узлы кросс-связаны для теплообмена.
+  const recupBtn = $('psy-add-recup');
+  if (recupBtn) recupBtn.addEventListener('click', () => {
+    const baseI = S.points.length;
+    const baseX = 100, baseY = 100;
+    // 4 точки: 0=Наружный, 1=Приток после рекуп, 2=Внутр. вытяжка, 3=Вытяжка-наружу
+    S.points.push({ name:'Наружный (приток)',   t:'-15', rh:'85',  cx: baseX,             cy: baseY,             x:'', h:'', V:'' });
+    S.points.push({ name:'Приток после рекуп.', t:'',    rh:'',    cx: baseX,             cy: baseY + 280,       x:'', h:'', V:'' });
+    S.points.push({ name:'Внутренний (вытяжка)',t:'22',  rh:'40',  cx: baseX + 320,       cy: baseY,             x:'', h:'', V:'' });
+    S.points.push({ name:'Вытяжка наружу',      t:'',    rh:'',    cx: baseX + 320,       cy: baseY + 280,       x:'', h:'', V:'' });
+    // R-процесс приток: 0 → 1 (источник теплоты — точка 2)
+    S.procs.push({ type:'R', fromIdx: baseI + 0, toIdx: baseI + 1, recupWith: String(baseI + 2), recupEff: '0.65', Q:'', qw:'' });
+    // R-процесс вытяжка: 2 → 3 (источник холода — точка 0). Это автоматически
+    // не считается обратно — в текущей модели R считает только ОДИН поток. Но
+    // визуально полезно показать второй поток.
+    S.procs.push({ type:'R', fromIdx: baseI + 2, toIdx: baseI + 3, recupWith: String(baseI + 0), recupEff: '0.65', Q:'', qw:'' });
+    rerenderCycle();
+    psyToast('♻ Рекуператор-блок: 4 точки + 2 R-процесса. η=0.65', 'ok');
+  });
+
+  // v0.59.915: Рециркуляция-блок — 3 точки + M-процесс.
+  // Топология: 0=свежий + 1=возврат → 2=смесь
+  const recircBtn = $('psy-add-recirc');
+  if (recircBtn) recircBtn.addEventListener('click', () => {
+    const baseI = S.points.length;
+    const baseX = 100, baseY = 100;
+    S.points.push({ name:'Свежий (наружн.)',   t:'-15', rh:'85', cx: baseX,         cy: baseY,         x:'', h:'', V:'' });
+    S.points.push({ name:'Возврат (помещение)',t:'22',  rh:'40', cx: baseX + 320,   cy: baseY,         x:'', h:'', V:'' });
+    S.points.push({ name:'Смесь',              t:'',    rh:'',   cx: baseX + 160,   cy: baseY + 280,   x:'', h:'', V:'' });
+    S.procs.push({ type:'M', fromIdx: baseI + 0, toIdx: baseI + 2, mixWith: String(baseI + 1), mixRatio: '0.3', Q:'', qw:'' });
+    rerenderCycle();
+    psyToast('🔄 Рециркуляция-блок: свежий 30%, возврат 70%', 'ok');
+  });
 
   // v0.59.908: расширенный импорт ASHRAE design points из meteo.
   // 4 точки по ASHRAE Handbook гл. 14: Heating 99.6%/99% + Cooling 1%/0.4%.
