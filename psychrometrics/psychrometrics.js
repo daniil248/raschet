@@ -1766,6 +1766,33 @@ function renderResults(sts, segs) {
     `;
     b1.appendChild(tr);
   });
+  // v0.59.965: ADP-точки для C-процессов с заданным ADP. По репорту:
+  // «точка ADP нигде не описана, добавь её также в таблицу».
+  // ADP = apparatus dew point = T поверхности коил, φ=100% (saturation).
+  // Это виртуальное состояние, к которому стремилась бы (1−BF) часть воздуха.
+  S.procs.forEach((pr, i) => {
+    if (pr.type !== 'C') return;
+    const adpC = nNum(pr.adp);
+    if (!Number.isFinite(adpC)) return;
+    const adpState = state(adpC, 1.0, S.P);  // T=ADP, φ=100%
+    if (!adpState) return;
+    const fromI = edgeFrom(pr, i), toI = edgeTo(pr, i);
+    const tr = document.createElement('tr');
+    tr.style.background = '#e1f5fe';  // голубоватая подсветка для ADP-строк
+    tr.innerHTML = `
+      <td style="color:#01579b;font-weight:600">ADP</td>
+      <td style="color:#01579b">Поверхность коил (проц. ${fromI+1}→${toI+1})</td>
+      <td>${adpState.T.toFixed(1)}</td>
+      <td>${adpState.RH.toFixed(1)}</td>
+      <td>${(adpState.W*1000).toFixed(2)}</td>
+      <td>${adpState.h.toFixed(2)}</td>
+      <td>${adpState.rho.toFixed(3)}</td>
+      <td>${adpState.v.toFixed(4)}</td>
+      <td>${adpState.Td.toFixed(1)}</td>
+      <td>${adpState.Twb.toFixed(1)}</td>
+    `;
+    b1.appendChild(tr);
+  });
 
   const b2 = $('psy-proc-body'); b2.innerHTML = '';
   let sumQheat = 0, sumQcool = 0, sumQwHum = 0, sumQwDeh = 0;
