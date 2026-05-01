@@ -370,6 +370,27 @@ body.psy-dragging *::after {
   border-radius: 2px;
   cursor: nwse-resize;
 }
+/* v0.59.969: 8-grip resize для зон. По репорту: «Зоны должны
+   расширяться за любую сторону или угол». N/S/E/W = боковые;
+   углы — диагональные. Хорошо видны при hover на zone. */
+.psy-canvas-zone-grip {
+  position: absolute;
+  background: #fff;
+  border: 1px solid #607080;
+  border-radius: 2px;
+  width: 10px; height: 10px;
+  z-index: 5;
+  opacity: 0.7;
+}
+.psy-canvas-zone:hover .psy-canvas-zone-grip { opacity: 1; }
+.psy-canvas-zone-grip.psy-grip-n  { top: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; width: 18px; height: 8px; }
+.psy-canvas-zone-grip.psy-grip-s  { bottom: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; width: 18px; height: 8px; }
+.psy-canvas-zone-grip.psy-grip-e  { right: -5px; top: 50%; transform: translateY(-50%); cursor: ew-resize; width: 8px; height: 18px; }
+.psy-canvas-zone-grip.psy-grip-w  { left: -5px; top: 50%; transform: translateY(-50%); cursor: ew-resize; width: 8px; height: 18px; }
+.psy-canvas-zone-grip.psy-grip-ne { top: -5px; right: -5px; cursor: nesw-resize; }
+.psy-canvas-zone-grip.psy-grip-nw { top: -5px; left: -5px; cursor: nwse-resize; }
+.psy-canvas-zone-grip.psy-grip-se { bottom: -5px; right: -5px; cursor: nwse-resize; }
+.psy-canvas-zone-grip.psy-grip-sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
 .psy-zones-panel {
   display: flex; flex-direction: column; gap: 6px;
 }

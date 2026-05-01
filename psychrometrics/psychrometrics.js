@@ -238,9 +238,18 @@ function renderZones() {
     const col = z.color || '#90caf9';
     el.style.background   = hexToRgba(col, 0.12);
     el.style.borderColor  = hexToRgba(col, 0.7);
+    // v0.59.969: 8 grips для resize с любой стороны/угла. По репорту:
+    // «Зоны должны расширяться за любую сторону или угол».
     el.innerHTML = `
       <div class="psy-canvas-zone-label">${escAttr(z.name || 'Зона')}</div>
-      <div class="psy-canvas-zone-resize" data-act="zone-resize"></div>
+      <div class="psy-canvas-zone-grip psy-grip-n"  data-act="zone-resize" data-grip="N"></div>
+      <div class="psy-canvas-zone-grip psy-grip-ne" data-act="zone-resize" data-grip="NE"></div>
+      <div class="psy-canvas-zone-grip psy-grip-e"  data-act="zone-resize" data-grip="E"></div>
+      <div class="psy-canvas-zone-grip psy-grip-se" data-act="zone-resize" data-grip="SE"></div>
+      <div class="psy-canvas-zone-grip psy-grip-s"  data-act="zone-resize" data-grip="S"></div>
+      <div class="psy-canvas-zone-grip psy-grip-sw" data-act="zone-resize" data-grip="SW"></div>
+      <div class="psy-canvas-zone-grip psy-grip-w"  data-act="zone-resize" data-grip="W"></div>
+      <div class="psy-canvas-zone-grip psy-grip-nw" data-act="zone-resize" data-grip="NW"></div>
     `;
     host.appendChild(el);
     attachZoneDrag(el, z);
@@ -256,52 +265,100 @@ function hexToRgba(hex, a) {
 }
 function attachZoneDrag(el, z) {
   let moving = false, sx=0, sy=0, ox=0, oy=0;
+  // v0.59.969: точки, центры которых внутри bounds зоны при mousedown,
+  // двигаются ВМЕСТЕ с зоной. По репорту: «И точки должны привязываться
+  // к зонам и перемещаться вместе с перемещением зоны».
+  let anchored = [];
   el.addEventListener('mousedown', (e) => {
     if (e.target.closest('[data-act="zone-resize"]')) return;
     moving = true;
     sx = e.clientX; sy = e.clientY;
     ox = +z.cx || 0; oy = +z.cy || 0;
+    const zw = +z.w || 200, zh = +z.h || 120;
+    anchored = (S.points || []).filter(p => {
+      const cx = (+p.cx || 0) + 100;  // ≈ centered card
+      const cy = (+p.cy || 0) + 110;
+      return cx >= ox && cx <= ox + zw && cy >= oy && cy <= oy + zh;
+    }).map(p => ({ p, ox: +p.cx || 0, oy: +p.cy || 0 }));
     document.body.style.userSelect = 'none';
     document.body.classList.add('psy-dragging');
     e.preventDefault();
   });
   const onMove = (e) => {
     if (!moving) return;
-    const k = (S.canvasView?.scale) || 1;  // v0.59.911: учёт canvas zoom
-    // v0.59.914: убрал Math.max(0, ...) — с бесконечным canvas зоны
-    // должны двигаться куда угодно.
-    z.cx = ox + (e.clientX - sx) / k;
-    z.cy = oy + (e.clientY - sy) / k;
+    const k = (S.canvasView?.scale) || 1;
+    const dx = (e.clientX - sx) / k;
+    const dy = (e.clientY - sy) / k;
+    z.cx = ox + dx;
+    z.cy = oy + dy;
     el.style.left = (z.cx|0) + 'px';
     el.style.top  = (z.cy|0) + 'px';
+    // Сдвигаем привязанные точки на тот же delta
+    anchored.forEach(({ p, ox: pox, oy: poy }) => {
+      p.cx = pox + dx;
+      p.cy = poy + dy;
+      const idx = S.points.indexOf(p);
+      const card = document.querySelector(`.psy-point[data-point-idx="${idx}"]`);
+      if (card) {
+        card.style.left = (p.cx|0) + 'px';
+        card.style.top  = (p.cy|0) + 'px';
+      }
+    });
+    if (anchored.length) renderCanvasLinks();
   };
-  const onUp = () => { if (!moving) return; moving=false; document.body.style.userSelect=''; saveCycle(); };
+  const onUp = () => {
+    if (!moving) return;
+    moving=false;
+    anchored = [];
+    document.body.style.userSelect='';
+    document.body.classList.remove('psy-dragging');
+    saveCycle();
+  };
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onUp);
 }
 function attachZoneResize(el, z) {
-  const grip = el.querySelector('[data-act="zone-resize"]');
-  if (!grip) return;
-  let rz = false, sx=0, sy=0, ow=0, oh=0;
-  grip.addEventListener('mousedown', (e) => {
-    rz = true;
-    sx = e.clientX; sy = e.clientY;
-    ow = +z.w || 200; oh = +z.h || 120;
-    document.body.style.userSelect = 'none';
-    document.body.classList.add('psy-dragging');
-    e.preventDefault(); e.stopPropagation();
+  // v0.59.969: 8 grips — N/NE/E/SE/S/SW/W/NW. dir содержит N/S и/или E/W.
+  // По репорту: «Зоны должны расширяться за любую сторону или угол».
+  const grips = el.querySelectorAll('[data-act="zone-resize"]');
+  grips.forEach(grip => {
+    let rz=false, sx=0, sy=0, ox=0, oy=0, ow=0, oh=0, dir='';
+    grip.addEventListener('mousedown', (e) => {
+      rz = true;
+      sx = e.clientX; sy = e.clientY;
+      ox = +z.cx || 0; oy = +z.cy || 0;
+      ow = +z.w || 200; oh = +z.h || 120;
+      dir = grip.dataset.grip || 'SE';
+      document.body.style.userSelect = 'none';
+      document.body.classList.add('psy-dragging');
+      e.preventDefault(); e.stopPropagation();
+    });
+    const onMove = (e) => {
+      if (!rz) return;
+      const k = (S.canvasView?.scale) || 1;
+      const dx = (e.clientX - sx) / k;
+      const dy = (e.clientY - sy) / k;
+      let cx = ox, cy = oy, w = ow, h = oh;
+      if (dir.includes('E')) w = Math.max(60, ow + dx);
+      if (dir.includes('W')) { const nW = Math.max(60, ow - dx); cx = ox + (ow - nW); w = nW; }
+      if (dir.includes('S')) h = Math.max(60, oh + dy);
+      if (dir.includes('N')) { const nH = Math.max(60, oh - dy); cy = oy + (oh - nH); h = nH; }
+      z.cx = cx; z.cy = cy; z.w = w; z.h = h;
+      el.style.left = (cx|0) + 'px';
+      el.style.top  = (cy|0) + 'px';
+      el.style.width  = (w|0) + 'px';
+      el.style.height = (h|0) + 'px';
+    };
+    const onUp = () => {
+      if (!rz) return;
+      rz=false;
+      document.body.style.userSelect='';
+      document.body.classList.remove('psy-dragging');
+      saveCycle();
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   });
-  const onMove = (e) => {
-    if (!rz) return;
-    const k = (S.canvasView?.scale) || 1;  // v0.59.911: учёт canvas zoom
-    z.w = Math.max(60, ow + (e.clientX - sx) / k);
-    z.h = Math.max(60, oh + (e.clientY - sy) / k);
-    el.style.width  = (z.w|0) + 'px';
-    el.style.height = (z.h|0) + 'px';
-  };
-  const onUp = () => { if (!rz) return; rz=false; document.body.style.userSelect=''; saveCycle(); };
-  document.addEventListener('mousemove', onMove);
-  document.addEventListener('mouseup', onUp);
 }
 function renderZonesPanel() {
   const host = $('psy-zones-panel');

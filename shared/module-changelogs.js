@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.969', date: '2026-05-01', items: [
+      '🔲 <b>Зоны: resize за любую сторону или угол + точки привязываются к зоне</b>. По репорту: «Зоны должны расширяться за любую сторону или угол, как на моей схеме в конструкторе. И точки должны привязываться к зонам и перемещаться вместе с перемещением зоны».',
+      '• 8 grips на зоне: N (верх), NE, E (правая), SE, S (низ), SW, W (левая), NW. Каждый меняет соответствующую сторону: N/S → cy/h; W/E → cx/w; углы — оба.',
+      '• Cursor подсказки: ns-resize / ew-resize / nesw / nwse в зависимости от направления.',
+      '• Visible at 70% opacity, на hover полная видимость (разделение чтобы не отвлекали в покое).',
+      '🧲 <b>Anchor точек к зоне</b>: при mousedown на зоне фиксируются точки, центры которых внутри bounds зоны. На mousemove — двигаются на тот же delta. Все связи (canvas-links) перерисовываются. На mouseup — saveCycle().',
+      'Файлы: <code>psychrometrics/psychrometrics.js</code> (renderZones 8 grips + attachZoneDrag anchor + attachZoneResize multi-direction), <code>psychrometrics/psychrometrics.css</code> (.psy-grip-N/E/S/W/NE/NW/SE/SW positions).',
+    ] },
     { version: '0.59.968', date: '2026-05-01', items: [
       '🐛 <b>Critical: Q-target в C-процессе с ADP+BF молча игнорировался</b>. По репорту: «я установил мощность кондиционера на 60 кВт... в точке 2 t=20.39°C, потом изменил температуру на 0.1°C и у меня прилетело уже 118.26 кВт».',
       '• Объяснение: при Q-target h2 правильно вычислялся (h2 = h_in + Q·3600/m_da), но C-block ВСЕГДА переписывал t2 по BF-формуле <code>t2 = BF·T_in + (1−BF)·ADP</code>, игнорируя h2. Финальное состояние не соответствовало пользовательскому Q.',
