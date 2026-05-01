@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.910', date: '2026-04-30', items: [
+      '🚨 <b>Fix: station-picker рендерился inline-блоком в psychrometrics</b>. По репорту: «так не пойдет запрашивать, где-то внизу и бесконечное количество раз; используй тот же пикер как модуль».',
+      '• <b>Корень бага</b>: <code>meteo/station-picker.js</code> использовал CSS-классы <code>.mt-modal-overlay</code> / <code>.mt-station-picker</code> определённые в <code>meteo/meteo.css</code>. При вызове из других модулей (psychrometrics, tech-workspace) этот CSS не подгружался — picker рендерился по дефолтному block-flow на странице вместо modal-overlay (видно в скриншоте: 3 копии «Выбор локации для ASHRAE design points» друг под другом, без модал-обёртки).',
+      '• <b>Fix</b>: picker теперь self-contained — стили инжектятся на лету при первом вызове <code>pickStation()</code> через <code>injectStyles()</code> (idempotent). Тот же визуал как в <code>/meteo/</code>, но без зависимости от внешнего CSS.',
+      '• Также удалён бесконечный спам — каждый клик «📍 Из meteo» теперь корректно открывает один modal-overlay (а не клонирует блок).',
+      'Файл: <code>meteo/station-picker.js</code> (PICKER_STYLES const + injectStyles() инжектит на первый вызов).',
+    ] },
     { version: '0.59.909', date: '2026-04-30', items: [
       '📐 <b>ID-диаграмма: «Формулы и пояснения» свёрнуты в collapsible-панель</b>. По репорту: «формулы убери в отдельную вкладку или в хелпер». Раньше блок занимал ~400 px вертикально на основной странице. Теперь — свёрнут (только заголовок «📐 Формулы и пояснения — раскрыть»), кликом раскрывается с max-height: 600px и внутренним скроллом.',
       'Файлы: <code>psychrometrics/index.html</code> (div.psy-panel → details.psy-panel-collapse), <code>psychrometrics/psychrometrics.css</code> (стили collapsible с rotate-стрелкой ▶).',
