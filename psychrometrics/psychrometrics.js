@@ -500,6 +500,14 @@ function renderCanvasLinks() {
       <circle r="10" fill="#fff" stroke="${color}" stroke-width="1.5"/>
       <text y="3.5" text-anchor="middle" font-size="11" font-weight="700" fill="${color}">${pr.type||'X'}</text>
     </g>`;
+    // v0.59.925: ⚠ icon если есть feasibility-warning (proc._wizWarn)
+    if (pr._wizWarn) {
+      out += `<g transform="translate(${bx + 14},${by - 10})">
+        <circle r="7" fill="#fef3c7" stroke="#b45309" stroke-width="1"/>
+        <text y="3" text-anchor="middle" font-size="10" font-weight="700" fill="#b45309">⚠</text>
+        <title>${escAttr(String(pr._wizWarn))}</title>
+      </g>`;
+    }
   });
   svg.innerHTML = out;
 }
@@ -2143,6 +2151,23 @@ function wire() {
     ruCb.addEventListener('change', () => {
       S.showRuNames = ruCb.checked;
       try { localStorage.setItem('psy.showRuNames', S.showRuNames ? '1' : '0'); } catch {}
+      rerenderCycle();
+    });
+  }
+
+  // v0.59.925: переключатель ASHRAE 55 comfort zone
+  const czCb = $('psy-comfort-zone');
+  if (czCb) {
+    // Read saved preference (default: true)
+    try {
+      const saved = localStorage.getItem('psy.showComfortZone');
+      if (saved === '0') S.showComfortZone = false;
+      else S.showComfortZone = true;
+    } catch { S.showComfortZone = true; }
+    czCb.checked = S.showComfortZone !== false;
+    czCb.addEventListener('change', () => {
+      S.showComfortZone = czCb.checked;
+      try { localStorage.setItem('psy.showComfortZone', S.showComfortZone ? '1' : '0'); } catch {}
       rerenderCycle();
     });
   }

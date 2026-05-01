@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.925', date: '2026-04-30', items: [
+      '🟩 <b>Comfort zone toggle + ⚠ warning icons на связях</b>:',
+      '• Checkbox «🟩 ASHRAE 55 comfort zone» в верхних настройках диаграммы. Default ON, persists в LS (<code>psy.showComfortZone</code>). Click — мгновенно показывает/скрывает зелёный polygon.',
+      '• Если процесс был создан с feasibility-warning (v0.59.920 — например нагрев с целью t₂ ниже t_in), на canvas-связи рядом с тип-бейджем теперь рисуется жёлтый ⚠ кружок. <title>-tooltip показывает текст предупреждения при наведении.',
+      'Файлы: <code>psychrometrics/index.html</code> (+checkbox), <code>psychrometrics/psychrometrics.js</code> (czCb handler + ⚠ icon в renderCanvasLinks).',
+    ] },
     { version: '0.59.924', date: '2026-04-30', items: [
       '🖨 <b>Печать / сохранение в PDF</b>. Новая кнопка «🖨 Печать» в toolbar. Click → инжектируется print-header (i-d диаграмма Молье–Рамзина · дата · метаданные) → window.print(). В системном диалоге печати можно сохранить как PDF.',
       '• <code>@media print</code> CSS скрывает UI-элементы (header / footer / toolbars / panels / canvas-инструменты), оставляя цикл-canvas + i-d диаграмму + таблицы.',
