@@ -287,14 +287,23 @@
 
     <!-- Сводка процессов -->
     <div class="psy-panel">
-      <div class="psy-panel-title">Процессы (тепловая мощность и влагоприток)</div>
+      <div class="psy-panel-title">
+        Процессы (тепловая мощность и влагоприток)
+        <span style="margin-left:auto;font-weight:400;color:#607080;font-size:11px;display:inline-flex;align-items:center;gap:4px">
+          ч/год:
+          <input type="number" id="psy-hours-year" min="1" max="8784" step="1" style="width:64px"
+                 title="Количество часов работы в году для расчёта годового энергопотребления (8760 = непрерывно весь год)">
+        </span>
+      </div>
       <div class="psy-tbl-wrap">
         <table class="psy-tbl psy-output" id="psy-proc-out">
           <thead>
             <tr><th>№</th><th>Процесс</th>
               <th>V, м³/ч</th><th>ΔT, °C</th><th>Δd, г/кг</th><th>Δh, кДж/кг</th>
               <th>G<sub>в</sub>, кг/ч</th><th>Q, кВт</th>
-              <th>q<sub>w</sub>, кг/ч</th><th>знак</th>
+              <th>q<sub>w</sub>, кг/ч</th>
+              <th title="Годовое энергопотребление = |Q| × ч/год">E, кВт·ч/год</th>
+              <th>знак</th>
             </tr>
           </thead>
           <tbody id="psy-proc-body"></tbody>

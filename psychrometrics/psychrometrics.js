@@ -23,6 +23,7 @@ const S = {
   rhMax: 100,         // %
   tEvap: 15,          // °C
   vBase: 10000,       // м³/ч
+  hoursPerYear: (() => { try { const v = +localStorage.getItem('psy.hoursPerYear'); return Number.isFinite(v) && v > 0 ? v : 8760; } catch { return 8760; } })(),
   tMinChart: -15,     // °C — нижняя граница оси t на диаграмме
   tMaxChart: 50,      // °C — верхняя граница оси t
   dMaxChart: 30,      // г/кг — правая граница оси d
@@ -1269,6 +1270,12 @@ function readInputs() {
   const tevapEl = $('psy-tevap');
   if (tevapEl) S.tEvap = nNum(tevapEl.value, 15);
   S.vBase  = nNum($('psy-vbase').value, 10000);
+  const hyEl = $('psy-hours-year');
+  if (hyEl) {
+    const hy = nNum(hyEl.value, 8760);
+    S.hoursPerYear = Math.max(1, Math.min(8784, hy || 8760));
+    try { localStorage.setItem('psy.hoursPerYear', String(S.hoursPerYear)); } catch {}
+  }
   const tmin = nNum($('psy-tmin-chart')?.value, -15);
   const tmax = nNum($('psy-tmax-chart')?.value, 50);
   const dmax = nNum($('psy-dmax-chart')?.value, 30);
@@ -1901,16 +1908,25 @@ function renderResults(sts, segs) {
     if (s.qw > 0) sumQwHum += s.qw;
     if (s.qw < 0) sumQwDeh += -s.qw;
   });
+  const hY = Math.max(1, Math.min(8784, +S.hoursPerYear || 8760));
+  let sumEheat = 0, sumEcool = 0;
   segs.forEach((s, i) => {
     const pr = S.procs[i] || {};
     const fromI = edgeFrom(pr, i), toI = edgeTo(pr, i);
     if (!s) {
       b2.insertAdjacentHTML('beforeend',
-        `<tr><td>${fromI+1}→${toI+1}</td><td colspan="9" style="text-align:center;color:#999">—</td></tr>`);
+        `<tr><td>${fromI+1}→${toI+1}</td><td colspan="10" style="text-align:center;color:#999">—</td></tr>`);
       return;
     }
     const label = PROC_TYPES.find(p => p.v === s.type)?.t || s.type;
     const sign  = s.Q > 0.05 ? 'нагрев/увл.' : s.Q < -0.05 ? 'охл./осуш.' : '≈0';
+    // Годовое энергопотребление = |Q| × ч/год (кВт·ч/год). Для |E| ≥ 1000 — в МВт·ч/год.
+    const Ekwh = Math.abs(s.Q) * hY;
+    if (s.Q > 0) sumEheat += Ekwh;
+    if (s.Q < 0) sumEcool += Ekwh;
+    const Etxt = Ekwh >= 1000
+      ? `${(Ekwh/1000).toFixed(2)} МВт·ч`
+      : `${Ekwh.toFixed(0)} кВт·ч`;
     b2.insertAdjacentHTML('beforeend', `
       <tr style="background:${PROC_COLOR[s.type]||'#eee'}14">
         <td>${fromI+1}→${toI+1}</td><td>${label}</td>
@@ -1921,6 +1937,7 @@ function renderResults(sts, segs) {
         <td>${s.G.toFixed(0)}</td>
         <td style="color:${s.Q>0?'#c62828':'#0277bd'};font-weight:600">${s.Q.toFixed(2)}</td>
         <td style="color:${s.qw>0?'#2e7d32':'#6a1b9a'}">${s.qw.toFixed(3)}</td>
+        <td style="color:${s.Q>0?'#c62828':s.Q<0?'#0277bd':'#555'};font-size:11px" title="|${s.Q.toFixed(2)} кВт| × ${hY} ч/год = ${Ekwh.toFixed(0)} кВт·ч/год">${Etxt}</td>
         <td style="font-size:10px;color:#555">${sign}</td>
       </tr>
     `);
@@ -1932,6 +1949,7 @@ function renderResults(sts, segs) {
     const condKgH = sumQwDeh;
     const condLph = condKgH / 0.998;
     const condLpd = condLph * 24;
+    const fmtE = (v) => v >= 1000 ? `${(v/1000).toFixed(2)} МВт·ч` : `${v.toFixed(0)} кВт·ч`;
     b2.insertAdjacentHTML('beforeend', `
       <tr style="background:#eceff1;font-weight:700;border-top:2px solid #90a4ae">
         <td colspan="7" style="text-align:right;color:#37474f">ИТОГО по циклу:</td>
@@ -1941,12 +1959,15 @@ function renderResults(sts, segs) {
         <td style="color:#2e7d32" title="Суммарный влагоприток (qw>0) / осушение (qw<0)">
           +${sumQwHum.toFixed(3)}<br><span style="font-weight:400;font-size:10px;color:#6a1b9a">−${sumQwDeh.toFixed(3)}</span>
         </td>
+        <td style="color:#c62828" title="Годовая энергия нагрева/охл. при ${hY} ч/год">
+          +${fmtE(sumEheat)}<br><span style="font-weight:400;font-size:10px;color:#0277bd">−${fmtE(sumEcool)}</span>
+        </td>
         <td style="font-size:10px;color:#37474f">нагрев/охл.<br>увл./осуш.</td>
       </tr>
       ${condKgH > 0.001 ? `
       <tr style="background:#e1f5fe;border-top:1px solid #4fc3f7">
         <td colspan="7" style="text-align:right;color:#01579b;font-weight:700">💧 Конденсат (суммарно по осушению):</td>
-        <td colspan="3" style="color:#01579b;font-weight:700">
+        <td colspan="4" style="color:#01579b;font-weight:700">
           ${condKgH.toFixed(3)} кг/ч ≈ ${condLph.toFixed(3)} л/ч ≈ ${condLpd.toFixed(1)} л/сут
         </td>
       </tr>` : ''}
@@ -2875,6 +2896,7 @@ function syncTopInputs() {
   $('psy-rhmax').value  = S.rhMax;
   if ($('psy-tevap')) $('psy-tevap').value = S.tEvap;
   $('psy-vbase').value  = S.vBase;
+  if ($('psy-hours-year')) $('psy-hours-year').value = S.hoursPerYear;
   if ($('psy-tmin-chart')) $('psy-tmin-chart').value = S.tMinChart;
   if ($('psy-tmax-chart')) $('psy-tmax-chart').value = S.tMaxChart;
   if ($('psy-dmax-chart')) $('psy-dmax-chart').value = S.dMaxChart;
@@ -3180,7 +3202,7 @@ function wire() {
   // $(id).addEventListener бросал TypeError, обрывая wire() — кнопки add/
   // wizard/csv/from-meteo не приcвоились. Этот баг существовал ещё до
   // v0.59.911, но проявился только с моими новыми wizard/from-meteo handlers.
-  ['psy-alt','psy-P-kpa','psy-rhmax','psy-tevap','psy-vbase','psy-tmin-chart','psy-tmax-chart','psy-dmax-chart'].forEach(id => {
+  ['psy-alt','psy-P-kpa','psy-rhmax','psy-tevap','psy-vbase','psy-hours-year','psy-tmin-chart','psy-tmax-chart','psy-dmax-chart'].forEach(id => {
     const el = $(id);
     if (!el) return;
     el.addEventListener('input', update);
