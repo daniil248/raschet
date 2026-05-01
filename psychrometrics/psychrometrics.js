@@ -1399,6 +1399,25 @@ function escHtml(s) {
 /* ========================================================================
    Диаграмма
    ======================================================================== */
+
+// v0.59.922: ASHRAE 55-2017 thermal comfort polygon в координатах диаграммы.
+// Упрощённая модель: 4 угла прямоугольника 23–26°C × 30–60% RH.
+// (Точная зона требует расчёта PMV/PPD для каждой T+W; здесь box approximation.)
+function computeComfortZonePolygon(P, X, Y) {
+  // 4 угла: (Tmin,RHmin) → (Tmax,RHmin) → (Tmax,RHmax) → (Tmin,RHmax)
+  const Tmin = 23, Tmax = 26, RHmin = 0.30, RHmax = 0.60;
+  const corners = [
+    [Tmin, RHmin], [Tmax, RHmin], [Tmax, RHmax], [Tmin, RHmax],
+  ];
+  try {
+    const pts = corners.map(([T, RH]) => {
+      const W = humidityRatio(T, RH, P);
+      return `${X(W).toFixed(1)},${Y(T).toFixed(1)}`;
+    });
+    return pts.join(' ');
+  } catch { return null; }
+}
+
 let _chartCtx = null;  // {X, Y, opts} последнего рендера — для crosshair
 let _activePoint = null;  // индекс карточки точки, на которой сейчас фокус
 function renderChart(sts) {
@@ -1414,6 +1433,20 @@ function renderChart(sts) {
   const ctx = { X, Y };
   _chartCtx = { X, Y, opts };
   let overlay = arrowDefs();
+
+  // v0.59.922: ASHRAE 55-2017 comfort zone overlay (для офисов, IT-залов).
+  // Зелёная полупрозрачная зона 23–26°C × 30–60% RH (упрощённая прямоугольная).
+  // Включается через S.showComfortZone (default true).
+  if (S.showComfortZone !== false) {
+    const cz = computeComfortZonePolygon(S.P, X, Y);
+    if (cz) {
+      overlay += `<g class="psy-comfort-zone" pointer-events="none">
+        <polygon points="${cz}" fill="rgba(22,163,74,0.12)" stroke="#16a34a" stroke-width="0.8" stroke-dasharray="4,3"/>
+        <text x="${(X(0.008) + X(0.011)) / 2}" y="${Y(28)}" text-anchor="middle" font-size="9" fill="#15803d" font-weight="600">ASHRAE 55 comfort</text>
+      </g>`;
+    }
+  }
+
   // crosshair layer (обновляется в mousemove)
   overlay += `<g id="psy-xhair" style="display:none;pointer-events:none;">
     <line class="psy-xh-v" stroke="#c62828" stroke-width="0.6" stroke-dasharray="3,2"/>

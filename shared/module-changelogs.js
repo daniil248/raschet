@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.922', date: '2026-04-30', items: [
+      '🟩 <b>ASHRAE 55-2017 comfort zone overlay на id-chart</b>. На главной i-d диаграмме теперь отрисовывается полупрозрачный зелёный прямоугольник комфорт-зоны для офисов/IT-помещений: 23–26 °C × 30–60% RH. Расчёт через humidityRatio() на 4 угла полигона + конвертация через X(W),Y(T).',
+      '• Подпись «ASHRAE 55 comfort» внутри зоны.',
+      '• Включается через <code>S.showComfortZone !== false</code> (default ON). Для отключения добавить toggle позже.',
+      'Файл: <code>psychrometrics/psychrometrics.js</code> (computeComfortZonePolygon helper + overlay в renderChart).',
+    ] },
     { version: '0.59.921', date: '2026-04-30', items: [
       '📁 <b>Сохранённые циклы (named cycles)</b>: новый dropdown «📁 Циклы» в toolbar для save/load multiple циклов в один проект (Лето / Зима / Расчётный режим и т.п.).',
       '• «💾 Сохранить текущий цикл как…» — inline psyPrompt для имени, snapshot { points, procs, zones } сохраняется в LS (<code>psy.namedCycles.v1</code>).',
