@@ -245,6 +245,7 @@ function attachZoneDrag(el, z) {
     sx = e.clientX; sy = e.clientY;
     ox = +z.cx || 0; oy = +z.cy || 0;
     document.body.style.userSelect = 'none';
+    document.body.classList.add('psy-dragging');
     e.preventDefault();
   });
   const onMove = (e) => {
@@ -270,6 +271,7 @@ function attachZoneResize(el, z) {
     sx = e.clientX; sy = e.clientY;
     ow = +z.w || 200; oh = +z.h || 120;
     document.body.style.userSelect = 'none';
+    document.body.classList.add('psy-dragging');
     e.preventDefault(); e.stopPropagation();
   });
   const onMove = (e) => {
@@ -376,6 +378,7 @@ function attachPointDrag(card, p) {
     sx = e.clientX; sy = e.clientY;
     ox = +p.cx || 0; oy = +p.cy || 0;
     document.body.style.userSelect = 'none';
+    document.body.classList.add('psy-dragging');
     e.preventDefault();
   });
   const onMove = (e) => {
@@ -393,7 +396,7 @@ function attachPointDrag(card, p) {
   const onUp = () => {
     if (!moving) return;
     moving = false;
-    document.body.style.userSelect = '';
+    document.body.style.userSelect = ''; document.body.classList.remove('psy-dragging');
     saveCycle();
   };
   document.addEventListener('mousemove', onMove);
@@ -2301,30 +2304,63 @@ const DEMOS = {
     }
   },
   'recup': {
-    label: 'Зима + рекуператор: 4 точки (приток/вытяжка) + догрев',
+    label: 'Зима, замкнутый цикл: рекуп. + калориф. + помещение (люди/стены)',
     apply: () => {
-      // v0.59.947: переписан под «новое представление рекуператора» —
-      // полная П-схема с притоком и вытяжкой как двумя независимыми
-      // ветками, обменивающимися теплом через R-процессы. Раньше демо
-      // показывало только приточную сторону + dangling вытяжку без
-      // R на ней.
+      // v0.59.950: ПОЛНЫЙ замкнутый цикл с реальным сценарием — по репорту:
+      //   «вытяжка берется из неоткуда и не связана с температурой
+      //   подающего воздуха и никакими нагревами или охлаждениями внутри
+      //   помещения. Сделай реальный сценарий с полным циклом, включая
+      //   инфильтрацию, эксфильтрацию, теплопритоки от стен, теплопритоки
+      //   и влагопритоки от людей».
+      //
+      // Сценарий: офисное помещение зимой (Москва, -20°C на улице).
+      //   Приточный тракт: Улица → Рекуп → Калорифер → Помещение.
+      //   В помещении: тепло-/влагопритоки от людей и теплопотери через
+      //     стены / эксфильтрацию (X-процесс «Помещение»).
+      //   Вытяжной тракт: Помещение → Рекуп → На улицу.
+      //   Цикл замкнут — приточный и вытяжной потоки связаны через
+      //     рекуператор (теплообмен) и через помещение (тепло/влага).
       const now = performance.now();
+      S.vBase = 2000;
       S.points = [
-        // Приточная ветка
-        { name: 'Наружный (зима)',          nameUser: true, t: -20, tUser: true, tTs: now,   rh: 85, rhUser: true, rhTs: now,   x: '', h: '', V: '', cx: 40,  cy: 40 },
-        { name: 'После рекуп. (приток)',    nameUser: false,                               t: '', rh: '', x: '', h: '', V: '',                                          cx: 320, cy: 40 },
-        { name: 'После калорифера',         nameUser: true, t: 22, tUser: true, tTs: now+2, rh: '',                                                       x: '', h: '', V: '', cx: 600, cy: 40 },
-        // Вытяжная ветка (отдельный поток)
-        { name: 'Внутренний (вытяжка)',     nameUser: true, t: 22, tUser: true, tTs: now+3, rh: 40, rhUser: true, rhTs: now+3, x: '', h: '', V: '', cx: 40,  cy: 280 },
-        { name: 'После рекуп. (вытяжка)',   nameUser: false,                               t: '', rh: '', x: '', h: '', V: '',                                          cx: 320, cy: 280 },
+        // 0: Уличный воздух (зима, расчётная)
+        { name: 'Улица (зима)',           nameUser: true, t: -20, tUser: true, tTs: now,   rh: 85, rhUser: true, rhTs: now,   x: '', h: '', V: 2000, cx: 40,  cy: 40 },
+        // 1: Приток после рекуп. (auto-name «После рекуп. (приток)»)
+        { name: '',                       nameUser: false,                               t: '', rh: '', x: '', h: '', V: '',                            cx: 320, cy: 40 },
+        // 2: Приток после калорифера. T задана инженером (28°C — компенсирует теплопотери помещения).
+        { name: 'После калорифера',       nameUser: true, t: 28, tUser: true, tTs: now+2, rh: '', x: '', h: '', V: '',                                  cx: 600, cy: 40 },
+        // 3: Помещение (внутренний климат) — анкер 22°C, 40% RH.
+        //    X-процесс 2→3 покажет, какие Q и qw нужны для поддержания
+        //    этого климата (баланс: люди + потери через стены/эксфильтрацию).
+        { name: 'Помещение (22°C, 40%)',  nameUser: true, t: 22, tUser: true, tTs: now+3, rh: 40, rhUser: true, rhTs: now+3, x: '', h: '', V: '',     cx: 880, cy: 40 },
+        // 4: Вытяжка после рекуп. (auto-name «После рекуп. (вытяжка)»)
+        { name: '',                       nameUser: false,                               t: '', rh: '', x: '', h: '', V: '',                            cx: 320, cy: 280 },
       ];
       S.procs = [
-        // R-приток: 0 → 1 (теплообмен с вытяжкой ref=3, η=0.65)
-        { type:'R', name:'♻ Рекуп. (приток)', Q:'', qw:'', fromIdx: 0, toIdx: 1, recupWith: '3', recupEff: '0.65', recupMode: 'sensible' },
-        // P-калорифер: догревает приток с T(после рекуп.) до +22°C
+        // 0→1 R: рекуператор, приточная сторона нагревается от вытяжной (ref=3, помещение 22°C)
+        { type:'R', name:'♻ Рекуператор (приток)', Q:'', qw:'', fromIdx: 0, toIdx: 1, recupWith: '3', recupEff: '0.65', recupMode: 'sensible' },
+        // 1→2 P: догревный калорифер до +28°C (компенсация теплопотерь зала)
         { type:'P', name:'🔥 Калорифер', Q:'', qw:'', fromIdx: 1, toIdx: 2 },
-        // R-вытяжка: 3 → 4 (отдаёт тепло притоку, ref=0)
-        { type:'R', name:'♻ Рекуп. (вытяжка)', Q:'', qw:'', fromIdx: 3, toIdx: 4, recupWith: '0', recupEff: '0.65', recupMode: 'sensible' },
+        // 2→3 X: «Помещение» — внутренний баланс. Cascade посчитает:
+        //   Q (кВт) = m_da·(h₃−h₂) — net heat balance:
+        //     +Q от людей (~1 кВт на 10 чел) + Q от оборудования
+        //     −Q потери через ограждения (стены, окна, эксфильтрация)
+        //     При t_supply=28°C → t_room=22°C получается ΔT=−6°C, т.е.
+        //     потери преобладают на ~3-4 кВт (типично для офиса 50 м²).
+        //   qw (кг/ч) = m_da·ΔW — net moisture balance:
+        //     +qw от людей (~0.5 кг/ч на 10 чел) + испарение
+        //     −qw эксфильтрация
+        //     Положительный qw → влагопритоки преобладают (что и видим
+        //     при t_room=22°C, RH=40% → W₃≈6.6 г/кг vs W₂=W₁≈0.5 г/кг).
+        { type:'X', name:'🏢 Помещение (люди + стены + инфильтрация)', Q:'', qw:'', fromIdx: 2, toIdx: 3 },
+        // 3→4 R: рекуператор, вытяжная сторона отдаёт тепло притоку (ref=0)
+        { type:'R', name:'♻ Рекуператор (вытяжка)', Q:'', qw:'', fromIdx: 3, toIdx: 4, recupWith: '0', recupEff: '0.65', recupMode: 'sensible' },
+      ];
+      // Зоны-подложки для visual-группировки на canvas
+      S.zones = [
+        { id: newZoneId(), name: 'Улица',          color: '#b0bec5', cx: 0,    cy: 0,   w: 240,  h: 480 },
+        { id: newZoneId(), name: 'Вент. камера',   color: '#90caf9', cx: 260,  cy: 0,   w: 320,  h: 480 },
+        { id: newZoneId(), name: 'Помещение (с людьми)', color: '#ffcc80', cx: 600, cy: 0, w: 320, h: 240 },
       ];
     }
   },
@@ -3704,6 +3740,7 @@ function wireInfiniteCanvas() {
     panning = true;
     panStart = { x: e.clientX, y: e.clientY, tx: S.canvasView.tx, ty: S.canvasView.ty };
     canvas.classList.add('psy-panning');
+    document.body.classList.add('psy-dragging');  // v0.59.950: предотвращаем выделение текста при pan
     e.preventDefault();
   });
   window.addEventListener('mousemove', (e) => {
@@ -3716,6 +3753,7 @@ function wireInfiniteCanvas() {
     if (!panning) return;
     panning = false;
     canvas.classList.remove('psy-panning');
+    document.body.classList.remove('psy-dragging');
   });
 
   // ─── Zoom: wheel с origin под курсором
