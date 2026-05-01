@@ -1354,14 +1354,23 @@ function forwardPoint(a, proc, V, P) {
     const hasAdp = Number.isFinite(adpC);
     const bf = Number.isFinite(bfRaw) ? Math.max(0, Math.min(1, bfRaw)) : 0.15;
     if (hasAdp && adpC < a.Td - 0.01) {
-      // BF-модель — корректный конденсат всегда когда ADP < Td_in
+      // BF-модель — корректный конденсат всегда когда ADP < Td_in.
+      // v0.59.968: если задан Q-target → h2 уже вычислен. W_out из BF, а
+      // t_out теперь ИЗ h2+W2 (а не по BF-формуле t = BF·T1 + (1-BF)·ADP).
+      // По репорту: «установил мощность кондиционера на 60 кВт... но
+      // у меня прилетело 118 кВт» — раньше Q-target молча игнорировался,
+      // BF-формула переписывала t. Теперь: Q + ADP+BF → t из h2+W2_BF.
       const Wadp = humidityRatio(adpC, 1.0, P);
-      // Если t2 не задан явно — рассчитаем по BF
-      if (t2 == null) {
-        t2 = bf * a.T + (1 - bf) * adpC;
-      }
-      // W_out — всегда по BF (даже если t2 задан явно — конденсат корректен)
       W2 = bf * a.W + (1 - bf) * Wadp;
+      if (t2 == null) {
+        if (h2 != null) {
+          // Q был задан → h2 известно → t2 из (h2 − 2501·W2) / (1.006 + 1.86·W2)
+          t2 = (h2 - 2501 * W2) / (1.006 + 1.86 * W2);
+        } else {
+          // Ни t2 ни Q не заданы — BF-формула для t2.
+          t2 = bf * a.T + (1 - bf) * adpC;
+        }
+      }
     } else {
       // Контактная модель (fallback): t2 < Td → насыщение, иначе сенсибельное
       if (W2 == null && t2 != null) {
