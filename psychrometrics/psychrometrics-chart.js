@@ -292,8 +292,12 @@ export function plotLegend(opts, sts, pointNames = []) {
   });
   if (!items.length) return '';
   // 2-строчный формат: header + (name + values) per item
-  const headerH = 16;
-  const itemH = 24;            // ~2 строки на точку
+  // v0.59.948: учитываем что normalizeChartFontSizes (post-render) увеличивает
+  // SVG-шрифты до visual-size ~14px (matching body), поэтому design-size
+  // расстояния больше реального.
+  const headerH = 18;
+  const lineGap = 14;          // расстояние между строками в одной item
+  const itemH = lineGap * 2 + 4; // 2 строки + промежуток между items
   const padX = 8, padY = 6;
   const boxW = 360;
   const boxH = items.length * itemH + padY * 2 + headerH;
@@ -309,10 +313,12 @@ export function plotLegend(opts, sts, pointNames = []) {
           fill="#fff" stroke="#b0bec5" stroke-width="0.8" opacity="0.96"/>`;
   s += `<text x="${x0 + padX}" y="${y0 + padY + 11}"
           style="font-size:10px;font-weight:700;fill:#37474f;">Параметры точек</text>`;
-  // 2 строки на точку: 1-я — № и имя жирным, 2-я — параметры мельче
+  // 2 строки на точку: 1-я — № и имя жирным, 2-я — параметры мельче.
+  // y baseline для каждой строки = y0 + padY + headerH + k*itemH + offset.
   items.forEach((it, k) => {
-    const yName = y0 + padY + headerH + k * itemH + 11;
-    const yVals = yName + 11;
+    const blockTop = y0 + padY + headerH + k * itemH;
+    const yName = blockTop + lineGap;
+    const yVals = blockTop + lineGap * 2;
     s += `<text x="${x0 + padX}" y="${yName}" style="font-size:10px;fill:#263238;">`
        + `<tspan font-weight="700" fill="#0d47a1">${it.idx}.</tspan> `
        + `<tspan font-weight="600" fill="#37474f">${escXml(it.name)}</tspan>`
