@@ -240,8 +240,10 @@ function attachZoneDrag(el, z) {
   const onMove = (e) => {
     if (!moving) return;
     const k = (S.canvasView?.scale) || 1;  // v0.59.911: учёт canvas zoom
-    z.cx = Math.max(0, ox + (e.clientX - sx) / k);
-    z.cy = Math.max(0, oy + (e.clientY - sy) / k);
+    // v0.59.914: убрал Math.max(0, ...) — с бесконечным canvas зоны
+    // должны двигаться куда угодно.
+    z.cx = ox + (e.clientX - sx) / k;
+    z.cy = oy + (e.clientY - sy) / k;
     el.style.left = (z.cx|0) + 'px';
     el.style.top  = (z.cy|0) + 'px';
   };
@@ -369,9 +371,11 @@ function attachPointDrag(card, p) {
   const onMove = (e) => {
     if (!moving) return;
     // v0.59.911: учитываем canvas zoom — clientX-delta нужно разделить на scale
+    // v0.59.914: убрал Math.max(0, ...) — с бесконечным canvas карточки должны
+    // двигаться куда угодно (в т.ч. в отрицательные координаты).
     const k = (S.canvasView?.scale) || 1;
-    p.cx = Math.max(0, ox + (e.clientX - sx) / k);
-    p.cy = Math.max(0, oy + (e.clientY - sy) / k);
+    p.cx = ox + (e.clientX - sx) / k;
+    p.cy = oy + (e.clientY - sy) / k;
     card.style.left = (p.cx|0) + 'px';
     card.style.top  = (p.cy|0) + 'px';
     renderCanvasLinks();

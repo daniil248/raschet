@@ -194,12 +194,17 @@ export function pickStation(opts = {}) {
       overlay.querySelector('.mt-sp-count').textContent = `${matches.length} из ${STATIONS.length}`;
       list.querySelectorAll('.mt-sp-row').forEach(row => {
         row.addEventListener('click', () => {
+          // v0.59.911: include elev (m above sea level) — нужно для psychrometrics
+          // и других модулей чтобы автозаполнить atmospheric pressure.
+          const station = matches.find(m => String(m.id || '') === row.dataset.id) ||
+                          matches.find(m => Math.abs(m.lat - Number(row.dataset.lat)) < 0.001);
           close({
             id: row.dataset.id || null,
             name: row.dataset.name,
             lat: Number(row.dataset.lat),
             lon: Number(row.dataset.lon),
-            country: matches.find(m => (m.id || '') === row.dataset.id)?.country || '',
+            country: station?.country || '',
+            elev: station?.elev ?? null,
           });
         });
       });
@@ -239,6 +244,7 @@ export function pickStation(opts = {}) {
                   id: s.id || null,
                   name: s.name,
                   lat: s.lat, lon: s.lon, country: s.country,
+                  elev: s.elev ?? null,
                 });
               });
             });
@@ -269,7 +275,7 @@ export function pickStation(opts = {}) {
                   row.addEventListener('click', () => {
                     const i = Number(row.dataset.nearI);
                     const s = nearest[i];
-                    if (s) close({ id: s.id || null, name: s.name, lat: s.lat, lon: s.lon, country: s.country });
+                    if (s) close({ id: s.id || null, name: s.name, lat: s.lat, lon: s.lon, country: s.country, elev: s.elev ?? null });
                   });
                 });
                 const btnHere = document.querySelector('.mt-sp-pick-here-btn');

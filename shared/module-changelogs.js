@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.914', date: '2026-04-30', items: [
+      '📥 <b>rp5: multi-file загрузка + auto-detect WMO/города</b>. По репорту: «добавь загрузку нескольких файлов, допустим по годам, посмотри и все данные включая номер метеостанции вытащи из файлов и их имен. не проси пользователя вводить данные где он может ошибиться».',
+      '• Файл-input теперь с <code>multiple</code> — загрузить можно несколько архивов сразу (типичный паттерн rp5: один файл на год).',
+      '• <b>Auto-detect WMO</b> из имени файла: regex <code>^(\\d{4,5})\\.\\d{2}\\.\\d{2}\\.\\d{4}\\.</code>. Например, <code>38457.01.01.2019.31.12.2019.*.xls</code> → WMO 38457 → каталог → Шымкент (Город), lat 42.32, lon 69.58.',
+      '• <b>Auto-detect города</b> из шапки CSV: парсер ищет «Метеостанция: <city>» или «Местное время в <city>».',
+      '• Lookup в каталоге через новый <code>getStationByWmo(wmo)</code> в wmo-list.js. Добавлены WMO 38457 (Шымкент Город), различение Шымкент Аэропорт (38328) / Город.',
+      '• Все файлы сливаются в один датасет: dedup по timestamp, sort по времени. Datasetname авто: «rp5 Шымкент (Город) (2019-01-01…2020-12-31)».',
+      '• Парсер направления ветра: rp5 даёт строку «С/СВ/В/штиль» — преобразую в градусы (0/22.5/45/...) для wind rose. Поддержка русских и английских кратких направлений.',
+      '🐛 <b>Drag карточек точек/зон не работал в отрицательные координаты</b> на бесконечном canvas. Убран <code>Math.max(0, ...)</code> в attachPointDrag/attachZoneDrag — теперь карточки двигаются куда угодно.',
+      'Файлы: <code>meteo/sources/rp5.js</code> (полный rewrite — multi-file + auto-detect), <code>meteo/stations/wmo-list.js</code> (+38457, getStationByWmo helper), <code>psychrometrics/psychrometrics.js</code> (drag без 0-clamp).',
+    ] },
     { version: '0.59.913', date: '2026-04-30', items: [
       '🚨 <b>CRITICAL: найден корень бага «не работают все кнопки»</b>. По репорту: «продолжай, связей пока нет / и кнопки не работают».',
       '• <b>Корень</b>: в массиве <code>[\'psy-alt\',\'psy-P-kpa\',\'psy-rhmax\',\'psy-tevap\',\'psy-vbase\',...]</code> внутри <code>wire()</code> присутствовал id <code>psy-tevap</code>, которого НЕТ в HTML (поле было удалено когда-то ранее, но JS не подчистили). <code>$(id).addEventListener(...)</code> на null бросал TypeError, обрывая <code>wire()</code> МЕЖДУ <code>wireInfiniteCanvas()</code> и <code>$(\'psy-add\').addEventListener</code> — все кнопки (add/wizard/demo/csv/from-meteo) НЕ присваивались.',

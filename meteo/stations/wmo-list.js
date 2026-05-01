@@ -15,7 +15,8 @@ export const STATIONS = [
   { id: 'UATE', wmo: '35700', name: 'Атырау',             country: 'KZ', region: 'Атырау', lat: 47.121, lon: 51.821, elev: -22 },
   { id: 'UAOO', wmo: '38198', name: 'Кызылорда',          country: 'KZ', region: 'Кызылорда', lat: 44.706, lon: 65.592, elev: 132 },
   { id: 'UASS', wmo: '36177', name: 'Усть-Каменогорск',   country: 'KZ', region: 'ВКО', lat: 50.036, lon: 82.494, elev: 286 },
-  { id: 'UAII', wmo: '38328', name: 'Шымкент',            country: 'KZ', region: 'Туркестан', lat: 42.364, lon: 69.479, elev: 411 },
+  { id: 'UAII', wmo: '38328', name: 'Шымкент (Аэропорт)',  country: 'KZ', region: 'Туркестан', lat: 42.364, lon: 69.479, elev: 411 },
+  { wmo: '38457',              name: 'Шымкент (Город)',    country: 'KZ', region: 'Туркестан', lat: 42.317, lon: 69.583, elev: 506 },
   { id: 'UATG', wmo: '35085', name: 'Уральск',            country: 'KZ', region: 'ЗКО', lat: 51.151, lon: 51.543, elev: 38 },
   { id: 'UAKD',              name: 'Жезказган',          country: 'KZ', region: 'Улытау', lat: 47.708, lon: 67.733, elev: 380 },
   { id: 'UAUU', wmo: '28952', name: 'Костанай',           country: 'KZ', region: 'Костанай', lat: 53.207, lon: 63.551, elev: 168 },
@@ -148,6 +149,15 @@ export function findStation(query) {
 
 export function getStationById(id) {
   return STATIONS.find(s => s.id === id) || null;
+}
+
+// v0.59.914: lookup by WMO numeric code (для rp5-импорта). Возвращает первую
+// станцию с этим WMO, или null. WMO коды иногда дублируются между Aэропорт/
+// Город — берём первый matched.
+export function getStationByWmo(wmo) {
+  const w = String(wmo || '').trim();
+  if (!w) return null;
+  return STATIONS.find(s => String(s.wmo || '') === w) || null;
 }
 
 // Расстояние между двумя точками (haversine, км).
