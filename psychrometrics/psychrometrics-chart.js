@@ -383,7 +383,9 @@ export function plotLegend(opts, sts, pointNames = []) {
   const lineGap = 14;          // расстояние между строками в одной item
   const itemH = lineGap * 2 + 4; // 2 строки + промежуток между items
   const padX = 8, padY = 6;
-  const boxW = 360;
+  // v0.59.975: ширина адаптивна — длина текста параметров требует ~440px,
+  // плюс запас на длинные имена. Раньше 360 обрезал.
+  const boxW = 440;
   const boxH = items.length * itemH + padY * 2 + headerH;
   const isAshrae = opts.style === 'ashrae';
   const x0 = isAshrae
