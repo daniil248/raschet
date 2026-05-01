@@ -234,54 +234,84 @@ export function render(container, opts = {}) {
    Каждой метке — позиция на кривой при выбранном T_lab + tangent
    angle от ближайших точек. */
 function rhLabelsAlongCurves(o, pos, isAshrae) {
-  // Раскладка T_lab по уровню RH: лоу-φ — на высоком T (далеко справа на
-  // ASHRAE / далеко вверх на ramzin); хай-φ — ближе к низким T.
-  // v0.59.964: расширенный набор RH-меток (5..90% шаг 5%) — как в reference
-  // ASHRAE Foundamentals и ГОСТ-Mollier (см. user screenshots).
-  const RHs = [
-    { rh: 5,  T: 38 }, { rh: 10, T: 35 }, { rh: 15, T: 32 }, { rh: 20, T: 30 },
-    { rh: 25, T: 28 }, { rh: 30, T: 26 }, { rh: 35, T: 24 }, { rh: 40, T: 22 },
-    { rh: 45, T: 21 }, { rh: 50, T: 20 }, { rh: 55, T: 19 }, { rh: 60, T: 18 },
-    { rh: 65, T: 17 }, { rh: 70, T: 16 }, { rh: 75, T: 15 }, { rh: 80, T: 14 },
-    { rh: 85, T: 13 }, { rh: 90, T: 12 },
-  ];
+  // v0.59.971: метки RH размещаются НА ВНУТРЕННЕЙ СТОРОНЕ РАМКИ —
+  // там где RH-кривая выходит из плот-области (через верх — W=W_max,
+  // или через правый край — T=T_max). По репорту: «значение влажности
+  // размести по краю рамки, с внутренней стороны».
+  // Алгоритм: сканируем T от Tmin до Tmax шагом 0.5°C. Если W при текущем
+  // φ превышает W_max → линейная интерполяция назад до точного W_max
+  // (выход через верх). Иначе — метка у T=Tmax (выход через правый край).
+  const RHs = [5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90];
   let s = '';
-  for (const { rh, T } of RHs) {
-    const T_lab = Math.max(o.T_min + 2, Math.min(o.T_max - 2, T));
-    const W = humidityRatio(T_lab, rh / 100, o.P);
-    if (!Number.isFinite(W) || W < o.W_min || W > o.W_max) continue;
-    // Tangent: соседние точки на кривой
-    const dT = 1.0;
+  for (const rh of RHs) {
+    const phi = rh / 100;
+    const dT = 0.5;
+    let T_exit = null;
+    for (let T = o.T_min; T <= o.T_max; T += dT) {
+      const W = humidityRatio(T, phi, o.P);
+      if (W > o.W_max) {
+        const T_prev = T - dT;
+        const W_prev = humidityRatio(T_prev, phi, o.P);
+        const t = (o.W_max - W_prev) / (W - W_prev);
+        T_exit = T_prev + t * dT;
+        break;
+      }
+    }
+    let T_lab, W_lab, edge;
+    if (T_exit != null) {
+      T_lab = T_exit;
+      W_lab = o.W_max * 0.97;  // ~3% inside top-edge
+      edge = 'top';
+    } else {
+      T_lab = o.T_max - 0.5;
+      W_lab = humidityRatio(T_lab, phi, o.P);
+      edge = 'right';
+      if (!Number.isFinite(W_lab) || W_lab < o.W_min) continue;
+    }
+    // Tangent для угла поворота
     const T1 = Math.max(o.T_min, T_lab - dT);
     const T2 = Math.min(o.T_max, T_lab + dT);
-    const W1 = humidityRatio(T1, rh / 100, o.P);
-    const W2 = humidityRatio(T2, rh / 100, o.P);
+    const W1 = humidityRatio(T1, phi, o.P);
+    const W2 = humidityRatio(T2, phi, o.P);
     const [px1, py1] = pos(W1, T1);
     const [px2, py2] = pos(W2, T2);
     const angle = Math.atan2(py2 - py1, px2 - px1) * 180 / Math.PI;
-    const [px, py] = pos(W, T_lab);
-    // Метка чуть в стороне от линии (нормаль к тангенсу)
-    const offset = isAshrae ? -8 : -8;  // в обоих layouts чуть выше/слева линии
-    s += `<text x="${px}" y="${py + offset}" text-anchor="middle"
-             transform="rotate(${angle.toFixed(1)} ${px} ${py + offset})"
-             style="font-size:9px;fill:#666;font-style:italic;
-             paint-order:stroke;stroke:#fff;stroke-width:2px;">${rh}%</text>`;
+    const [px, py] = pos(W_lab, T_lab);
+    // Inset «внутрь» от рамки в плот-область (12px вглубь)
+    const inset = edge === 'top'
+      ? (isAshrae ? { dx: 0, dy: 14 } : { dx: 0, dy: 14 })
+      : (isAshrae ? { dx: -22, dy: 4 } : { dx: -22, dy: 4 });
+    s += `<text x="${px + inset.dx}" y="${py + inset.dy}" text-anchor="middle"
+             transform="rotate(${angle.toFixed(1)} ${px + inset.dx} ${py + inset.dy})"
+             style="font-size:9px;fill:#444;font-weight:600;
+             paint-order:stroke;stroke:#fff;stroke-width:2.5px;">${rh}%</text>`;
   }
-  // 100% — на самой кривой насыщения, у середины-верха
-  const T100 = Math.max(o.T_min + 5, Math.min(o.T_max - 5, 30));
-  const W100 = humidityRatio(T100, 1.0, o.P);
-  if (W100 >= o.W_min && W100 <= o.W_max) {
-    const dT = 1.0;
-    const W1 = humidityRatio(T100 - dT, 1.0, o.P);
-    const W2 = humidityRatio(T100 + dT, 1.0, o.P);
-    const [px1, py1] = pos(W1, T100 - dT);
-    const [px2, py2] = pos(W2, T100 + dT);
+  // 100% (saturation) — у её правого-верхнего выхода из плот-области
+  const dT = 0.5;
+  let T_sat = null;
+  for (let T = o.T_min; T <= o.T_max; T += dT) {
+    const W = humidityRatio(T, 1.0, o.P);
+    if (W > o.W_max) {
+      const T_prev = T - dT;
+      const W_prev = humidityRatio(T_prev, 1.0, o.P);
+      const t = (o.W_max - W_prev) / (W - W_prev);
+      T_sat = T_prev + t * dT;
+      break;
+    }
+  }
+  const W_sat100 = T_sat != null ? o.W_max * 0.95 : Math.min(humidityRatio(o.T_max - 1, 1.0, o.P), o.W_max);
+  const T_sat_lab = T_sat != null ? T_sat : o.T_max - 1;
+  if (W_sat100 >= o.W_min) {
+    const W1 = humidityRatio(T_sat_lab - dT, 1.0, o.P);
+    const W2 = humidityRatio(T_sat_lab + dT, 1.0, o.P);
+    const [px1, py1] = pos(W1, T_sat_lab - dT);
+    const [px2, py2] = pos(W2, T_sat_lab + dT);
     const angle = Math.atan2(py2 - py1, px2 - px1) * 180 / Math.PI;
-    const [px, py] = pos(W100, T100);
-    s += `<text x="${px}" y="${py - 6}" text-anchor="middle"
-             transform="rotate(${angle.toFixed(1)} ${px} ${py - 6})"
-             style="font-size:10px;fill:#c62828;font-weight:600;
-             paint-order:stroke;stroke:#fff;stroke-width:2px;">100% (sat.)</text>`;
+    const [px, py] = pos(W_sat100, T_sat_lab);
+    s += `<text x="${px - 16}" y="${py + 14}" text-anchor="middle"
+             transform="rotate(${angle.toFixed(1)} ${px - 16} ${py + 14})"
+             style="font-size:10px;fill:#c62828;font-weight:700;
+             paint-order:stroke;stroke:#fff;stroke-width:2.5px;">100%</text>`;
   }
   return s;
 }
