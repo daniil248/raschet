@@ -2178,50 +2178,137 @@ function wire() {
   const wizBtn = $('psy-wizard');
   if (wizBtn) wizBtn.addEventListener('click', () => openProcessWizard());
 
-  // v0.59.900: импорт расчётных точек из активного meteo-датасета.
-  // Создаёт две точки: «Лето расч.» (Tdb 0.4% percentile / средняя RH в этом бине)
-  // и «Зима расч.» (Tdb 99.6% percentile). Координаты берутся из meteo-api.
+  // v0.59.908: расширенный импорт ASHRAE design points из meteo.
+  // 4 точки по ASHRAE Handbook гл. 14: Heating 99.6%/99% + Cooling 1%/0.4%.
+  // Со средневзвешенной RH в окне ±1°C от target T.
+  //
+  // v0.59.908.1: пользователь сам выбирает локацию через station-picker
+  // (может отличаться от активного meteo-датасета проекта). Если данных
+  // на эту локацию нет в загруженных датасетах — fetch on-the-fly из Open-Meteo.
+  // Импорт идемпотентен: повторный клик обновляет существующие точки
+  // с _meteoTag, не плодит дубли.
   const fromMeteoBtn = $('psy-from-meteo');
   if (fromMeteoBtn) fromMeteoBtn.addEventListener('click', async () => {
     try {
-      const { getActiveDataset } = await import('../meteo/meteo-api.js');
+      const { pickStation } = await import('../meteo/station-picker.js');
       const { ensureDefaultProject } = await import('../shared/project-storage.js');
       const pid = ensureDefaultProject();
-      const ds = getActiveDataset(pid);
-      if (!ds) {
-        psyToast('Нет активного метео-датасета. Загрузите данные в /meteo/ и пометьте ⭐.', 'warn');
+
+      // Шаг 1: выбор локации
+      const picked = await pickStation({ title: '📍 Выбор локации для ASHRAE design points' });
+      if (!picked) return;
+      if (picked.manual) {
+        psyToast('Для ASHRAE-расчёта нужна станция из каталога. Используйте поиск/карту.', 'warn');
         return;
       }
-      const hourly = ds.hourly || [];
-      if (!hourly.length) { psyToast('Активный датасет пустой.', 'warn'); return; }
+
+      // Шаг 2: проверим, есть ли уже датасет для этой локации в /meteo/
+      const { listDatasets } = await import('../meteo/meteo-api.js');
+      const allDs = listDatasets(pid);
+      const existingDs = allDs.find(d =>
+        Math.abs((d.lat || 0) - picked.lat) < 0.05 &&
+        Math.abs((d.lon || 0) - picked.lon) < 0.05
+      );
+
+      let hourly;
+      let locName = picked.name;
+      if (existingDs && existingDs.hourly && existingDs.hourly.length > 24 * 30) {
+        hourly = existingDs.hourly;
+        locName = existingDs.locationName || picked.name;
+        psyToast(`Использован существующий датасет: ${locName} (${hourly.length} часов)`, 'info');
+      } else {
+        // Fetch fresh: 5 лет Open-Meteo (для статистических percentiles)
+        psyToast(`Загрузка 5 лет Open-Meteo для ${locName}…`, 'info');
+        const today = new Date();
+        const fiveYearsAgo = new Date(today.getFullYear() - 5, today.getMonth(), today.getDate());
+        const dateFrom = fiveYearsAgo.toISOString().slice(0, 10);
+        const dateTo = today.toISOString().slice(0, 10);
+        const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${picked.lat}&longitude=${picked.lon}&start_date=${dateFrom}&end_date=${dateTo}&hourly=temperature_2m,relative_humidity_2m&timezone=auto`;
+        const res = await fetch(url);
+        if (!res.ok) { psyToast(`Open-Meteo вернул ${res.status}`, 'warn'); return; }
+        const json = await res.json();
+        const times = json.hourly?.time || [];
+        const T = json.hourly?.temperature_2m || [];
+        const RH = json.hourly?.relative_humidity_2m || [];
+        hourly = times.map((t, i) => ({ t, T: T[i], RH: RH[i] }));
+        if (!hourly.length) { psyToast('Open-Meteo вернул пустой ряд.', 'warn'); return; }
+      }
+
       const sortedT = [...hourly.map(h => Number(h.T)).filter(Number.isFinite)].sort((a, b) => a - b);
       const N = sortedT.length;
-      const idx004 = Math.min(N - 1, Math.floor(N * 0.996));
-      const idx996 = Math.max(0, Math.floor(N * 0.004));
-      const tSummer = sortedT[idx004];
-      const tWinter = sortedT[idx996];
+      const at = (frac) => sortedT[Math.min(N - 1, Math.max(0, Math.floor(N * frac)))];
+      const tHeat996 = at(0.004);
+      const tHeat990 = at(0.010);
+      const tCool010 = at(0.990);
+      const tCool004 = at(0.996);
       const rhFor = (targetT) => {
-        const close = hourly.filter(h => Number.isFinite(Number(h.RH)) && Math.abs(Number(h.T) - targetT) < 0.5);
+        const close = hourly.filter(h => Number.isFinite(Number(h.RH)) && Math.abs(Number(h.T) - targetT) < 1.0);
         if (!close.length) return null;
         return close.reduce((s, h) => s + Number(h.RH), 0) / close.length;
       };
-      const rhS = rhFor(tSummer);
-      const rhW = rhFor(tWinter);
-      const locName = ds.locationName || ds.name || 'meteo';
-      S.points.push({
-        name: `Лето расч. (${locName}, 0.4%)`,
-        t: String(Math.round(tSummer * 10) / 10),
-        rh: rhS != null ? String(Math.round(rhS)) : '50',
-        x: '', h: '', V: '',
+      const designs = [
+        { tag: 'meteo-h996', label: `Heating 99.6% (${locName})`, t: tHeat996, rhDef: 80 },
+        { tag: 'meteo-h99',  label: `Heating 99% (${locName})`,   t: tHeat990, rhDef: 78 },
+        { tag: 'meteo-c1',   label: `Cooling 1% (${locName})`,    t: tCool010, rhDef: 50 },
+        { tag: 'meteo-c04',  label: `Cooling 0.4% (${locName})`,  t: tCool004, rhDef: 45 },
+      ];
+      // v0.59.908 fix: помечаем точки _meteoTag и обновляем при повторном
+      // клике, не плодя дубли. По репорту пользователя «нажал пять раз и
+      // каждый раз вывалились по 2 карточки».
+
+      // One-time cleanup: тэгируем существующие точки по name-prefix-match,
+      // чтобы migrate с предыдущей версии где _meteoTag не было.
+      const NAME_PREFIXES = {
+        'meteo-h996': ['Heating 99.6%', 'Зима расч.', 'Зима расч'],
+        'meteo-h99':  ['Heating 99%'],
+        'meteo-c1':   ['Cooling 1%'],
+        'meteo-c04':  ['Cooling 0.4%', 'Лето расч.', 'Лето расч'],
+      };
+      // Тэгируем первую попавшуюся untagged точку с подходящим именем
+      for (const [tag, prefixes] of Object.entries(NAME_PREFIXES)) {
+        if (S.points.some(p => p && p._meteoTag === tag)) continue;
+        const idx = S.points.findIndex(p => p && !p._meteoTag &&
+          prefixes.some(pref => (p.name || '').startsWith(pref)));
+        if (idx >= 0) S.points[idx]._meteoTag = tag;
+      }
+      // Удалить остальные untagged дубли с теми же префиксами (legacy spam от v0.59.900)
+      const beforeLen = S.points.length;
+      S.points = S.points.filter(p => {
+        if (!p || p._meteoTag) return true;
+        for (const prefixes of Object.values(NAME_PREFIXES)) {
+          if (prefixes.some(pref => (p.name || '').startsWith(pref))) return false;
+        }
+        return true;
       });
-      S.points.push({
-        name: `Зима расч. (${locName}, 99.6%)`,
-        t: String(Math.round(tWinter * 10) / 10),
-        rh: rhW != null ? String(Math.round(rhW)) : '70',
-        x: '', h: '', V: '',
-      });
+      const cleanedDupes = beforeLen - S.points.length;
+
+      let added = 0, updated = 0;
+      for (const d of designs) {
+        const rh = rhFor(d.t) ?? d.rhDef;
+        const existing = S.points.find(p => p && p._meteoTag === d.tag);
+        if (existing) {
+          existing.name = d.label;
+          existing.t = String(Math.round(d.t * 10) / 10);
+          existing.rh = String(Math.round(rh));
+          // НЕ перезаписываем x/h/V — могли быть пользовательские; только t,rh,name
+          updated++;
+        } else {
+          S.points.push({
+            _meteoTag: d.tag,
+            name: d.label,
+            t: String(Math.round(d.t * 10) / 10),
+            rh: String(Math.round(rh)),
+            x: '', h: '', V: '',
+          });
+          added++;
+        }
+      }
       rerenderCycle();
-      psyToast(`Импортированы 2 точки: лето ${tSummer.toFixed(1)}°C, зима ${tWinter.toFixed(1)}°C`, 'ok');
+      const parts = [];
+      if (added > 0) parts.push(`+${added} новых`);
+      if (updated > 0) parts.push(`${updated} обновлено`);
+      if (cleanedDupes > 0) parts.push(`удалено ${cleanedDupes} дублей`);
+      psyToast(`✓ ${parts.join(' · ')} · H99.6=${tHeat996.toFixed(1)}°C, C0.4=${tCool004.toFixed(1)}°C`, 'ok');
     } catch (e) {
       console.error('[psy-from-meteo]', e);
       psyToast(`Ошибка: ${e.message || e}`, 'warn');
