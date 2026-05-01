@@ -1666,8 +1666,19 @@ function cascadePass() {
     if (proc.qws && proc.qw !== '' && proc.qw != null) cands.push({ tgt: 'qw', val: nNum(proc.qw), ts: +proc.qwts || 0 });
 
     if (!cands.length) {
-      // Нет ни одного пользовательского входа ни на точке, ни на процессе.
-      // Оставляем точку как есть — ничего не «подсасываем» от предыдущей.
+      // v0.59.980: для X-процесса (произвольный) если ничего не задано
+      // → AUTO-INHERIT состояния от source (тап/перекачка без изменений).
+      // По выявленному багу dc-winter demo: X 5→6 «Тап вытяжки» оставлял
+      // Вытяжку empty → R 6→7 не имел ref → каскад «висел».
+      // Для других типов (P/C/A/S/M/R) — если нет cands и нет авто-имени,
+      // оставляем как есть (нечего вычислять).
+      if (proc.type === 'X' && !p.tUser && !p.rhUser && !p.xUser && !p.hUser) {
+        // Auto-inherit from src state
+        p.t  = Number(aState.T.toFixed(2));
+        p.rh = Number(aState.RH.toFixed(2));
+        p.x  = Number((aState.W * 1000).toFixed(3));
+        p.h  = Number(aState.h.toFixed(3));
+      }
       continue;
     }
 
