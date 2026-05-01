@@ -397,15 +397,27 @@ function attachPointDrag(card, p) {
 function renderCanvasLinks() {
   const svg = $('psy-canvas-links');
   if (!svg) return;
-  let w = 0, h = 0;
+  // v0.59.916: учёт отрицательных координат (drag без 0-clamp).
+  // SVG viewBox теперь начинается с минимальной точки + padding.
+  let minX = 0, minY = 0, maxX = 0, maxY = 0;
   S.points.forEach(p => {
-    w = Math.max(w, (+p.cx || 0) + NODE_W + 40);
-    h = Math.max(h, (+p.cy || 0) + NODE_H + 40);
+    const cx = +p.cx || 0, cy = +p.cy || 0;
+    if (cx < minX) minX = cx;
+    if (cy < minY) minY = cy;
+    if (cx + NODE_W > maxX) maxX = cx + NODE_W;
+    if (cy + NODE_H > maxY) maxY = cy + NODE_H;
   });
-  w = Math.max(w, 2400); h = Math.max(h, 1200);
-  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  // Padding и минимум
+  const padX = 40, padY = 40;
+  const vbX = Math.min(0, minX - padX);
+  const vbY = Math.min(0, minY - padY);
+  const w = Math.max(2400, maxX + padX - vbX);
+  const h = Math.max(1200, maxY + padY - vbY);
+  svg.setAttribute('viewBox', `${vbX} ${vbY} ${w} ${h}`);
   svg.setAttribute('width', w);
   svg.setAttribute('height', h);
+  svg.style.left = vbX + 'px';
+  svg.style.top  = vbY + 'px';
   const parent = svg.parentElement;
   if (parent) {
     parent.style.width  = w + 'px';
