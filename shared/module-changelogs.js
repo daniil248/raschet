@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.944', date: '2026-05-01', items: [
+      '🖱 <b>Клик по процессу на canvas → открывает modal-редактор</b>. По репорту: «добавь возможность изменения процесса кликом на сам процесс».',
+      '• Каждый процессный draw в <code>renderCanvasLinks()</code> обёрнут в <code>&lt;g class="psy-canvas-proc" data-proc-idx="N"&gt;</code> с <code>title</code> и <code>cursor:pointer</code>.',
+      '• В canvas-links SVG <code>pointer-events:none</code> по умолчанию (чтобы pan-handler принимал клики), но процессные группы переопределяют <code>pointer-events:auto</code> — клик на бейдж/линию срабатывает.',
+      '• Под видимой Bezier-кривой добавлен невидимый «жирный» path (stroke-width=14, transparent) — чтобы клик ловился в широкой зоне (а не только точно на 2px-линии).',
+      '• Hover: бейдж/коробка получают тёмный filter + drop-shadow — визуальная индикация «можно кликать».',
+      '• SVG click-handler привязан один раз через флаг <code>svg._procClickWired</code> — event-делегация по <code>closest(\'[data-proc-idx]\')</code> → <code>openProcessEditor(idx)</code>.',
+      'Файлы: <code>psychrometrics/psychrometrics.css</code> (.psy-canvas-proc rules), <code>psychrometrics/psychrometrics.js</code> (renderCanvasLinks &lt;g&gt;-wrap + click handler).',
+    ] },
     { version: '0.59.943', date: '2026-05-01', items: [
       '🌡 <b>Wet-Bulb метки на кривой насыщения в ASHRAE-style</b>. Соответствует reference ASHRAE Handbook Foundamentals Fig.2 («Wet Bulb or Saturation Temperature» на левой оси).',
       '• На кривой насыщения T_db = T_wb, поэтому каждая точка при integer T (5, 10, 15, 20, 25, 30°C) одновременно — метка wet-bulb. Раскрашены красным (#c62828) с белой stroke-обводкой для читаемости.',

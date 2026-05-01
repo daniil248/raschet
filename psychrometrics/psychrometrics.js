@@ -446,6 +446,13 @@ function renderCanvasLinks() {
     // Кривая Безье — плавная линия
     const midY = (p1.y + p2.y) / 2;
     const d = `M ${p1.x} ${p1.y} C ${p1.x} ${midY}, ${p2.x} ${midY}, ${p2.x} ${p2.y}`;
+    // v0.59.944: оборачиваем drawing процесса в <g> с data-proc-idx —
+    // клик открывает modal-редактор. По репорту: «добавь возможность
+    // изменения процесса кликом на сам процесс».
+    out += `<g class="psy-canvas-proc" data-proc-idx="${i}" style="color:${color}">`;
+    out += `<title>${escAttr((PROC_SHORT_NAME_GLOBAL?.[pr.type] || pr.type) + ' — клик для настройки')}</title>`;
+    // невидимая «жирная» подложка под кривую — чтобы ловить клик в широкой зоне
+    out += `<path d="${d}" fill="none" stroke="transparent" stroke-width="14"/>`;
     out += `<path d="${d}" fill="none" stroke="${color}" stroke-width="2"
              marker-end="url(#cv-${pr.type||'X'})"/>`;
     // Бейдж типа процесса на середине кривой
@@ -478,6 +485,7 @@ function renderCanvasLinks() {
         out += `<line x1="${rc.x}" y1="${rc.y}" x2="${dx}" y2="${dy}"
                 stroke="${color}" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6"/>`;
         out += `<text x="${(rc.x+dx)/2}" y="${(rc.y+dy)/2 - 4}" text-anchor="middle" font-size="9" fill="${color}" opacity="0.8">вытяжка</text>`;
+        out += `</g>`;
         return;  // не рисуем стандартный bage поверх
       }
     }
@@ -497,6 +505,7 @@ function renderCanvasLinks() {
         </g>`;
         const ratio = pr.mixRatio || '?';
         out += `<text x="${bx}" y="${by + 26}" text-anchor="middle" font-size="10" font-weight="600" fill="${color}">${ratio}</text>`;
+        out += `</g>`;
         return;
       }
     }
@@ -512,8 +521,23 @@ function renderCanvasLinks() {
         <title>${escAttr(String(pr._wizWarn))}</title>
       </g>`;
     }
+    out += `</g>`;  // close .psy-canvas-proc
   });
   svg.innerHTML = out;
+  // v0.59.944: клик по элементу процесса → открыть modal-редактор.
+  // Wire один раз — у SVG-элемента, через event-делегацию на data-proc-idx.
+  if (!svg._procClickWired) {
+    svg._procClickWired = true;
+    svg.addEventListener('click', (e) => {
+      const g = e.target.closest('[data-proc-idx]');
+      if (!g) return;
+      e.stopPropagation();
+      const idx = +g.dataset.procIdx;
+      if (Number.isFinite(idx) && idx >= 0 && idx < S.procs.length) {
+        openProcessEditor(idx);
+      }
+    });
+  }
 }
 function renderEdges() {
   const host = $('psy-edges');
