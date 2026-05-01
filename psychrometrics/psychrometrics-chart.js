@@ -233,6 +233,19 @@ export function render(container, opts = {}) {
    «и подписи влажности сделай как на скринах для режимов».
    Каждой метке — позиция на кривой при выбранном T_lab + tangent
    angle от ближайших точек. */
+/* v0.59.972: helper — проверка, существует ли RH-кривая в плот-области.
+   Если для всех T ∈ [T_min, T_max] значение W ≤ W_min (или ≥ W_max уже на
+   T_min — кривая стартует выше потолка) → линии в плоте нет → метку не
+   выводим. По репорту: «если линии нет, не выводи значение». */
+function rhCurveExistsInPlot(o, phi) {
+  // Проверяем хотя бы одну точку внутри: W в [W_min, W_max] для какого-то T
+  for (let T = o.T_min; T <= o.T_max; T += 1) {
+    const W = humidityRatio(T, phi, o.P);
+    if (Number.isFinite(W) && W >= o.W_min && W <= o.W_max) return true;
+  }
+  return false;
+}
+
 function rhLabelsAlongCurves(o, pos, isAshrae) {
   // v0.59.971: метки RH размещаются НА ВНУТРЕННЕЙ СТОРОНЕ РАМКИ —
   // там где RH-кривая выходит из плот-области (через верх — W=W_max,
@@ -245,6 +258,8 @@ function rhLabelsAlongCurves(o, pos, isAshrae) {
   let s = '';
   for (const rh of RHs) {
     const phi = rh / 100;
+    // v0.59.972: если линии нет в плот-области — пропускаем метку.
+    if (!rhCurveExistsInPlot(o, phi)) continue;
     const dT = 0.5;
     let T_exit = null;
     for (let T = o.T_min; T <= o.T_max; T += dT) {

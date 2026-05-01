@@ -227,14 +227,28 @@
         </span>
       </div>
       <div class="psy-chart-wrap" style="position:relative;">
-        <!-- v0.59.961: floating zoom-toolbar для диаграммы (CAD-style).
-             По репорту: «увеличение масштаба окна браузера, не увеличивает
-             саму диаграмму, только тексты. Добавь увеличение самой диаграммы». -->
+        <!-- v0.59.961/972: floating toolbar для диаграммы (zoom + visibility). -->
         <div class="psy-chart-zoom-toolbar">
           <button type="button" class="psy-chart-zoom-btn" data-cz-act="zoom-out" title="Уменьшить (−)">−</button>
           <span class="psy-chart-zoom-label" id="psy-chart-zoom-label">100%</span>
           <button type="button" class="psy-chart-zoom-btn" data-cz-act="zoom-in" title="Увеличить (+)">+</button>
-          <button type="button" class="psy-chart-zoom-btn" data-cz-act="fit" title="Сбросить (100%)">⊞ 100%</button>
+          <button type="button" class="psy-chart-zoom-btn" data-cz-act="fit" title="Сбросить zoom + pan">⊞ 100%</button>
+          <button type="button" class="psy-chart-zoom-btn" id="psy-chart-vis-btn" title="Видимость элементов диаграммы">⚙ Вид</button>
+        </div>
+        <!-- v0.59.972: попап «Видимость элементов диаграммы».
+             По репорту: «Сделай возможность настройки диаграммы пользователем,
+             отображение, видимость тех или иных элементов». -->
+        <div class="psy-chart-vis-popup" id="psy-chart-vis-popup" hidden>
+          <div class="psy-chart-vis-title">Видимость элементов</div>
+          <label><input type="checkbox" data-vis="rhCurves" checked> RH-кривые (5..100%)</label>
+          <label><input type="checkbox" data-vis="rhLabels" checked> Метки φ% по краю рамки</label>
+          <label><input type="checkbox" data-vis="hCurves" checked> Линии энтальпии (h=const)</label>
+          <label><input type="checkbox" data-vis="hLabels" checked> Метки h=N кДж/кг</label>
+          <label><input type="checkbox" data-vis="wbLabels" checked> Wet-Bulb метки на сатурации</label>
+          <label><input type="checkbox" data-vis="grid" checked> Сетка (T/W)</label>
+          <label><input type="checkbox" data-vis="zones" checked> Зоны TC 9.9 / ASHRAE 55</label>
+          <label><input type="checkbox" data-vis="legend" checked> Легенда «Параметры точек»</label>
+          <label><input type="checkbox" data-vis="enthalpyLabels" checked> Доп.: подписи изоэнтальп</label>
         </div>
         <div class="psy-chart" id="psy-chart"></div>
         <!-- v0.59.934: zone-селектор в правом верхнем углу диаграммы (виден при переключении). -->

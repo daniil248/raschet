@@ -31,6 +31,8 @@ let _activeId = null;
 let _activeTab = 'summary';
 let _activeCols = COLUMNS.filter(c => c.default).map(c => c.id);
 let _chillerSpec = null;
+// v0.59.971: год для annual-таблицы. '' = «все годы (среднее)», иначе конкретный.
+let _annualYear = '';
 
 const KEY_DATA = ['meteo', 'datasets.v1'];
 const KEY_ACTIVE = ['meteo', 'activeId.v1'];
@@ -166,9 +168,12 @@ function renderActiveTab() {
     const pivot = $('mt-pivot-table');
     if (pivot) pivot.innerHTML = renderDaysInRangeTable(d.hourly || []);
   } else if (_activeTab === 'annual') {
-    const rows = buildBinData(d.hourly || [], _chillerSpec);
+    // v0.59.971: фильтруем hourly по выбранному году (если задан)
+    const filtered = filterHourlyByYear(d.hourly || [], _annualYear);
+    const rows = buildBinData(filtered, _chillerSpec);
     const tbl = $('mt-annual-table');
     if (tbl) tbl.innerHTML = renderAnnualTable(rows, _activeCols);
+    populateAnnualYearSelect(d.hourly || []);
   } else if (_activeTab === 'ashrae') {
     renderAshraeBlock(d);
   }
@@ -293,10 +298,22 @@ function init() {
   const reRenderAnnual = () => {
     const d = _datasets.find(x => x.id === _activeId);
     if (!d) return;
-    const rows = buildBinData(d.hourly || [], _chillerSpec);
+    // v0.59.971: учёт выбранного года
+    const filtered = filterHourlyByYear(d.hourly || [], _annualYear);
+    const rows = buildBinData(filtered, _chillerSpec);
     const tbl = $('mt-annual-table');
     if (tbl) tbl.innerHTML = renderAnnualTable(rows, _activeCols);
+    populateAnnualYearSelect(d.hourly || []);
   };
+
+  // v0.59.971: year-selector
+  const yearSel = $('mt-annual-year');
+  if (yearSel) {
+    yearSel.addEventListener('change', () => {
+      _annualYear = yearSel.value;
+      reRenderAnnual();
+    });
+  }
 
   const colsBtn = $('mt-cols-btn');
   if (colsBtn) {
@@ -352,12 +369,45 @@ function init() {
     exportBtn.addEventListener('click', () => {
       const d = _datasets.find(x => x.id === _activeId);
       if (!d) return;
-      const rows = buildBinData(d.hourly || [], _chillerSpec);
-      const fname = `meteo-annual-${(d.locationName || 'export').replace(/[^\w\dА-Яа-я-]+/g, '_')}.csv`;
+      // v0.59.971: учитываем выбранный год в CSV
+      const filtered = filterHourlyByYear(d.hourly || [], _annualYear);
+      const rows = buildBinData(filtered, _chillerSpec);
+      const yearTag = _annualYear ? `-${_annualYear}` : '-allyears';
+      const fname = `meteo-annual${yearTag}-${(d.locationName || 'export').replace(/[^\w\dА-Яа-я-]+/g, '_')}.csv`;
       exportAnnualTableCsv(rows, _activeCols, fname);
       util.toast(`CSV сохранён: ${fname}`, 'ok');
     });
   }
+}
+
+/* v0.59.971: фильтрация hourly по году. По репорту: «нужна сводка
+   годовая, средняя в год по всем годам, и так же за конкретный год».
+   year='' → всё (среднее усредняется в buildBinData через 8766/N year-scale).
+   year=2023 → только записи с h.t.startsWith('2023'). */
+function filterHourlyByYear(hourly, year) {
+  if (!year) return hourly;
+  const prefix = String(year);
+  return hourly.filter(h => (h.t || '').startsWith(prefix));
+}
+
+/* Заполнить select годов из доступных в hourly. Опции: «Все годы (среднее)»
+   плюс конкретные года, отсортированные по убыванию. */
+function populateAnnualYearSelect(hourly) {
+  const sel = $('mt-annual-year');
+  if (!sel) return;
+  const years = new Set();
+  for (const h of hourly) {
+    const y = (h.t || '').slice(0, 4);
+    if (/^\d{4}$/.test(y)) years.add(y);
+  }
+  const yArr = [...years].sort((a, b) => b.localeCompare(a));
+  // Сохраняем текущее значение
+  const cur = _annualYear || sel.value || '';
+  const opts = ['<option value="">📊 Все годы (среднее)</option>',
+    ...yArr.map(y => `<option value="${y}">${y}</option>`)];
+  sel.innerHTML = opts.join('');
+  // Восстановить выбор если он остался валидным
+  if (cur === '' || yArr.includes(cur)) sel.value = cur;
 }
 
 function mtConfirm(msg, title = 'Подтверждение') {
