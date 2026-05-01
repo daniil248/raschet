@@ -1355,22 +1355,26 @@ function forwardPoint(a, proc, V, P) {
     const bf = Number.isFinite(bfRaw) ? Math.max(0, Math.min(1, bfRaw)) : 0.15;
     if (hasAdp && adpC < a.Td - 0.01) {
       // BF-модель — корректный конденсат всегда когда ADP < Td_in.
-      // v0.59.968: если задан Q-target → h2 уже вычислен. W_out из BF, а
-      // t_out теперь ИЗ h2+W2 (а не по BF-формуле t = BF·T1 + (1-BF)·ADP).
+      // v0.59.968: если задан Q-target → h2 уже вычислен. W_out из BF,
+      // а t_out из h2+W2 (а не по BF-формуле для t).
       // По репорту: «установил мощность кондиционера на 60 кВт... но
       // у меня прилетело 118 кВт» — раньше Q-target молча игнорировался,
-      // BF-формула переписывала t. Теперь: Q + ADP+BF → t из h2+W2_BF.
+      // BF-формула переписывала t. Теперь:
+      //   Q-target → h2 → W2 из BF → t2 из h2+W2_BF
+      //   t-target → t2 keep, W2 из BF (Q становится derived)
+      //   no target → t2/W2 из BF-формулы
       const Wadp = humidityRatio(adpC, 1.0, P);
       W2 = bf * a.W + (1 - bf) * Wadp;
-      if (t2 == null) {
+      if (proc.tgt === 'Q' || proc.tgt === 'h2') {
+        // h2 — primary; пересчитываем t2 на новом W2 (даже если 3.5
+        // установил t2 на основе W2=a.W — это устаревшее значение).
         if (h2 != null) {
-          // Q был задан → h2 известно → t2 из (h2 − 2501·W2) / (1.006 + 1.86·W2)
           t2 = (h2 - 2501 * W2) / (1.006 + 1.86 * W2);
-        } else {
-          // Ни t2 ни Q не заданы — BF-формула для t2.
-          t2 = bf * a.T + (1 - bf) * adpC;
         }
+      } else if (t2 == null) {
+        t2 = bf * a.T + (1 - bf) * adpC;
       }
+      // Если t-target (или dt) — t2 от пользователя не трогаем.
     } else {
       // Контактная модель (fallback): t2 < Td → насыщение, иначе сенсибельное
       if (W2 == null && t2 != null) {
