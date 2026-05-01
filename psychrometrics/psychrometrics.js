@@ -633,9 +633,34 @@ function procArrow(pr, i) {
     </label>
     ${pr.type === 'M' ? mixControls(pr, i) : ''}
     ${pr.type === 'R' ? recupControls(pr, i) : ''}
+    ${pr.type === 'C' ? coolControls(pr, i) : ''}
     <div data-role="proc-warn" style="display:none;margin-top:6px;padding:4px 6px;background:#fff3e0;border:1px solid #ffb74d;border-radius:3px;font-size:10px;line-height:1.3;color:#bf360c;"></div>
   `;
   return el;
+}
+
+/* v0.59.905: ADP/BF контролы для процесса C (охлаждение).
+   ADP — Apparatus Dew Point (T поверхности коил), BF — Bypass Factor (доля 0..1).
+   По ASHRAE Handbook HVAC Systems and Equipment гл. 23. Если задан ADP < Td_in,
+   конденсат считается ВСЕГДА (даже если t_out > Td_in). */
+function coolControls(pr, i) {
+  const adp = pr.adp ?? '';
+  const bf = pr.bf ?? '';
+  return `
+    <div style="margin-top:6px;padding:6px 8px;background:#e1f5fe;border:1px solid #81d4fa;border-radius:4px">
+      <div style="font-size:10.5px;font-weight:600;color:#01579b;margin-bottom:3px">❄ Охладитель / коил</div>
+      <label style="font-size:10px;color:#01579b;display:block">ADP, °C (T поверхности коил)
+        <input type="number" data-col="adp" data-i="${i}" value="${adp}" step="0.5" placeholder="авто (контактное)" style="width:100%">
+      </label>
+      <label style="font-size:10px;color:#01579b;display:block;margin-top:3px">BF (bypass factor 0..1)
+        <input type="number" data-col="bf" data-i="${i}" value="${bf}" step="0.05" min="0" max="1" placeholder="0.15 (тип. DX)" style="width:100%">
+      </label>
+      <div style="font-size:9.5px;color:#0277bd;margin-top:3px;line-height:1.3">
+        Без ADP — контактная модель (конденсат только если t₂&lt;t_dp_in).<br>
+        С ADP — BF-смешение: W₂ = BF·W₁ + (1−BF)·W_sat(ADP). Корректно для коила.
+      </div>
+    </div>
+  `;
 }
 
 /* Поля для процесса «R» (рекуператор): опорная точка (вытяжка) + КПД η (по t).
@@ -775,6 +800,8 @@ function readInputs() {
     else if (col === 'mixRatio')  { S.procs[i] = S.procs[i] || {}; S.procs[i].mixRatio  = v; }
     else if (col === 'recupWith') { S.procs[i] = S.procs[i] || {}; S.procs[i].recupWith = v; }
     else if (col === 'recupEff')  { S.procs[i] = S.procs[i] || {}; S.procs[i].recupEff  = v; }
+    else if (col === 'adp')       { S.procs[i] = S.procs[i] || {}; S.procs[i].adp       = v; }   // v0.59.905 ADP coil
+    else if (col === 'bf')        { S.procs[i] = S.procs[i] || {}; S.procs[i].bf        = v; }   // v0.59.905 Bypass Factor
     else if (col === 'Q' || col === 'qw') {
       S.procs[i] = S.procs[i] || {};
       if (isUser && v !== '') {
@@ -912,15 +939,44 @@ function forwardPoint(a, proc, V, P) {
     }
   }
 
-  /* 4. Специальная логика C (охлаждение с осушением) */
+  /* 4. v0.59.905 (Bug-fix): C — модель ADP+BF (Apparatus Dew Point + Bypass Factor).
+     Раньше: конденсат считался ТОЛЬКО когда t2_finalAir < a.Td. Это неверно —
+     в реальном испарителе/охладителе часть воздуха ВСЕГДА проходит через
+     поверхность теплообменника с T=ADP (если ADP<a.Td → конденсация на коил),
+     остальной обходит (BF). Финальное состояние = смешение bypass + ADP-saturated.
+
+     Если proc.adp задан И proc.adp < a.Td → применяем BF-модель:
+       W_out = BF × W_in + (1-BF) × W_sat(ADP)
+       T_out = BF × T_in + (1-BF) × ADP
+     Если adp/bf не заданы — fallback на старую логику (контактное охлаждение).
+
+     Поля процесса: proc.adp (°C), proc.bf (доля 0..1), proc.bf — default 0.15
+     для типичного DX-coil (ASHRAE Handbook HVAC Systems and Equipment гл. 23).
+  */
   if (proc.type === 'C') {
-    if (W2 == null && t2 != null) {
-      if (t2 < a.Td - 0.05) W2 = humidityRatio(t2, 1.0, P);
-      else W2 = a.W;
-    }
-    if (t2 == null && W2 != null) {
-      if (W2 < a.W - 1e-6) t2 = dewPointFromW(W2, P);
-      else t2 = a.T;
+    const adpC = nNum(proc.adp);
+    const bfRaw = nNum(proc.bf);
+    const hasAdp = Number.isFinite(adpC);
+    const bf = Number.isFinite(bfRaw) ? Math.max(0, Math.min(1, bfRaw)) : 0.15;
+    if (hasAdp && adpC < a.Td - 0.01) {
+      // BF-модель — корректный конденсат всегда когда ADP < Td_in
+      const Wadp = humidityRatio(adpC, 1.0, P);
+      // Если t2 не задан явно — рассчитаем по BF
+      if (t2 == null) {
+        t2 = bf * a.T + (1 - bf) * adpC;
+      }
+      // W_out — всегда по BF (даже если t2 задан явно — конденсат корректен)
+      W2 = bf * a.W + (1 - bf) * Wadp;
+    } else {
+      // Контактная модель (fallback): t2 < Td → насыщение, иначе сенсибельное
+      if (W2 == null && t2 != null) {
+        if (t2 < a.Td - 0.05) W2 = humidityRatio(t2, 1.0, P);
+        else W2 = a.W;
+      }
+      if (t2 == null && W2 != null) {
+        if (W2 < a.W - 1e-6) t2 = dewPointFromW(W2, P);
+        else t2 = a.T;
+      }
     }
   }
 

@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.905', date: '2026-04-30', items: [
+      '🚨 <b>Bug-fix ID-диаграммы: конденсат теперь корректно считается с учётом T поверхности теплообменника</b>. По репорту: «забыл учесть температуру теплообменника при расчете конденсата, у тебя никогда нет конденсата если гонять по кругу, но это не так».',
+      '• <b>Корень бага</b>: процесс C (охлаждение) использовал контактную модель — конденсат только если t_air_out &lt; t_dewpoint_in. Это неверно для реального коил-охладителя, где часть воздуха ВСЕГДА проходит через поверхность с T=ADP&lt;Td_in (конденсат на коил), остальной обходит (bypass).',
+      '• <b>Fix</b>: добавлена ASHRAE-стандартная модель ADP (Apparatus Dew Point) + BF (Bypass Factor). По ASHRAE Handbook HVAC Systems and Equipment гл. 23. Если задан ADP &lt; Td_in: W_out = BF×W_in + (1−BF)×W_sat(ADP), T_out = BF×T_in + (1−BF)×ADP. Конденсат всегда корректен.',
+      '• <b>UI</b>: в редакторе процесса C новые поля «❄ Охладитель / коил» — ADP °C (T поверхности коил) + BF (bypass factor 0..1, default 0.15 для типового DX). Оба auto-fill: если ADP пуст — fallback на старую контактную модель.',
+      'Файл: <code>psychrometrics/psychrometrics.js</code> (forwardPoint cooling-блок переписан на BF-модель + coolControls UI + adp/bf field handlers).',
+    ] },
     { version: '0.59.904', date: '2026-04-30', items: [
       '📋 <b>Полный ASHRAE Foundamentals datasheet по метеостанции</b>. По задаче: «нужны листы данных из ASHRAE Handbook - Foundamentals и в ASHRAE Design минимум блок минимумов и максимумов, это важно для обоснования выбора климатических систем для Uptime Institute».',
       '• Новый файл <code>meteo/ashrae-datasheet.js</code> — формат идентичен официальной таблице 2025 ASHRAE HoF гл. 14 (см. screenshot пользователя).',
