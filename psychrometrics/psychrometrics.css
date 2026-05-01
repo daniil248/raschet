@@ -334,6 +334,43 @@
 .psy-formulas code { background: #f0f4fb; padding: 1px 5px; border-radius: 3px; color: #0d47a1; font-family: 'Consolas', monospace; }
 .psy-formulas .note { background: #fff9c4; border: 1px solid #fbc02d; padding: 6px 10px; border-radius: 4px; margin: 6px 0; font-size: 11px; }
 
+/* ─── v0.59.928: Design-point picker (выбор какой точки добавить из meteo) */
+.psy-design-pt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.psy-design-pt {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 14px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.psy-design-pt:hover { background: #eff6ff; border-color: #93c5fd; }
+.psy-design-pt-icon {
+  font-size: 22px;
+  width: 36px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.psy-design-pt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.psy-design-pt-body b { font-size: 13.5px; color: #111827; }
+.psy-design-pt-vals { font-size: 12px; color: #1e40af; font-weight: 600; font-variant-numeric: tabular-nums; }
+.psy-design-pt-hint { font-size: 11px; color: #6b7280; font-style: italic; }
+
 /* ─── v0.59.927: Active meteo chip — видимая индикация подгруженного датасета */
 .psy-meteo-chip {
   display: flex;

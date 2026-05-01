@@ -2463,69 +2463,53 @@ function wire() {
         if (!close.length) return null;
         return close.reduce((s, h) => s + Number(h.RH), 0) / close.length;
       };
+      // v0.59.928: добавляем по ОДНОЙ точке за раз, выбор пользователя.
+      // Простые имена «Зима …» / «Лето …» вместо технических «Heating 99.6%».
       const designs = [
-        { tag: 'meteo-h996', label: `Heating 99.6% (${locName})`, t: tHeat996, rhDef: 80 },
-        { tag: 'meteo-h99',  label: `Heating 99% (${locName})`,   t: tHeat990, rhDef: 78 },
-        { tag: 'meteo-c1',   label: `Cooling 1% (${locName})`,    t: tCool010, rhDef: 50 },
-        { tag: 'meteo-c04',  label: `Cooling 0.4% (${locName})`,  t: tCool004, rhDef: 45 },
+        { tag: 'meteo-h996', shortLabel: '🥶 Зима расчётная (T 99.6%)', name: `Зима расч. ${locName}`,    t: tHeat996, rhDef: 80, hint: 'Для подбора нагревателей по экстремальной зиме' },
+        { tag: 'meteo-h99',  shortLabel: '❄ Зима типовая (T 99%)',      name: `Зима типов. ${locName}`,   t: tHeat990, rhDef: 78, hint: 'Для типовой зимней нагрузки' },
+        { tag: 'meteo-c1',   shortLabel: '☀ Лето типовое (T 1%)',       name: `Лето типов. ${locName}`,   t: tCool010, rhDef: 50, hint: 'Для типовой летней нагрузки' },
+        { tag: 'meteo-c04',  shortLabel: '🌡 Лето расчётное (T 0.4%)',  name: `Лето расч. ${locName}`,    t: tCool004, rhDef: 45, hint: 'Для подбора чиллера по экстремальному лету' },
       ];
-      // v0.59.908 fix: помечаем точки _meteoTag и обновляем при повторном
-      // клике, не плодя дубли. По репорту пользователя «нажал пять раз и
-      // каждый раз вывалились по 2 карточки».
 
-      // One-time cleanup: тэгируем существующие точки по name-prefix-match,
-      // чтобы migrate с предыдущей версии где _meteoTag не было.
+      // One-time cleanup для legacy points с старыми именами / без тэгов
       const NAME_PREFIXES = {
         'meteo-h996': ['Heating 99.6%', 'Зима расч.', 'Зима расч'],
-        'meteo-h99':  ['Heating 99%'],
-        'meteo-c1':   ['Cooling 1%'],
+        'meteo-h99':  ['Heating 99%', 'Зима типов'],
+        'meteo-c1':   ['Cooling 1%', 'Лето типов'],
         'meteo-c04':  ['Cooling 0.4%', 'Лето расч.', 'Лето расч'],
       };
-      // Тэгируем первую попавшуюся untagged точку с подходящим именем
       for (const [tag, prefixes] of Object.entries(NAME_PREFIXES)) {
         if (S.points.some(p => p && p._meteoTag === tag)) continue;
         const idx = S.points.findIndex(p => p && !p._meteoTag &&
           prefixes.some(pref => (p.name || '').startsWith(pref)));
         if (idx >= 0) S.points[idx]._meteoTag = tag;
       }
-      // Удалить остальные untagged дубли с теми же префиксами (legacy spam от v0.59.900)
-      const beforeLen = S.points.length;
-      S.points = S.points.filter(p => {
-        if (!p || p._meteoTag) return true;
-        for (const prefixes of Object.values(NAME_PREFIXES)) {
-          if (prefixes.some(pref => (p.name || '').startsWith(pref))) return false;
-        }
-        return true;
-      });
-      const cleanedDupes = beforeLen - S.points.length;
 
-      let added = 0, updated = 0;
-      for (const d of designs) {
-        const rh = rhFor(d.t) ?? d.rhDef;
-        const existing = S.points.find(p => p && p._meteoTag === d.tag);
-        if (existing) {
-          existing.name = d.label;
-          existing.t = String(Math.round(d.t * 10) / 10);
-          existing.rh = String(Math.round(rh));
-          // НЕ перезаписываем x/h/V — могли быть пользовательские; только t,rh,name
-          updated++;
-        } else {
-          S.points.push({
-            _meteoTag: d.tag,
-            name: d.label,
-            t: String(Math.round(d.t * 10) / 10),
-            rh: String(Math.round(rh)),
-            x: '', h: '', V: '',
-          });
-          added++;
-        }
+      // Шаг: пользователь выбирает какую точку добавить
+      const pickedTag = await openDesignPointPicker(designs, locName);
+      if (!pickedTag) return;
+      const d = designs.find(x => x.tag === pickedTag);
+      if (!d) return;
+      const rh = rhFor(d.t) ?? d.rhDef;
+      const existing = S.points.find(p => p && p._meteoTag === d.tag);
+      if (existing) {
+        existing.name = d.name;
+        existing.t = String(Math.round(d.t * 10) / 10);
+        existing.rh = String(Math.round(rh));
+        psyToast(`✓ Обновлена точка «${d.name}» · ${d.t.toFixed(1)}°C, ${Math.round(rh)}%`, 'ok');
+      } else {
+        S.points.push({
+          _meteoTag: d.tag,
+          name: d.name,
+          t: String(Math.round(d.t * 10) / 10),
+          rh: String(Math.round(rh)),
+          x: '', h: '', V: '',
+        });
+        psyToast(`✓ Добавлена точка «${d.name}» · ${d.t.toFixed(1)}°C, ${Math.round(rh)}%`, 'ok');
       }
       rerenderCycle();
-      const parts = [];
-      if (added > 0) parts.push(`+${added} новых`);
-      if (updated > 0) parts.push(`${updated} обновлено`);
-      if (cleanedDupes > 0) parts.push(`удалено ${cleanedDupes} дублей`);
-      psyToast(`✓ ${parts.join(' · ')} · H99.6=${tHeat996.toFixed(1)}°C, C0.4=${tCool004.toFixed(1)}°C`, 'ok');
+      setTimeout(() => fitCanvas(), 100);
     } catch (e) {
       console.error('[psy-from-meteo]', e);
       psyToast(`Ошибка: ${e.message || e}`, 'warn');
@@ -3254,6 +3238,45 @@ function wireInfiniteCanvas() {
 
   // v0.59.912: убрал document-keydown шорткаты — они могли перехватывать
   // ввод в input полях (включая psy-add и др.). Если нужны — навешу на canvas.
+}
+
+// v0.59.928: модал выбора design-точки для импорта из meteo.
+// Возвращает выбранный tag или null при отмене.
+function openDesignPointPicker(designs, locName) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'psy-wiz-overlay';
+    const rows = designs.map(d => `
+      <button type="button" class="psy-design-pt" data-tag="${escAttr(d.tag)}">
+        <span class="psy-design-pt-icon">${escAttr(d.shortLabel.slice(0, 2))}</span>
+        <span class="psy-design-pt-body">
+          <b>${escAttr(d.shortLabel.slice(2).trim())}</b>
+          <span class="psy-design-pt-vals">${d.t.toFixed(1)} °C · RH ~${d.rhDef}%</span>
+          <span class="psy-design-pt-hint">${escAttr(d.hint)}</span>
+        </span>
+      </button>
+    `).join('');
+    overlay.innerHTML = `<div class="psy-wiz-modal" role="dialog" style="width:min(560px,92vw)">
+      <div class="psy-wiz-head"><h3>📍 Какую точку добавить?</h3>
+        <button type="button" class="psy-wiz-close">×</button>
+      </div>
+      <div class="psy-wiz-body">
+        <p class="psy-wiz-from">Локация: <b>${escAttr(locName)}</b>. Выберите ОДИН design-режим:</p>
+        <div class="psy-design-pt-list">${rows}</div>
+      </div>
+      <div class="psy-wiz-actions">
+        <button type="button" class="psy-wiz-btn psy-wiz-cancel">Отмена</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const close = (val) => { overlay.remove(); resolve(val); };
+    overlay.querySelector('.psy-wiz-close').addEventListener('click', () => close(null));
+    overlay.querySelector('.psy-wiz-cancel').addEventListener('click', () => close(null));
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(null); });
+    overlay.querySelectorAll('.psy-design-pt').forEach(b => {
+      b.addEventListener('click', () => close(b.dataset.tag));
+    });
+  });
 }
 
 // v0.59.927: рендер chip с активным meteo-датасетом проекта.
