@@ -140,14 +140,22 @@ function pointState(p, P) {
   const xG = nNum(p.x);   // d, г/кг
   const h  = nNum(p.h);   // энтальпия, кДж/кг
   if (!Number.isFinite(t)) return null;
-  // 1. d override
-  if (Number.isFinite(xG)) {
+  // v0.59.957: учитываем USER-флаги при выборе primary fields.
+  // Раньше pointState всегда приоритезировал x>h>φ независимо от user-input.
+  // Это давало stale state когда auto-computed x не очищался при изменении
+  // других полей. Теперь — primary поля только если они user-set.
+  // Если user поставил d → используем t+d; если user поставил h → t+h;
+  // иначе — t+rh (стандартный путь).
+  const xIsUser = !!p.xUser && Number.isFinite(xG);
+  const hIsUser = !!p.hUser && Number.isFinite(h);
+  // 1. d override (только если user-set)
+  if (xIsUser) {
     const W = xG / 1000;
     const rhFromX = clamp(100 * W * P / (0.621945 + W) / Pws(t), 0, 200);
     return state(t, rhFromX / 100, P);
   }
-  // 2. Энтальпия
-  if (Number.isFinite(h)) {
+  // 2. Энтальпия (только если user-set)
+  if (hIsUser) {
     const W = (h - 1.006 * t) / (2501 + 1.86 * t);
     if (Number.isFinite(W) && W >= 0) {
       const rhFromH = clamp(100 * W * P / (0.621945 + W) / Pws(t), 0, 200);
@@ -155,7 +163,22 @@ function pointState(p, P) {
     }
   }
   // 3. Стандарт: t + φ
-  if (!Number.isFinite(rh)) return null;
+  if (!Number.isFinite(rh)) {
+    // fallback — если только t задан, попробуем взять auto-x/h
+    if (Number.isFinite(xG)) {
+      const W = xG / 1000;
+      const rhFromX = clamp(100 * W * P / (0.621945 + W) / Pws(t), 0, 200);
+      return state(t, rhFromX / 100, P);
+    }
+    if (Number.isFinite(h)) {
+      const W = (h - 1.006 * t) / (2501 + 1.86 * t);
+      if (Number.isFinite(W) && W >= 0) {
+        const rhFromH = clamp(100 * W * P / (0.621945 + W) / Pws(t), 0, 200);
+        return state(t, rhFromH / 100, P);
+      }
+    }
+    return null;
+  }
   return state(t, clamp(rh, 0, 100) / 100, P);
 }
 
