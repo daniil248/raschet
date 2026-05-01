@@ -57,7 +57,7 @@ export function render(container, opts = {}) {
               style="background:#fff;font-family:Arial,sans-serif;">`;
 
   // --- Grid: T isotherms (every 5°C) — используем pos для обоих layouts.
-  svg += `<g stroke="#e0e0e0" stroke-width="0.5">`;
+  svg += `<g class="psy-svg-grid" stroke="#e0e0e0" stroke-width="0.5">`;
   for (let T = Math.ceil(o.T_min / 5) * 5; T <= o.T_max; T += 5) {
     const [x1, y1] = pos(o.W_min, T);
     const [x2, y2] = pos(o.W_max, T);
@@ -72,13 +72,15 @@ export function render(container, opts = {}) {
   svg += `</g>`;
 
   // --- Saturation curve (RH=100%) ---
-  svg += curvePath(o, pos, 1.0, '#c62828', 1.6);
+  svg += `<g class="psy-svg-sat-curve">` + curvePath(o, pos, 1.0, '#c62828', 1.6) + `</g>`;
+  svg += `<g class="psy-svg-rh-curves">`;
   for (let rh = 10; rh < 100; rh += 10) {
     svg += curvePath(o, pos, rh / 100, '#9e9e9e', 0.5);
   }
+  svg += `</g>`;
 
   // --- Constant enthalpy lines (kJ/kg_da) every 10 kJ/kg ---
-  svg += `<g stroke="#1976d2" stroke-width="0.4" stroke-dasharray="3,2" opacity="0.7">`;
+  svg += `<g class="psy-svg-h-curves" stroke="#1976d2" stroke-width="0.4" stroke-dasharray="3,2" opacity="0.7">`;
   const enthalpyLabels = [];
   for (let h = -20; h <= 120; h += 10) {
     const pts = [];

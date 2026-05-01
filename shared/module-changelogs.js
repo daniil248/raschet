@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.976', date: '2026-05-01', items: [
+      '🖨 <b>Печать только нужного: исходные данные + диаграмма + таблицы</b>. По репорту: «ПЕчатать только диаграмму по формату листа и таблицу параметров воздуха и процессов, так же исходные данные по площадке».',
+      '• @media print: ВИДИМО — «Условия объекта» (площадка, P, V), «Параметры воздуха по точкам», «Процессы (Q, q<sub>w</sub>)», диаграмма (A3/A4 по viewBox).',
+      '• СКРЫТО: app-header, tabs, canvas с editor-карточками точек, sidebar процессов, zoom-toolbar, кнопки/select-ы в panel-titles, calc-вкладка, wizard/modal-overlays, кнопки добавления/удаления, hint-блоки, footer.',
+      '• Диаграмма: <code>transform:none</code> отменяет zoom; <code>width:100%</code> для масштаба под лист.',
+      '• <code>page-break-inside:avoid</code> на диаграмму и таблицы — не разрезаются между страницами.',
+      'Файл: <code>psychrometrics/psychrometrics.css</code> (@media print rules).',
+    ] },
     { version: '0.59.975', date: '2026-05-01', items: [
       '📐 <b>Легенда «Параметры точек» расширена с 360px до 440px</b>. Раньше длинная строка параметров (t/φ/d/h с единицами) обрезалась справа на 360px-боксе. 440px даёт запас + читаемость.',
       'Файл: <code>psychrometrics/psychrometrics-chart.js</code> (plotLegend boxW).',
