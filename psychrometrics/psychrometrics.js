@@ -35,8 +35,12 @@ const S = {
   chartFormat: (() => { try { return localStorage.getItem('psy.chartFormat') || 'A4'; } catch { return 'A4'; } })(),
   chartOrient: (() => { try { return localStorage.getItem('psy.chartOrient') || 'landscape'; } catch { return 'landscape'; } })(),
   edgeView: (() => { try { return localStorage.getItem('psy.edgeView') || 'cards'; } catch { return 'cards'; } })(),
+  // v0.59.935: Точка 1 — всегда вход с улицы (наружный воздух).
+  // По репорту: «пусть точка один будет всегда входная из улицы». Имя
+  // сделано generic-ом, чтобы подходило и для зимы, и для лета — конкретный
+  // режим подставляется через «📍 Из meteo» (обновляет именно первую точку).
   points: [
-    { name: 'Наружный (зима)', nameUser: true, t: -20, tUser: true, tTs: 1, rh: 85, rhUser: true, rhTs: 1, x: '', h: '', V: '' },
+    { name: 'Наружный воздух (улица)', nameUser: true, t: -20, tUser: true, tTs: 1, rh: 85, rhUser: true, rhTs: 1, x: '', h: '', V: '' },
     { name: 'После калорифера', t: '', rh: '', x: '', h: '', V: '' },
     { name: 'После увлажн.',    t: '', rh: '', x: '', h: '', V: '' },
   ],
@@ -1607,6 +1611,53 @@ function renderChart(sts) {
     host.appendChild(readout);
   }
   attachCrosshair(host);
+  // v0.59.935: нормализуем размер текста SVG под фактический display-scale,
+  // чтобы шрифты на диаграмме визуально совпадали с шрифтом страницы
+  // (а не «съёживались» в маленьком окне и не «гипертрофировались» в большом).
+  normalizeChartFontSizes(host);
+  if (!host._fsResizeWired) {
+    host._fsResizeWired = true;
+    let raf = 0;
+    window.addEventListener('resize', () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => normalizeChartFontSizes(host));
+    });
+  }
+}
+
+// v0.59.935: пересчитывает font-size у каждого <text> в SVG диаграммы так,
+// чтобы визуальный размер на экране = «дизайн-size» × bodyFont/12px ratio,
+// независимо от того, насколько SVG отмасштабирован относительно viewBox.
+//   designed (user units) = base_target_px / display_scale
+// где display_scale = svgRect.width / viewBox.width.
+// Дизайн-size читаем из computedStyle при первом проходе и кэшируем
+// в data-psy-fs-base, чтобы повторные вызовы не «накручивали» множитель.
+function normalizeChartFontSizes(host) {
+  const svg = host.querySelector('svg');
+  if (!svg) return;
+  const rect = svg.getBoundingClientRect();
+  const vbW = svg.viewBox?.baseVal?.width || 0;
+  if (!rect.width || !vbW) return;
+  const scale = rect.width / vbW;
+  if (!Number.isFinite(scale) || scale <= 0) return;
+  // Целимся в визуальный размер, близкий к шрифту страницы (body/14px).
+  // Соотношения дизайн-сайзов (9/10/11/12) сохраняем — масштабируем все
+  // одинаковым коэффициентом targetBase / 12, где 12 — наш «нормальный»
+  // дизайн-размер.
+  const bodyFs = parseFloat(getComputedStyle(document.body).fontSize) || 14;
+  const TARGET_BASE_PX = bodyFs;  // 12-px дизайн → bodyFs визуально
+  const inv = 1 / scale;
+  const ratio = TARGET_BASE_PX / 12;
+  svg.querySelectorAll('text').forEach(t => {
+    let designed = parseFloat(t.dataset.psyFsBase || '');
+    if (!Number.isFinite(designed) || designed <= 0) {
+      // Первый вызов — фиксируем исходный font-size (в user-units).
+      designed = parseFloat(getComputedStyle(t).fontSize) || 12;
+      t.dataset.psyFsBase = String(designed);
+    }
+    const px = designed * ratio * inv;
+    t.style.fontSize = px.toFixed(2) + 'px';
+  });
 }
 
 function attachCrosshair(host) {
@@ -2589,21 +2640,36 @@ function wire() {
       const d = designs.find(x => x.tag === pickedTag);
       if (!d) return;
       const rh = rhFor(d.t) ?? d.rhDef;
-      const existing = S.points.find(p => p && p._meteoTag === d.tag);
-      if (existing) {
-        existing.name = d.name;
-        existing.t = String(Math.round(d.t * 10) / 10);
-        existing.rh = String(Math.round(rh));
-        psyToast(`✓ Обновлена точка «${d.name}» · ${d.t.toFixed(1)}°C, ${Math.round(rh)}%`, 'ok');
-      } else {
+      // v0.59.935: новая логика по репорту: «точку из метео нужно добавлять
+      // новую если только точек еще вообще нет, иначе просто для входной
+      // точки выбирать из метео». Раньше каждый клик «Из meteo» либо
+      // обновлял точку с тем же _meteoTag, либо добавлял новую — в результате
+      // в цикле копились лишние карточки «Зима…/Лето…», а уже названная
+      // пользователем «Наружный (приток)» оставалась пустой.
+      const tNow = performance.now();
+      const tStr = String(Math.round(d.t * 10) / 10);
+      const rhStr = String(Math.round(rh));
+      if (!S.points.length) {
+        // Пусто — добавляем как первую точку с meteo-именем
         S.points.push({
           _meteoTag: d.tag,
-          name: d.name,
-          t: String(Math.round(d.t * 10) / 10),
-          rh: String(Math.round(rh)),
+          name: d.name, nameUser: true,
+          t: tStr, tUser: true, tTs: tNow,
+          rh: rhStr, rhUser: true, rhTs: tNow,
           x: '', h: '', V: '',
         });
         psyToast(`✓ Добавлена точка «${d.name}» · ${d.t.toFixed(1)}°C, ${Math.round(rh)}%`, 'ok');
+      } else {
+        // Точки есть — применяем к ВХОДНОЙ (первой) точке.
+        // Сохраняем пользовательское имя — оно обычно роль-описательное
+        // («Наружный (приток)»), а meteo-режим показываем в toast.
+        const inp = S.points[0];
+        const keptName = inp.name || 'Точка 1';
+        inp.t = tStr; inp.tUser = true; inp.tTs = tNow;
+        inp.rh = rhStr; inp.rhUser = true; inp.rhTs = tNow;
+        inp._meteoTag = d.tag;
+        inp.x = ''; inp.h = '';  // сбрасываем — будут пересчитаны из t+rh
+        psyToast(`✓ Точка 1 «${keptName}» ← ${d.shortLabel.replace(/^.. /, '')} · ${d.t.toFixed(1)}°C, ${Math.round(rh)}%`, 'ok');
       }
       rerenderCycle();
       setTimeout(() => fitCanvas(), 100);
@@ -2650,7 +2716,8 @@ function wire() {
   wireZonesPanel();
   $('psy-clear').addEventListener('click', () => {
     const now = performance.now();
-    S.points = [{ name:'Точка 1', nameUser:true, t: 22, tUser:true, tTs: now, rh: 50, rhUser:true, rhTs: now, x: '', h:'', V: '' }];
+    // v0.59.935: после Очистить — Точка 1 всегда вход с улицы.
+    S.points = [{ name:'Наружный воздух (улица)', nameUser:true, t: -10, tUser:true, tTs: now, rh: 80, rhUser:true, rhTs: now, x: '', h:'', V: '' }];
     S.procs = [];
     S.zones = [];
     rerenderCycle();

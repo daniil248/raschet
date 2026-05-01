@@ -50,11 +50,18 @@ export function computeFullAshrae(hourly, opts = {}) {
   const cooling010 = at(0.990);
   const cooling020 = at(0.980);
 
-  // ─── Coincident (MCWB / MCDB) — average across rows nearest to target T
-  const coincidentMC = (target, key) => {
+  // ─── Coincident (MCWB / MCDB) — average across rows nearest to target T.
+  // v0.59.935: keyOrFn — либо имя поля в hourly (для MCDB по T), либо функция
+  // h → number (для MCWB, который нужно вычислять из T+RH; в часовых данных
+  // нет готового поля wet-bulb).
+  const coincidentMC = (target, keyOrFn) => {
+    const valueOf = typeof keyOrFn === 'function'
+      ? keyOrFn
+      : (h) => Number(h[keyOrFn]);
     const close = valid
-      .filter(h => Number.isFinite(Number(h[key])) && Math.abs(Number(h.T) - target) < 0.5)
-      .map(h => Number(h[key]));
+      .filter(h => Math.abs(Number(h.T) - target) < 0.5)
+      .map(h => valueOf(h))
+      .filter(Number.isFinite);
     if (!close.length) return null;
     return close.reduce((s, v) => s + v, 0) / close.length;
   };
@@ -212,9 +219,12 @@ export function computeFullAshrae(hourly, opts = {}) {
     },
     coldestWind: { ws004: coldWsAt(0.004), ws010: coldWsAt(0.010) },
     cooling: {
-      DB004: cooling004?.T, MCWB004: coincidentMC(cooling004.T, 'wb_'),
-      DB010: cooling010?.T, MCWB010: coincidentMC(cooling010.T, 'wb_'),
-      DB020: cooling020?.T, MCWB020: coincidentMC(cooling020.T, 'wb_'),
+      // v0.59.935: MCWB вычисляется на лету (h → wet-bulb из T+RH);
+      // раньше передавалось имя поля 'wb_' которого нет в часовых данных,
+      // и MCWB всегда выходил null → '—' в datasheet.
+      DB004: cooling004?.T, MCWB004: coincidentMC(cooling004.T, h => wb(Number(h.T), Number(h.RH))),
+      DB010: cooling010?.T, MCWB010: coincidentMC(cooling010.T, h => wb(Number(h.T), Number(h.RH))),
+      DB020: cooling020?.T, MCWB020: coincidentMC(cooling020.T, h => wb(Number(h.T), Number(h.RH))),
     },
     evaporation: {
       WB004: wbAt(0.996)?._wb, MCDB004w: wbAt(0.996)?.T,

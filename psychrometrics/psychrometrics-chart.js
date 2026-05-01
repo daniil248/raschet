@@ -48,19 +48,35 @@ export function render(container, opts = {}) {
   // --- Constant enthalpy lines (kJ/kg_da) every 10 kJ/kg ---
   // h = 1.006·T + W·(2501 + 1.86·T). Solve for T(W):
   //    T = (h - 2501·W) / (1.006 + 1.86·W)
+  // v0.59.935: добавлены подписи изоэнтальп — раньше линии были без меток.
   svg += `<g stroke="#1976d2" stroke-width="0.4" stroke-dasharray="3,2" opacity="0.7">`;
+  const enthalpyLabels = [];
   for (let h = -20; h <= 120; h += 10) {
     const pts = [];
     for (let i = 0; i <= 40; i++) {
       const W = o.W_min + (o.W_max - o.W_min) * i / 40;
       const T = (h - 2501 * W) / (1.006 + 1.86 * W);
-      if (T >= o.T_min && T <= o.T_max) pts.push([X(W), Y(T)]);
+      if (T >= o.T_min && T <= o.T_max) pts.push([X(W), Y(T), W, T]);
     }
     if (pts.length > 1) {
-      svg += `<polyline points="${pts.map(p=>p.join(',')).join(' ')}" fill="none"/>`;
+      svg += `<polyline points="${pts.map(p=>p[0]+','+p[1]).join(' ')}" fill="none"/>`;
+      // Метка на ВЕРХНЕМ конце линии (где она упирается в верхнюю границу
+      // плот-области) — там у h=const-линий обычно W побольше, T поменьше.
+      // Берём первую точку (наименьший W → наибольший T).
+      const head = pts[0];
+      enthalpyLabels.push({ x: head[0], y: head[1], h });
     }
   }
   svg += `</g>`;
+  // Подписи h в kJ/kg возле верхнего конца каждой изоэнтальпы.
+  // Помещаем чуть выше точки (y - 4) с белым stroke-наводкой для читаемости
+  // на сетке.
+  for (const lbl of enthalpyLabels) {
+    if (lbl.y < o.marginT + 6) continue;  // не вылезаем за верхнюю границу
+    svg += `<text x="${lbl.x + 2}" y="${lbl.y - 3}"
+             style="font-size:9px;fill:#1565c0;font-weight:600;paint-order:stroke;stroke:#fff;stroke-width:2.5px;">
+             h=${lbl.h}</text>`;
+  }
 
   // --- Axes ---
   svg += `<g stroke="#333" stroke-width="0.8">`;

@@ -257,8 +257,29 @@
 
 /* Диаграмма */
 .psy-chart-wrap { position: relative; }
-.psy-chart { overflow: auto; border: 1px solid #e0e0e0; border-radius: 4px; background:#fff; position: relative; }
-.psy-chart svg { display: block; width: 100%; height: auto; }
+/* v0.59.935: ограничиваем высоту контейнера диаграммы по высоте viewport,
+   чтобы диаграмма не «съедала» весь экран и оставалась пространство для
+   таблиц, легенды, формул. SVG вписывается с сохранением aspect-ratio.
+   Раньше: при книжной ориентации (portrait) SVG в 891×1260 на ширину 1200px
+   растягивался до ~1700px высоты — пользователь мог увидеть только часть. */
+.psy-chart {
+  overflow: auto;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background: #fff;
+  position: relative;
+  max-height: 80vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+.psy-chart svg {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: calc(80vh - 4px);
+}
 /* v0.59.934: floating zone-селектор в правом верхнем углу диаграммы
    (видим во время переключения между TC 9.9 / ASHRAE 55) */
 .psy-chart-zone-ctl {
