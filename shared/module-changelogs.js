@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.958', date: '2026-05-01', items: [
+      '🔬 <b>Единый расчётный движок для точек, процессов и калькулятора</b>. По репорту: «для вычисления полей в точках и процессах должен использоваться тот же калькулятор который доступен пользователю на вкладке. Значения не должны отличаться».',
+      '• <code>pointState</code> теперь делегирует все формулы через <code>psychrometrics-core.js</code> (<code>state()</code>, <code>RHfromW()</code>, <code>humidityRatio</code>, <code>enthalpy</code>, <code>Pws</code>) — те же функции, что использует <code>psy-calculators.js</code> на вкладке «Калькуляторы и формулы».',
+      '• Inline формулы заменены на единый helper <code>rhFromW(W)</code> через <code>RHfromW</code> из core.',
+      '• Любое значение в карточке точки/процесса и значение, вычисленное калькулятором с теми же входами — БИТ-в-БИТ совпадают (round-trip через humidityRatio/RHfromW тоже точный).',
+      'Файл: <code>psychrometrics/psychrometrics.js</code> (pointState refactor).',
+    ] },
     { version: '0.59.957', date: '2026-05-01', items: [
       '🔧 <b>Bug-fix: связанные параметры точки пересчитываются автоматически</b>. По репорту: «почему связанные параметры не пересчитываются автоматический????».',
       '• Раньше: <code>pointState</code> приоритезирует d > h > φ. Если d/h помечены user-input, то изменение φ игнорировалось — pointState использовал старое d, давая stale state. Поля «зацикливались» на устаревших значениях.',

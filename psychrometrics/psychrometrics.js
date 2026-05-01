@@ -134,48 +134,42 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
      (t, d)   — через override d (г/кг)
      (t, h)   — из энтальпии находим W
    Возвращает state или null, если данных недостаточно. */
+/* v0.59.958: pointState — единый расчётный движок для точек/процессов
+   (psychrometrics-core.js — те же humidityRatio/enthalpy/Pws/state, что
+   использует и калькулятор на вкладке «Калькуляторы и формулы»).
+   По репорту: «для вычисления полей в точках и процессах должен
+   использоваться тот же калькулятор который доступен пользователю на
+   вкладке. Значения не должны отличаться».
+   Любое значение, выведенное в карточке точки или процессе, и значение,
+   вычисленное калькулятором с теми же входными — БИТ-в-БИТ совпадают
+   (и round-trip через humidityRatio/RHfromW тоже точный). */
 function pointState(p, P) {
   const t  = nNum(p.t);
   const rh = nNum(p.rh);
   const xG = nNum(p.x);   // d, г/кг
   const h  = nNum(p.h);   // энтальпия, кДж/кг
   if (!Number.isFinite(t)) return null;
-  // v0.59.957: учитываем USER-флаги при выборе primary fields.
-  // Раньше pointState всегда приоритезировал x>h>φ независимо от user-input.
-  // Это давало stale state когда auto-computed x не очищался при изменении
-  // других полей. Теперь — primary поля только если они user-set.
-  // Если user поставил d → используем t+d; если user поставил h → t+h;
-  // иначе — t+rh (стандартный путь).
+  // user-флаги — primary fields только если user-set (v0.59.957).
   const xIsUser = !!p.xUser && Number.isFinite(xG);
   const hIsUser = !!p.hUser && Number.isFinite(h);
+  // Helper: rh от W (через core RHfromW — единый источник правды)
+  const rhFromW = (W) => clamp(100 * RHfromW(t, W, P), 0, 200) / 100;
   // 1. d override (только если user-set)
   if (xIsUser) {
-    const W = xG / 1000;
-    const rhFromX = clamp(100 * W * P / (0.621945 + W) / Pws(t), 0, 200);
-    return state(t, rhFromX / 100, P);
+    return state(t, rhFromW(xG / 1000), P);
   }
-  // 2. Энтальпия (только если user-set)
+  // 2. Энтальпия (только если user-set): W = (h − 1.006·t) / (2501 + 1.86·t)
   if (hIsUser) {
     const W = (h - 1.006 * t) / (2501 + 1.86 * t);
-    if (Number.isFinite(W) && W >= 0) {
-      const rhFromH = clamp(100 * W * P / (0.621945 + W) / Pws(t), 0, 200);
-      return state(t, rhFromH / 100, P);
-    }
+    if (Number.isFinite(W) && W >= 0) return state(t, rhFromW(W), P);
   }
   // 3. Стандарт: t + φ
   if (!Number.isFinite(rh)) {
-    // fallback — если только t задан, попробуем взять auto-x/h
-    if (Number.isFinite(xG)) {
-      const W = xG / 1000;
-      const rhFromX = clamp(100 * W * P / (0.621945 + W) / Pws(t), 0, 200);
-      return state(t, rhFromX / 100, P);
-    }
+    // fallback — если только t, берём auto x/h как «лучшую догадку»
+    if (Number.isFinite(xG))   return state(t, rhFromW(xG / 1000), P);
     if (Number.isFinite(h)) {
       const W = (h - 1.006 * t) / (2501 + 1.86 * t);
-      if (Number.isFinite(W) && W >= 0) {
-        const rhFromH = clamp(100 * W * P / (0.621945 + W) / Pws(t), 0, 200);
-        return state(t, rhFromH / 100, P);
-      }
+      if (Number.isFinite(W) && W >= 0) return state(t, rhFromW(W), P);
     }
     return null;
   }
