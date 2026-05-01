@@ -721,10 +721,7 @@ function wireGraphHost(hostOrId) {
     if (col && ['V','name','t','rh','x','h','Q','qw'].includes(col)) {
       e.target.dataset.user = '1';
       e.target.dataset.ts = String(performance.now());
-      // v0.59.960: для точки можно задать ТОЛЬКО 2 из {t, φ, d, h} (P фиксирован).
-      // По репорту: «почему я могу изменять энтальпию третьим параметром?
-      // разве это возможно?». Если становится 3+ user-flagged — освобождаем
-      // самый СТАРЫЙ user-input (LRU), кроме только что введённого.
+      // v0.59.960: для точки можно задать ТОЛЬКО 2 из {t, φ, d, h}.
       const card = e.target.closest('.psy-point');
       if (card && ['t','rh','x','h'].includes(col)) {
         const others = ['t','rh','x','h'].filter(f => f !== col);
@@ -735,12 +732,33 @@ function wireGraphHost(hostOrId) {
             return { field: f, inp, ts: Number(inp.dataset.ts) || 0 };
           })
           .filter(Boolean);
-        // Если уже 2+ user-flagged (кроме нового col) — clear oldest
         while (userOthers.length >= 2) {
-          userOthers.sort((a, b) => a.ts - b.ts);  // oldest first
+          userOthers.sort((a, b) => a.ts - b.ts);
           const oldest = userOthers.shift();
           oldest.inp.dataset.user = '';
           oldest.inp.dataset.ts = '0';
+        }
+      }
+      // v0.59.973: при вводе Q/qw на ПРОЦЕССЕ — освобождаем user-флаги
+      // на ТОЧКЕ-ЦЕЛИ (target). Иначе если на target.t стоял старый
+      // user-flag — cascade может предпочесть его (по ts), и введённый
+      // Q молча ИГНОРИРУЕТСЯ. По репорту: «почему сверху Q меняется
+      // правильно а нижнее поле ввода Q не меняется».
+      if (col === 'Q' || col === 'qw') {
+        const procIdx = +e.target.dataset.i;
+        const proc = S.procs[procIdx];
+        if (proc) {
+          const toIdx = edgeTo(proc, procIdx);
+          // ВСЕ matching cards (модалка/sidebar/hidden) — точка-цель
+          document.querySelectorAll(`.psy-point[data-point-idx="${toIdx}"]`).forEach(targetCard => {
+            ['t','rh','x','h'].forEach(f => {
+              const fInp = targetCard.querySelector(`[data-col="${f}"]`);
+              if (fInp) {
+                fInp.dataset.user = '';
+                fInp.dataset.ts = '0';
+              }
+            });
+          });
         }
       }
     }

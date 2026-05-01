@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.973', date: '2026-05-01', items: [
+      '🔧 <b>Bug-fix: Q на процессе (yellow) не совпадал с computed Q в Δ-блоке</b>. По репорту: «почему сверху Q меняется правильно а нижнее поле ввода Q не меняется» + «так только если было активировано поле, если окно закрыть и снова открыть, то все нормально».',
+      '• Раньше: при вводе Q пользователем target-точка могла иметь старый user-flag на t/rh/x/h. Cascade сравнивал ts → если point-flag был new (например пользователь ранее менял t), то t побеждал, а Q de-flagged молча. В DOM input Q оставался yellow с user-typed value, но cascade использовал t-target → discrepancy с Δ-блоком.',
+      '• Fix: при вводе Q или qw на процессе — освобождаем user-флаги на ВСЕХ полях target-точки (t/rh/x/h) во всех matching DOM-картах (модалка/sidebar/hidden). Гарантирует что после ввода Q он всегда «выигрывает» в cascade.',
+      '• Конверсия: при вводе t/rh/x/h на точке — proc.Qs/qws НЕ трогаем, потому что v0.59.957 LRU их и так очищает через timestamps (point newer ts → wins → cascade clears proc loser).',
+      'Файл: <code>psychrometrics/psychrometrics.js</code> (wireGraphHost — Q/qw input clears target point user-flags).',
+    ] },
     { version: '0.59.972', date: '2026-05-01', items: [
       '📅 <b>Annual hours table — выбор года (среднее по всем годам или конкретный)</b>. По репорту: «нужна сводка годовая, средняя в год по всем годам, и так же за конкретный год».',
       '• В toolbar-е вкладки «Annual hours» — dropdown «Год» с опциями: «📊 Все годы (среднее)» (default — данные по всему датасету масштабируются 8766/N часов) или каждый конкретный год из датасета (2023, 2024, 2025...).',
