@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.974', date: '2026-05-01', items: [
+      '🔄 <b>Симметричный фикс: ввод t/φ/d/h на точке очищает Q/qw user-флаги связанных процессов</b>. Дополнение к v0.59.973.',
+      '• Раньше: при изменении t на точке cascade переключал процесс на t-target (через ts), proc.Q очищался в S, но DOM input Q оставался yellow с устаревшим user-typed value (если был сфокусирован).',
+      '• Теперь: при вводе t/rh/x/h на точке проходим по ВСЕМ процессам где эта точка inbound/outbound и явно очищаем dataset.user на их Q/qw inputs (во всех matching DOM — sidebar/modal/hidden).',
+      '• Эффект: input Q/qw сразу становится зелёным (auto) с актуальным computed-значением — больше нет визуального противоречия с Δ-блоком.',
+      'Файл: <code>psychrometrics/psychrometrics.js</code> (wireGraphHost — point input clears connected proc Q/qw).',
+    ] },
     { version: '0.59.973', date: '2026-05-01', items: [
       '🔧 <b>Bug-fix: Q на процессе (yellow) не совпадал с computed Q в Δ-блоке</b>. По репорту: «почему сверху Q меняется правильно а нижнее поле ввода Q не меняется» + «так только если было активировано поле, если окно закрыть и снова открыть, то все нормально».',
       '• Раньше: при вводе Q пользователем target-точка могла иметь старый user-flag на t/rh/x/h. Cascade сравнивал ts → если point-flag был new (например пользователь ранее менял t), то t побеждал, а Q de-flagged молча. В DOM input Q оставался yellow с user-typed value, но cascade использовал t-target → discrepancy с Δ-блоком.',

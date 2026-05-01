@@ -740,26 +740,40 @@ function wireGraphHost(hostOrId) {
         }
       }
       // v0.59.973: при вводе Q/qw на ПРОЦЕССЕ — освобождаем user-флаги
-      // на ТОЧКЕ-ЦЕЛИ (target). Иначе если на target.t стоял старый
-      // user-flag — cascade может предпочесть его (по ts), и введённый
-      // Q молча ИГНОРИРУЕТСЯ. По репорту: «почему сверху Q меняется
-      // правильно а нижнее поле ввода Q не меняется».
+      // на ТОЧКЕ-ЦЕЛИ. Q всегда выигрывает после ввода.
       if (col === 'Q' || col === 'qw') {
         const procIdx = +e.target.dataset.i;
         const proc = S.procs[procIdx];
         if (proc) {
           const toIdx = edgeTo(proc, procIdx);
-          // ВСЕ matching cards (модалка/sidebar/hidden) — точка-цель
           document.querySelectorAll(`.psy-point[data-point-idx="${toIdx}"]`).forEach(targetCard => {
             ['t','rh','x','h'].forEach(f => {
               const fInp = targetCard.querySelector(`[data-col="${f}"]`);
-              if (fInp) {
-                fInp.dataset.user = '';
-                fInp.dataset.ts = '0';
-              }
+              if (fInp) { fInp.dataset.user = ''; fInp.dataset.ts = '0'; }
             });
           });
         }
+      }
+      // v0.59.974: симметричный фикс — при вводе t/rh/x/h на точке-ЦЕЛИ
+      // процесса освобождаем proc.Q/qw user-флаги в ВСЕХ proc-arrows
+      // (modal/sidebar/hidden). Аналогично, чтобы input Q/qw не остался
+      // yellow с устаревшим user-typed value, когда point теперь
+      // выигрывает в cascade.
+      if (card && ['t','rh','x','h'].includes(col)) {
+        const ptIdx = +e.target.dataset.i;
+        // Найти процессы где эта точка — toIdx (incoming) или fromIdx (outgoing)
+        S.procs.forEach((proc, pi) => {
+          const inIdx = edgeTo(proc, pi);
+          const outIdx = edgeFrom(proc, pi);
+          if (inIdx === ptIdx || outIdx === ptIdx) {
+            document.querySelectorAll(`.psy-proc-arrow[data-proc-idx="${pi}"]`).forEach(procArr => {
+              ['Q','qw'].forEach(qf => {
+                const qInp = procArr.querySelector(`input[data-col="${qf}"]`);
+                if (qInp) { qInp.dataset.user = ''; qInp.dataset.ts = '0'; }
+              });
+            });
+          }
+        });
       }
     }
     update();
