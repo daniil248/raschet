@@ -39,32 +39,88 @@
   .module-footer {
     display: none !important;
   }
-  /* Заголовок «Условия объекта» — оставляем, но без кнопок */
-  .psy-panel { border: 1px solid #ccc; page-break-inside: avoid; margin-bottom: 8px; }
-  /* Диаграмма по полному формату листа A3/A4 */
+  /* v0.59.978: Объекты при печати — без рамок блоков. По репорту:
+     «объекты при печати должны быть без границ блоков». */
+  .psy-panel {
+    border: none !important;
+    background: transparent !important;
+    padding: 4px 0 !important;
+    page-break-inside: avoid;
+    margin-bottom: 6px;
+  }
+  /* v0.59.978: Inputs как plain text — без рамок, padding=0, без spinner.
+     По репорту: «Поля ввода не должны быть видны, просто сведения». */
+  .psy-top-row input,
+  .psy-top-row select {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    color: #000 !important;
+    font-weight: 600 !important;
+    font-family: inherit !important;
+  }
+  .psy-top-row input::-webkit-inner-spin-button,
+  .psy-top-row input::-webkit-outer-spin-button {
+    display: none !important;
+    -webkit-appearance: none !important;
+  }
+  .psy-top-row input[type="checkbox"] { display: none; }
+  /* Диаграмма — на 2-й странице. По репорту: «диаграмму вывести на
+     2 лист а на первом общие сведения и таблицы». */
   .psy-chart-wrap {
-    page-break-before: auto;
+    page-break-before: always;
     page-break-inside: avoid;
   }
+  /* Диаграмма — A4 портретно, без масштабирования. По репорту:
+     «Диаграмма уже и так формата А4, должна без масштабирования
+     вписываться в лист». */
   .psy-chart svg {
-    transform: none !important;  /* отменяем zoom для печати */
-    width: 100% !important;
+    transform: none !important;
+    width: auto !important;
     height: auto !important;
-    max-height: none !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    display: block;
+    margin: 0 auto;
   }
-  /* Таблицы — на новой странице если не помещаются */
+  .psy-chart {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    max-height: none !important;
+    display: block !important;
+  }
+  /* Таблицы — без border-collapse, читаемые */
   #psy-output, #psy-proc-out {
     page-break-inside: avoid;
   }
-  /* Все заголовки панелей оставляем чёрно-белыми */
-  .psy-panel-title { color: #000 !important; }
+  /* Меню панелей чёрно-белые */
+  .psy-panel-title {
+    color: #000 !important;
+    font-size: 12px !important;
+    border-bottom: 1px solid #888;
+    padding-bottom: 2px;
+    margin-bottom: 6px;
+    text-transform: none;
+    letter-spacing: 0;
+  }
   body { background: #fff; }
-  .psy-wrap { padding: 0; }
-  /* Скрываем «Узлы (точки состояния)» panel целиком — там canvas+sidebar */
+  .psy-wrap { padding: 0; gap: 4px; }
+  /* Hide editor panels */
   .psy-panel:has(.psy-canvas-row) { display: none !important; }
-  /* Скрываем «Связи» (legacy hidden) и hint-карточек */
   .psy-edges, .psy-edges-list, .psy-cycle, .pt-hint {
     display: none !important;
+  }
+  /* Mt-meteo chip плоский без рамки */
+  .psy-meteo-chip {
+    border: none !important;
+    background: #f5f5f5 !important;
+    padding: 4px 8px !important;
+    font-size: 11px;
+    border-radius: 0;
   }
 }
 
