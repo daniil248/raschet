@@ -107,6 +107,9 @@
     text-transform: none;
     letter-spacing: 0;
   }
+  /* ч/год controls — скрываем целиком в печати (значение видно в столбце E
+     и в служебной строке таблицы итогов «Часы работы оборудования»). */
+  .psy-hours-year-ctl { display: none !important; }
   body { background: #fff; }
   .psy-wrap { padding: 0; gap: 4px; }
   /* Hide editor panels */

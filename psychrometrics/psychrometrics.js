@@ -1952,7 +1952,11 @@ function renderResults(sts, segs) {
     const condLph = condKgH / 0.998;
     const condLpd = condLph * 24;
     const fmtE = (v) => v >= 1000 ? `${(v/1000).toFixed(2)} МВт·ч` : `${v.toFixed(0)} кВт·ч`;
+    const hyPct = (hY / 8760 * 100).toFixed(0);
     b2.insertAdjacentHTML('beforeend', `
+      <tr class="psy-print-hours-row" style="background:#f5f5f5;font-size:10px;color:#555">
+        <td colspan="11" style="text-align:right;padding:2px 6px">Часы работы оборудования: <b>${hY}</b> ч/год (${hyPct}% года)</td>
+      </tr>
       <tr style="background:#eceff1;font-weight:700;border-top:2px solid #90a4ae">
         <td colspan="7" style="text-align:right;color:#37474f">ИТОГО по циклу:</td>
         <td style="color:#c62828" title="Суммарная мощность нагрева/увл. (Q>0)">
