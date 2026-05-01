@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.963', date: '2026-05-01', items: [
+      '🖱 <b>Drag-pan диаграммы вместо scroll-bars</b>. По репорту: «еще бы линии прокрутки убрать на диаграмме и сделать перетаскивание мышью и сброс размера».',
+      '• <code>.psy-chart{ overflow:hidden }</code> вместо auto — scroll-bars удалены.',
+      '• Mouse-drag (button 0) на диаграмме = pan. <code>cursor: grab → grabbing</code>.',
+      '• Pan persists в LS (<code>psy.chartPan</code> = {x, y}).',
+      '• Кнопка <code>⊞ 100%</code> (reset) теперь сбрасывает И zoom (=1) И pan ({x:0, y:0}).',
+      '• Применяется через <code>transform: translate(Xpx, Ypx) scale(Z)</code>.',
+      'Файлы: <code>psychrometrics/psychrometrics.css</code> (overflow:hidden + cursor:grab), <code>psychrometrics/psychrometrics.js</code> (applyChartZoom с pan + drag-handler).',
+    ] },
     { version: '0.59.962', date: '2026-05-01', items: [
       '🔒 <b>q<sub>w</sub> для C/M/R — read-only расчётная величина</b>. По репорту: «в охлаждении я наверное не могу менять количество воды, либо просто справочное».',
       '• Раньше: q<sub>w</sub> input работал для всех типов процессов, что давало over-constrained ситуации (например для C: t_in + RH_in + ADP + BF + t_target + q<sub>w</sub> = 6 ограничений на 4 степени свободы).',

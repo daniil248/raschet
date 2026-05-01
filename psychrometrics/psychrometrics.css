@@ -593,7 +593,10 @@ body.psy-dragging *::after {
    Раньше: при книжной ориентации (portrait) SVG в 891×1260 на ширину 1200px
    растягивался до ~1700px высоты — пользователь мог увидеть только часть. */
 .psy-chart {
-  overflow: auto;
+  /* v0.59.963: убираем scroll-bars; pan мышью вместо прокрутки.
+     По репорту: «еще бы линии прокрутки убрать на диаграмме и сделать
+     перетаскивание мышью и сброс размера». */
+  overflow: hidden;
   border: 1px solid #e0e0e0;
   border-radius: 4px;
   background: #fff;
@@ -602,7 +605,9 @@ body.psy-dragging *::after {
   display: flex;
   align-items: flex-start;
   justify-content: center;
+  cursor: grab;
 }
+.psy-chart.psy-chart-panning { cursor: grabbing; }
 .psy-chart svg {
   display: block;
   width: auto;

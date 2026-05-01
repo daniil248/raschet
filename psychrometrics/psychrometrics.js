@@ -2119,18 +2119,27 @@ let _chartZoom = (() => {
   try { const v = parseFloat(localStorage.getItem('psy.chartZoom')); return v > 0 ? v : 1; }
   catch { return 1; }
 })();
-function applyChartZoom(z) {
+let _chartPan = (() => {
+  try {
+    const s = localStorage.getItem('psy.chartPan');
+    if (s) { const o = JSON.parse(s); if (o && Number.isFinite(o.x) && Number.isFinite(o.y)) return o; }
+  } catch {}
+  return { x: 0, y: 0 };
+})();
+function applyChartZoom(z, pan) {
   if (z !== undefined) {
     _chartZoom = Math.max(0.25, Math.min(5, z));
     try { localStorage.setItem('psy.chartZoom', String(_chartZoom)); } catch {}
   }
+  if (pan !== undefined) {
+    _chartPan = { x: pan.x || 0, y: pan.y || 0 };
+    try { localStorage.setItem('psy.chartPan', JSON.stringify(_chartPan)); } catch {}
+  }
   const host = document.getElementById('psy-chart');
   const svg  = host?.querySelector('svg');
   if (svg) {
-    svg.style.transform = `scale(${_chartZoom})`;
+    svg.style.transform = `translate(${_chartPan.x}px, ${_chartPan.y}px) scale(${_chartZoom})`;
     svg.style.transformOrigin = 'top left';
-    // При scale > 1 SVG больше контейнера — overflow:auto даст скролл.
-    // .psy-chart уже имеет overflow:auto и max-height:80vh.
   }
   const lbl = document.getElementById('psy-chart-zoom-label');
   if (lbl) lbl.textContent = Math.round(_chartZoom * 100) + '%';
@@ -2144,19 +2153,45 @@ function wireChartZoomToolbar() {
     if (!act) return;
     if (act === 'zoom-in')  applyChartZoom(_chartZoom * 1.25);
     else if (act === 'zoom-out') applyChartZoom(_chartZoom / 1.25);
-    else if (act === 'fit')      applyChartZoom(1);
+    else if (act === 'fit')      applyChartZoom(1, { x: 0, y: 0 });
   });
-  // Ctrl+wheel внутри chart → zoom (без скролла страницы)
   const host = document.getElementById('psy-chart');
+  // Ctrl+wheel — zoom без скролла страницы
   if (host && !host._chartZoomWheelWired) {
     host._chartZoomWheelWired = true;
     host.addEventListener('wheel', (e) => {
       if (!e.ctrlKey) return;
       e.preventDefault();
-      const delta = -e.deltaY;
-      const factor = delta > 0 ? 1.1 : 1 / 1.1;
+      const factor = -e.deltaY > 0 ? 1.1 : 1 / 1.1;
       applyChartZoom(_chartZoom * factor);
     }, { passive: false });
+  }
+  // v0.59.963: Mouse-drag pan
+  if (host && !host._chartPanWired) {
+    host._chartPanWired = true;
+    let panning = false, sx = 0, sy = 0, ox = 0, oy = 0;
+    host.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.psy-chart-zoom-toolbar, .psy-chart-zone-ctl, select, button, input')) return;
+      if (e.button !== 0) return;
+      panning = true;
+      sx = e.clientX; sy = e.clientY;
+      ox = _chartPan.x; oy = _chartPan.y;
+      host.classList.add('psy-chart-panning');
+      document.body.classList.add('psy-dragging');
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!panning) return;
+      _chartPan.x = ox + (e.clientX - sx);
+      _chartPan.y = oy + (e.clientY - sy);
+      applyChartZoom(undefined, _chartPan);
+    });
+    window.addEventListener('mouseup', () => {
+      if (!panning) return;
+      panning = false;
+      host.classList.remove('psy-chart-panning');
+      document.body.classList.remove('psy-dragging');
+    });
   }
 }
 
