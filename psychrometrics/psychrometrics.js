@@ -517,17 +517,170 @@ function renderCanvasLinks() {
 }
 function renderEdges() {
   const host = $('psy-edges');
-  if (!host) return;
-  host.innerHTML = '';
-  if (!S.procs.length) {
-    host.innerHTML = `<div style="padding:12px;color:#607080;font-size:12px">
-      Нет связей. Нажмите «+ связь», чтобы задать процесс между любыми двумя узлами (графовая модель: узел → узел).
-    </div>`;
-  } else {
-    S.procs.forEach((pr, i) => host.appendChild(procArrow(pr, i)));
+  if (host) {
+    host.innerHTML = '';
+    if (!S.procs.length) {
+      host.innerHTML = `<div style="padding:12px;color:#607080;font-size:12px">
+        Нет связей. Нажмите «+ связь», чтобы задать процесс между любыми двумя узлами (графовая модель: узел → узел).
+      </div>`;
+    } else {
+      S.procs.forEach((pr, i) => host.appendChild(procArrow(pr, i)));
+    }
   }
   renderEdgesList();
+  renderProcsSidebar();
   applyEdgeViewMode();
+}
+
+/* v0.59.939: левый сайдбар «Процессы» рядом с canvas. Рендерит
+   компактный список процессов с краткими параметрами и кнопкой
+   редактирования (открывает модалку с детальной настройкой). */
+const PROC_SHORT_NAME_GLOBAL = {
+  P: 'Нагрев', C: 'Охлаждение', A: 'Адиабат. увл.',
+  S: 'Пар. увл.', M: 'Смешение', R: 'Рекуператор', X: 'Своб.', none: '— разрыв',
+};
+function renderProcsSidebar() {
+  const host = $('psy-procs-sidebar-list');
+  if (!host) return;
+  if (!S.procs.length) {
+    host.innerHTML = `<div class="psy-procs-sidebar-empty">
+      Нет процессов. Нажмите «+ связь» — появится первый процесс.<br><br>
+      💡 Также: «🧙 Мастер процесса» — пошагово создаёт связь + новую целевую точку.
+    </div>`;
+    return;
+  }
+  // Один раз вычисляем cycle для отображения Q/qw/V в краткой форме.
+  let cyc = null;
+  try { cyc = computeCycle(); } catch {}
+  const sts = cyc?.sts || [];
+  const segs = cyc?.segs || [];
+  host.innerHTML = S.procs.map((pr, i) => {
+    const fromI = edgeFrom(pr, i), toI = edgeTo(pr, i);
+    const a = sts[fromI], b = sts[toI];
+    const seg = segs[i];
+    const color = PROC_COLOR[pr.type] || '#607080';
+    const shortName = pr.name || PROC_SHORT_NAME_GLOBAL[pr.type] || pr.type;
+    const fmt = (v, d=1) => Number.isFinite(v) ? (Math.abs(v) < 1000 ? v.toFixed(d) : v.toExponential(2)) : '—';
+    const tA = a ? `${fmt(a.T,1)}°C` : '—';
+    const tB = b ? `${fmt(b.T,1)}°C` : '—';
+    const dT = (a && b) ? (b.T - a.T).toFixed(1) : '—';
+    const Q = seg?.Q != null ? `Q=${fmt(seg.Q,1)}кВт` : '';
+    const qw = seg?.qw != null && Math.abs(seg.qw) > 0.001 ? `q<sub>w</sub>=${fmt(seg.qw,2)}кг/ч` : '';
+    return `
+      <div class="psy-procs-sidebar-item" data-proc-idx="${i}" tabindex="0" role="button"
+           title="Кликните для детальных настроек">
+        <div class="psy-procs-sidebar-item-row1">
+          <span class="psy-procs-sidebar-type-badge" style="background:${color}">${pr.type || 'X'}</span>
+          <span class="psy-procs-sidebar-name">${escAttr(shortName)}</span>
+          <button type="button" class="psy-procs-sidebar-del" data-act="del-edge" data-i="${i}" title="Удалить связь">✕</button>
+        </div>
+        <div class="psy-procs-sidebar-edge">${fromI+1}. ${escAttr((S.points[fromI]?.name||'').slice(0,16))} → ${toI+1}. ${escAttr((S.points[toI]?.name||'').slice(0,16))}</div>
+        <div class="psy-procs-sidebar-stats">
+          <span>${tA} → ${tB}</span>
+          <span>ΔT=${dT}</span>
+          ${Q ? `<span><b>${Q}</b></span>` : ''}
+          ${qw ? `<span>${qw}</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+/* v0.59.939: общий wireGraphHost (был closure в wire(), теперь module-level).
+   Принимает либо id, либо элемент DOM. Используется для основной панели
+   узлов/связей и для нашей modal-редактора процесса. */
+function wireGraphHost(hostOrId) {
+  const host = typeof hostOrId === 'string' ? $(hostOrId) : hostOrId;
+  if (!host) return;
+  host.addEventListener('input', (e) => {
+    const col = e.target?.dataset?.col;
+    if (col && ['V','name','t','rh','x','h','Q','qw'].includes(col)) {
+      e.target.dataset.user = '1';
+      e.target.dataset.ts = String(performance.now());
+    }
+    update();
+  });
+  host.addEventListener('change', (e) => {
+    const col = e.target?.dataset?.col;
+    if (col === 'proc-type') {
+      const i = +e.target.dataset.i;
+      S.procs[i] = S.procs[i] || {};
+      S.procs[i].type = e.target.value;
+      rerenderCycle();
+      return;
+    }
+    if (col === 'fromIdx' || col === 'toIdx') {
+      const i = +e.target.dataset.i;
+      S.procs[i] = S.procs[i] || {};
+      S.procs[i][col] = parseInt(e.target.value, 10);
+      rerenderCycle();
+      return;
+    }
+    update();
+  });
+  host.addEventListener('blur', (e) => {
+    const col = e.target?.dataset?.col;
+    if (!col) return;
+    if (['V','t','rh','x','h','Q','qw'].includes(col) && e.target.value.trim() === '') {
+      e.target.dataset.user = '';
+      e.target.dataset.ts = '0';
+      update();
+    }
+  }, true);
+  host.addEventListener('click', (e) => {
+    const delPt = e.target.closest('[data-act="del"]');
+    const delEd = e.target.closest('[data-act="del-edge"]');
+    if (delPt) {
+      const i = +delPt.dataset.i;
+      S.points.splice(i, 1);
+      reindexAfterPointDelete(i);
+      rerenderCycle();
+    } else if (delEd) {
+      const i = +delEd.dataset.i;
+      S.procs.splice(i, 1);
+      rerenderCycle();
+    }
+  });
+}
+
+/* v0.59.939: модалка редактирования процесса. Содержит полную карточку
+   procArrow (тот же UI, что был в панели «Связи»). Сама карточка вешается
+   на единый wireGraphHost-механизм, поэтому редактирование работает
+   как в основной панели. По репорту: «сама настройка процесса должна
+   проходить в том же модальном окне что и в мастере процесса». */
+function openProcessEditor(procIdx) {
+  const pr = S.procs[procIdx];
+  if (!pr) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'psy-proc-edit-overlay';
+  overlay.innerHTML = `
+    <div class="psy-proc-edit-modal" role="dialog" aria-label="Настройка процесса">
+      <div class="psy-proc-edit-head">
+        <h3>⚙ Процесс ${procIdx + 1}: ${escAttr(PROC_SHORT_NAME_GLOBAL[pr.type] || pr.type)}</h3>
+        <button type="button" class="psy-proc-edit-close" title="Закрыть">×</button>
+      </div>
+      <div class="psy-proc-edit-body" id="psy-proc-edit-body"></div>
+      <div class="psy-proc-edit-actions">
+        <button type="button" class="psy-wiz-btn psy-proc-edit-ok psy-wiz-primary">Готово</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  // Вставляем актуальную карточку
+  const body = overlay.querySelector('#psy-proc-edit-body');
+  body.appendChild(procArrow(pr, procIdx));
+  wireGraphHost(body);  // те же event-handlers как в основной панели
+  const close = () => {
+    overlay.remove();
+    rerenderCycle();  // диаграмма + sidebar обновляются
+  };
+  overlay.querySelector('.psy-proc-edit-close').addEventListener('click', close);
+  overlay.querySelector('.psy-proc-edit-ok').addEventListener('click', close);
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', function onKey(e) {
+    if (e.key === 'Escape') {
+      document.removeEventListener('keydown', onKey);
+      close();
+    }
+  });
 }
 
 /* Таблица-список процессов. Альтернатива карточкам: компактный свод
@@ -2478,60 +2631,6 @@ function wire() {
     }, 50);
   });
 
-  // Делегирование input/change/blur/click на обе панели (узлы + рёбра)
-  const wireGraphHost = (hostId) => {
-    const host = $(hostId);
-    if (!host) return;
-    host.addEventListener('input', (e) => {
-      const col = e.target?.dataset?.col;
-      if (col && ['V','name','t','rh','x','h','Q','qw'].includes(col)) {
-        e.target.dataset.user = '1';
-        e.target.dataset.ts = String(performance.now());
-      }
-      update();
-    });
-    host.addEventListener('change', (e) => {
-      const col = e.target?.dataset?.col;
-      if (col === 'proc-type') {
-        const i = +e.target.dataset.i;
-        S.procs[i] = S.procs[i] || {};
-        S.procs[i].type = e.target.value;
-        rerenderCycle();
-        return;
-      }
-      if (col === 'fromIdx' || col === 'toIdx') {
-        const i = +e.target.dataset.i;
-        S.procs[i] = S.procs[i] || {};
-        S.procs[i][col] = parseInt(e.target.value, 10);
-        rerenderCycle();
-        return;
-      }
-      update();
-    });
-    host.addEventListener('blur', (e) => {
-      const col = e.target?.dataset?.col;
-      if (!col) return;
-      if (['V','t','rh','x','h','Q','qw'].includes(col) && e.target.value.trim() === '') {
-        e.target.dataset.user = '';
-        e.target.dataset.ts = '0';
-        update();
-      }
-    }, true);
-    host.addEventListener('click', (e) => {
-      const delPt = e.target.closest('[data-act="del"]');
-      const delEd = e.target.closest('[data-act="del-edge"]');
-      if (delPt) {
-        const i = +delPt.dataset.i;
-        S.points.splice(i, 1);
-        reindexAfterPointDelete(i);
-        rerenderCycle();
-      } else if (delEd) {
-        const i = +delEd.dataset.i;
-        S.procs.splice(i, 1);
-        rerenderCycle();
-      }
-    });
-  };
   wireGraphHost('psy-cycle');
   wireGraphHost('psy-edges');
 
@@ -2819,8 +2918,7 @@ function wire() {
     requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateY(0)'; });
     setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 250); }, 2800);
   }
-  const btnAddEdge = $('psy-add-edge');
-  if (btnAddEdge) btnAddEdge.addEventListener('click', () => {
+  const addEdgeHandler = () => {
     // По умолчанию: ребро из последнего узла в предыдущий (образует последовательность)
     const N = S.points.length;
     const fromIdx = N >= 2 ? N - 2 : 0;
@@ -2828,6 +2926,39 @@ function wire() {
     S.procs.push({ type: 'X', Q:'', qw:'', fromIdx, toIdx });
     rerenderCycle();
     setTimeout(() => fitCanvas(), 50);  // v0.59.919: видимость новой связи
+  };
+  const btnAddEdge = $('psy-add-edge');
+  if (btnAddEdge) btnAddEdge.addEventListener('click', addEdgeHandler);
+  // v0.59.939: «+ связь» в сайдбаре — то же самое
+  const btnAddEdgeSb = $('psy-add-edge-sidebar');
+  if (btnAddEdgeSb) btnAddEdgeSb.addEventListener('click', addEdgeHandler);
+
+  // v0.59.939: клик по элементу сайдбара → modal-редактор;
+  //           кнопка ✕ внутри элемента → удалить связь.
+  const sbList = $('psy-procs-sidebar-list');
+  if (sbList) sbList.addEventListener('click', (e) => {
+    const delBtn = e.target.closest('[data-act="del-edge"]');
+    if (delBtn) {
+      e.stopPropagation();
+      const idx = +delBtn.dataset.i;
+      if (Number.isFinite(idx) && idx >= 0 && idx < S.procs.length) {
+        S.procs.splice(idx, 1);
+        rerenderCycle();
+      }
+      return;
+    }
+    const item = e.target.closest('.psy-procs-sidebar-item');
+    if (!item) return;
+    const idx = +item.dataset.procIdx;
+    if (Number.isFinite(idx)) openProcessEditor(idx);
+  });
+  if (sbList) sbList.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const item = e.target.closest('.psy-procs-sidebar-item');
+    if (!item) return;
+    e.preventDefault();
+    const idx = +item.dataset.procIdx;
+    if (Number.isFinite(idx)) openProcessEditor(idx);
   });
   const btnAddZone = $('psy-add-zone');
   if (btnAddZone) btnAddZone.addEventListener('click', () => {

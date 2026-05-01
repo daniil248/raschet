@@ -130,20 +130,32 @@
           <option value="__manage__">🗑 Удалить сохранённые…</option>
         </select>
       </div>
-      <div class="psy-canvas" id="psy-canvas">
-        <!-- v0.59.911: floating toolbar для бесконечного canvas -->
-        <div class="psy-canvas-toolbar">
-          <button type="button" class="psy-canvas-tool" data-cv-act="zoom-out" title="Уменьшить (Ctrl+−)">−</button>
-          <span class="psy-canvas-zoom-label" id="psy-canvas-zoom">100%</span>
-          <button type="button" class="psy-canvas-tool" data-cv-act="zoom-in" title="Увеличить (Ctrl++)">+</button>
-          <button type="button" class="psy-canvas-tool" data-cv-act="fit" title="Вписать (двойной клик по фону)">⊞ Fit</button>
-          <button type="button" class="psy-canvas-tool" data-cv-act="reset" title="Сбросить вид (100%)">100%</button>
-        </div>
-        <div class="psy-canvas-inner" id="psy-canvas-inner">
-          <div class="psy-canvas-zones" id="psy-canvas-zones"></div>
-          <svg class="psy-canvas-links" id="psy-canvas-links"
-               xmlns="http://www.w3.org/2000/svg"></svg>
-          <div class="psy-cycle" id="psy-cycle"></div>
+      <!-- v0.59.939: левый сайдбар «Процессы» + canvas. Процессы — компактный
+           список с кратким описанием; клик по элементу открывает модалку
+           с детальной настройкой (тот же набор полей, что был в карточках). -->
+      <div class="psy-canvas-row">
+        <aside class="psy-procs-sidebar" id="psy-procs-sidebar">
+          <div class="psy-procs-sidebar-head">
+            <span class="psy-procs-sidebar-title">⇄ Процессы</span>
+            <button type="button" id="psy-add-edge-sidebar" class="psy-btn psy-btn-primary" style="font-size:11px;padding:2px 6px">+ связь</button>
+          </div>
+          <div class="psy-procs-sidebar-list" id="psy-procs-sidebar-list"></div>
+        </aside>
+        <div class="psy-canvas" id="psy-canvas">
+          <!-- v0.59.911: floating toolbar для бесконечного canvas -->
+          <div class="psy-canvas-toolbar">
+            <button type="button" class="psy-canvas-tool" data-cv-act="zoom-out" title="Уменьшить (Ctrl+−)">−</button>
+            <span class="psy-canvas-zoom-label" id="psy-canvas-zoom">100%</span>
+            <button type="button" class="psy-canvas-tool" data-cv-act="zoom-in" title="Увеличить (Ctrl++)">+</button>
+            <button type="button" class="psy-canvas-tool" data-cv-act="fit" title="Вписать (двойной клик по фону)">⊞ Fit</button>
+            <button type="button" class="psy-canvas-tool" data-cv-act="reset" title="Сбросить вид (100%)">100%</button>
+          </div>
+          <div class="psy-canvas-inner" id="psy-canvas-inner">
+            <div class="psy-canvas-zones" id="psy-canvas-zones"></div>
+            <svg class="psy-canvas-links" id="psy-canvas-links"
+                 xmlns="http://www.w3.org/2000/svg"></svg>
+            <div class="psy-cycle" id="psy-cycle"></div>
+          </div>
         </div>
       </div>
     </div>

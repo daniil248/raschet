@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.939', date: '2026-05-01', items: [
+      '⇄ <b>Управление процессами — в левом сайдбаре блока «Узлы»</b>. По репорту: «управление процессами сделай в левом сайдбаре этого блока. Там должны быть только названия процессов и краткие характеристики, сама настройка процесса должна проходить в том же модальном окне что и в мастере процесса».',
+      '• Слева от canvas — узкий sidebar (280px) с компактным списком процессов. Каждый item: цветной type-badge (P/C/A/S/M/R/X), краткое имя («Нагрев», «Охлаждение», …), endpoints (1.Лето → 2.Охл.), краткая статистика (T_a → T_b, ΔT, Q, q<sub>w</sub>), кнопка ✕ для удаления.',
+      '• Клик по item-у → modal-редактор с полной карточкой процесса (тот же UI procArrow что был в панели «Связи»): тип, от/к узлам, Q, q<sub>w</sub>, V, и type-specific параметры (ADP/BF, mixWith/mixRatio, recupWith/recupEff/recupMode).',
+      '• Кнопка «+ связь» дублируется в шапке сайдбара.',
+      '• <code>wireGraphHost</code> вынесен из closure wire() в module-scope, чтобы модалка переиспользовала ту же event-делегацию (input/change/blur/click для col-полей).',
+      '• На мобильных (≤768px) sidebar превращается в горизонтальную полосу сверху над canvas (max-height 250px).',
+      'Файлы: <code>psychrometrics/index.html</code> (.psy-canvas-row + sidebar), <code>psychrometrics/psychrometrics.css</code> (.psy-procs-sidebar* + .psy-proc-edit-* modal), <code>psychrometrics/psychrometrics.js</code> (renderProcsSidebar + openProcessEditor + module-scope wireGraphHost).',
+    ] },
     { version: '0.59.938', date: '2026-05-01', items: [
       '🟩 <b>TC 9.9 / ASHRAE 55 envelopes — корректная пятиугольная форма с Td bounds</b>. По репорту: «в оригинале линия не идет до пересечения с линией влажности, а заканчивается гораздо раньше» + «в зоне ашрае 5 точек, а у тебя только 4».',
       '• Раньше: envelope = простой прямоугольник в координатах T × RH. Верхний правый угол выходил далеко за реальный максимум Td (например, для Recommended при T=27, RH=60% получалось W≈13.4 г/кг, тогда как ASHRAE-спека требует Td≤15°C → W≤10.6 г/кг).',
