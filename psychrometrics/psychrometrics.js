@@ -891,21 +891,21 @@ function procArrow(pr, i) {
       <button type="button" title="Удалить связь" data-act="del-edge" data-i="${i}"
               style="background:transparent;border:0;color:#c62828;cursor:pointer;font-size:14px;padding:0 4px;">✕</button>
     </div>
-    <label style="font-size:10px;color:#455a64">от узла
+    <label style="font-size:10px;color:#455a64"><span>от узла</span>
       <select data-col="fromIdx" data-i="${i}">${nodeOpts(fromI)}</select>
     </label>
-    <label style="font-size:10px;color:#455a64;margin-top:2px">к узлу
+    <label style="font-size:10px;color:#455a64;margin-top:2px"><span>к узлу</span>
       <select data-col="toIdx" data-i="${i}">${nodeOpts(toI)}</select>
     </label>
     <select data-col="proc-type" data-i="${i}" style="margin-top:4px">
       ${PROC_TYPES.map(pt => `<option value="${pt.v}" ${pr.type===pt.v?'selected':''}>${pt.t}</option>`).join('')}
     </select>
     <div class="arr" data-role="arr" style="color:${PROC_COLOR[pr.type]||'#607080'}">↓</div>
-    <label style="font-size:10px;color:#666;margin-top:4px">Q, кВт
+    <label style="font-size:10px;color:#666;margin-top:4px"><span>Q, кВт</span>
       <input type="number" data-col="Q" data-i="${i}" data-user="${duQ}" data-ts="${tsQ}" value="${pr.Q ?? ''}" step="0.1" placeholder="авто">
     </label>
     ${showQwInput ? `
-    <label style="font-size:10px;color:#666;margin-top:2px">q<sub>w</sub>, кг/ч
+    <label style="font-size:10px;color:#666;margin-top:2px"><span>q<sub>w</sub>, кг/ч</span>
       <input type="number" data-col="qw" data-i="${i}" data-user="${duQw}" data-ts="${tsQw}" value="${pr.qw ?? ''}" step="0.1" placeholder="авто">
       <span data-role="condensate" style="display:none;margin-top:3px;padding:3px 5px;background:#e1f5fe;border:1px solid #4fc3f7;border-radius:3px;font-size:10px;color:#01579b;font-weight:600;"></span>
     </label>
@@ -915,7 +915,7 @@ function procArrow(pr, i) {
       <span data-role="condensate" style="display:none"></span>
     </div>
     `}
-    <label style="font-size:10px;color:#666;margin-top:4px">V процесса, м³/ч
+    <label style="font-size:10px;color:#666;margin-top:4px"><span>V процесса, м³/ч</span>
       <input type="number" data-col="V" data-i="${i}" data-user="${hasUserV?'1':''}" value="${hasUserV?userV:''}" step="100" placeholder="авто (масса)">
       <span class="v-auto" data-role="v-auto" style="font-size:10px;color:#2e7d32;display:block;margin-top:2px;"></span>
     </label>
@@ -969,15 +969,15 @@ function recupControls(pr, i) {
     `<option value="${pi}" ${String(pi)===rw?'selected':''}>${pi+1}. ${escAttr((pp.name||'').slice(0,16))}</option>`
   ).join('');
   return `
-    <label style="font-size:10px;color:#ad1457;margin-top:4px;border-top:1px dashed #f48fb1;padding-top:4px" title="Опорная точка — поток, отдающий тепло (обычно вытяжка).">обменивать с точкой
+    <label style="font-size:10px;color:#ad1457;margin-top:4px;border-top:1px dashed #f48fb1;padding-top:4px" title="Опорная точка — поток, отдающий тепло (обычно вытяжка)."><span>обменивать с точкой</span>
       <select data-col="recupWith" data-i="${i}">
         <option value="">— выбрать —</option>${opts}
       </select>
     </label>
-    <label style="font-size:10px;color:#ad1457;margin-top:2px" title="КПД рекуператора (0…1). t₂ = t₁ + η·(t_ref − t₁).">η
+    <label style="font-size:10px;color:#ad1457;margin-top:2px" title="КПД рекуператора (0…1). t₂ = t₁ + η·(t_ref − t₁)."><span>η</span>
       <input type="number" data-col="recupEff" data-i="${i}" value="${eff}" step="0.05" min="0" max="1">
     </label>
-    <label style="font-size:10px;color:#ad1457;margin-top:2px" title="Режим: sensible — только теплообмен (d=const). total — энтальпийный (роторный) — также передаёт влагу с тем же η.">режим
+    <label style="font-size:10px;color:#ad1457;margin-top:2px" title="Режим: sensible — только теплообмен (d=const). total — энтальпийный (роторный) — также передаёт влагу с тем же η."><span>режим</span>
       <select data-col="recupMode" data-i="${i}">
         <option value="sensible"${mode==='sensible'?' selected':''}>Sensible (T-only, пластинч.)</option>
         <option value="total"${mode==='total'?' selected':''}>Total / энтальпийный (роторный)</option>
@@ -994,12 +994,12 @@ function mixControls(pr, i) {
     `<option value="${pi}" ${String(pi)===mw?'selected':''}>${pi+1}. ${escAttr((pp.name||'').slice(0,16))}</option>`
   ).join('');
   return `
-    <label style="font-size:10px;color:#00838f;margin-top:4px;border-top:1px dashed #b0bec5;padding-top:4px">смешать с точкой
+    <label style="font-size:10px;color:#00838f;margin-top:4px;border-top:1px dashed #b0bec5;padding-top:4px"><span>смешать с точкой</span>
       <select data-col="mixWith" data-i="${i}">
         <option value="">— выбрать —</option>${opts}
       </select>
     </label>
-    <label style="font-size:10px;color:#00838f;margin-top:2px" title="Доля (по массе) входящего потока от точки ${i+1} в смеси. Остальное — от опорной точки.">α (доля ${i+1})
+    <label style="font-size:10px;color:#00838f;margin-top:2px" title="Доля (по массе) входящего потока от точки ${i+1} в смеси. Остальное — от опорной точки."><span>α (доля ${i+1})</span>
       <input type="number" data-col="mixRatio" data-i="${i}" value="${mr}" step="0.05" min="0" max="1">
     </label>
   `;
