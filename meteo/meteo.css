@@ -268,6 +268,38 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
   .mt-sidebar { position: static; max-height: none; }
 }
 
+/* ─── v0.59.986: Глобальный фильтр периода (применяется ко всем вкладкам) */
+.mt-global-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.mt-global-filter .mt-gf-label { font-weight: 600; color: #075985; }
+.mt-global-filter select,
+.mt-global-filter input[type="date"] {
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid #93c5fd;
+  border-radius: 3px;
+  background: #fff;
+  font-family: inherit;
+}
+.mt-global-filter .mt-gf-period { display: inline-flex; align-items: center; gap: 6px; }
+.mt-global-filter .mt-gf-dash { color: #64748b; }
+.mt-global-filter .mt-gf-info {
+  margin-left: auto;
+  color: #475569;
+  font-size: 11.5px;
+  font-style: italic;
+}
+
 /* ─── v0.59.898: Tabs */
 .mt-tabs {
   display: flex;

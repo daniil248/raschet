@@ -74,21 +74,49 @@
       </div>
 
       <div id="mt-active-pane" class="mt-active-pane" hidden>
+        <!-- v0.59.986: ГЛОБАЛЬНЫЙ фильтр периода — применяется ко всем
+             вкладкам (Сводка/Графики/Annual hours/ASHRAE design). -->
+        <div class="mt-global-filter" title="Фильтр периода применяется ко всем вкладкам и графикам.">
+          <span class="mt-gf-label">📅 Период:</span>
+          <select id="mt-filter-mode" title="Режим фильтра: «Все годы» — усреднение по всем доступным годам; «Конкретный год» — выборка только за один год; «Период от-до» — произвольный диапазон дат YYYY-MM-DD">
+            <option value="all">Все годы (среднее)</option>
+            <option value="year">Конкретный год</option>
+            <option value="period">Период (от — до)</option>
+          </select>
+          <select id="mt-filter-year" title="Календарный год выборки. Список заполняется автоматически из доступных в датасете годов." hidden></select>
+          <span id="mt-filter-period-wrap" class="mt-gf-period" hidden>
+            <input type="date" id="mt-filter-from" title="Начальная дата периода (включительно). Формат YYYY-MM-DD.">
+            <span class="mt-gf-dash">—</span>
+            <input type="date" id="mt-filter-to" title="Конечная дата периода (включительно). Формат YYYY-MM-DD.">
+          </span>
+          <span class="mt-gf-info" id="mt-filter-info" title="Сводка по выбранному периоду: количество записей и фактический диапазон дат."></span>
+        </div>
+
         <div class="mt-tabs">
-          <button type="button" class="mt-tab active" data-tab="summary">📋 Сводка</button>
-          <button type="button" class="mt-tab" data-tab="charts">📊 Графики</button>
-          <button type="button" class="mt-tab" data-tab="annual">📐 Annual hours</button>
-          <button type="button" class="mt-tab" data-tab="ashrae">🌡 ASHRAE design</button>
+          <button type="button" class="mt-tab active" data-tab="summary"
+                  title="Сводка: ключевые KPI (T средняя/мин/макс/99%, FreeCool часы) + гистограмма распределения температуры по бинам 1°C + табличная сводка (HDD/CDD).">📋 Сводка</button>
+          <button type="button" class="mt-tab" data-tab="charts"
+                  title="Графики: распределение влажности RH (бины 5%), среднемесячная T с диапазоном min..max, роза ветров (16 румбов), pivot-матрица «дней с T в бине × год».">📊 Графики</button>
+          <button type="button" class="mt-tab" data-tab="annual"
+                  title="Annual hours table: бин Ambient T °C × часы/дни года, с настраиваемыми колонками (RH, ветер, мощность чиллера). Экспорт CSV.">📐 Annual hours</button>
+          <button type="button" class="mt-tab" data-tab="ashrae"
+                  title="ASHRAE Design Conditions (HoF гл. 14): расчётные температуры heating 99.6%/99.0% и cooling 0.4%/1.0%/2.0% с MCWB и MCDP.">🌡 ASHRAE design</button>
         </div>
 
         <div class="mt-tab-pane" data-pane="summary">
           <div class="mt-kpi-bar">
-            <div class="mt-kpi"><span class="mt-kpi-lbl">T средн</span><span class="mt-kpi-val" id="mt-kpi-tmean">—</span></div>
-            <div class="mt-kpi"><span class="mt-kpi-lbl">T min</span><span class="mt-kpi-val" id="mt-kpi-tmin">—</span></div>
-            <div class="mt-kpi"><span class="mt-kpi-lbl">T max</span><span class="mt-kpi-val" id="mt-kpi-tmax">—</span></div>
-            <div class="mt-kpi"><span class="mt-kpi-lbl">T 99%</span><span class="mt-kpi-val" id="mt-kpi-t99">—</span></div>
-            <div class="mt-kpi"><span class="mt-kpi-lbl">FreeCool ч</span><span class="mt-kpi-val" id="mt-kpi-fc">—</span></div>
-            <div class="mt-kpi"><span class="mt-kpi-lbl">Записей</span><span class="mt-kpi-val" id="mt-kpi-n">—</span></div>
+            <div class="mt-kpi" title="Среднее арифметическое температуры по всем записям выбранного периода. T̄ = Σ T_i / N. Используется как baseline для оценки климатического региона.">
+              <span class="mt-kpi-lbl">T средн</span><span class="mt-kpi-val" id="mt-kpi-tmean">—</span></div>
+            <div class="mt-kpi" title="Минимальная зафиксированная температура за период. Используется как абсолютный экстремум; для расчёта систем отопления — берите ASHRAE design 99.6% (вкладка ASHRAE design), не абсолютный мин.">
+              <span class="mt-kpi-lbl">T min</span><span class="mt-kpi-val" id="mt-kpi-tmin">—</span></div>
+            <div class="mt-kpi" title="Максимальная зафиксированная температура за период. Аналог абсолютного экстремума; для расчёта охлаждения — берите ASHRAE design 0.4% (вкладка ASHRAE design).">
+              <span class="mt-kpi-lbl">T max</span><span class="mt-kpi-val" id="mt-kpi-tmax">—</span></div>
+            <div class="mt-kpi" title="99-й перцентиль температуры — T, ниже которой 99% записей. Используется как «расчётная мин. температура» (опираясь на ASHRAE 99% T_db). Защищает от выбросов абсолютного минимума.">
+              <span class="mt-kpi-lbl">T 99%</span><span class="mt-kpi-val" id="mt-kpi-t99">—</span></div>
+            <div class="mt-kpi" title="Часы в году с T_amb < 14°C — потенциал прямого фрикулинга (без чиллера). Косвенный (через теплообменник) расширяет порог до ~18°C. См. Annual hours table → Chiller/DX → free-cooling.">
+              <span class="mt-kpi-lbl">FreeCool ч</span><span class="mt-kpi-val" id="mt-kpi-fc">—</span></div>
+            <div class="mt-kpi" title="Количество строк (записей) в выборке после применения фильтра периода. Один час = одна запись. 8760 = полный год.">
+              <span class="mt-kpi-lbl">Записей</span><span class="mt-kpi-val" id="mt-kpi-n">—</span></div>
           </div>
 
           <div class="mt-section-card">
@@ -126,16 +154,14 @@
         <div class="mt-tab-pane" data-pane="annual" hidden>
           <div class="mt-section-card">
             <div class="mt-annual-toolbar">
-              <h3 style="margin:0">📐 Annual hours table</h3>
-              <!-- v0.59.971: year-selector — «средняя по всем годам» или конкретный год -->
-              <label style="display:inline-flex;gap:4px;align-items:center;font-size:12px">
-                Год:
-                <select id="mt-annual-year" title="«Все годы (среднее)» — усредняет по всем доступным годам. Конкретный год — строит таблицу только за этот год."></select>
-              </label>
-              <span class="muted" style="flex:1;font-size:11.5px">Бины Ambient T °C × часы/дни в году.</span>
-              <button type="button" class="mt-btn-ghost" id="mt-chiller-btn">❄ Chiller</button>
-              <button type="button" class="mt-btn-ghost" id="mt-cols-btn">🔧 Столбцы</button>
-              <button type="button" class="mt-btn-primary" id="mt-export-btn">📥 Экспорт CSV</button>
+              <h3 style="margin:0" title="Pivot-таблица: бины Ambient T °C (целочисленные диапазоны 1°C) × агрегированные показатели (часы/год, дни/год, RH avg/min/max, ветер, мощность чиллера если задана spec).">📐 Annual hours table</h3>
+              <span class="muted" style="flex:1;font-size:11.5px" title="Период выборки задаётся ГЛОБАЛЬНЫМ фильтром выше (📅 Период).">Бины Ambient T °C × часы/дни в году.</span>
+              <button type="button" class="mt-btn-ghost" id="mt-chiller-btn"
+                      title="Спецификация чиллера/DX-системы для расчёта Capacity (T-correction), COP (IPLV-curve), Power и годовой энергии. Опции: free-cooling (dry/wet), DX air-cooled, DX с pumped refrigerant.">❄ Chiller / DX</button>
+              <button type="button" class="mt-btn-ghost" id="mt-cols-btn"
+                      title="Выбор отображаемых столбцов: hours/days/% года, RH avg/min/max, ветер, capacity/COP/power/energy чиллера, FC% часы фрикулинга.">🔧 Столбцы</button>
+              <button type="button" class="mt-btn-primary" id="mt-export-btn"
+                      title="Экспорт текущей таблицы (с применённым фильтром и активными столбцами) в CSV. Файл UTF-8 с BOM, открывается в Excel.">📥 Экспорт CSV</button>
             </div>
             <div class="mt-chiller-wrap" id="mt-chiller-wrap" hidden></div>
             <div class="mt-col-picker-wrap" id="mt-col-picker-wrap" hidden></div>

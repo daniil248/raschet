@@ -31,13 +31,18 @@ let _activeId = null;
 let _activeTab = 'summary';
 let _activeCols = COLUMNS.filter(c => c.default).map(c => c.id);
 let _chillerSpec = null;
-// v0.59.971: год для annual-таблицы. '' = «все годы (среднее)», иначе конкретный.
-let _annualYear = '';
+// v0.59.986: ГЛОБАЛЬНЫЙ фильтр периода — применяется ко всем вкладкам.
+//   mode: 'all' | 'year' | 'period'
+//   year: '2023' (string) — используется при mode='year'
+//   periodFrom / periodTo: 'YYYY-MM-DD' — при mode='period'
+// Заменяет более узкий _annualYear (v0.59.971) — теперь фильтр глобальный.
+let _filter = { mode: 'all', year: '', periodFrom: '', periodTo: '' };
 
 const KEY_DATA = ['meteo', 'datasets.v1'];
 const KEY_ACTIVE = ['meteo', 'activeId.v1'];
 const KEY_COLS = ['meteo', 'annualCols.v1'];
 const KEY_CHILLER = ['meteo', 'chillerSpec.v1'];
+const KEY_FILTER = ['meteo', 'globalFilter.v1'];
 
 function loadJson(suffix, fallback) {
   if (!_pid) return fallback;
@@ -53,6 +58,41 @@ function persist() {
   saveJson(KEY_ACTIVE, _activeId);
   saveJson(KEY_COLS, _activeCols);
   saveJson(KEY_CHILLER, _chillerSpec);
+  saveJson(KEY_FILTER, _filter);
+}
+
+/* v0.59.986: Применить глобальный фильтр к hourly. Возвращает массив
+   записей за выбранный период (YYYY-MM-DD сравнивается лексикографически
+   на префиксе, что корректно для ISO-8601 дат). */
+function getFilteredHourly(d) {
+  const all = (d && d.hourly) || [];
+  if (!all.length) return all;
+  const f = _filter || { mode: 'all' };
+  if (f.mode === 'year' && f.year) {
+    const prefix = String(f.year);
+    return all.filter(h => (h.t || '').startsWith(prefix));
+  }
+  if (f.mode === 'period') {
+    const from = f.periodFrom || '';
+    const to = f.periodTo || '';
+    return all.filter(h => {
+      const t = (h.t || '').slice(0, 10);
+      if (from && t < from) return false;
+      if (to && t > to) return false;
+      return true;
+    });
+  }
+  return all;
+}
+
+/* Описание выбранного фильтра коротко (для info-блока и tooltip) */
+function describeFilter(filteredCount, totalCount) {
+  const f = _filter || { mode: 'all' };
+  let desc;
+  if (f.mode === 'year' && f.year)        desc = `год ${f.year}`;
+  else if (f.mode === 'period')           desc = `${f.periodFrom || '?'} — ${f.periodTo || '?'}`;
+  else                                    desc = 'все годы';
+  return `${desc}: ${filteredCount} записей${totalCount && totalCount !== filteredCount ? ` из ${totalCount}` : ''}`;
 }
 
 // ─── Render: sources buttons (генерируется автоматически из registry)
@@ -134,9 +174,13 @@ function renderActive() {
   if (pane) pane.hidden = false;
   const star = d.activeForProject ? ' ⭐' : '';
   $('mt-active-name').textContent = d.name + star;
-  $('mt-active-meta').textContent = `${d.locationName || ''} · ${d.lat ? d.lat.toFixed(3) : '—'}, ${d.lon ? d.lon.toFixed(3) : '—'}${d.stationId ? ' · ICAO ' + d.stationId : ''} · ${d.dateFrom || ''}—${d.dateTo || ''} · ${(d.hourly || []).length} записей`;
+  const totalN = (d.hourly || []).length;
+  $('mt-active-meta').textContent = `${d.locationName || ''} · ${d.lat ? d.lat.toFixed(3) : '—'}, ${d.lon ? d.lon.toFixed(3) : '—'}${d.stationId ? ' · ICAO ' + d.stationId : ''} · ${d.dateFrom || ''}—${d.dateTo || ''} · ${totalN} записей всего`;
 
-  const s = d.stats || util.computeStats(d.hourly || []);
+  // v0.59.986: фильтруем hourly один раз, передаём всем рендерерам
+  const filteredHourly = getFilteredHourly(d);
+  // Recompute stats на фильтрованных
+  const s = util.computeStats(filteredHourly);
   $('mt-kpi-tmean').textContent = `${s.tmean} °C`;
   $('mt-kpi-tmin').textContent = `${s.tmin} °C`;
   $('mt-kpi-tmax').textContent = `${s.tmax} °C`;
@@ -144,8 +188,51 @@ function renderActive() {
   $('mt-kpi-fc').textContent = `${s.freecoolHours} ч`;
   $('mt-kpi-n').textContent = `${s.n}`;
 
+  // Заполняем select годов и обновляем info-блок фильтра
+  populateFilterYearSelect(d.hourly || []);
+  syncFilterUI(d);
+  const info = $('mt-filter-info');
+  if (info) info.textContent = describeFilter(filteredHourly.length, totalN);
+
   // Сразу рендерим текущий tab
   renderActiveTab();
+}
+
+/* Заполнение select годов из доступных в исходном (нефильтрованном) hourly. */
+function populateFilterYearSelect(hourly) {
+  const sel = $('mt-filter-year');
+  if (!sel) return;
+  const years = new Set();
+  for (const h of hourly) {
+    const y = (h.t || '').slice(0, 4);
+    if (/^\d{4}$/.test(y)) years.add(y);
+  }
+  const yArr = [...years].sort((a, b) => b.localeCompare(a));
+  const cur = _filter.year || sel.value || '';
+  sel.innerHTML = yArr.map(y => `<option value="${y}">${y}</option>`).join('');
+  if (yArr.includes(cur)) sel.value = cur;
+  else if (yArr.length) { sel.value = yArr[0]; _filter.year = yArr[0]; }
+}
+
+/* Синхронизировать UI фильтра с текущим состоянием _filter и пределами hourly. */
+function syncFilterUI(d) {
+  const modeSel = $('mt-filter-mode');
+  const yearSel = $('mt-filter-year');
+  const periodWrap = $('mt-filter-period-wrap');
+  const fromInp = $('mt-filter-from');
+  const toInp = $('mt-filter-to');
+  if (modeSel) modeSel.value = _filter.mode || 'all';
+  if (yearSel) yearSel.hidden = (_filter.mode !== 'year');
+  if (periodWrap) periodWrap.hidden = (_filter.mode !== 'period');
+  // Заполнить min/max периода границами доступных дат
+  if (fromInp && toInp && d) {
+    if (d.dateFrom) { fromInp.min = d.dateFrom; toInp.min = d.dateFrom; }
+    if (d.dateTo)   { fromInp.max = d.dateTo;   toInp.max = d.dateTo; }
+    if (_filter.periodFrom) fromInp.value = _filter.periodFrom;
+    else if (d.dateFrom)    fromInp.value = d.dateFrom;
+    if (_filter.periodTo)   toInp.value = _filter.periodTo;
+    else if (d.dateTo)      toInp.value = d.dateTo;
+  }
 }
 
 function renderActiveTab() {
@@ -154,63 +241,65 @@ function renderActiveTab() {
   document.querySelectorAll('.mt-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === _activeTab));
   document.querySelectorAll('.mt-tab-pane').forEach(p => p.hidden = (p.dataset.pane !== _activeTab));
 
+  // v0.59.986: единый источник фильтрованных данных для всех вкладок
+  const hourly = getFilteredHourly(d);
+
   if (_activeTab === 'summary') {
     const cvs = $('mt-hist-canvas');
-    if (cvs) drawTempHistogram(cvs, d.hourly || []);
-    drawSummary(d, d.stats || util.computeStats(d.hourly || []));
+    if (cvs) drawTempHistogram(cvs, hourly);
+    drawSummary(d, util.computeStats(hourly), hourly);
   } else if (_activeTab === 'charts') {
     const cvsRH = $('mt-rh-canvas');
-    if (cvsRH) drawHumidityHistogram(cvsRH, d.hourly || []);
+    if (cvsRH) drawHumidityHistogram(cvsRH, hourly);
     const cvsM = $('mt-monthly-canvas');
-    if (cvsM) drawMonthlyTempChart(cvsM, d.hourly || []);
+    if (cvsM) drawMonthlyTempChart(cvsM, hourly);
     const cvsW = $('mt-windrose-canvas');
-    if (cvsW) drawWindRose(cvsW, d.hourly || []);
+    if (cvsW) drawWindRose(cvsW, hourly);
     const pivot = $('mt-pivot-table');
-    if (pivot) pivot.innerHTML = renderDaysInRangeTable(d.hourly || []);
+    if (pivot) pivot.innerHTML = renderDaysInRangeTable(hourly);
   } else if (_activeTab === 'annual') {
-    // v0.59.971: фильтруем hourly по выбранному году (если задан)
-    const filtered = filterHourlyByYear(d.hourly || [], _annualYear);
-    const rows = buildBinData(filtered, _chillerSpec);
+    const rows = buildBinData(hourly, _chillerSpec);
     const tbl = $('mt-annual-table');
     if (tbl) tbl.innerHTML = renderAnnualTable(rows, _activeCols);
-    populateAnnualYearSelect(d.hourly || []);
   } else if (_activeTab === 'ashrae') {
-    renderAshraeBlock(d);
+    renderAshraeBlock(d, hourly);
   }
 }
 
-function drawSummary(d, s) {
+function drawSummary(d, s, hourly) {
   const sum = $('mt-summary');
   if (!sum) return;
-  const cdd = (d.hourly || []).reduce((acc, h) => acc + Math.max(0, (Number(h.T) || 0) - 18), 0) / 24;
-  const hdd = (d.hourly || []).reduce((acc, h) => acc + Math.max(0, 18 - (Number(h.T) || 0)), 0) / 24;
-  const sortedT = [...(d.hourly || []).map(h => Number(h.T)).filter(Number.isFinite)].sort((a, b) => a - b);
+  hourly = hourly || (d.hourly || []);
+  const cdd = hourly.reduce((acc, h) => acc + Math.max(0, (Number(h.T) || 0) - 18), 0) / 24;
+  const hdd = hourly.reduce((acc, h) => acc + Math.max(0, 18 - (Number(h.T) || 0)), 0) / 24;
+  const sortedT = [...hourly.map(h => Number(h.T)).filter(Number.isFinite)].sort((a, b) => a - b);
   const t1 = sortedT.length ? sortedT[Math.floor(sortedT.length * 0.01)] : '—';
   sum.innerHTML = `<table>
     <tbody>
-      <tr><th>Источник</th><td>${util.escHtml(d.source)}</td></tr>
-      <tr><th>Локация</th><td>${util.escHtml(d.locationName || '')} (${d.lat?.toFixed(3) || '—'}, ${d.lon?.toFixed(3) || '—'})</td></tr>
-      <tr><th>Период</th><td>${util.escHtml(d.dateFrom || '')} — ${util.escHtml(d.dateTo || '')}</td></tr>
-      <tr><th>HDD (база 18 °C)</th><td class="num">${hdd.toFixed(0)} °C·сут</td></tr>
-      <tr><th>CDD (база 18 °C)</th><td class="num">${cdd.toFixed(0)} °C·сут</td></tr>
-      <tr><th>Часы FreeCool (T &lt; 14 °C)</th><td class="num">${s.freecoolHours} ч (${(s.freecoolHours / Math.max(1, s.n) * 100).toFixed(1)}%)</td></tr>
-      <tr><th>T 1% (≈ tmin расчётная)</th><td class="num">${typeof t1 === 'number' ? t1.toFixed(1) : t1} °C</td></tr>
+      <tr><th title="Источник метеоданных: open-meteo (REST API), ASHRAE (design conditions), rp5 (CSV-импорт), manual (ручной ввод).">Источник</th><td>${util.escHtml(d.source)}</td></tr>
+      <tr><th title="Геолокация площадки: название и координаты (широта, долгота) в десятичных градусах WGS-84.">Локация</th><td>${util.escHtml(d.locationName || '')} (${d.lat?.toFixed(3) || '—'}, ${d.lon?.toFixed(3) || '—'})</td></tr>
+      <tr><th title="Период загруженных данных в датасете (исходный, до фильтра). Фильтр применяется через 📅 Период выше.">Период (датасет)</th><td>${util.escHtml(d.dateFrom || '')} — ${util.escHtml(d.dateTo || '')}</td></tr>
+      <tr><th title="Heating Degree Days, °C·сут. HDD = Σ max(0, 18 − T_i) / 24. Используется для прикидочной оценки годовой нагрузки на систему отопления (Q ≈ HDD × UA).">HDD (база 18 °C)</th><td class="num">${hdd.toFixed(0)} °C·сут</td></tr>
+      <tr><th title="Cooling Degree Days, °C·сут. CDD = Σ max(0, T_i − 18) / 24. Аналогичная метрика для системы охлаждения.">CDD (база 18 °C)</th><td class="num">${cdd.toFixed(0)} °C·сут</td></tr>
+      <tr><th title="Часы в году с T_amb < 14°C — потенциал прямого фрикулинга (без чиллера). Косвенный (через теплообменник glycol-loop) расширяет порог до ~18°C.">Часы FreeCool (T &lt; 14 °C)</th><td class="num">${s.freecoolHours} ч (${(s.freecoolHours / Math.max(1, s.n) * 100).toFixed(1)}%)</td></tr>
+      <tr><th title="1-й перцентиль температуры — T, ниже которой 1% записей. Используется как «расчётная мин. температура» для систем отопления (более стабильна, чем абсолютный мин).">T 1% (≈ tmin расчётная)</th><td class="num">${typeof t1 === 'number' ? t1.toFixed(1) : t1} °C</td></tr>
     </tbody>
   </table>`;
 }
 
-function renderAshraeBlock(d) {
+function renderAshraeBlock(d, hourlyOverride) {
   const block = $('mt-ashrae-block');
   if (!block) return;
-  // v0.59.904: всегда рендерим полный ASHRAE-datasheet из hourly,
-  // независимо от того был ли датасет загружен через ASHRAE-источник
-  // или Open-Meteo/rp5. Минимум 1 год данных нужен.
-  const hourly = d.hourly || [];
+  // v0.59.986: можно передать фильтрованный hourly (из глобального
+  // фильтра периода). Backward-compat: если не передан — используем d.hourly.
+  const hourly = hourlyOverride != null ? hourlyOverride : (d.hourly || []);
   if (hourly.length < 24 * 30) {
-    block.innerHTML = `<p class="muted">Недостаточно данных (${hourly.length} часов). Минимум 30 дней почасовых наблюдений для статистических расчётов.</p>`;
+    block.innerHTML = `<p class="muted">Недостаточно данных в выбранном периоде (${hourly.length} часов). Минимум 30 дней почасовых наблюдений для статистических расчётов.</p>`;
     return;
   }
-  block.innerHTML = renderAshraeDatasheet(d, d.locationName || d.name);
+  // Передаём в renderAshraeDatasheet «виртуальный» dataset с подменённым
+  // hourly, чтобы он считал по фильтрованным данным (он использует d.hourly).
+  block.innerHTML = renderAshraeDatasheet({ ...d, hourly }, d.locationName || d.name);
 }
 
 function computeAshraeFromHourly(hourly) {
@@ -246,6 +335,10 @@ function init() {
   _activeId = loadJson(KEY_ACTIVE, null);
   _activeCols = loadJson(KEY_COLS, _activeCols);
   _chillerSpec = loadJson(KEY_CHILLER, null);
+  const savedFilter = loadJson(KEY_FILTER, null);
+  if (savedFilter && typeof savedFilter === 'object') {
+    _filter = { mode: 'all', year: '', periodFrom: '', periodTo: '', ...savedFilter };
+  }
   if (_activeId && !_datasets.some(d => d.id === _activeId)) _activeId = _datasets[0]?.id || null;
 
   renderImportButtons();
@@ -294,26 +387,41 @@ function init() {
     });
   });
 
-  // Annual hours toolbar
+  // v0.59.986: глобальный фильтр периода — единая точка изменения
+  const onGlobalFilterChange = () => {
+    persist();
+    renderActive();   // recompute KPIs + перерисовка активной вкладки
+  };
+  const modeSel = $('mt-filter-mode');
+  if (modeSel) modeSel.addEventListener('change', () => {
+    _filter.mode = modeSel.value || 'all';
+    onGlobalFilterChange();
+  });
+  const yearSel = $('mt-filter-year');
+  if (yearSel) yearSel.addEventListener('change', () => {
+    _filter.year = yearSel.value;
+    onGlobalFilterChange();
+  });
+  const fromInp = $('mt-filter-from');
+  if (fromInp) fromInp.addEventListener('change', () => {
+    _filter.periodFrom = fromInp.value;
+    onGlobalFilterChange();
+  });
+  const toInp = $('mt-filter-to');
+  if (toInp) toInp.addEventListener('change', () => {
+    _filter.periodTo = toInp.value;
+    onGlobalFilterChange();
+  });
+
+  // Annual hours toolbar — работает на текущем глобальном фильтре
   const reRenderAnnual = () => {
     const d = _datasets.find(x => x.id === _activeId);
     if (!d) return;
-    // v0.59.971: учёт выбранного года
-    const filtered = filterHourlyByYear(d.hourly || [], _annualYear);
+    const filtered = getFilteredHourly(d);
     const rows = buildBinData(filtered, _chillerSpec);
     const tbl = $('mt-annual-table');
     if (tbl) tbl.innerHTML = renderAnnualTable(rows, _activeCols);
-    populateAnnualYearSelect(d.hourly || []);
   };
-
-  // v0.59.971: year-selector
-  const yearSel = $('mt-annual-year');
-  if (yearSel) {
-    yearSel.addEventListener('change', () => {
-      _annualYear = yearSel.value;
-      reRenderAnnual();
-    });
-  }
 
   const colsBtn = $('mt-cols-btn');
   if (colsBtn) {
@@ -369,45 +477,16 @@ function init() {
     exportBtn.addEventListener('click', () => {
       const d = _datasets.find(x => x.id === _activeId);
       if (!d) return;
-      // v0.59.971: учитываем выбранный год в CSV
-      const filtered = filterHourlyByYear(d.hourly || [], _annualYear);
+      const filtered = getFilteredHourly(d);
       const rows = buildBinData(filtered, _chillerSpec);
-      const yearTag = _annualYear ? `-${_annualYear}` : '-allyears';
-      const fname = `meteo-annual${yearTag}-${(d.locationName || 'export').replace(/[^\w\dА-Яа-я-]+/g, '_')}.csv`;
+      const tag = _filter.mode === 'year' && _filter.year ? `-${_filter.year}`
+        : _filter.mode === 'period' ? `-${_filter.periodFrom || 'start'}_${_filter.periodTo || 'end'}`
+        : '-allyears';
+      const fname = `meteo-annual${tag}-${(d.locationName || 'export').replace(/[^\w\dА-Яа-я-]+/g, '_')}.csv`;
       exportAnnualTableCsv(rows, _activeCols, fname);
       util.toast(`CSV сохранён: ${fname}`, 'ok');
     });
   }
-}
-
-/* v0.59.971: фильтрация hourly по году. По репорту: «нужна сводка
-   годовая, средняя в год по всем годам, и так же за конкретный год».
-   year='' → всё (среднее усредняется в buildBinData через 8766/N year-scale).
-   year=2023 → только записи с h.t.startsWith('2023'). */
-function filterHourlyByYear(hourly, year) {
-  if (!year) return hourly;
-  const prefix = String(year);
-  return hourly.filter(h => (h.t || '').startsWith(prefix));
-}
-
-/* Заполнить select годов из доступных в hourly. Опции: «Все годы (среднее)»
-   плюс конкретные года, отсортированные по убыванию. */
-function populateAnnualYearSelect(hourly) {
-  const sel = $('mt-annual-year');
-  if (!sel) return;
-  const years = new Set();
-  for (const h of hourly) {
-    const y = (h.t || '').slice(0, 4);
-    if (/^\d{4}$/.test(y)) years.add(y);
-  }
-  const yArr = [...years].sort((a, b) => b.localeCompare(a));
-  // Сохраняем текущее значение
-  const cur = _annualYear || sel.value || '';
-  const opts = ['<option value="">📊 Все годы (среднее)</option>',
-    ...yArr.map(y => `<option value="${y}">${y}</option>`)];
-  sel.innerHTML = opts.join('');
-  // Восстановить выбор если он остался валидным
-  if (cur === '' || yArr.includes(cur)) sel.value = cur;
 }
 
 function mtConfirm(msg, title = 'Подтверждение') {

@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.986', date: '2026-05-01', items: [
+      '📅 <b>Глобальный фильтр периода в meteo — применяется ко всем вкладкам</b>. По требованию: «все графики и сводка должны иметь настройку, вывод по годам, за произвольный период».',
+      '• Бар над вкладками: select режим («Все годы (среднее)» / «Конкретный год» / «Период от-до») + дополнительные элементы зависят от режима (year-select или 2 date-input).',
+      '• Период применяется ОДНИМ источником ко всем вкладкам: Сводка (KPI + гистограмма), Графики (RH + monthly-T + windrose + days-pivot), Annual hours (bin-table), ASHRAE design.',
+      '• Info-блок справа: «период: N записей из N_total» — мгновенно видно объём выборки.',
+      '• Persist в LS (psy/_filter). Старый _annualYear (v0.59.971) удалён — глобальный фильтр его покрывает; убран дубликатный year-select из toolbar Annual hours.',
+      '• Tooltips на каждом элементе фильтра, KPI, табах, заголовках столбцов сводной таблицы — по новому правилу проекта (любая переменная/обозначение → hover-tooltip с расшифровкой).',
+      'Файлы: <code>meteo/index.html</code> (filter bar + tooltips), <code>meteo/meteo.css</code> (.mt-global-filter), <code>meteo/meteo.js</code> (_filter state, getFilteredHourly, populate/syncFilterUI, refactor renderActiveTab + drawSummary + renderAshraeBlock).',
+    ] },
     { version: '0.59.985', date: '2026-05-01', items: [
       '⚡ <b>Электрическое потребление по COP в таблице процессов</b>. Расширение v0.59.982: помимо тепловой энергии теперь видна оценка фактического эл. потребления для подбора оборудования и расчёта OPEX.',
       '• Default COP по типу процесса (российская практика): <code>C=3.5</code> (chiller/DX), <code>P=1.0</code> (электр. калорифер), <code>A=50</code> (адиаб. — только насос pump+pad), <code>S=1.0</code> (электр. пар), <code>M/R/X</code> — пассивные (эл. ≈ 0).',
