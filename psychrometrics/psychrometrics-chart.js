@@ -1,9 +1,15 @@
 /* =========================================================================
-   psychrometrics-chart.js — draw a psychrometric (Mollier-Ramzin / ID)
-   chart as SVG and plot process points.
+   psychrometrics-chart.js — draw a psychrometric chart.
 
-   Axes: x = W (humidity ratio, g/kg_da) [0..30], y = T (°C) [-15..50].
-   Curves: constant RH (10..100%), constant h (kJ/kg_da), saturation line.
+   Two layouts (option `style`):
+   • 'ramzin'  — Mollier-Ramzin (Russian): W horizontal (bottom), T vertical
+                 (left). Default.
+   • 'ashrae'  — ASHRAE textbook style: T horizontal (bottom), W vertical
+                 (right axis). Same data, transposed coordinate system.
+
+   Returns ctx с pos(W,T) → [x,y] и inv(x,y) → {W, T} — потребитель
+   (renderChart, plotPoint, attachCrosshair) использует только эти
+   функции и не зависит от конкретной системы координат.
    ========================================================================= */
 
 import { Pws, humidityRatio, enthalpy, RHfromW, state } from './psychrometrics-core.js';
@@ -14,41 +20,64 @@ const DEFAULTS = {
   width: 900, height: 600,
   marginL: 50, marginR: 20, marginT: 20, marginB: 50,
   P: 101325,
+  style: 'ramzin',  // 'ramzin' | 'ashrae'
 };
 
 export function render(container, opts = {}) {
   const o = { ...DEFAULTS, ...opts };
+  const isAshrae = o.style === 'ashrae';
+  if (isAshrae) {
+    // У ASHRAE-style ось W справа — нужен запас под подписи
+    o.marginR = Math.max(o.marginR, 60);
+  }
   const plotW = o.width - o.marginL - o.marginR;
   const plotH = o.height - o.marginT - o.marginB;
-  const X = w => o.marginL + (w - o.W_min) / (o.W_max - o.W_min) * plotW;
-  const Y = T => o.marginT + (o.T_max - T) / (o.T_max - o.T_min) * plotH;
+  // Унифицированная (W, T) → (x, y) трансляция. X/Y оставлены для
+  // обратной совместимости в Ramzin-режиме (старые callers).
+  let X, Y, pos, inv;
+  if (isAshrae) {
+    X = T => o.marginL + (T - o.T_min) / (o.T_max - o.T_min) * plotW;
+    Y = W => o.marginT + (o.W_max - W) / (o.W_max - o.W_min) * plotH;
+    pos = (W, T) => [X(T), Y(W)];
+    inv = (x, y) => ({
+      T: o.T_min + (x - o.marginL) / plotW * (o.T_max - o.T_min),
+      W: o.W_max - (y - o.marginT) / plotH * (o.W_max - o.W_min),
+    });
+  } else {
+    X = W => o.marginL + (W - o.W_min) / (o.W_max - o.W_min) * plotW;
+    Y = T => o.marginT + (o.T_max - T) / (o.T_max - o.T_min) * plotH;
+    pos = (W, T) => [X(W), Y(T)];
+    inv = (x, y) => ({
+      W: o.W_min + (x - o.marginL) / plotW * (o.W_max - o.W_min),
+      T: o.T_max - (y - o.marginT) / plotH * (o.T_max - o.T_min),
+    });
+  }
 
   let svg = `<svg viewBox="0 0 ${o.width} ${o.height}" xmlns="http://www.w3.org/2000/svg"
               style="background:#fff;font-family:Arial,sans-serif;">`;
 
-  // --- Grid: T isotherms (every 5°C) ---
+  // --- Grid: T isotherms (every 5°C) — используем pos для обоих layouts.
   svg += `<g stroke="#e0e0e0" stroke-width="0.5">`;
   for (let T = Math.ceil(o.T_min / 5) * 5; T <= o.T_max; T += 5) {
-    svg += `<line x1="${X(o.W_min)}" y1="${Y(T)}" x2="${X(o.W_max)}" y2="${Y(T)}"/>`;
+    const [x1, y1] = pos(o.W_min, T);
+    const [x2, y2] = pos(o.W_max, T);
+    svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
   }
   // W grid (every 0.002)
   for (let W = 0; W <= o.W_max + 1e-9; W += 0.002) {
-    svg += `<line x1="${X(W)}" y1="${Y(o.T_min)}" x2="${X(W)}" y2="${Y(o.T_max)}"/>`;
+    const [x1, y1] = pos(W, o.T_min);
+    const [x2, y2] = pos(W, o.T_max);
+    svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
   }
   svg += `</g>`;
 
   // --- Saturation curve (RH=100%) ---
-  svg += curvePath(o, X, Y, 1.0, '#c62828', 1.6);
-
-  // --- RH isolines 10..90% every 10% ---
+  svg += curvePath(o, pos, 1.0, '#c62828', 1.6);
   for (let rh = 10; rh < 100; rh += 10) {
-    svg += curvePath(o, X, Y, rh / 100, '#9e9e9e', 0.5);
+    svg += curvePath(o, pos, rh / 100, '#9e9e9e', 0.5);
   }
 
   // --- Constant enthalpy lines (kJ/kg_da) every 10 kJ/kg ---
-  // h = 1.006·T + W·(2501 + 1.86·T). Solve for T(W):
-  //    T = (h - 2501·W) / (1.006 + 1.86·W)
-  // v0.59.935: добавлены подписи изоэнтальп — раньше линии были без меток.
   svg += `<g stroke="#1976d2" stroke-width="0.4" stroke-dasharray="3,2" opacity="0.7">`;
   const enthalpyLabels = [];
   for (let h = -20; h <= 120; h += 10) {
@@ -56,63 +85,93 @@ export function render(container, opts = {}) {
     for (let i = 0; i <= 40; i++) {
       const W = o.W_min + (o.W_max - o.W_min) * i / 40;
       const T = (h - 2501 * W) / (1.006 + 1.86 * W);
-      if (T >= o.T_min && T <= o.T_max) pts.push([X(W), Y(T), W, T]);
+      if (T >= o.T_min && T <= o.T_max) {
+        const [px, py] = pos(W, T);
+        pts.push([px, py]);
+      }
     }
     if (pts.length > 1) {
       svg += `<polyline points="${pts.map(p=>p[0]+','+p[1]).join(' ')}" fill="none"/>`;
-      // Метка на ВЕРХНЕМ конце линии (где она упирается в верхнюю границу
-      // плот-области) — там у h=const-линий обычно W побольше, T поменьше.
-      // Берём первую точку (наименьший W → наибольший T).
       const head = pts[0];
       enthalpyLabels.push({ x: head[0], y: head[1], h });
     }
   }
   svg += `</g>`;
-  // Подписи h в kJ/kg возле верхнего конца каждой изоэнтальпы.
-  // Помещаем чуть выше точки (y - 4) с белым stroke-наводкой для читаемости
-  // на сетке.
   for (const lbl of enthalpyLabels) {
-    if (lbl.y < o.marginT + 6) continue;  // не вылезаем за верхнюю границу
+    if (lbl.y < o.marginT + 6) continue;
     svg += `<text x="${lbl.x + 2}" y="${lbl.y - 3}"
              style="font-size:9px;fill:#1565c0;font-weight:600;paint-order:stroke;stroke:#fff;stroke-width:2.5px;">
              h=${lbl.h}</text>`;
   }
 
-  // --- Axes ---
-  svg += `<g stroke="#333" stroke-width="0.8">`;
-  svg += `<line x1="${o.marginL}" y1="${Y(o.T_min)}" x2="${o.marginL + plotW}" y2="${Y(o.T_min)}"/>`;
-  svg += `<line x1="${o.marginL}" y1="${o.marginT}" x2="${o.marginL}" y2="${Y(o.T_min)}"/>`;
+  // --- Axes (плот-рамка) ---
+  svg += `<g stroke="#333" stroke-width="0.8" fill="none">`;
+  svg += `<rect x="${o.marginL}" y="${o.marginT}" width="${plotW}" height="${plotH}"/>`;
   svg += `</g>`;
 
-  // T labels (left)
-  for (let T = Math.ceil(o.T_min / 5) * 5; T <= o.T_max; T += 5) {
-    svg += `<text x="${o.marginL - 6}" y="${Y(T) + 3}" text-anchor="end"
-             style="font-size:10px;fill:#333;">${T}</text>`;
-  }
-  // W labels (bottom) in g/kg
-  for (let W = 0; W <= o.W_max + 1e-9; W += 0.005) {
-    svg += `<text x="${X(W)}" y="${Y(o.T_min) + 14}" text-anchor="middle"
-             style="font-size:10px;fill:#333;">${(W * 1000).toFixed(0)}</text>`;
-  }
-
-  // Axis titles
-  svg += `<text x="${o.marginL + plotW / 2}" y="${o.height - 10}" text-anchor="middle"
-           style="font-size:11px;fill:#555;font-weight:600;">
-           d (W), г влаги / кг сух. воздуха</text>`;
-  svg += `<text x="12" y="${o.marginT + plotH / 2}" text-anchor="middle"
-           transform="rotate(-90 12 ${o.marginT + plotH / 2})"
-           style="font-size:11px;fill:#555;font-weight:600;">t, °C</text>`;
-
-  // RH annotations along saturation curve top area
-  for (const rh of [20, 40, 60, 80, 100]) {
-    // find point at some T for label
-    const T = 30;
-    const Pws_T = Pws(T);
-    const Pw = rh / 100 * Pws_T;
-    const W = 0.621945 * Pw / (o.P - Pw);
-    if (W >= o.W_min && W <= o.W_max) {
-      svg += `<text x="${X(W) + 3}" y="${Y(T)}" style="font-size:9px;fill:#666;">
-              φ=${rh}%</text>`;
+  if (isAshrae) {
+    // T-метки снизу
+    for (let T = Math.ceil(o.T_min / 5) * 5; T <= o.T_max; T += 5) {
+      const [px] = pos(o.W_min, T);
+      svg += `<text x="${px}" y="${o.marginT + plotH + 14}" text-anchor="middle"
+               style="font-size:10px;fill:#333;">${T}</text>`;
+    }
+    // W-метки справа (г/кг)
+    for (let W = 0; W <= o.W_max + 1e-9; W += 0.005) {
+      const [, py] = pos(W, o.T_min);
+      svg += `<text x="${o.marginL + plotW + 6}" y="${py + 3}" text-anchor="start"
+               style="font-size:10px;fill:#333;">${(W * 1000).toFixed(0)}</text>`;
+    }
+    // Axis titles
+    svg += `<text x="${o.marginL + plotW / 2}" y="${o.height - 8}" text-anchor="middle"
+             style="font-size:11px;fill:#555;font-weight:600;">
+             t, °C — Dry-Bulb Temperature</text>`;
+    const wLblX = o.marginL + plotW + o.marginR - 6;
+    const wLblY = o.marginT + plotH / 2;
+    svg += `<text x="${wLblX}" y="${wLblY}" text-anchor="middle"
+             transform="rotate(90 ${wLblX} ${wLblY})"
+             style="font-size:11px;fill:#555;font-weight:600;">
+             d (W), г/кг — Humidity Ratio</text>`;
+    // RH-аннотации
+    for (const rh of [20, 40, 60, 80, 100]) {
+      const T = 28;
+      const Pws_T = Pws(T);
+      const Pw = rh / 100 * Pws_T;
+      const W = 0.621945 * Pw / (o.P - Pw);
+      if (W >= o.W_min && W <= o.W_max) {
+        const [px, py] = pos(W, T);
+        svg += `<text x="${px + 3}" y="${py - 2}" style="font-size:9px;fill:#666;font-style:italic;">
+                φ=${rh}%</text>`;
+      }
+    }
+  } else {
+    // RAMZIN: T-метки слева, W-метки снизу
+    for (let T = Math.ceil(o.T_min / 5) * 5; T <= o.T_max; T += 5) {
+      const [, py] = pos(o.W_min, T);
+      svg += `<text x="${o.marginL - 6}" y="${py + 3}" text-anchor="end"
+               style="font-size:10px;fill:#333;">${T}</text>`;
+    }
+    for (let W = 0; W <= o.W_max + 1e-9; W += 0.005) {
+      const [px] = pos(W, o.T_min);
+      svg += `<text x="${px}" y="${o.marginT + plotH + 14}" text-anchor="middle"
+               style="font-size:10px;fill:#333;">${(W * 1000).toFixed(0)}</text>`;
+    }
+    svg += `<text x="${o.marginL + plotW / 2}" y="${o.height - 10}" text-anchor="middle"
+             style="font-size:11px;fill:#555;font-weight:600;">
+             d (W), г влаги / кг сух. воздуха</text>`;
+    svg += `<text x="12" y="${o.marginT + plotH / 2}" text-anchor="middle"
+             transform="rotate(-90 12 ${o.marginT + plotH / 2})"
+             style="font-size:11px;fill:#555;font-weight:600;">t, °C</text>`;
+    for (const rh of [20, 40, 60, 80, 100]) {
+      const T = 30;
+      const Pws_T = Pws(T);
+      const Pw = rh / 100 * Pws_T;
+      const W = 0.621945 * Pw / (o.P - Pw);
+      if (W >= o.W_min && W <= o.W_max) {
+        const [px, py] = pos(W, T);
+        svg += `<text x="${px + 3}" y="${py}" style="font-size:9px;fill:#666;">
+                φ=${rh}%</text>`;
+      }
     }
   }
 
@@ -121,15 +180,15 @@ export function render(container, opts = {}) {
   // бейджи/crosshair) теряется — браузер сам закрывает svg уже после
   // присвоения в innerHTML, но overlay в строку попасть не успевает.
   svg += `</svg>`;
-  return { svg, X, Y, opts: o };
+  return { svg, X, Y, pos, inv, opts: o, style: o.style };
 }
 
-function curvePath(o, X, Y, rh, color, width) {
+function curvePath(o, pos, rh, color, width) {
   const pts = [];
   for (let T = o.T_min; T <= o.T_max; T += 0.5) {
     const W = humidityRatio(T, rh, o.P);
     if (W > o.W_max) break;
-    pts.push([X(W), Y(T)]);
+    pts.push(pos(W, T));
   }
   if (!pts.length) return '';
   return `<polyline points="${pts.map(p=>p.join(',')).join(' ')}"
@@ -138,8 +197,7 @@ function curvePath(o, X, Y, rh, color, width) {
 
 /* --- Plot a process point or trajectory --- */
 export function plotPoint(ctx, st, label, color = '#0d47a1') {
-  const { X, Y } = ctx;
-  const x = X(st.W), y = Y(st.T);
+  const [x, y] = ctx.pos ? ctx.pos(st.W, st.T) : [ctx.X(st.W), ctx.Y(st.T)];
   let s = `<g>`;
   s += `<circle cx="${x}" cy="${y}" r="4" fill="${color}" stroke="#fff" stroke-width="1.2"/>`;
   if (label) {

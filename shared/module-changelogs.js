@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.940', date: '2026-05-01', items: [
+      '🌐 <b>ASHRAE-style chart layout в альбомной ориентации</b>. Долгожданный фикс по pending-репорту: «не забудь что в альбомной ориентации я просил сделать другой тип диаграммы, как в Ashrae».',
+      '• <code>render()</code> в <code>psychrometrics-chart.js</code> теперь принимает option <code>style: \'ramzin\' | \'ashrae\'</code>. В alb. → ASHRAE (T горизонталь, W вертикаль на правой оси, как в учебниках/западных стандартах). В книжной → Mollier-Ramzin (W горизонталь, T вертикаль, RU-стиль).',
+      '• Унифицированная API в ctx: <code>pos(W, T) → [x, y]</code> и <code>inv(x, y) → {W, T}</code>. Все потребители (renderChart, drawProcessPath, attachCrosshair, computeComfortZonePolygon, plotPoint) переведены на этот API — общий код для обоих layouts.',
+      '🐛 <b>Bug-fix: параметры процесса в модалке не доезжали до cascade</b>. По репорту: «параметры внесенные в процесс не изменяют параметров точек которые зависят от процесса» + «все данные зависимые и влияющие должны пересчитываться автоматически и сохраняться».',
+      '• Раньше: <code>readInputs()</code> читал только из <code>#psy-cycle</code> и <code>#psy-edges</code> — модалка <code>.psy-proc-edit-overlay</code> игнорировалась. Q/qw/V/ADP/BF/recupEff введённые в модалку не попадали в S.procs[i] → cascade видел старое состояние → точки не обновлялись.',
+      '• Fix: селектор расширен до <code>#psy-cycle [data-col], #psy-edges [data-col], .psy-proc-edit-overlay [data-col]</code>. Теперь любое изменение в модалке проходит full-update pipeline (readInputs → cascade → fillComputedDH → renderChart → saveCycle), и зависимые точки пересчитываются и сохраняются автоматически.',
+      'Файлы: <code>psychrometrics/psychrometrics-chart.js</code> (style + pos/inv API), <code>psychrometrics/psychrometrics.js</code> (renderChart + drawProcessPath + computeComfortZonePolygon + attachCrosshair → pos/inv; readInputs include modal).',
+    ] },
     { version: '0.59.939', date: '2026-05-01', items: [
       '⇄ <b>Управление процессами — в левом сайдбаре блока «Узлы»</b>. По репорту: «управление процессами сделай в левом сайдбаре этого блока. Там должны быть только названия процессов и краткие характеристики, сама настройка процесса должна проходить в том же модальном окне что и в мастере процесса».',
       '• Слева от canvas — узкий sidebar (280px) с компактным списком процессов. Каждый item: цветной type-badge (P/C/A/S/M/R/X), краткое имя («Нагрев», «Охлаждение», …), endpoints (1.Лето → 2.Охл.), краткая статистика (T_a → T_b, ΔT, Q, q<sub>w</sub>), кнопка ✕ для удаления.',

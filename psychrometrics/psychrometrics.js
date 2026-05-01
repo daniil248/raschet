@@ -1022,7 +1022,12 @@ function readInputs() {
   if (tmin < tmax - 5) { S.tMinChart = tmin; S.tMaxChart = tmax; }
   if (dmax >= 5)       { S.dMaxChart = dmax; }
 
-  $$('#psy-cycle [data-col], #psy-edges [data-col]').forEach(el => {
+  // v0.59.940: подключаем также модалку редактора процесса — её inputs
+  // ранее игнорировались (т.к. они не внутри #psy-cycle/#psy-edges), и
+  // изменения в модалке не доезжали до cascade. По репорту: «параметры
+  // внесенные в процесс не изменяют параметров точек которые зависят от
+  // процесса».
+  $$('#psy-cycle [data-col], #psy-edges [data-col], .psy-proc-edit-overlay [data-col]').forEach(el => {
     const col = el.dataset.col;
     const i   = +el.dataset.i;
     const v   = el.value;
@@ -1656,7 +1661,7 @@ const COMFORT_ZONES = {
   'tc99-a4':   { Tmin:  5, Tmax: 45, RHmin: 0.08, RHmax: 0.90, TdMin: -12, TdMax: 24, label: 'TC 9.9 A4',          stroke: '#b91c1c', fill: 'rgba(185,28,28,0.10)' },
 };
 
-function computeComfortZonePolygon(P, X, Y, zoneId) {
+function computeComfortZonePolygon(P, pos, zoneId) {
   const z = COMFORT_ZONES[zoneId];
   if (!z) return null;
   // v0.59.937: envelope = AND по 4-м constraints. На каждом T ∈ [Tmin, Tmax]
@@ -1694,59 +1699,55 @@ function computeComfortZonePolygon(P, X, Y, zoneId) {
     }
     if (bottom.length < 2 || top.length < 2) return null;
     const corners = [...bottom, ...top];
-    const pts = corners.map(([T, W]) =>
-      `${X(W).toFixed(1)},${Y(T).toFixed(1)}`);
+    const pts = corners.map(([T, W]) => {
+      const [x, y] = pos(W, T);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
     return { points: pts.join(' '), zone: z };
   } catch { return null; }
 }
 
-let _chartCtx = null;  // {X, Y, opts} последнего рендера — для crosshair
-let _activePoint = null;  // индекс карточки точки, на которой сейчас фокус
+let _chartCtx = null;
+let _activePoint = null;
 function renderChart(sts) {
   const host = $('psy-chart');
-  // v0.59.90: реальные габариты A4/A3 × ориентация. Было фиксированное 900×600.
   const dims = chartPageDims();
-  const { svg, X, Y, opts } = render(null, {
+  // v0.59.940: layout переключается по ориентации.
+  //   landscape → ASHRAE-style (T-горизонт, W-вертикаль справа)
+  //   portrait  → Mollier-Ramzin (W-горизонт, T-вертикаль слева)
+  const chartStyle = (S.chartOrient === 'landscape') ? 'ashrae' : 'ramzin';
+  const { svg, X, Y, pos, inv, opts, style } = render(null, {
     P: S.P,
     T_min: S.tMinChart, T_max: S.tMaxChart,
     W_max: S.dMaxChart / 1000,
     width: dims.w, height: dims.h,
+    style: chartStyle,
   });
-  const ctx = { X, Y };
-  _chartCtx = { X, Y, opts };
+  const ctx = { X, Y, pos, inv, style, opts };
+  _chartCtx = { X, Y, pos, inv, opts, style };
   let overlay = arrowDefs();
 
-  // v0.59.929/930: zone overlay (ASHRAE 55 или TC 9.9 A1-A4 / Recommended).
-  // S.comfortZoneId — ключ из COMFORT_ZONES; 'tc99-all' рисует все вложенные
-  // (Recommended внутри A1 внутри A2 ...A4) — стиль официального ASHRAE TC 9.9
-  // chart. Пустой → ничего не рисуем.
   const zoneId = S.comfortZoneId || (S.showComfortZone !== false ? 'tc99-rec' : '');
   if (zoneId === 'tc99-all') {
-    // Стек: рисуем от наибольшего (A4) к наименьшему (Recommended) — большие
-    // полигоны под маленькими. Подписи у правого верхнего угла каждой зоны.
     const stack = ['tc99-a4', 'tc99-a3', 'tc99-a2', 'tc99-a1', 'tc99-rec'];
     for (const id of stack) {
-      const cz = computeComfortZonePolygon(S.P, X, Y, id);
+      const cz = computeComfortZonePolygon(S.P, pos, id);
       if (!cz) continue;
       const z = cz.zone;
-      // Лейбл в правом верхнем углу зоны (Tmax, RHmax)
-      const labelW = humidityRatio(z.Tmax, z.RHmax, S.P);
-      const labelX = X(labelW) + 4;
-      const labelY = Y(z.Tmax) + 12;
+      const [labelXc, labelYc] = pos(humidityRatio(z.Tmax, z.RHmax, S.P), z.Tmax);
       overlay += `<g class="psy-comfort-zone" pointer-events="none">
         <polygon points="${cz.points}" fill="none" stroke="${z.stroke}" stroke-width="1.4"/>
-        <text x="${labelX}" y="${labelY}" font-size="11" fill="${z.stroke}" font-weight="700">${escAttr(z.label.replace('TC 9.9 ', ''))}</text>
+        <text x="${labelXc + 4}" y="${labelYc + 12}" font-size="11" fill="${z.stroke}" font-weight="700">${escAttr(z.label.replace('TC 9.9 ', ''))}</text>
       </g>`;
     }
   } else if (zoneId) {
-    const cz = computeComfortZonePolygon(S.P, X, Y, zoneId);
+    const cz = computeComfortZonePolygon(S.P, pos, zoneId);
     if (cz) {
       const z = cz.zone;
-      const labelX = X(humidityRatio(z.Tmax, z.RHmax, S.P)) + 6;
-      const labelY = Y(z.Tmax) - 4;
+      const [labelXc, labelYc] = pos(humidityRatio(z.Tmax, z.RHmax, S.P), z.Tmax);
       overlay += `<g class="psy-comfort-zone" pointer-events="none">
         <polygon points="${cz.points}" fill="${z.fill}" stroke="${z.stroke}" stroke-width="1" stroke-dasharray="5,3"/>
-        <text x="${labelX}" y="${labelY}" font-size="10" fill="${z.stroke}" font-weight="700">${escAttr(z.label)}</text>
+        <text x="${labelXc + 6}" y="${labelYc - 4}" font-size="10" fill="${z.stroke}" font-weight="700">${escAttr(z.label)}</text>
       </g>`;
     }
   }
@@ -1790,31 +1791,29 @@ function renderChart(sts) {
     const idx = (segIdx.get(`${i}-${key}`) || segIdx.size) % total;
     segIdx.set(`${i}-${key}`, idx);
     let dx = 0, dy = 0;
+    const [ax, ay] = pos(a.W, a.T);
+    const [bx, by] = pos(b.W, b.T);
     if (total > 1) {
-      // Перпендикулярное смещение: pos i из total равномерно по ±half
-      const sign = fromI < toI ? 1 : -1;  // прямое vs обратное направление
-      const ax = X(a.W), ay = Y(a.T), bx = X(b.W), by = Y(b.T);
+      const sign = fromI < toI ? 1 : -1;
       const dxLine = bx - ax, dyLine = by - ay;
       const len = Math.max(1, Math.hypot(dxLine, dyLine));
-      // perpendicular unit normal
       const nx = -dyLine / len, ny = dxLine / len;
       dx = sign * PAIR_OFFSET_PX * nx;
       dy = sign * PAIR_OFFSET_PX * ny;
     }
     overlay += drawProcessPath(ctx, a, b, pr.type, color, pr, { dx, dy });
-    // Штриховая связь с опорной точкой для M/R (визуализация графа)
     if (pr.type === 'M' || pr.type === 'R') {
       const refKey = pr.type === 'M' ? pr.mixWith : pr.recupWith;
       const refIdx = parseInt(refKey, 10);
       if (Number.isFinite(refIdx) && sts[refIdx]) {
         const r = sts[refIdx];
-        overlay += `<line x1="${X(r.W)}" y1="${Y(r.T)}" x2="${X(b.W)}" y2="${Y(b.T)}"
+        const [rx, ry] = pos(r.W, r.T);
+        overlay += `<line x1="${rx}" y1="${ry}" x2="${bx}" y2="${by}"
                      stroke="${color}" stroke-width="1" stroke-dasharray="4,3" opacity="0.6"/>`;
       }
     }
-    // Бейдж типа процесса на середине сегмента + смещение
-    const mx = (X(a.W) + X(b.W)) / 2 + dx;
-    const my = (Y(a.T) + Y(b.T)) / 2 + dy;
+    const mx = (ax + bx) / 2 + dx;
+    const my = (ay + by) / 2 + dy;
     // v0.59.936: подпись имени процесса под бейджем (короткое чтение типа,
     // чтобы было ясно кому P/C/A/S/M/R соответствует — иначе буква без
     // контекста). По репорту: «не видно название второго процесса».
@@ -1836,7 +1835,8 @@ function renderChart(sts) {
   // Кольцо-подсветка активной точки (если карточка в фокусе)
   if (Number.isFinite(_activePoint) && sts[_activePoint]) {
     const st = sts[_activePoint];
-    overlay += `<circle cx="${X(st.W)}" cy="${Y(st.T)}" r="10" fill="none"
+    const [px, py] = pos(st.W, st.T);
+    overlay += `<circle cx="${px}" cy="${py}" r="10" fill="none"
                  stroke="#ff6f00" stroke-width="2" opacity="0.85">
                 <animate attributeName="r" values="10;14;10" dur="1.4s" repeatCount="indefinite"/>
                 <animate attributeName="opacity" values="0.85;0.35;0.85" dur="1.4s" repeatCount="indefinite"/>
@@ -1938,9 +1938,11 @@ function attachCrosshair(host) {
     const { opts } = _chartCtx;
     const plotW = opts.width - opts.marginL - opts.marginR;
     const plotH = opts.height - opts.marginT - opts.marginB;
-    // Инвертируем X и Y
-    const W = opts.W_min + (px - opts.marginL) / plotW * (opts.W_max - opts.W_min);
-    const T = opts.T_max - (py - opts.marginT) / plotH * (opts.T_max - opts.T_min);
+    // v0.59.940: используем ctx.inv для обоих layouts (ramzin/ashrae).
+    const { W, T } = _chartCtx.inv ? _chartCtx.inv(px, py) : {
+      W: opts.W_min + (px - opts.marginL) / plotW * (opts.W_max - opts.W_min),
+      T: opts.T_max - (py - opts.marginT) / plotH * (opts.T_max - opts.T_min),
+    };
     const g = svg.querySelector('#psy-xhair');
     const readout = host.querySelector('.psy-xh-readout');
     // Вне поля графика — скрыть
@@ -2018,10 +2020,10 @@ function attachCrosshair(host) {
     const px = (e.clientX - rect.left) * sx;
     const py = (e.clientY - rect.top)  * sy;
     const { opts } = _chartCtx;
-    const plotW = opts.width - opts.marginL - opts.marginR;
-    const plotH = opts.height - opts.marginT - opts.marginB;
-    const W = opts.W_min + (px - opts.marginL) / plotW * (opts.W_max - opts.W_min);
-    const T = opts.T_max - (py - opts.marginT) / plotH * (opts.T_max - opts.T_min);
+    const { W, T } = _chartCtx.inv ? _chartCtx.inv(px, py) : {
+      W: opts.W_min + (px - opts.marginL) / (opts.width - opts.marginL - opts.marginR) * (opts.W_max - opts.W_min),
+      T: opts.T_max - (py - opts.marginT) / (opts.height - opts.marginT - opts.marginB) * (opts.T_max - opts.T_min),
+    };
     if (W < opts.W_min || W > opts.W_max || T < opts.T_min || T > opts.T_max) return;
     // φ = pv/Pws; clamp в физический диапазон.
     const pv = Math.max(0, W) * S.P / (0.621945 + Math.max(0, W));
@@ -2048,19 +2050,22 @@ function attachCrosshair(host) {
    offset = { dx, dy } — перпендикулярное смещение для overlapping-арок
    (если два процесса делят одни и те же endpoints). */
 function drawProcessPath(ctx, a, b, type, color, proc, offset) {
-  const { X, Y } = ctx;
+  // v0.59.940: pp(W, T) — единая (W, T) → [x, y] трансляция с offset,
+  // работает для ramzin/ashrae layouts.
   const dx = offset?.dx || 0;
   const dy = offset?.dy || 0;
-  const xx = (W) => X(W) + dx;
-  const yy = (T) => Y(T) + dy;
+  const pp = (W, T) => {
+    const [x, y] = ctx.pos(W, T);
+    return [x + dx, y + dy];
+  };
   // C с ADP/BF — спец-визуал: ADP-marker + mix line.
   if (type === 'C') {
     const adpC = nNum(proc?.adp);
     if (Number.isFinite(adpC) && adpC < a.Td - 0.01 && b.W < a.W - 1e-6) {
       const Wadp = humidityRatio(adpC, 1.0, a.P);
-      const xA = xx(a.W),  yA = yy(a.T);
-      const xB = xx(b.W),  yB = yy(b.T);
-      const xAdp = xx(Wadp), yAdp = yy(adpC);
+      const [xA, yA] = pp(a.W, a.T);
+      const [xB, yB] = pp(b.W, b.T);
+      const [xAdp, yAdp] = pp(Wadp, adpC);
       return `<g>
         <line x1="${xA}" y1="${yA}" x2="${xAdp}" y2="${yAdp}"
               stroke="${color}" stroke-width="0.9" stroke-dasharray="2,3" opacity="0.6"/>
@@ -2075,58 +2080,58 @@ function drawProcessPath(ctx, a, b, type, color, proc, offset) {
       </g>`;
     }
   }
-  const pts = [[xx(a.W), yy(a.T)]];
+  const pts = [pp(a.W, a.T)];
   if (type === 'P') {
-    pts.push([xx(a.W), yy(b.T)]);
+    pts.push(pp(a.W, b.T));
   } else if (type === 'A') {
     const h = a.h;
     const steps = 12;
     for (let k = 1; k <= steps; k++) {
       const W = a.W + (b.W - a.W) * (k/steps);
       const t = (h - 2501*W) / (1.006 + 1.86*W);
-      pts.push([xx(W), yy(t)]);
+      pts.push(pp(W, t));
     }
   } else if (type === 'S') {
-    pts.push([xx(b.W), yy(a.T)]);
+    pts.push(pp(b.W, a.T));
   } else if (type === 'M') {
-    pts.push([xx(b.W), yy(b.T)]);
+    pts.push(pp(b.W, b.T));
   } else if (type === 'R') {
     if (b.T < a.Td - 0.05 && b.W < a.W - 1e-6) {
       const Tdew = a.Td;
-      pts.push([xx(a.W), yy(Tdew)]);
+      pts.push(pp(a.W, Tdew));
       const steps = 10;
       for (let k = 1; k <= steps; k++) {
         const T = Tdew + (b.T - Tdew) * (k / steps);
         const W = humidityRatio(T, 1.0, a.P);
-        pts.push([xx(W), yy(T)]);
+        pts.push(pp(W, T));
       }
     } else if (b.T < a.Td - 0.05) {
       const Tdew = a.Td;
-      pts.push([xx(a.W), yy(Tdew)]);
+      pts.push(pp(a.W, Tdew));
       const steps = 10;
       for (let k = 1; k <= steps; k++) {
         const T = Tdew + (b.T - Tdew) * (k / steps);
         const W = Math.min(b.W || a.W, humidityRatio(T, 1.0, a.P));
-        pts.push([xx(W), yy(T)]);
+        pts.push(pp(W, T));
       }
     } else {
-      pts.push([xx(a.W), yy(b.T)]);
+      pts.push(pp(a.W, b.T));
     }
   } else if (type === 'C') {
     if (b.W < a.W - 1e-6) {
       const Tdew = a.Td;
-      pts.push([xx(a.W), yy(Tdew)]);
+      pts.push(pp(a.W, Tdew));
       const steps = 10;
       for (let k = 1; k <= steps; k++) {
         const T = Tdew + (b.T - Tdew) * (k/steps);
         const W = humidityRatio(T, 1.0, a.P);
-        pts.push([xx(W), yy(T)]);
+        pts.push(pp(W, T));
       }
     } else {
-      pts.push([xx(b.W), yy(b.T)]);
+      pts.push(pp(b.W, b.T));
     }
   }
-  pts.push([xx(b.W), yy(b.T)]);
+  pts.push(pp(b.W, b.T));
   return `<polyline points="${pts.map(p=>p.join(',')).join(' ')}" fill="none"
            stroke="${color}" stroke-width="2.2" stroke-linejoin="round"
            marker-end="url(#arrow-${type})"/>`;
