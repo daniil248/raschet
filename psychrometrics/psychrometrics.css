@@ -673,6 +673,49 @@ body.psy-dragging *::after {
      это должен оставаться все тот же A3, A4 лист». */
   .psy-chart svg { transform: none !important; }
 }
+
+/* v0.59.977: popup настройки видимости элементов диаграммы.
+   Кнопка ⚙ Вид → toggle popup с чекбоксами. */
+.psy-chart-vis-popup {
+  position: absolute;
+  top: 38px;
+  left: 12px;
+  z-index: 11;
+  background: #fff;
+  border: 1px solid #cfd8dc;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 11px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  min-width: 220px;
+}
+.psy-chart-vis-popup[hidden] { display: none; }
+.psy-chart-vis-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: #263238;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #eceff1;
+}
+.psy-chart-vis-popup label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  cursor: pointer;
+  font-size: 11px;
+  color: #37474f;
+}
+.psy-chart-vis-popup label:hover { background: #f5f7fa; }
+.psy-chart-vis-popup input[type="checkbox"] { margin: 0; cursor: pointer; }
+
+/* v0.59.977: классы видимости (применяются на .psy-chart) */
+.psy-chart.psy-vis-no-grid svg .psy-svg-grid { display: none; }
+.psy-chart.psy-vis-no-rh-curves svg .psy-svg-rh-curves { display: none; }
+.psy-chart.psy-vis-no-h-curves svg .psy-svg-h-curves { display: none; }
+.psy-chart.psy-vis-no-comfort-zone svg .psy-comfort-zone { display: none; }
+.psy-chart.psy-vis-no-legend svg .psy-legend { display: none; }
 /* Хост диаграммы поддерживает overflow при zoom > 100%. */
 .psy-chart {
   position: relative;

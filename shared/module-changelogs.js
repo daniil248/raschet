@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.977', date: '2026-05-01', items: [
+      '⚙ <b>«⚙ Вид» popup — настройка видимости элементов диаграммы</b>. Кнопка раньше была в HTML, но без JS-handler-а — не работала. По репорту: «настройка вида не работает».',
+      '• Toggle popup на клик ⚙ Вид. Чекбоксы: RH-кривые, h-кривые, сетка, зоны TC 9.9 / ASHRAE 55, легенда «Параметры точек».',
+      '• Каждый toggle добавляет/убирает CSS-класс на <code>.psy-chart</code> (psy-vis-no-rh-curves / -h-curves / -grid / -comfort-zone / -legend).',
+      '• Render() помечает SVG-группы классами (.psy-svg-grid, .psy-svg-rh-curves, .psy-svg-h-curves) — CSS таргетит их через <code>.psy-vis-no-X svg .psy-svg-X</code>.',
+      '• State persists в LS (<code>psy.chartVis</code>). После каждого <code>renderChart()</code> применяется автоматически.',
+      '• Click outside popup → закрытие.',
+      'Файлы: <code>psychrometrics/psychrometrics.css</code> (popup styles + visibility classes), <code>psychrometrics/psychrometrics.js</code> (wireChartVisPopup + applyChartVis), <code>psychrometrics/psychrometrics-chart.js</code> (group classes).',
+    ] },
     { version: '0.59.976', date: '2026-05-01', items: [
       '🖨 <b>Печать только нужного: исходные данные + диаграмма + таблицы</b>. По репорту: «ПЕчатать только диаграмму по формату листа и таблицу параметров воздуха и процессов, так же исходные данные по площадке».',
       '• @media print: ВИДИМО — «Условия объекта» (площадка, P, V), «Параметры воздуха по точкам», «Процессы (Q, q<sub>w</sub>)», диаграмма (A3/A4 по viewBox).',

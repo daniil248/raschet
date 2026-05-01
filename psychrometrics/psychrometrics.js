@@ -2220,6 +2220,8 @@ function renderChart(sts) {
   }
   // v0.59.961: применяем chart-zoom к SVG (если был сохранён в LS).
   applyChartZoom();
+  // v0.59.977: применяем visibility-toggle классы.
+  try { applyChartVis(); } catch {}
 }
 
 /* v0.59.961: chart-zoom — независимый от browser-zoom масштаб самой
@@ -2258,6 +2260,63 @@ function applyChartZoom(z, pan) {
   const lbl = document.getElementById('psy-chart-zoom-label');
   if (lbl) lbl.textContent = Math.round(_chartZoom * 100) + '%';
 }
+/* v0.59.977: попап «⚙ Вид» — настройка видимости элементов диаграммы.
+   Чекбоксы → toggle CSS-классов на .psy-chart → CSS hides matching SVG groups. */
+const VIS_KEYS = ['rhCurves','hCurves','grid','zones','legend'];
+const VIS_TO_CLASS = {
+  rhCurves: 'psy-vis-no-rh-curves',
+  hCurves:  'psy-vis-no-h-curves',
+  grid:     'psy-vis-no-grid',
+  zones:    'psy-vis-no-comfort-zone',
+  legend:   'psy-vis-no-legend',
+};
+function loadChartVis() {
+  try {
+    const raw = localStorage.getItem('psy.chartVis');
+    if (raw) return { ...defaultVis(), ...JSON.parse(raw) };
+  } catch {}
+  return defaultVis();
+}
+function defaultVis() { return Object.fromEntries(VIS_KEYS.map(k => [k, true])); }
+let _chartVis = loadChartVis();
+function applyChartVis() {
+  const host = document.getElementById('psy-chart');
+  if (!host) return;
+  for (const k of VIS_KEYS) {
+    const cls = VIS_TO_CLASS[k];
+    if (!cls) continue;
+    host.classList.toggle(cls, !_chartVis[k]);
+  }
+}
+function wireChartVisPopup() {
+  const btn = document.getElementById('psy-chart-vis-btn');
+  const popup = document.getElementById('psy-chart-vis-popup');
+  if (!btn || !popup || btn._wired) return;
+  btn._wired = true;
+  // Initial sync of checkboxes from state
+  popup.querySelectorAll('input[type="checkbox"][data-vis]').forEach(cb => {
+    const k = cb.dataset.vis;
+    if (VIS_KEYS.includes(k)) cb.checked = !!_chartVis[k];
+  });
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    popup.hidden = !popup.hidden;
+  });
+  popup.addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', () => { popup.hidden = true; });
+  popup.addEventListener('change', (e) => {
+    const cb = e.target.closest('input[type="checkbox"][data-vis]');
+    if (!cb) return;
+    const k = cb.dataset.vis;
+    if (!VIS_KEYS.includes(k)) return;
+    _chartVis[k] = cb.checked;
+    try { localStorage.setItem('psy.chartVis', JSON.stringify(_chartVis)); } catch {}
+    applyChartVis();
+  });
+  // Apply на инициализации
+  applyChartVis();
+}
+
 function wireChartZoomToolbar() {
   const tb = document.querySelector('.psy-chart-zoom-toolbar');
   if (!tb || tb._wired) return;
@@ -3075,6 +3134,7 @@ function wire() {
   try { renderCycle(); } catch (e) { console.error('[psy.wire.renderCycle]', e); }
   try { update(); } catch (e) { console.error('[psy.wire.update]', e); }
   try { wireChartZoomToolbar(); } catch (e) { console.error('[wireChartZoomToolbar]', e); }
+  try { wireChartVisPopup(); } catch (e) { console.error('[wireChartVisPopup]', e); }
   try { wireInfiniteCanvas(); }
   catch (e) { console.error('[wireInfiniteCanvas]', e); }
   // v0.59.927: рендер «active meteo» chip
