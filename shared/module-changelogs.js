@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.41', date: '2026-05-02', items: [
+      '🏢 <b>Service: автозаполнение customer из реквизитов проекта</b>. По требованию: «если модуль запущен из проекта, то все данные о заказчике должны добавиться из свойств проекта».',
+      '• <code>service/service.js</code>: новый helper <code>buildOrderDefaultsFromProject()</code> — читает <code>_pid.requisites</code> и возвращает <code>{customer: {name, contact}, notes}</code>.',
+      '• Применяется при создании наряда через «+ Наряд» (sidebar) и через «+ Монтаж/+ ТО» quick-create из cooling-карточек.',
+      '• <code>shared/service-bridge.js::createServiceOrderForProject</code> также автозаполняет (для cooling→service push «📤 → Сервис»). Caller может override полями через orderData.',
+      '• Маппинг: <code>requisites.customer → customer.name</code>, <code>requisites.gip → customer.contact</code>, <code>requisites.address + code + stage → notes</code> («Объект: ... (шифр ...) · стадия ...»).',
+      '• Toast подтверждения: «Наряд «...» создан (заказчик: ...)».',
+      'Файлы: <code>service/service.js</code>, <code>shared/service-bridge.js</code>.',
+    ] },
     { version: '0.60.40', date: '2026-05-02', items: [
       '📄 <b>Phase 29.1: убран overlay-overlap в КП</b>. По репорту: «содержимое попадает поверх шаблона». Раньше <code>openTemplateEditor</code> добавлял default header/footer overlays, которые накладывались поверх контента → шапка КП и название наряда наезжали друг на друга.',
       '• Fix v0.60.40: <code>export-offer.js::openOfferPreview</code> теперь экспортирует PDF напрямую через <code>Report.exportPDF(tpl, fname)</code> без template-editor. Overlays очищены (только page number в footer). Margins расширены (15-18мм).',

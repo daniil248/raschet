@@ -11,7 +11,7 @@
 //
 // Pure JS / LS utility wrappers.
 
-import { projectKey } from './project-storage.js';
+import { projectKey, getProject } from './project-storage.js';
 
 const KEY_ORDERS    = ['service', 'orders.v1'];
 const KEY_ACTIVE_ID = ['service', 'activeOrderId.v1'];
@@ -24,6 +24,21 @@ function storageKey(pid, suffix) {
 /**
  * Сгенерировать уникальный seq-id для нового наряда (учитывая существующие).
  */
+/* v0.60.41: вытащить customer/notes из реквизитов проекта. */
+function buildOrderDefaultsFromProjectRequisites(pid) {
+  if (!pid) return {};
+  try {
+    const proj = getProject(pid);
+    const r = proj?.requisites || {};
+    const out = {};
+    if (r.customer) out.customer = { name: r.customer, contact: r.gip || '' };
+    if (r.address) {
+      out.notes = `Объект: ${r.address}${r.code ? ` (шифр ${r.code})` : ''}${r.stage ? ` · стадия ${r.stage}` : ''}`;
+    }
+    return out;
+  } catch { return {}; }
+}
+
 function nextOrderId(pid) {
   let max = 0;
   try {
@@ -46,7 +61,17 @@ function nextOrderId(pid) {
  */
 export function createServiceOrderForProject(pid, orderData = {}) {
   const id = orderData.id || nextOrderId(pid);
-  const order = { ...orderData, id };
+  // v0.60.41: автозаполнение customer/notes из реквизитов проекта если caller
+  // не передал. По требованию: «если модуль запущен из проекта, то все
+  // данные о заказчике должны добавиться из свойств проекта».
+  const projectDefaults = pid ? buildOrderDefaultsFromProjectRequisites(pid) : {};
+  const order = {
+    ...projectDefaults,
+    ...orderData,                 // caller-overrides выше project-defaults
+    id,
+    // merge customer без потери частичных полей
+    customer: { ...(projectDefaults.customer || {}), ...(orderData.customer || {}) },
+  };
 
   // Append to orders[]
   let orders = [];

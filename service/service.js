@@ -232,6 +232,22 @@ function renderRichEmptyState(host) {
   });
 }
 
+/* v0.60.41: собрать default-поля наряда из реквизитов активного проекта.
+   По требованию: «если модуль запущен из проекта, то все данные о
+   заказчике должны добавиться из свойств проекта». */
+function buildOrderDefaultsFromProject() {
+  if (_standalone || !_pid) return {};
+  const r = _pid.requisites || {};
+  const out = {};
+  if (r.customer) {
+    out.customer = { name: r.customer, contact: r.gip || '' };
+  }
+  if (r.address) {
+    out.notes = `Объект: ${r.address}${r.code ? ` (шифр ${r.code})` : ''}${r.stage ? ` · стадия ${r.stage}` : ''}`;
+  }
+  return out;
+}
+
 /* v0.60.29: одно-клик создание наряда из cooling-подбора. */
 function quickCreateFromCooling(selId, optId, type) {
   const params = new URLSearchParams(location.search);
@@ -259,6 +275,8 @@ function quickCreateFromCooling(selId, optId, type) {
     type,
     coolingSelectionId: sel.id,
     positions,
+    // v0.60.41: автозаполнение customer/notes из реквизитов проекта
+    ...buildOrderDefaultsFromProject(),
   };
   _orders.push(newOrd);
   _activeOrderId = newOrd.id;
@@ -431,12 +449,14 @@ async function init() {
       ...DEFAULT_ORDER,
       id: 'ord-' + (_seq++),
       name: name.trim(),
+      // v0.60.41: автозаполнение customer из реквизитов проекта (по требованию).
+      ...buildOrderDefaultsFromProject(),
     };
     _orders.push(newOrd);
     _activeOrderId = newOrd.id;
     persist();
     renderActive();
-    util.toast(`Наряд «${newOrd.name}» создан`, 'ok');
+    util.toast(`Наряд «${newOrd.name}» создан${newOrd.customer?.name ? ` (заказчик: ${newOrd.customer.name})` : ''}`, 'ok');
   });
 
   // Orders list interactions
