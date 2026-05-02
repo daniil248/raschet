@@ -173,8 +173,10 @@
 
       <div id="cl-active-pane" class="cl-active-pane" hidden>
         <div class="cl-tabs">
-          <button type="button" class="cl-tab active" data-tab="spec"
-                  title="Спецификация одной системы охлаждения: тип, rated, FC параметры.">❄ Spec</button>
+          <button type="button" class="cl-tab active" data-tab="general"
+                  title="Свойства всего подбора: требуемая мощность системы охлаждения + процент запаса. Общие условия для всех вариантов сравнения.">📋 Свойства подбора</button>
+          <button type="button" class="cl-tab" data-tab="spec"
+                  title="Параметры ОДНОГО агрегата + уровень резервирования. Количество агрегатов в системе считается автоматически из требуемой мощности (Свойства подбора) и rated этого агрегата.">❄ Spec (1 агрегат)</button>
           <button type="button" class="cl-tab" data-tab="energy"
                   title="Сводная таблица годовых часов + стек-бар чарт по интервалам температуры наружного воздуха. FC + OPEX сводка.">📊 Годовая энергия</button>
           <button type="button" class="cl-tab" data-tab="capex"
@@ -185,9 +187,15 @@
                   title="Side-by-side таблица для нескольких опций. Подсветка победителя по каждой метрике.">⚖ Сравнение</button>
         </div>
 
-        <div class="cl-tab-pane" data-pane="spec">
+        <div class="cl-tab-pane" data-pane="general">
+          <div class="cl-section-card" id="cl-general-wrap">
+            <!-- Свойства подбора (selection.general) — инжектится -->
+          </div>
+        </div>
+
+        <div class="cl-tab-pane" data-pane="spec" hidden>
           <div class="cl-section-card" id="cl-spec-form-wrap">
-            <!-- chiller spec form инжектится сюда -->
+            <!-- chiller spec form (1 агрегат) + резервирование -->
           </div>
         </div>
 

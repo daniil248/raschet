@@ -80,8 +80,10 @@ export function drawChillerEnergyChart(cvs, rows) {
  *
  * @param {HTMLCanvasElement} cvs
  * @param {Array<{name, tco}>} options — массив TCO-результатов
+ * @param {string} currency — символ валюты для подписей (₽/$/€/...)
+ *                            v0.60.18: исправлен баг — был жёстко зашит ₽.
  */
-export function drawTcoChart(cvs, options) {
+export function drawTcoChart(cvs, options, currency = '₽') {
   const Chart = CHART();
   if (!Chart || !cvs) return;
   destroyExisting(cvs);
@@ -92,6 +94,7 @@ export function drawTcoChart(cvs, options) {
     ctx.fillText('Заполните CAPEX и тариф для расчёта TCO', cvs.width / 2, cvs.height / 2);
     return;
   }
+  const cur = currency || '₽';
   const N = options[0].tco?.yearlyOpex?.length || 0;
   const labels = Array.from({ length: N + 1 }, (_, i) => i);  // годы 0..N
   const palette = ['#1e40af', '#dc2626', '#15803d', '#a16207', '#7c3aed'];
@@ -112,12 +115,12 @@ export function drawTcoChart(cvs, options) {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { display: true, position: 'top', labels: { font: { size: 11 } } },
-        title: { display: true, text: 'Кумулятивный дисконтированный TCO по годам, ₽', font: { size: 12, weight: 600 }, color: '#075985' },
-        tooltip: { callbacks: { label: (it) => `${it.dataset.label}: ${it.parsed.y.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ₽` } },
+        title: { display: true, text: `Кумулятивный дисконтированный TCO по годам, ${cur}`, font: { size: 12, weight: 600 }, color: '#075985' },
+        tooltip: { callbacks: { label: (it) => `${it.dataset.label}: ${it.parsed.y.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ${cur}` } },
       },
       scales: {
         x: { title: { display: true, text: 'Год от начала эксплуатации' }, grid: { display: false } },
-        y: { title: { display: true, text: 'Кумул. дисконт. затраты, ₽' }, beginAtZero: true, ticks: { callback: (v) => v.toLocaleString('ru-RU') } },
+        y: { title: { display: true, text: `Кумул. дисконт. затраты, ${cur}` }, beginAtZero: true, ticks: { callback: (v) => v.toLocaleString('ru-RU') } },
       },
     },
   }));

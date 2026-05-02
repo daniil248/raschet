@@ -6,7 +6,10 @@
 //
 // Зависит от calc/topology.js (pure simulator) и DOM.
 
-import { DEFAULT_TOPOLOGY, buildTopologyFromOptions, simulateTopology } from '../calc/topology.js';
+// v0.60.17: убраны stale-imports (buildTopologyFromOptions/simulateTopology
+// больше не используются в этом файле — после v0.60.15 Topology-tab inlined
+// в cooling.js). renderTopologyResults использует только passed-in metrics.
+import { DEFAULT_TOPOLOGY } from '../calc/topology.js';
 import { isCracType, SYSTEM_TYPES } from '../calc/chiller-defaults.js';
 import { fmtKwh, fmtMoney } from '../calc/fc-summary.js';
 import { escAttr, escHtml } from '../../meteo/util.js';

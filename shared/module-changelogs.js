@@ -4,6 +4,19 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.17', date: '2026-05-02', items: [
+      '🐛 <b>Bugfix: TCO chart показывал ₽ при выбранной EUR-валюте</b>. По репорту: «почему в графике рубли если валюта выбрана евро».',
+      '• <code>drawTcoChart()</code> в cooling/ui/energy-chart.js принимал только metrics — currency была захардкожена как ₽ в title/tooltip/y-axis.',
+      '• Сигнатура расширена: <code>drawTcoChart(cvs, options, currency = \'₽\')</code>. Все подписи теперь используют переданную валюту.',
+      '• cooling.js передаёт _currency при вызове в Capex-tab.',
+      '🧹 <b>Cleanup stale-imports после v0.60.15 рефакторинга</b>:',
+      '• cooling.js: убран <code>simulateTopology / buildTopologyFromOptions / DEFAULT_TOPOLOGY</code> (больше не используются — Topology-tab inlined).',
+      '• cooling/ui/topology-view.js: убран <code>simulateTopology / buildTopologyFromOptions</code> import.',
+      '• cooling.js: убран unused <code>renderTopologyConfig</code> import.',
+      '🔧 <b>Sync opt.spec ↔ opt.equipment[0].spec</b>: добавлены helpers <code>primarySpec(opt)</code> + <code>setPrimarySpec(opt, spec, sel)</code>. При изменении spec в chiller-form запись синхронизируется в обе модели одновременно.',
+      '🔧 <b>tech-workspace PUE-cooling использует simulateOptionTopology</b> вместо deprecated simulateTopology — корректно учитывает per-equipment qty + N+M+standbyMode.',
+      'Файлы: <code>cooling/ui/energy-chart.js</code> (drawTcoChart currency arg), <code>cooling/cooling.js</code> (cleanup imports + primarySpec/setPrimarySpec), <code>cooling/ui/topology-view.js</code> (cleanup imports), <code>tech-workspace/tech-workspace.js</code> (simulateOptionTopology preferred).',
+    ] },
     { version: '0.60.16', date: '2026-05-02', items: [
       '🖨 <b>Phase 14.4: Печать SVG в реальных размерах ЕСКД</b>. По roadmap: «Экспорт SVG с физическими размерами; кнопка «Печать 1:50 на A1»; цвета линий ЕСКД (0.7мм основная, 0.35мм вспомогательная)».',
       '• Новая функция <code>exportPlanSvgRealScale(scaleN, paperFormat)</code> в scs-design.',

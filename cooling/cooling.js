@@ -37,8 +37,12 @@ import { renderFreeCoolingSummary } from './ui/fc-summary-view.js';
 import { drawChillerEnergyChart, drawTcoChart } from './ui/energy-chart.js';
 import { renderCapexForm, renderTcoKpi } from './ui/capex-form.js';
 import { renderComparisonTable } from './ui/comparison-view.js';
-import { buildTopologyFromOptions, simulateTopology, simulateOptionTopology, DEFAULT_TOPOLOGY } from './calc/topology.js';
-import { renderTopologyConfig, renderTopologyResults } from './ui/topology-view.js';
+// v0.60.17: stale-imports убраны (buildTopologyFromOptions / simulateTopology
+// — legacy путь, не используется в новой модели per-equipment N+M).
+import { simulateOptionTopology } from './calc/topology.js';
+// v0.60.17: renderTopologyConfig больше не используется (Topology-tab
+// inlined в renderActiveTab). Оставлен только renderTopologyResults.
+import { renderTopologyResults } from './ui/topology-view.js';
 
 import { tableToCsv, downloadCsv } from '../meteo/charts.js';
 import { getActiveMeteoDataset, getMeteoFilter, applyFilter } from './meteo-bridge.js';
@@ -78,7 +82,7 @@ let _navMode = null;         // 'standalone' | 'embed' | 'project' (см. shared
 let _navReturn = null;       // { path, sessionId, label } для embed-mode
 let _selections = [];        // массив подборов
 let _activeSelectionId = null;
-let _activeTab = 'spec';
+let _activeTab = 'general';
 // v0.60.8 (Phase 22.11): режим compare-вкладки.
 //   'variants' — варианты текущего подбора (default)
 //   'selections' — главные ★-варианты всех подборов проекта
@@ -230,6 +234,85 @@ function normalizeOption(opt) {
     }],
     topology: { loopMode: opt.topology?.loopMode || 'common-loop' },
   };
+}
+
+/* v0.60.18 (workflow refined per user 2026-05-02): «вводим условия всего
+ * контура, потом в опции выбираем мощность и параметры одного агрегата и
+ * уровень резервирования, остальное рассчитывается на общую мощность
+ * условий».
+ *
+ * Auto-calc qty:
+ *   targetKw = required × (1 + margin/100)
+ *   N (рабочих) = ceil(targetKw / ratedCapPerUnit)
+ *   M = N (если 2N) | 1 (если N+1) | 0 (если N)  — выбирается пользователем
+ *   qty = N + M
+ */
+function deriveAutoQty(targetKw, ratedCapKw, redundancyMode) {
+  const cap = Number(ratedCapKw) || 0;
+  if (cap <= 0 || targetKw <= 0) return { N: 1, M: 0, qty: 1 };
+  const N = Math.max(1, Math.ceil(targetKw / cap));
+  let M = 0;
+  if (redundancyMode === 'N+1') M = 1;
+  else if (redundancyMode === 'N+2') M = 2;
+  else if (redundancyMode === '2N') M = N;
+  return { N, M, qty: N + M };
+}
+
+/* v0.60.17: helper для legacy-кода. Возвращает spec первой equipment-группы
+ * либо opt.spec (legacy fallback). Используется в Spec/Energy/Compare-tabs
+ * пока UI ещё одно-spec-per-option. Multi-equipment — TODO в Phase 22.10.1.x.
+ */
+function primarySpec(opt) {
+  if (!opt) return null;
+  if (Array.isArray(opt.equipment) && opt.equipment[0]?.spec) return opt.equipment[0].spec;
+  return opt.spec || null;
+}
+
+/* v0.60.18: при изменении spec через chiller-form — синхронизируем
+ * opt.spec И opt.equipment[0].spec, ПЛЮС auto-recompute qty/N/M из
+ * selection.general.requiredCoolingKw и opt.redundancyMode.
+ * sel передаётся для доступа к requiredKw + margin. */
+function setPrimarySpec(opt, newSpec, sel) {
+  if (!opt) return;
+  opt.spec = newSpec;
+  const role = deriveRole(newSpec?.systemType);
+  // Mode хранится на самой опции (на каждом варианте свой)
+  const redundancyMode = opt.redundancyMode || 'N+1';
+  const standbyMode = opt.standbyMode || 'cold';
+  // targetKw из selection.general
+  const general = sel?.general || { requiredCoolingKw: 0, safetyMarginPct: 20 };
+  const targetKw = (general.requiredCoolingKw || 0) * (1 + (general.safetyMarginPct || 0) / 100);
+  const { N, M, qty } = deriveAutoQty(targetKw, newSpec?.ratedCapKw || 0, redundancyMode);
+  if (Array.isArray(opt.equipment) && opt.equipment[0]) {
+    opt.equipment[0].spec = newSpec;
+    opt.equipment[0].role = role;
+    opt.equipment[0].qty = qty;
+    opt.equipment[0].redundancyN = N;
+    opt.equipment[0].redundancyM = M;
+    opt.equipment[0].standbyMode = standbyMode;
+  } else if (newSpec) {
+    opt.equipment = [{
+      id: 'eq-' + Math.random().toString(36).slice(2, 8),
+      role, spec: newSpec, qty, redundancyN: N, redundancyM: M, standbyMode,
+    }];
+  }
+}
+
+/** Пересчитать equipment-qty всех вариантов подбора при изменении general.
+ *  Вызывается когда пользователь меняет requiredKw / margin. */
+function recomputeAutoQtyForSelection(sel) {
+  if (!sel || !Array.isArray(sel.options)) return;
+  const general = sel.general || { requiredCoolingKw: 0, safetyMarginPct: 20 };
+  const targetKw = (general.requiredCoolingKw || 0) * (1 + (general.safetyMarginPct || 0) / 100);
+  for (const opt of sel.options) {
+    if (!Array.isArray(opt.equipment) || !opt.equipment[0]) continue;
+    const eq = opt.equipment[0];
+    const mode = opt.redundancyMode || 'N+1';
+    const { N, M, qty } = deriveAutoQty(targetKw, eq.spec?.ratedCapKw || 0, mode);
+    eq.redundancyN = N;
+    eq.redundancyM = M;
+    eq.qty = qty;
+  }
 }
 
 /** Derive equipment role from systemType. */
@@ -395,7 +478,8 @@ function renderActive() {
   if (pane) pane.hidden = false;
   const isMain = sel.mainOptionId === opt.id ? ' ★' : '';
   $('cl-active-name').textContent = `📋 ${sel.name} → ${opt.name}${isMain}`;
-  $('cl-active-meta').textContent = `${opt.spec.systemType} · rated ${Math.round(opt.spec.ratedCapKw)} кВт · COP ${opt.spec.ratedCOP}`;
+  const pSpec = primarySpec(opt) || {};
+  $('cl-active-meta').textContent = `${pSpec.systemType || '?'} · rated ${Math.round(pSpec.ratedCapKw || 0)} кВт · COP ${pSpec.ratedCOP || '?'}`;
   renderActiveTab();
 }
 
@@ -518,29 +602,169 @@ function renderActiveTab() {
 
   const { hourly } = getHourly();
 
-  if (_activeTab === 'spec') {
+  if (_activeTab === 'general') {
+    // v0.60.18: Свойства всего подбора — общие условия для всех вариантов.
+    const wrap = $('cl-general-wrap');
+    if (wrap) {
+      const general = sel.general || { requiredCoolingKw: 0, safetyMarginPct: 20 };
+      const targetKw = (general.requiredCoolingKw || 0) * (1 + (general.safetyMarginPct || 0) / 100);
+      // Перечень вариантов с auto-расчётом qty
+      const variantsHtml = sel.options.map(o => {
+        const sp = primarySpec(o) || {};
+        const mode = o.redundancyMode || 'N+1';
+        const { N, M, qty } = deriveAutoQty(targetKw, sp.ratedCapKw || 0, mode);
+        const totalKw = (sp.ratedCapKw || 0) * N;
+        return `<tr ${o.id === sel.mainOptionId ? 'style="background:#ecfdf5"' : ''}>
+          <td>${o.id === sel.mainOptionId ? '★ ' : ''}${util.escHtml(o.name)}</td>
+          <td>${util.escHtml(sp.systemType || '?')}</td>
+          <td class="num">${sp.ratedCapKw || 0} кВт</td>
+          <td>${mode}</td>
+          <td class="num"><b>${N}</b></td>
+          <td class="num">${M}</td>
+          <td class="num"><b>${qty}</b></td>
+          <td class="num">${totalKw} кВт${totalKw >= targetKw ? ' ✓' : ' ⚠'}</td>
+        </tr>`;
+      }).join('');
+      wrap.innerHTML = `
+        <h4 title="Общие условия для всего подбора. Применяются ко всем вариантам сравнения.">📋 Свойства подбора «${util.escHtml(sel.name)}»</h4>
+        <div class="cl-chiller-section">
+          <div class="cl-chiller-section-title">Условия системы охлаждения</div>
+          <div class="cl-chiller-grid">
+            <label title="Суммарная необходимая холодопроизводительность (Q_required, кВт). Должна покрывать IT-нагрузку + потери UPS + теплоприток ограждений + люди.">
+              Требуемая мощн., кВт:
+              <input type="number" min="0" step="10" id="cl-gen-required-kw" value="${general.requiredCoolingKw || 0}">
+            </label>
+            <label title="Процент запаса по мощности. Default 20%. Учитывает рост IT-нагрузки, climate-margin, перегрузки. targetKw = required × (1 + margin/100).">
+              Запас, %:
+              <input type="number" min="0" max="100" step="5" id="cl-gen-margin-pct" value="${general.safetyMarginPct || 0}">
+            </label>
+          </div>
+          <p class="muted" style="font-size:12px;margin:8px 0 0">
+            🎯 <b>Целевая мощность с запасом: ${targetKw.toFixed(0)} кВт.</b> Все варианты ниже подбираются на эту мощность.
+          </p>
+        </div>
+        ${sel.options.length ? `
+        <div class="cl-chiller-section">
+          <div class="cl-chiller-section-title">Auto-расчёт количества по вариантам</div>
+          <p class="muted" style="font-size:11.5px;margin:0 0 6px">
+            В каждом варианте задаётся ОДИН агрегат + уровень резервирования. Количество (N+M) считается автоматически из целевой мощности и rated одного агрегата:
+            <b>N = ceil(${targetKw.toFixed(0)} / rated)</b>; M по выбранному режиму (N+1 → M=1, N+2 → M=2, 2N → M=N).
+          </p>
+          <table class="cl-annual-table" style="font-size:12px">
+            <thead><tr>
+              <th>Вариант</th><th>Тип</th><th>Rated 1шт</th><th>Резерв</th>
+              <th title="Рабочих">N</th><th title="В резерве">M</th>
+              <th title="Всего шт = N+M">Σ qty</th>
+              <th title="Установленная мощность активных = N × rated. Должна ≥ целевой.">Установлено</th>
+            </tr></thead>
+            <tbody>${variantsHtml}</tbody>
+          </table>
+        </div>` : '<p class="muted">Добавьте варианты через «+ Вариант» в боковой панели.</p>'}
+      `;
+      const reqInp = wrap.querySelector('#cl-gen-required-kw');
+      if (reqInp) reqInp.addEventListener('change', () => {
+        if (!sel.general) sel.general = {};
+        sel.general.requiredCoolingKw = Number(reqInp.value) || 0;
+        recomputeAutoQtyForSelection(sel);
+        persist(); renderActiveTab();
+      });
+      const marInp = wrap.querySelector('#cl-gen-margin-pct');
+      if (marInp) marInp.addEventListener('change', () => {
+        if (!sel.general) sel.general = {};
+        sel.general.safetyMarginPct = Number(marInp.value) || 0;
+        recomputeAutoQtyForSelection(sel);
+        persist(); renderActiveTab();
+      });
+    }
+  } else if (_activeTab === 'spec') {
     const wrap = $('cl-spec-form-wrap');
     if (wrap) {
       wrap.innerHTML = '';
-      wrap.appendChild(renderChillerSpecForm(opt.spec, (next) => {
-        const sysTypeChanged = (opt.spec.systemType || 'chiller') !== (next.systemType || 'chiller');
-        opt.spec = next;
+      const curSpec = primarySpec(opt) || { ...DEFAULT_CHILLER };
+      // v0.60.18: добавляем над chiller-form блок «Резервирование» + auto-calc
+      const general = sel.general || { requiredCoolingKw: 0, safetyMarginPct: 20 };
+      const targetKw = (general.requiredCoolingKw || 0) * (1 + (general.safetyMarginPct || 0) / 100);
+      const mode = opt.redundancyMode || 'N+1';
+      const standby = opt.standbyMode || 'cold';
+      const { N, M, qty } = deriveAutoQty(targetKw, curSpec.ratedCapKw || 0, mode);
+      const totalKw = (curSpec.ratedCapKw || 0) * N;
+      const redundancyHtml = document.createElement('div');
+      redundancyHtml.className = 'cl-chiller-section';
+      redundancyHtml.innerHTML = `
+        <div class="cl-chiller-section-title" title="Уровень резервирования и режим резерва. Количество N (рабочих) считается автоматически из целевой мощности (см. вкладку «📋 Свойства подбора»).">⚙ Резервирование (per-вариант)</div>
+        <div class="cl-chiller-grid">
+          <label title="Стандартные схемы резервирования по ASHRAE / Uptime Institute:
+• N — без резерва (один путь, нет защиты от отказа)
+• N+1 — один резервный (типовой ЦОД Tier II/III)
+• N+2 — два резервных (повышенная надёжность)
+• 2N — каждому активному — свой резерв (Tier IV, концерт-критично)">
+            Схема резервирования:
+            <select id="cl-opt-redundancy-mode">
+              <option value="N"${mode === 'N' ? ' selected' : ''}>N (без резерва)</option>
+              <option value="N+1"${mode === 'N+1' ? ' selected' : ''}>N+1</option>
+              <option value="N+2"${mode === 'N+2' ? ' selected' : ''}>N+2</option>
+              <option value="2N"${mode === '2N' ? ' selected' : ''}>2N</option>
+            </select>
+          </label>
+          <label title="Режим резерва:
+• Холодный — резерв полностью off, energy=0, ждёт failover.
+• Горячий — резерв работает параллельно с активными, делит нагрузку.">
+            Режим резерва:
+            <select id="cl-opt-standby-mode">
+              <option value="cold"${standby === 'cold' ? ' selected' : ''}>❄ Холодный</option>
+              <option value="hot"${standby === 'hot' ? ' selected' : ''}>🔥 Горячий</option>
+            </select>
+          </label>
+        </div>
+        <p class="muted" style="font-size:11.5px;margin:6px 0 0;background:#f0f9ff;padding:6px 10px;border-radius:3px">
+          🎯 Целевая мощность: <b>${targetKw.toFixed(0)} кВт</b> (Свойства подбора)<br>
+          📐 Auto-расчёт: <b>N=${N} рабочих × ${curSpec.ratedCapKw || 0} кВт = ${totalKw} кВт</b> ${totalKw >= targetKw ? '<span style="color:#16a34a">✓ покрывает</span>' : `<span style="color:#b91c1c">⚠ дефицит ${(targetKw - totalKw).toFixed(0)} кВт</span>`}; M=${M} в резерве; <b>Σ qty=${qty} шт</b>
+        </p>
+      `;
+      wrap.appendChild(redundancyHtml);
+      // Wire redundancy/standby selects
+      redundancyHtml.querySelector('#cl-opt-redundancy-mode')?.addEventListener('change', (e) => {
+        opt.redundancyMode = e.target.value;
+        if (Array.isArray(opt.equipment) && opt.equipment[0]) {
+          const { N, M, qty } = deriveAutoQty(targetKw, curSpec.ratedCapKw || 0, opt.redundancyMode);
+          opt.equipment[0].redundancyN = N;
+          opt.equipment[0].redundancyM = M;
+          opt.equipment[0].qty = qty;
+        }
+        persist(); renderActiveTab();
+      });
+      redundancyHtml.querySelector('#cl-opt-standby-mode')?.addEventListener('change', (e) => {
+        opt.standbyMode = e.target.value;
+        if (Array.isArray(opt.equipment) && opt.equipment[0]) {
+          opt.equipment[0].standbyMode = opt.standbyMode;
+        }
+        persist(); renderActiveTab();
+      });
+      wrap.appendChild(renderChillerSpecForm(curSpec, (next) => {
+        const sysTypeChanged = (curSpec.systemType || 'chiller') !== (next.systemType || 'chiller');
+        setPrimarySpec(opt, next, sel);
         persist();
         if (sysTypeChanged) renderActiveTab();
         renderSelectionsList();
       }, () => {
-        opt.spec = { ...DEFAULT_CHILLER };
+        setPrimarySpec(opt, { ...DEFAULT_CHILLER }, sel);
         persist();
         renderActiveTab();
         renderSelectionsList();
       }));
     }
   } else if (_activeTab === 'energy') {
-    const rows = buildBinData(hourly, opt.spec);
+    // v0.60.18: используем simulateOptionTopology для учёта qty + N+M.
+    // Per-unit spec → суммарная установленная мощность × N (active) или N+M (hot).
+    const pSpec = primarySpec(opt);
+    const tMetrics = simulateOptionTopology(opt, hourly);
+    const annualEnergyKwh = tMetrics.totalEnergyKwh;
+    // Для одно-spec FC summary удобнее показать «per-unit» rows.
+    const rows = buildBinData(hourly, pSpec);
     const fcEl = $('cl-fc-summary');
     if (fcEl) {
-      fcEl.innerHTML = (opt.spec && Number(opt.spec.ratedCapKw) > 0)
-        ? renderFreeCoolingSummary(rows, opt.spec, _tariffRubKwh, hourly, _currency)
+      fcEl.innerHTML = (pSpec && Number(pSpec.ratedCapKw) > 0)
+        ? renderFreeCoolingSummary(rows, pSpec, _tariffRubKwh, hourly, _currency)
         : '<div class="muted">Задайте Rated capacity > 0 во вкладке ❄ Spec для расчёта.</div>';
     }
     const cvs = $('cl-energy-chart');
@@ -559,16 +783,18 @@ function renderActiveTab() {
       }, _currency, cf));
     }
     const convertFn = makeConvertFn();
-    const rows = buildBinData(hourly, opt.spec);
-    const fc = computeFcSummary(rows, opt.spec, _tariffRubKwh, hourly);
+    const pSpec = primarySpec(opt);
+    const rows = buildBinData(hourly, pSpec);
+    const fc = computeFcSummary(rows, pSpec, _tariffRubKwh, hourly);
     const ecoConv = convertEcoToCurrency(opt.eco, _currency, convertFn);
     const tco = computeTco({ annualEnergyKwh: fc ? fc.energyKwh : 0, tariffRubKwh: _tariffRubKwh, eco: ecoConv });
     // Payback относительно ОСНОВНОГО варианта подбора (а не первого).
     let payback = null;
     const main = sel.options.find(o => o.id === sel.mainOptionId);
     if (main && main.id !== opt.id) {
-      const bRows = buildBinData(hourly, main.spec);
-      const bFc = computeFcSummary(bRows, main.spec, _tariffRubKwh, hourly);
+      const mainSpec = primarySpec(main);
+      const bRows = buildBinData(hourly, mainSpec);
+      const bFc = computeFcSummary(bRows, mainSpec, _tariffRubKwh, hourly);
       const bEcoConv = convertEcoToCurrency(main.eco, _currency, convertFn);
       const bTco = computeTco({ annualEnergyKwh: bFc ? bFc.energyKwh : 0, tariffRubKwh: _tariffRubKwh, eco: bEcoConv });
       payback = discountedPaybackYears(tco, bTco);
@@ -580,7 +806,7 @@ function renderActiveTab() {
       // TCO chart по всем вариантам ТЕКУЩЕГО подбора (с основным первым).
       const ordered = orderedOptionsForCompare(sel);
       const allMetrics = compareOptions(ordered, hourly, _tariffRubKwh, _currency, convertFn);
-      drawTcoChart(cvs, allMetrics);
+      drawTcoChart(cvs, allMetrics, _currency);
     }
   } else if (_activeTab === 'topology') {
     // v0.60.15 (refined): Топология теперь per-OPTION; равзвертка из equipment[].

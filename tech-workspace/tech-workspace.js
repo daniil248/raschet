@@ -795,7 +795,15 @@ function calcPueFromCoolingModule(c, meteoSummary) {
     }
 
     let annualEnergyKwh = 0;
-    if (sel.topology && (sel.options.some(o => calc.isCracType ? calc.isCracType(o.spec?.systemType) : false))) {
+    // v0.60.17: новая модель cooling — option имеет equipment[] с per-group
+    // qty/N/M/standbyMode. Используем simulateOptionTopology(option, hourly).
+    // Backward-compat: если у option ещё нет equipment[] (legacy), fallback
+    // на одиночный buildBinData(spec).
+    if (calc.simulateOptionTopology && Array.isArray(main.equipment) && main.equipment.length) {
+      const m = calc.simulateOptionTopology(main, hourly);
+      annualEnergyKwh = m.totalEnergyKwh;
+    } else if (calc.simulateTopology && sel.topology && sel.options.some(o => calc.isCracType ? calc.isCracType(o.spec?.systemType) : false)) {
+      // Legacy путь — selection-level topology + per-option spec
       const topo = calc.buildTopologyFromOptions(
         sel.options,
         sel.topology.loopMode,
@@ -806,7 +814,7 @@ function calcPueFromCoolingModule(c, meteoSummary) {
       const m = calc.simulateTopology(topo, hourly);
       annualEnergyKwh = m.totalEnergyKwh;
     } else {
-      const rows = calc.buildBinData(hourly, main.spec);
+      const rows = calc.buildBinData(hourly, main.spec || main.equipment?.[0]?.spec);
       annualEnergyKwh = rows.reduce((a, r) => a + (r.energy || 0), 0);
     }
 
