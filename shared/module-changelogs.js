@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.54', date: '2026-05-03', items: [
+      '🚀 <b>Phase 34 EXPRESS: meteo datasets в IndexedDB</b>. По диагностике через Chrome MCP: LocalStorage квота в Chrome ~4-5 МБ. ASHRAE Темиртау 10 лет (87696 точек ≈ 6 МБ JSON) <b>физически не помещался в LS</b> даже при пустом storage. IDB квота 50 МБ — 2 ГБ → решает корневую проблему.',
+      '• Новый <code>shared/idb-store.js</code> — минимальный IDB key-value store (idbGet/idbSet/idbDelete/idbKeys, ~80 строк, без зависимостей).',
+      '• <code>meteo/meteo.js::persist()</code> сохраняет datasets в IDB (большие), метаданные (activeId/cols/filter) — в LS (маленькие).',
+      '• <code>meteo/meteo.js::init()</code> async, читает datasets из IDB. Auto-migration LS → IDB при первом запуске + удаление LS-копии для освобождения места.',
+      '• <code>cooling/meteo-bridge.js::preloadMeteoForPid(pid)</code> async-предзагрузка в memory cache. <code>getActiveMeteoDataset()</code> остаётся sync, читает из cache.',
+      '• <code>cooling/cooling.js::init()</code> вызывает await preload перед первым render — Темиртау 87696 точек теперь видим в cooling.',
+      '🔧 <b>v0.60.53 HOTFIX</b> (включён): cooling/service/meteo принимают <code>?project=</code> URL-param (раньше только <code>?pid=</code>). Это фиксит «при переходе из карточки проекта попадаю в другой проект».',
+      'Файлы: <code>shared/idb-store.js</code> (новый), <code>meteo/meteo.js</code>, <code>cooling/meteo-bridge.js</code>, <code>cooling/cooling.js</code>, <code>service/service.js</code>.',
+    ] },
     { version: '0.60.52', date: '2026-05-03', items: [
       '📜 <b>ROADMAP Phase 35: история загруженных данных + Корзина</b>. По требованию Пользователя 2026-05-03: «любые загруженные данные должны сохраняться в истории».',
       '• <code>shared/history-log.js</code> (план): append-only API для всех import/update/delete операций.',

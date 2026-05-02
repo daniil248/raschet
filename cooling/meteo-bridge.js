@@ -11,6 +11,7 @@
 // со ссылкой «📅 Открыть Meteo →».
 
 import { ensureDefaultProject, projectKey, getActiveProjectId } from '../shared/project-storage.js';
+import { idbGet, idbAvailable } from '../shared/idb-store.js';
 
 const KEY_DATA = ['meteo', 'datasets.v1'];
 const KEY_ACTIVE = ['meteo', 'activeId.v1'];
@@ -40,13 +41,44 @@ function resolvePid() {
   return typeof dp === 'string' ? dp : (dp?.id || null);
 }
 
+/* v0.60.54 (Phase 34): in-memory кэш IDB-данных. Sync API getActiveMeteoDataset
+   читает из кэша; preloadMeteoForPid() заполняет кэш async-ом. cooling.js
+   должен await preload перед первым render. */
+const _idbCache = new Map();  // pid → datasets[]
+
+/**
+ * Async-предзагрузка meteo-датасетов в кэш для последующего sync-чтения.
+ * Cooling должен await preloadMeteoForPid(_pid?.id) в init.
+ */
+export async function preloadMeteoForPid(pid) {
+  if (!pid) return;
+  if (idbAvailable()) {
+    try {
+      const data = await idbGet(`meteo.datasets.${pid}`, null);
+      if (Array.isArray(data)) {
+        _idbCache.set(pid, data);
+        return;
+      }
+    } catch (e) {
+      console.warn('[meteo-bridge] idb preload failed:', e);
+    }
+  }
+  // fallback на LS если IDB пусто/недоступно
+  const ls = loadJson(pid, KEY_DATA, []) || [];
+  _idbCache.set(pid, ls);
+}
+
 /**
  * Получить активный датасет из meteo.
  * @param {string|null} [pidOverride] — опц. явно задать pid
  */
 export function getActiveMeteoDataset(pidOverride = null) {
   const pid = pidOverride || resolvePid();
-  const datasets = loadJson(pid, KEY_DATA, []) || [];
+  // v0.60.54: сначала смотрим IDB-кэш (если был preload), иначе LS.
+  let datasets = _idbCache.get(pid);
+  if (!Array.isArray(datasets) || !datasets.length) {
+    datasets = loadJson(pid, KEY_DATA, []) || [];
+  }
   if (!datasets.length) return null;
   const activeId = loadJson(pid, KEY_ACTIVE, null);
   const dataset =

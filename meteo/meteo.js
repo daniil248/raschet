@@ -18,6 +18,7 @@
 
 import { ensureDefaultProject, projectKey, getProject, setActiveProjectId } from '../shared/project-storage.js';
 import { detectNavMode, renderModuleActions, completeReturn, cancelReturn } from '../shared/module-nav.js';
+import { idbGet, idbSet, idbDelete, idbAvailable } from '../shared/idb-store.js';
 import * as util from './util.js';
 import { getAll as getSources } from './sources/index.js';
 import { drawTempHistogram, drawHumidityHistogram, drawMonthlyTempChart, drawWindRose, renderDaysInRangeTable } from './charts.js';
@@ -84,8 +85,24 @@ function saveJson(suffix, value) {
   }
 }
 
-function persist() {
-  saveJson(KEY_DATA, _datasets);
+/* v0.60.54 (Phase 34): datasets — большие, идут в IDB. Метаданные (activeId,
+   cols, filter) — маленькие, остаются в LS. */
+function idbDatasetsKey() {
+  return _pid ? `meteo.datasets.${_pid}` : null;
+}
+async function persist() {
+  // Datasets → IDB (если доступен), иначе fallback в LS с risk quota
+  if (idbAvailable() && idbDatasetsKey()) {
+    try {
+      await idbSet(idbDatasetsKey(), _datasets);
+    } catch (e) {
+      console.error('[meteo] idb persist failed:', e);
+      saveJson(KEY_DATA, _datasets);  // last-resort
+    }
+  } else {
+    saveJson(KEY_DATA, _datasets);
+  }
+  // Маленькие — в LS
   saveJson(KEY_ACTIVE, _activeId);
   saveJson(KEY_COLS, _activeCols);
   saveJson(KEY_FILTER, _filter);
@@ -439,7 +456,7 @@ function computeAshraeFromHourly(hourly) {
 }
 
 // ─── Init
-function init() {
+async function init() {
   // v0.59.995: режим работы (standalone / embed / project) — определяет
   // какие cross-links / return-buttons показать.
   const nav = detectNavMode();
@@ -510,7 +527,28 @@ function init() {
       } catch {}
     }
   } catch {}
-  _datasets = loadJson(KEY_DATA, []) || [];
+  // v0.60.54 (Phase 34): пробуем сначала IDB (большие датасеты), fallback на LS.
+  if (idbAvailable() && _pid) {
+    try {
+      const idbData = await idbGet(`meteo.datasets.${_pid}`, null);
+      if (Array.isArray(idbData) && idbData.length) {
+        _datasets = idbData;
+      } else {
+        _datasets = loadJson(KEY_DATA, []) || [];
+        // Если нашли в LS — мигрируем в IDB и удаляем из LS (освобождаем место).
+        if (_datasets.length) {
+          await idbSet(`meteo.datasets.${_pid}`, _datasets);
+          try { localStorage.removeItem(projectKey(_pid, ...KEY_DATA)); } catch {}
+          console.info(`[meteo v0.60.54] Migrated ${_datasets.length} datasets из LS → IDB (${_pid})`);
+        }
+      }
+    } catch (e) {
+      console.error('[meteo] idb load failed:', e);
+      _datasets = loadJson(KEY_DATA, []) || [];
+    }
+  } else {
+    _datasets = loadJson(KEY_DATA, []) || [];
+  }
   _activeId = loadJson(KEY_ACTIVE, null);
   _activeCols = loadJson(KEY_COLS, _activeCols);
   // v0.59.991: миграция — убираем chiller-cols которые могли быть сохранены

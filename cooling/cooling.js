@@ -48,7 +48,7 @@ import { simulateOptionTopology } from './calc/topology.js';
 import { renderTopologyResults } from './ui/topology-view.js';
 
 import { tableToCsv, downloadCsv } from '../meteo/charts.js';
-import { getActiveMeteoDataset, getMeteoFilter, applyFilter } from './meteo-bridge.js';
+import { getActiveMeteoDataset, getMeteoFilter, applyFilter, preloadMeteoForPid } from './meteo-bridge.js';
 import { CURRENCIES, currencyToIso } from './calc/fc-summary.js';
 import { open as openRatesDialog } from '../shared/currency-rates/rates-dialog.js';
 import { fetchRates, convert as convertRate } from '../shared/currency-rates/index.js';
@@ -1381,6 +1381,12 @@ async function init() {
     } else {
       _pid = ensureDefaultProject();
     }
+  }
+
+  // v0.60.54 (Phase 34): preload meteo-датасетов из IndexedDB перед первым render.
+  // Иначе getActiveMeteoDataset() (sync) вернёт пусто, хотя в IDB всё есть.
+  if (_pid?.id) {
+    try { await preloadMeteoForPid(_pid.id); } catch (e) { console.warn('[cooling] preload meteo failed:', e); }
   }
 
   // v0.60.18: миграция данных из legacy-пути 'raschet.project.[object Object].cooling.*'
