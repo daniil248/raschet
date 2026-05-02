@@ -1346,7 +1346,7 @@ function renderTcoSummaryTable(metrics, currency) {
 }
 
 /* ----- Init ----- */
-function init() {
+async function init() {
   // v0.59.995: режим работы модуля (standalone / embed / project).
   const nav = detectNavMode();
   _navMode = nav.mode;
@@ -1781,4 +1781,10 @@ function clPrompt(label, def = '') {
   ).then(r => r ? r.value : null);
 }
 
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', () => {
+  init().catch(err => {
+    console.error('[cooling v0.60.34] Fatal init error:', err);
+    const el = document.getElementById('cl-storage-mode');
+    if (el) el.innerHTML = `<div style="padding:8px;background:#fef2f2;border:1px solid #fecaca;border-radius:3px;font-size:12px;color:#b91c1c">⚠ Ошибка инициализации: ${util.escHtml(err.message || String(err))}. Откройте DevTools → Console.</div>`;
+  });
+});

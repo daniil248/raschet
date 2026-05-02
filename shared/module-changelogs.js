@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.34', date: '2026-05-02', items: [
+      '🚨 <b>HOTFIX: SyntaxError в cooling.js — модуль не загружался</b>. Корневая причина: в v0.60.30 я добавил <code>await import(...)</code> внутри <code>function init()</code>, забыв добавить <code>async</code>. Парсер падал на reserved word <code>await</code> → весь модуль не выполнялся → пустой sidebar (только defensive inline-init из v0.60.33 спасал базовый currency).',
+      '• <code>function init()</code> → <code>async function init()</code>',
+      '• DOMContentLoaded → <code>init().catch(err =&gt; console.error + видимая красная ошибка в UI)</code>',
+      '• Спасибо пользователю за DevTools-скрин — нашли по «Uncaught SyntaxError: Unexpected reserved word at cooling.js:1565».',
+      '• То же самое могло сломать service.js при тех же edits. Service init() был async с самого начала, поэтому там этой ошибки не было.',
+      'Файлы: <code>cooling/cooling.js</code>.',
+    ] },
     { version: '0.60.33', date: '2026-05-02', items: [
       '🐛 <b>Fix: cooling сваливался на default-проект при возврате из meteo</b>. По репорту: «при возврате из метео что-то сломалось». Корневая причина: <code>openEmbed(location.pathname, …)</code> терял <code>?pid</code> в originPath → meteo возвращал на <code>cooling/?navResult=…</code> без pid → cooling defaultил к ensureDefaultProject. Исправлено: <code>openEmbed(location.pathname + location.search, …)</code> сохраняет полный URL.',
       '🛡 <b>Defensive inline-init для cooling и service</b>. По репорту «пусто????»: даже если main module-script упадёт на import, теперь inline-script в HTML заполнит currency dropdown fallback-значениями (₽/₸/$/€/Br/£/¥) + дата курса = today + placeholder в context picker «⏳ Загрузка контекста…». Базовая UI всегда видна.',
