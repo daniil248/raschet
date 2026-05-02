@@ -371,21 +371,16 @@ function renderZonesPanel() {
     </div>`;
     return;
   }
+  // v0.59.1001: убраны числовые поля x/y/w/h. По требованию: «зоны
+  // управляются перетаскиванием, нет больше необходимости выводить их
+  // координаты и размеры». Оставлены только цвет, имя и удаление.
   S.zones.forEach((z, i) => {
     const row = document.createElement('div');
     row.className = 'psy-zone-row';
     row.innerHTML = `
-      <input type="color" data-zcol="color" data-i="${i}" value="${escAttr(z.color || '#90caf9')}" title="Цвет">
-      <input type="text"  data-zcol="name"  data-i="${i}" value="${escAttr(z.name || '')}" placeholder="Имя зоны">
-      <span style="color:#607080">x</span>
-      <input type="number" data-zcol="cx" data-i="${i}" value="${+z.cx||0}" step="10" title="X, px">
-      <span style="color:#607080">y</span>
-      <input type="number" data-zcol="cy" data-i="${i}" value="${+z.cy||0}" step="10" title="Y, px">
-      <span style="color:#607080">w</span>
-      <input type="number" data-zcol="w"  data-i="${i}" value="${+z.w||200}" step="10" min="60" title="Ширина, px">
-      <span style="color:#607080">h</span>
-      <input type="number" data-zcol="h"  data-i="${i}" value="${+z.h||120}" step="10" min="60" title="Высота, px">
-      <button type="button" class="psy-btn" data-act="zone-del" data-i="${i}" title="Удалить зону">✕</button>
+      <input type="color" data-zcol="color" data-i="${i}" value="${escAttr(z.color || '#90caf9')}" title="Цвет зоны (видна на полотне).">
+      <input type="text"  data-zcol="name"  data-i="${i}" value="${escAttr(z.name || '')}" placeholder="Имя зоны" title="Имя зоны (отображается на полотне). Координаты и размер настраиваются перетаскиванием прямоугольника на полотне.">
+      <button type="button" class="psy-btn" data-act="zone-del" data-i="${i}" title="Удалить эту зону">✕</button>
     `;
     host.appendChild(row);
   });
@@ -2473,14 +2468,27 @@ function wireChartZoomToolbar() {
     else if (act === 'fit')      applyChartZoom(1, { x: 0, y: 0 });
   });
   const host = document.getElementById('psy-chart');
-  // Ctrl+wheel — zoom без скролла страницы
+  // Ctrl+wheel — zoom с anchor под курсором (v0.59.1001).
   if (host && !host._chartZoomWheelWired) {
     host._chartZoomWheelWired = true;
     host.addEventListener('wheel', (e) => {
-      if (!e.ctrlKey) return;
+      if (!(e.ctrlKey || e.metaKey)) return;     // без Ctrl — нативный скролл
       e.preventDefault();
+      const rect = host.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
       const factor = -e.deltaY > 0 ? 1.1 : 1 / 1.1;
-      applyChartZoom(_chartZoom * factor);
+      const oldZoom = _chartZoom;
+      const newZoom = Math.max(0.25, Math.min(5, oldZoom * factor));
+      if (newZoom === oldZoom) return;
+      // Anchor: точка (cx, cy) под курсором не должна сместиться.
+      // newPan = cx - (cx - oldPan) × (newZoom / oldZoom)
+      const k = newZoom / oldZoom;
+      const newPan = {
+        x: cx - (cx - _chartPan.x) * k,
+        y: cy - (cy - _chartPan.y) * k,
+      };
+      applyChartZoom(newZoom, newPan);
     }, { passive: false });
   }
   // v0.59.963: Mouse-drag pan
@@ -4483,8 +4491,11 @@ function wireInfiniteCanvas() {
     document.body.classList.remove('psy-dragging');
   });
 
-  // ─── Zoom: wheel с origin под курсором
+  // ─── Zoom: Ctrl+wheel с origin под курсором.
+  // v0.59.1001: добавлен Ctrl-modifier по требованию Пользователя
+  // («без Ctrl страница скроллится нативно»).
   canvas.addEventListener('wheel', (e) => {
+    if (!(e.ctrlKey || e.metaKey)) return;   // без Ctrl — дать странице скроллиться
     if (e.target.closest('.psy-canvas-toolbar, input[type="number"]')) return;
     e.preventDefault();
     const rect = canvas.getBoundingClientRect();
@@ -4494,7 +4505,6 @@ function wireInfiniteCanvas() {
     const factor = delta > 0 ? 1.1 : 1 / 1.1;
     const newScale = Math.max(0.1, Math.min(3.0, S.canvasView.scale * factor));
     if (newScale === S.canvasView.scale) return;
-    // Сохранить точку под курсором фиксированной
     const k = newScale / S.canvasView.scale;
     S.canvasView.tx = mx - k * (mx - S.canvasView.tx);
     S.canvasView.ty = my - k * (my - S.canvasView.ty);

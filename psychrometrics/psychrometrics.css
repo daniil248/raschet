@@ -155,14 +155,22 @@
  */
 /* v0.59.960: spinner-стрелки на number-полях видны всегда (по умолчанию
    только на hover/focus). По репорту: «добавь в поля стрелки увеличения
-   уменьшения мышью». */
+   уменьшения мышью».
+   v0.59.1001: убран height:26px — он растягивал стрелки до краёв инпута
+   и делал их «разъехавшимися» (стрелка-вверх в самом верху, стрелка-вниз
+   в самом низу, между ними пустота). По требованию: «куда стрелки
+   поразъехались, почти не видно что это стрелки». Теперь — натуральная
+   высота, стрелки стоят рядом по центру + чуть увеличенный масштаб для
+   видимости. */
 .psy-point input[type="number"]::-webkit-inner-spin-button,
 .psy-proc-arrow input[type="number"]::-webkit-inner-spin-button,
 .psy-top-row input[type="number"]::-webkit-inner-spin-button,
 .psy-panel-title input[type="number"]::-webkit-inner-spin-button {
   opacity: 1;
   cursor: pointer;
-  height: 26px;
+  /* default size, но чуть «толще» для контраста на мелких полях */
+  transform: scale(1.05);
+  transform-origin: center;
 }
 
 /* v0.59.950: глобальное отключение выделения текста во время drag-операций.

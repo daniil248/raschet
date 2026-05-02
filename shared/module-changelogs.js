@@ -4,6 +4,18 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.1001', date: '2026-05-02', items: [
+      '🖱 <b>Universal Ctrl+wheel zoom + cursor-anchor</b>. По требованию: «для всех модулей, зум только при нажатии ctrl, иначе просто скролл и зумится должно относительно места расположения курсора».',
+      '• <code>shared/wheel-zoom.js</code> — переиспользуемый helper attachWheelZoom() для любого модуля.',
+      '• Psychrometrics chart wheel: добавлен cursor-anchor (точка под курсором не смещается).',
+      '• Psychrometrics canvas: добавлена проверка Ctrl/Cmd modifier (без него — нативный скролл страницы).',
+      '• ROADMAP Phase 22.12 — раскатать на остальные модули с zoom (scs-design, schematic, mdc-config, tech-workspace, scs-config 3D, rack-config 3D, Chart.js charts).',
+      '• Memory <code>feedback_zoom_ctrl_scroll.md</code> — универсальное правило для всех будущих модулей.',
+      '🎚 <b>Spinner-стрелки number-полей не разъезжаются</b>. По требованию: «куда стрелки поразъехались, почти не видно что это стрелки».',
+      '• Убран <code>height: 26px</code> хак — он растягивал стрелки до краёв инпута. Теперь натуральная высота, стрелки рядом по центру + transform:scale(1.05) для контраста.',
+      '🗑 <b>Zones — убраны числовые поля координат</b>. По требованию: «зоны управляются перетаскиванием, нет необходимости выводить их координаты и размеры». В строке zone остались только цвет, имя, кнопка ✕.',
+      'Файлы: <code>shared/wheel-zoom.js</code> (новый), <code>psychrometrics/psychrometrics.js</code> (canvas wheel + chart wheel cursor-anchor + zone-row simplify), <code>psychrometrics/psychrometrics.css</code> (spinner fix), <code>ROADMAP.md</code> (Phase 22.12), memory.',
+    ] },
     { version: '0.59.1000', date: '2026-05-02', items: [
       '✂ <b>Психрометрия: линии процессов клипуются границей диаграммы</b>. По требованию: «линии процессов не должны выходить за пределы диаграммы».',
       '• arrowDefs(opts) теперь генерирует <code>&lt;clipPath id="psy-plot-clip"&gt;</code> с rect = plot-area.',
