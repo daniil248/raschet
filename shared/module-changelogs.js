@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.7', date: '2026-05-02', items: [
+      '🏗 <b>Phase 22.10.1 (часть 1): option = комплекс оборудования — data layer</b>. По roadmap: «Вариант перестаёт быть одиночной spec, становится комплексом оборудования».',
+      '• <b>Новая модель option</b>: <code>equipment: [{ id, role, spec, qty }]</code> — массив оборудования с количеством.',
+      '• Topology остаётся <b>per-selection</b> (общая архитектура для всех вариантов сравнения; внутри одной selection все options имеют одинаковую топологию, но РАЗНОЕ оборудование).',
+      '• <code>normalizeOption()</code>: legacy-option с одиночной <code>spec</code> авто-оборачивается в <code>equipment: [{spec, qty:1, role: derived}]</code>.',
+      '• <code>deriveRole()</code>: по systemType определяет роль (chiller / dx / crac).',
+      '• <code>migrateSelectionsToComplex()</code> вызывается при init после загрузки LS — non-destructive миграция.',
+      '• <code>buildTopologyFromOption()</code> в calc/topology.js: разворачивает qty>1 в плоский массив для simulateTopology.',
+      '• UI пока работает на legacy-spec (option.spec доступен через equipment[0].spec) — multi-equipment UI в следующей версии (v0.60.8).',
+      'Файлы: <code>cooling/cooling.js</code> (normalizeOption + deriveRole + migrateSelectionsToComplex + вызов в init), <code>cooling/calc/topology.js</code> (buildTopologyFromOption).',
+    ] },
     { version: '0.60.6', date: '2026-05-02', items: [
       '📚 <b>Phase 22.7: Карточка оборудования cooling в каталоге</b>. По roadmap: «Сохранять выбранную опцию как изделие с привязкой к chiller spec».',
       '• Кнопка «📚 Сохранить в каталог» в chiller-form: создаёт element kind=\'climate\' через <code>shared/element-library.js::saveElement()</code> с прикреплённой <code>specs.coolingSpec = {...spec}</code> + metadata.',

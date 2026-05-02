@@ -156,6 +156,54 @@ function activeOption() {
       || sel.options[0]
       || null;
 }
+
+/* v0.60.7 (Phase 22.10.1): нормализация option до новой модели «КОМПЛЕКС»:
+ *   option.equipment = [{ id, role, spec, qty }, ...]
+ *
+ * Topology — НЕ per-option, а per-selection (общая архитектура для всех
+ * вариантов сравнения). Внутри одной selection все options имеют одинаковую
+ * топологию (loopMode, N+M, standby), но РАЗНОЕ оборудование.
+ *
+ * Backward-compat: если у option есть spec но нет equipment — оборачиваем
+ * в один equipment-item.
+ */
+function normalizeOption(opt) {
+  if (!opt) return opt;
+  if (Array.isArray(opt.equipment)) return opt;   // уже новый формат
+  if (!opt.spec) return { ...opt, equipment: [] };
+  return {
+    ...opt,
+    equipment: [{
+      id: 'eq-' + Math.random().toString(36).slice(2, 8),
+      role: deriveRole(opt.spec.systemType),
+      spec: opt.spec,
+      qty: 1,
+    }],
+  };
+}
+
+/** Derive equipment role from systemType. */
+function deriveRole(sysType) {
+  if (sysType === 'crac-water' || sysType === 'crac-water+compressor' || sysType === 'crac-water+fc-loop') return 'crac';
+  if (sysType === 'dx-air' || sysType === 'dx-pumped-fc') return 'dx';
+  return 'chiller';
+}
+
+/** In-place миграция всех selections + options до новой модели. */
+function migrateSelectionsToComplex() {
+  let changed = false;
+  for (const sel of _selections) {
+    for (let i = 0; i < (sel.options || []).length; i++) {
+      const before = sel.options[i];
+      const after = normalizeOption(before);
+      if (after !== before) {
+        sel.options[i] = after;
+        changed = true;
+      }
+    }
+  }
+  if (changed) persist();
+}
 function makeNewSelection(name) {
   const sel = {
     id: `sel-${_selSeq++}`,
@@ -560,6 +608,9 @@ function init() {
     _activeSelectionId = _selections[0]?.id || null;
   }
   if (!_activeSelectionId && _selections.length) _activeSelectionId = _selections[0].id;
+
+  // v0.60.7 (Phase 22.10.1): миграция option → equipment[] + topology per option.
+  migrateSelectionsToComplex();
 
   // Гарантируем уникальность счётчиков id
   for (const sel of _selections) {

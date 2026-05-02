@@ -81,6 +81,36 @@ export function buildTopologyFromOptions(options, loopMode = 'common-loop', redu
 }
 
 /**
+ * v0.60.7 (Phase 22.10.1): Построить топологию из ОДНОГО option-комплекса.
+ *
+ * Option в новой модели имеет equipment[]: каждый элемент — кусок
+ * оборудования с qty (количество одинаковых). Расширяем qty в плоский
+ * массив для simulateTopology.
+ *
+ * @param {object} option   — { equipment, topology }
+ * @returns {TopologyDef}
+ */
+export function buildTopologyFromOption(option) {
+  if (!option || !Array.isArray(option.equipment)) {
+    return { chillers: [], cracs: [], loopMode: 'common-loop', redundancyN: 1, redundancyM: 0, standbyMode: 'cold' };
+  }
+  // Развернуть qty>1 в отдельные единицы (с уникальными именами «N #1», «N #2»…).
+  const flat = [];
+  for (const eq of option.equipment) {
+    const q = Math.max(1, Math.round(Number(eq.qty) || 1));
+    for (let i = 0; i < q; i++) {
+      flat.push({
+        id: eq.id + (q > 1 ? `_${i + 1}` : ''),
+        name: eq.spec?.name || `${eq.role || 'Eq'} ${i + 1}`,
+        spec: eq.spec,
+      });
+    }
+  }
+  const t = option.topology || { loopMode: 'common-loop', redundancyN: 1, redundancyM: 0, standbyMode: 'cold' };
+  return buildTopologyFromOptions(flat, t.loopMode, t.redundancyN, t.redundancyM, t.standbyMode);
+}
+
+/**
  * Симуляция топологии по часовому ряду meteo.
  *
  * @param {TopologyDef} topo
