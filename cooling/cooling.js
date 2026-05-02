@@ -37,6 +37,7 @@ import { renderFreeCoolingSummary } from './ui/fc-summary-view.js';
 import { drawChillerEnergyChart, drawTcoChart } from './ui/energy-chart.js';
 import { renderCapexForm, renderTcoKpi } from './ui/capex-form.js';
 import { syncCostItemsFromEquipment } from './calc/capex-tco.js';
+import { fetchAndSaveMeteoForProject } from '../shared/meteo-fetch.js';
 import { renderComparisonTable } from './ui/comparison-view.js';
 // v0.60.17: stale-imports убраны (buildTopologyFromOptions / simulateTopology
 // — legacy путь, не используется в новой модели per-equipment N+M).
@@ -495,7 +496,26 @@ function renderMeteoStatus() {
   const m = getActiveMeteoDataset();
   if (!m) {
     root.className = 'cl-meteo-status empty';
-    root.textContent = '⚠ Нет meteo-датасетов. Откройте модуль Метеоданные и загрузите хотя бы один.';
+    // v0.60.32: если у проекта есть локация — предлагаем 1-кликовую
+    // загрузку через Open-Meteo вместо ручного перехода в /meteo/.
+    const projLoc = (!_standalone && _pid?.location) ? _pid.location : null;
+    if (projLoc && Number.isFinite(Number(projLoc.lat)) && Number.isFinite(Number(projLoc.lon))) {
+      root.innerHTML = `
+        <div style="font-size:11.5px;color:#92400e;margin-bottom:6px">⚠ Нет meteo-датасетов</div>
+        <div style="font-size:11px;color:#475569;margin-bottom:6px" title="Локация проекта (см. Свойства проекта). Один клик — загрузим 1 год почасовых данных через Open-Meteo для этих координат.">
+          📍 ${util.escHtml(projLoc.city || '')} (${Number(projLoc.lat).toFixed(3)}, ${Number(projLoc.lon).toFixed(3)})
+        </div>
+        <button type="button" id="cl-fetch-meteo-loc" class="cl-btn-primary" style="width:100%;margin-bottom:4px;padding:6px 10px;font-size:11.5px"
+                title="Загрузить 1 год почасовых данных через Open-Meteo Historical API (бесплатно). Сохранится как ⭐активный датасет проекта.">
+          🌐 Загрузить метео (1 клик)
+        </button>
+        <div style="font-size:10.5px;color:#64748b">или вручную → кнопка ниже</div>
+      `;
+      const btn = root.querySelector('#cl-fetch-meteo-loc');
+      if (btn) btn.addEventListener('click', () => autoFetchMeteoForProject(projLoc));
+    } else {
+      root.textContent = '⚠ Нет meteo-датасетов. Откройте модуль Метеоданные и загрузите хотя бы один.';
+    }
     return;
   }
   const filter = getMeteoFilter();
@@ -635,6 +655,29 @@ function renderStorageMode() {
 
 /* v0.60.20: проверить, есть ли у проекта данные cooling-модуля в LS.
    Используется для группировки picker'а контекста подбора. */
+/* v0.60.32: 1-кликовая загрузка meteo-датасета через Open-Meteo
+   по координатам проекта. Используется в renderMeteoStatus при пустом
+   списке датасетов. */
+async function autoFetchMeteoForProject(projLoc) {
+  if (!_pid?.id) {
+    util.toast('Нет активного проекта (standalone mode) — переключитесь в проект через picker контекста.', 'err');
+    return;
+  }
+  util.toast('Загрузка 1 года почасовых данных через Open-Meteo…', 'info');
+  const result = await fetchAndSaveMeteoForProject(_pid.id, {
+    lat: Number(projLoc.lat),
+    lon: Number(projLoc.lon),
+    locationName: projLoc.city || `${Number(projLoc.lat).toFixed(3)}, ${Number(projLoc.lon).toFixed(3)}`,
+  });
+  if (!result.ok) {
+    util.toast(`❌ ${result.error}`, 'err');
+    return;
+  }
+  util.toast(`✓ Загружено: ${result.dataset.stats.n} часов, T ${result.dataset.stats.tmin}…${result.dataset.stats.tmax} °C`, 'ok');
+  // Очищаем кэш meteo-bridge и перерендериваем активную вкладку
+  renderActive();
+}
+
 function projectHasCoolingData(pid) {
   if (!pid) return false;
   const prefix = `raschet.project.${pid}.cooling.`;
