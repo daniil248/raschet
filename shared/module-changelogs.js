@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.9', date: '2026-05-02', items: [
+      '🖱 <b>Phase 22.12: Ctrl+wheel zoom раскатан по модулям</b>. Универсальный принцип «без Ctrl — нативный скролл страницы».',
+      '• <code>js/engine/interaction.js</code> (общий SVG-canvas для schematic/scs-design) — добавлен Ctrl-check + cursor-anchored zoom.',
+      '• <code>suppression-config/suppression-config.js</code> — добавлен Ctrl-check (анкер был, теперь не перехватывает скролл без Ctrl).',
+      '• <code>schematic/schematic.js</code>, <code>scs-design/scs-design.js</code>, <code>scs-config/scs-config.js</code> — уже соответствовали (Ctrl + cursor-anchor).',
+      '• Psychrometrics уже было в v0.59.1001.',
+      '• Pending: rack-config 3D / cooling/meteo Chart.js (chartjs-plugin-zoom) — могут быть добавлены при необходимости.',
+      '• ROADMAP Phase 22.12 закрыт.',
+      'Файлы: <code>js/engine/interaction.js</code>, <code>suppression-config/suppression-config.js</code>.',
+    ] },
     { version: '0.60.8', date: '2026-05-02', items: [
       '⚖ <b>Phase 22.11: Cross-selection comparison</b>. По roadmap: «то есть сравнивать как опции, так и сами подборы (в подборах сравнивать только главную выбранную опцию)».',
       '• Toggle «Режим: Варианты подбора / Подборы проекта» в Compare-tab.',

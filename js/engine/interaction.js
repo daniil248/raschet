@@ -2262,10 +2262,13 @@ export function initInteraction() {
     } catch {}
   });
 
-  // ---- Зум колесом ----
+  // ---- Зум колесом (Ctrl+wheel; cursor-anchored). v0.60.9 (Phase 22.12) ----
+  // По требованию Пользователя 2026-05-02: «для всех модулей, зум только при
+  // нажатии ctrl, иначе просто скролл и зумится должно относительно места
+  // расположения курсора».
   svg.addEventListener('wheel', e => {
+    if (!(e.ctrlKey || e.metaKey)) return;   // без Ctrl — нативный скролл страницы
     e.preventDefault();
-    // Если текущий zoom повреждён (NaN/Infinity/0) — принудительно сбросим
     if (!Number.isFinite(state.view.zoom) || state.view.zoom <= 0) {
       state.view.zoom = 1;
       if (!Number.isFinite(state.view.x)) state.view.x = 0;

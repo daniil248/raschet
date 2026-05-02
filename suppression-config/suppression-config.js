@@ -1439,7 +1439,9 @@ function setupIsoHandlers() {
   canvas.addEventListener('pointerleave', endDrag);
   canvas.addEventListener('pointercancel', endDrag);
 
+  // v0.60.9 (Phase 22.12): zoom только при Ctrl. Без — нативный скролл страницы.
   canvas.addEventListener('wheel', (e) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
     e.preventDefault();
     const k = e.deltaY < 0 ? 1.15 : 1/1.15;
     V3.zoom = Math.max(0.1, Math.min(10, V3.zoom * k));

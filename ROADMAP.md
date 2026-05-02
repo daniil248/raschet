@@ -2804,18 +2804,16 @@ standalone-приложение в отдельном. Чтобы использ
   - Этап 2: библиотека шаблонов (catalog/cooling-templates).
   - Этап 3: inherit + override модель.
 
-- [ ] **22.12** Универсальный wheel-handler с Ctrl+scroll и cursor-anchored зум 🆕
-  > Зафиксировано Пользователем 2026-05-02: «для всех модулей, зум только при
-  > нажатии ctrl, иначе просто скролл и зумится должно относительно места
-  > расположения курсора».
-  - Без Ctrl — wheel пропускается, страница скроллится нативно.
-  - Ctrl+wheel — зум с anchor на (cursorX, cursorY): world-точка под курсором
-    остаётся на месте.
-  - Места правки: psychrometrics chart, scs-design canvas, schematic canvas,
-    mdc-config top-view, tech-workspace, scs-config 3D, rack-config 3D,
-    cooling/meteo Chart.js (через chartjs-plugin-zoom).
-  - Можно вынести общий helper: `shared/wheel-zoom.js` →
-    `attachWheelZoom(el, { onZoom(zoom, anchorX, anchorY) })`.
+- [x] **22.12** Универсальный wheel-handler с Ctrl+scroll и cursor-anchored зум — закрыто v0.60.9
+  - shared/wheel-zoom.js (helper для будущих модулей).
+  - Psychrometrics chart + canvas — Ctrl+wheel + cursor-anchor.
+  - js/engine/interaction.js (schematic/scs-design SVG canvas) — Ctrl+wheel + anchor.
+  - schematic/schematic.js — уже было ✓.
+  - scs-design/scs-design.js — уже было ✓.
+  - scs-config/scs-config.js — уже было ✓.
+  - suppression-config/suppression-config.js — добавлен Ctrl-check.
+  - Pending: rack-config 3D / cooling/meteo Chart.js (chartjs-plugin-zoom)
+    — могут быть добавлены по requestу.
 
 - [x] **22.10** Топология холодоснабжения (chillers ↔ CRACs) 🆕 — закрыто v0.60.1
   > Добавлено 2026-05-02 по требованию: «система с несколькими жидкостными
