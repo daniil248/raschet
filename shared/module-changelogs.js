@@ -4,6 +4,19 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.25', date: '2026-05-02', items: [
+      '⚖ <b>Финансовые параметры на ПОДБОР-уровне</b>. По требованию: «сроки нужно вынести в подбор, чтобы сравнивать одинаковые условия, только затраты оставить на уровне опции».',
+      '• Срок проекта (lifetime), Discount rate, Эскалация эл/энергии, Эскалация ТО — переехали из <code>option.eco</code> в <code>selection.eco</code> (вкладка «📋 Свойства подбора» → блок «💰 Финансовые параметры»).',
+      '• Все варианты подбора теперь сравниваются на ОДИНАКОВЫХ финансовых условиях — справедливый payback и TCO.',
+      '• <code>compareOptions(…, selectionEco)</code> — 7-й аргумент, override per-option финансовых полей. cooling.js передаёт <code>sel.eco</code> везде (TCO chart, comparison table). Для compare-mode=\'selections\' override не делается (у каждого подбора свой sel.eco).',
+      '• Миграция: при первом открытии selection.eco копируется из основного варианта option.eco (если sel.eco пуст).',
+      '• option.eco продолжает хранить только costItems[] (затраты). Хинт в форме CAPEX (входные) указывает куда переехали финпараметры.',
+      '⚙ <b>Phase 24.3: Service ↔ Cooling integration</b>. Кнопка «❄ Из cooling-подбора» в форме наряда: открывает picker подборов/опций текущего проекта; авто-генерирует позиции наряда по equipment[] выбранной опции (qty из топологии, цены — дефолтные по типу/мощности).',
+      '• Для типа «Монтаж» — создаются «Монтаж: ...» × qty, плюс ПНР/опрессовка/заправка хладагента.',
+      '• Для типа «ТО» — «ТО квартальное: ...» × qty × 4, плюс фильтры/дозаправка.',
+      '• <code>service/calc/order-builder.js</code> — pure helpers + <code>loadCoolingSelectionsForContext(pid)</code>.',
+      'Файлы: <code>cooling/calc/comparison.js</code>, <code>cooling/cooling.js</code>, <code>cooling/ui/capex-form.js</code>, <code>service/calc/order-builder.js</code>, <code>service/ui/order-form.js</code>.',
+    ] },
     { version: '0.60.24', date: '2026-05-02', items: [
       '🐛 <b>Fix: суммы не пересчитываются при изменении валюты в costItems</b>. По репорту: «суммы не просчитываются при изменении валюты». Корневая причина: <code>&lt;select&gt;</code> срабатывал input-event ДО change, и input-handler перезаписывал currency → к моменту change oldCur === newCur → конверсия не выполнялась. Теперь input полностью игнорирует currency, всё в change. Toast сообщает результат конвертации.',
       '📈 <b>TCO/Payback переехал на ПОДБОР-уровень</b>. По требованию: «сравнение CAPEX TCO должно относиться к Подбору, а не к опции». Новая selection-scope вкладка «📈 TCO / Payback» содержит: KPI основного (★) варианта + TCO chart по годам всех вариантов + сводная таблица CAPEX/OPEX/TCO/Payback. Опция-вкладка переименована в «💰 CAPEX (входные)» — только форма для текущей опции с напоминанием куда ушёл TCO.',

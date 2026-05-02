@@ -44,8 +44,19 @@ import { computeTco, discountedPaybackYears, convertEcoToCurrency } from './cape
  *
  * @returns {Array<OptionMetrics>}
  */
-export function compareOptions(options, hourly, tariffPerKwh, displayCurrency = '₽', convertFn = null, requiredCoolingKw = 0) {
+export function compareOptions(options, hourly, tariffPerKwh, displayCurrency = '₽', convertFn = null, requiredCoolingKw = 0, selectionEco = null) {
   if (!options || !options.length) return [];
+
+  // v0.60.25: финансовые параметры (lifetime/discount/escalations) — на
+  // selection-уровне. Override каждого option.eco чтобы все варианты считались
+  // на одинаковых финусловиях. Если selectionEco не передан, используются
+  // option.eco (legacy путь).
+  const finOverrides = selectionEco ? {
+    projectLifetimeYears: selectionEco.projectLifetimeYears,
+    discountRatePct:      selectionEco.discountRatePct,
+    escalationEnergyPct:  selectionEco.escalationEnergyPct,
+    escalationMaintPct:   selectionEco.escalationMaintPct,
+  } : null;
 
   const computed = options.map(opt => {
     // Σ qty по всем equipment-группам — масштабирующий коэффициент для
@@ -93,14 +104,18 @@ export function compareOptions(options, hourly, tariffPerKwh, displayCurrency = 
     const annualCost = annualEnergyKwh * (tariffPerKwh || 0);
 
     // Convert eco к displayCurrency (per-unit values).
+    // costItems в новой модели уже хранит qty и НЕ нужно умножать ещё раз.
+    // Поддерживаем legacy single-value поля × totalQty.
     const ecoConv = convertEcoToCurrency(opt.eco, displayCurrency, convertFn);
-
-    // System-level eco = per-unit × totalQty (равно для CAPEX и OPEX-ТО).
+    const useLegacyMultiplier = !Array.isArray(opt.eco?.costItems) || !opt.eco.costItems.length;
+    const k = useLegacyMultiplier ? totalQty : 1;
     const ecoSystem = {
       ...ecoConv,
-      equipmentCost:        (Number(ecoConv.equipmentCost)        || 0) * totalQty,
-      installationCost:     (Number(ecoConv.installationCost)     || 0) * totalQty,
-      maintenanceRubPerYear:(Number(ecoConv.maintenanceRubPerYear) || 0) * totalQty,
+      equipmentCost:         (Number(ecoConv.equipmentCost)        || 0) * k,
+      installationCost:      (Number(ecoConv.installationCost)     || 0) * k,
+      maintenanceRubPerYear: (Number(ecoConv.maintenanceRubPerYear) || 0) * k,
+      // v0.60.25: financial overrides от selection
+      ...(finOverrides ? finOverrides : {}),
     };
 
     const tco = computeTco({

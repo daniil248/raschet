@@ -8,6 +8,11 @@ import {
   DEFAULT_ORDER, ORDER_TYPES, POSITION_CATEGORIES, UNITS, WORK_TEMPLATES,
   defaultPosition, computeOrderTotals, CURRENCIES,
 } from '../calc/order-model.js';
+import {
+  buildInstallPositionsFromCoolingOption,
+  buildMaintenancePositionsFromCoolingOption,
+  loadCoolingSelectionsForContext,
+} from '../calc/order-builder.js';
 import { fmtMoney } from '../../cooling/calc/fc-summary.js';
 import { escAttr, escHtml, modalOpen, toast } from '../../meteo/util.js';
 
@@ -16,8 +21,9 @@ import { escAttr, escHtml, modalOpen, toast } from '../../meteo/util.js';
  * @param {function(order)} onChange — вызывается при каждом изменении
  * @param {string} displayCurrency  — валюта проекта/отчёта
  * @param {function|null} convertFn — (amount, fromCur, toCur) => number
+ * @param {object} ctx              — { pid: string|null } — контекст для cross-module
  */
-export function renderOrderForm(order, onChange, displayCurrency = '₽', convertFn = null) {
+export function renderOrderForm(order, onChange, displayCurrency = '₽', convertFn = null, ctx = {}) {
   const o = { ...DEFAULT_ORDER, ...(order || {}) };
   if (!Array.isArray(o.positions)) o.positions = [];
   const wrap = document.createElement('div');
@@ -70,6 +76,7 @@ export function renderOrderForm(order, onChange, displayCurrency = '₽', conver
       <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
         <button type="button" class="sv-btn-primary" id="sv-add-pos" title="Добавить пустую позицию.">+ Позиция</button>
         <button type="button" class="sv-btn-ghost" id="sv-add-template" title="Открыть каталог типовых работ для текущего типа наряда (${escAttr(ORDER_TYPES.find(t => t.id === o.type)?.label || '')}). Шаблоны имеют дефолтные себес/клиент-цены — можно редактировать после добавления.">📚 Из шаблонов</button>
+        <button type="button" class="sv-btn-ghost" id="sv-import-cooling" title="Импорт работ из cooling-подбора текущего проекта. Для каждой equipment-группы добавится позиция «Монтаж: ...» с qty из топологии (для нарядов типа Монтаж) или «ТО квартальное ...» (для нарядов типа ТО). Цены — дефолтные по типу/мощности; редактируйте после импорта.">❄ Из cooling-подбора</button>
       </div>
       <div class="sv-table-wrap">
         ${renderPositionsTable(o.positions, displayCurrency)}
@@ -144,6 +151,26 @@ export function renderOrderForm(order, onChange, displayCurrency = '₽', conver
         const next = { ...o, positions: [...o.positions, tpl] };
         onChange(next);
       }
+      return;
+    }
+    if (ev.target.closest('#sv-import-cooling')) {
+      const result = await pickCoolingOptionModal(o.type, displayCurrency);
+      if (!result) return;
+      const builderFn = (o.type === 'maintenance')
+        ? buildMaintenancePositionsFromCoolingOption
+        : buildInstallPositionsFromCoolingOption;
+      const newPositions = builderFn(result.option, displayCurrency);
+      if (!newPositions.length) {
+        toast('У выбранной опции нет equipment-групп. Сначала задайте оборудование во вкладке Топология.', 'err');
+        return;
+      }
+      const next = {
+        ...o,
+        coolingSelectionId: result.selection.id,
+        positions: [...o.positions, ...newPositions],
+      };
+      onChange(next);
+      toast(`Добавлено ${newPositions.length} позиций из «${result.selection.name} → ${result.option.name}»`, 'ok');
       return;
     }
     const del = ev.target.closest('.sv-pos-del');
@@ -259,6 +286,50 @@ function setByPath(obj, path, val) {
   }
   cur[parts[parts.length - 1]] = val;
   return obj;
+}
+
+async function pickCoolingOptionModal(orderType, displayCurrency) {
+  // Читаем cooling-подборы из текущего контекста (project pid из URL, либо standalone)
+  const params = new URLSearchParams(location.search);
+  const pid = params.get('standalone') === '1' ? null : (params.get('pid') || null);
+  const selections = loadCoolingSelectionsForContext(pid);
+  if (!selections.length) {
+    toast(`В текущем контексте (${pid ? 'pid=' + pid : 'standalone'}) нет cooling-подборов. Откройте модуль Подбор холодильных систем и создайте подбор сначала.`, 'err');
+    return null;
+  }
+  // Список (Подбор → Опция) для select
+  const opts = [];
+  for (const sel of selections) {
+    if (!sel.options?.length) continue;
+    for (const opt of sel.options) {
+      const eqCount = (opt.equipment || []).length;
+      const meta = eqCount ? `${eqCount} групп оборудования` : '⚠ нет equipment';
+      opts.push({ selId: sel.id, selName: sel.name, optId: opt.id, optName: opt.name, meta });
+    }
+  }
+  if (!opts.length) {
+    toast('У cooling-подборов нет опций с оборудованием. Откройте Подбор холодильных систем → добавьте варианты.', 'err');
+    return null;
+  }
+  const selOpts = opts.map((o, i) =>
+    `<option value="${i}">${escHtml(o.selName)} → ${escHtml(o.optName)} (${escHtml(o.meta)})</option>`
+  ).join('');
+  const result = await modalOpen(
+    '<h3>❄ Импорт работ из cooling-подбора</h3>',
+    `<label>Выберите подбор и опцию:<select id="sv-cool-sel" size="10" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font:inherit;font-size:13px">${selOpts}</select></label>
+     <p class="muted" style="font-size:11.5px;margin-top:6px">Тип наряда: <b>${escHtml(orderType === 'maintenance' ? 'ТО' : 'Монтаж')}</b>. Будут добавлены позиции с qty из топологии и дефолтными ценами по типу/мощности оборудования.</p>`,
+    async () => {
+      const sel = document.getElementById('sv-cool-sel');
+      const i = Number(sel?.value);
+      if (!Number.isFinite(i) || !opts[i]) return null;
+      const meta = opts[i];
+      const selection = selections.find(s => s.id === meta.selId);
+      const option = selection?.options?.find(o => o.id === meta.optId);
+      if (!selection || !option) return null;
+      return { picked: { selection, option } };
+    }
+  );
+  return result?.picked || null;
 }
 
 async function pickTemplateModal(type, displayCurrency) {

@@ -777,8 +777,24 @@ function renderActiveTab() {
 
   if (_activeTab === 'general') {
     // v0.60.18: Свойства всего подбора — общие условия для всех вариантов.
+    // v0.60.25: Финансовые параметры (lifetime/discount/escalations) тоже здесь —
+    // на selection-уровне, чтобы все варианты сравнивались на одинаковых
+    // финансовых условиях.
     const wrap = $('cl-general-wrap');
     if (wrap) {
+      // Гарантируем default-eco на selection (миграция из option.eco при первом
+      // открытии — берём из основного варианта, если sel.eco пусто).
+      if (!sel.eco) {
+        const main = sel.options.find(o => o.id === sel.mainOptionId) || sel.options[0];
+        const fromOpt = main?.eco || {};
+        sel.eco = {
+          projectLifetimeYears: Number(fromOpt.projectLifetimeYears) || 20,
+          discountRatePct:      Number(fromOpt.discountRatePct)      || 8,
+          escalationEnergyPct:  Number(fromOpt.escalationEnergyPct)  || 5,
+          escalationMaintPct:   Number(fromOpt.escalationMaintPct)   || 4,
+        };
+      }
+      const eco = sel.eco;
       const general = sel.general || { requiredCoolingKw: 0, safetyMarginPct: 20 };
       const targetKw = (general.requiredCoolingKw || 0) * (1 + (general.safetyMarginPct || 0) / 100);
       // Перечень вариантов с auto-расчётом qty
@@ -816,6 +832,30 @@ function renderActiveTab() {
             🎯 <b>Целевая мощность с запасом: ${targetKw.toFixed(0)} кВт.</b> Все варианты ниже подбираются на эту мощность.
           </p>
         </div>
+        <div class="cl-chiller-section">
+          <div class="cl-chiller-section-title" title="Финансовые параметры применяются ко ВСЕМ вариантам подбора одинаково — для справедливого сравнения. Разные финусловия исказят payback и TCO.">💰 Финансовые параметры (общие для всех вариантов)</div>
+          <div class="cl-chiller-grid">
+            <label title="Срок горизонта оценки TCO. Типично 10–20 лет для HVAC, до 25 лет для крупных чиллеров.">
+              Срок проекта, лет:
+              <input type="number" min="1" max="40" step="1" id="cl-gen-lifetime" value="${eco.projectLifetimeYears}">
+            </label>
+            <label title="Discount rate (ставка дисконтирования) — приведение будущих платежей к текущей стоимости. Типично:
+• 8–10% для коммерческих проектов
+• 12–15% для high-risk
+• 5–7% для гос/инфраструктурных">
+              Discount rate, %/год:
+              <input type="number" min="0" max="50" step="0.5" id="cl-gen-discount" value="${eco.discountRatePct}">
+            </label>
+            <label title="Годовой рост тарифа на электроэнергию. Применяется к OPEX_energy_t = base × (1+esc)^(t-1). РФ типично 4–7%/год.">
+              Эскалация эл/энергии, %/год:
+              <input type="number" min="0" max="20" step="0.5" id="cl-gen-esc-energy" value="${eco.escalationEnergyPct}">
+            </label>
+            <label title="Годовой рост стоимости ТО (зарплаты + запчасти). Типично 3–5%/год.">
+              Эскалация ТО, %/год:
+              <input type="number" min="0" max="20" step="0.5" id="cl-gen-esc-maint" value="${eco.escalationMaintPct}">
+            </label>
+          </div>
+        </div>
         ${sel.options.length ? `
         <div class="cl-chiller-section">
           <div class="cl-chiller-section-title">Auto-расчёт количества по вариантам</div>
@@ -848,6 +888,20 @@ function renderActiveTab() {
         recomputeAutoQtyForSelection(sel);
         persist(); renderActiveTab();
       });
+      // v0.60.25: финпараметры подбора
+      const wireSelEco = (selector, field) => {
+        const el = wrap.querySelector(selector);
+        if (!el) return;
+        el.addEventListener('change', () => {
+          if (!sel.eco) sel.eco = {};
+          sel.eco[field] = Number(el.value) || 0;
+          persist(); renderActiveTab();
+        });
+      };
+      wireSelEco('#cl-gen-lifetime',   'projectLifetimeYears');
+      wireSelEco('#cl-gen-discount',   'discountRatePct');
+      wireSelEco('#cl-gen-esc-energy', 'escalationEnergyPct');
+      wireSelEco('#cl-gen-esc-maint',  'escalationMaintPct');
     }
   } else if (_activeTab === 'spec') {
     const wrap = $('cl-spec-form-wrap');
@@ -965,7 +1019,7 @@ function renderActiveTab() {
     const tariffDisp = tariffInDisplayCurrency();
     const reqKw = requiredCoolingKwOf(sel);
     const ordered = orderedOptionsForCompare(sel);
-    const allMetrics = compareOptions(ordered, hourly, tariffDisp, _currency, convertFn, reqKw);
+    const allMetrics = compareOptions(ordered, hourly, tariffDisp, _currency, convertFn, reqKw, sel.eco);
 
     // KPI по основному (★) варианту
     const main = sel.options.find(o => o.id === sel.mainOptionId) || sel.options[0];
@@ -1136,7 +1190,10 @@ function renderActiveTab() {
       // active-chiller-load (каждая опция по-прежнему симулируется через её
       // собственное option.equipment[]).
       const reqKw = (_compareMode === 'selections') ? 0 : requiredCoolingKwOf(sel);
-      const metrics = compareOptions(ordered, hourly, tariffInDisplayCurrency(), _currency, convertFn, reqKw);
+      // v0.60.25: для variants-mode используем sel.eco (общие финпараметры);
+      // для selections-mode у каждого подбора свой sel.eco — не override'им.
+      const ecoOverride = (_compareMode === 'selections') ? null : sel.eco;
+      const metrics = compareOptions(ordered, hourly, tariffInDisplayCurrency(), _currency, convertFn, reqKw, ecoOverride);
       tbl.innerHTML = renderComparisonTable(metrics, _currency);
     }
   }

@@ -74,30 +74,9 @@ export function renderCapexForm(eco, onChange, displayCurrency = '₽', convertF
       </div>
     </div>
 
-    <div class="cl-chiller-section">
-      <div class="cl-chiller-section-title">Срок и финансовые параметры</div>
-      <div class="cl-money-grid">
-        <label class="cl-compact-field" title="Срок горизонта оценки TCO. Типично 10–20 лет для HVAC, до 25 лет для крупных чиллеров.">
-          <span>Срок проекта, лет</span>
-          <input type="number" step="1" min="1" max="40" data-cf="projectLifetimeYears" value="${e.projectLifetimeYears}">
-        </label>
-        <label class="cl-compact-field" title="Discount rate (ставка дисконтирования) — приведение будущих платежей к текущей стоимости. Типично:
-• 8–10% для коммерческих проектов
-• 12–15% для high-risk
-• 5–7% для гос/инфраструктурных">
-          <span>Discount rate, %/год</span>
-          <input type="number" step="0.5" min="0" max="50" data-cf="discountRatePct" value="${e.discountRatePct}">
-        </label>
-        <label class="cl-compact-field" title="Годовой рост тарифа на электроэнергию. РФ типично 4–7%/год.">
-          <span>Эскалация эл/энергии, %/год</span>
-          <input type="number" step="0.5" min="0" max="20" data-cf="escalationEnergyPct" value="${e.escalationEnergyPct}">
-        </label>
-        <label class="cl-compact-field" title="Годовой рост стоимости ТО (зарплаты + запчасти). Типично 3–5%/год.">
-          <span>Эскалация ТО, %/год</span>
-          <input type="number" step="0.5" min="0" max="20" data-cf="escalationMaintPct" value="${e.escalationMaintPct}">
-        </label>
-      </div>
-    </div>
+    <p class="muted" style="font-size:11.5px;margin:8px 0 0;padding:6px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:3px" title="Срок проекта, ставка дисконтирования и эскалации перенесены на ПОДБОР-уровень — чтобы все варианты сравнивались на одинаковых финансовых условиях. Изменяйте их во вкладке «📋 Свойства подбора».">
+      ℹ Срок проекта, ставка дисконтирования и эскалации — на уровне ПОДБОРА (вкладка «📋 Свойства подбора»). Здесь — только статьи затрат для этой опции.
+    </p>
   `;
 
   wrap.addEventListener('click', async (ev) => {
