@@ -9,5 +9,7 @@
 
 import './nbk-rk.js';            // Национальный банк РК (default)
 import './cbr-rf.js';            // ЦБ РФ
+import './nbu-ua.js';            // НБ Украины (Phase 22.6)
+import './nbrb-by.js';           // НБ Беларуси (Phase 22.6)
 import './frankfurter.js';       // ECB через Frankfurter.app
-import './exchangerate-host.js'; // exchangerate.host (USD base)
+import './exchangerate-host.js'; // open.er-api.com (USD base, fallback)

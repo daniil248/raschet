@@ -2681,9 +2681,16 @@ standalone-приложение в отдельном. Чтобы использ
     «📥 Импорт CSV» / «🗑 Очистить кривую».
   - Sanity на синтетике 4 точек (-5/10/25/35°C, 160-100кВт): T=17°C
     интерполируется в capacity=130.67кВт, COP=4.17, power=31.31кВт ✓.
-- [ ] **22.6** Доп. источники курсов (по запросу)
-  - НБ Украины, НБ Беларуси, currencyapi.com, OpenExchangeRates
-  - Plugin: новый файл `shared/currency-rates/sources/<id>.js` с register({...})
+- [x] **22.6** Доп. источники курсов — закрыто v0.60.5 (NBU UA + NBRB BY)
+  - <code>shared/currency-rates/sources/nbu-ua.js</code> — НБ Украины
+    (https://bank.gov.ua, JSON API, base UAH)
+  - <code>shared/currency-rates/sources/nbrb-by.js</code> — НБ Беларуси
+    (https://api.nbrb.by, JSON API, base BYN)
+  - Оба с CORS-proxy fallback (corsproxy.io / allorigins.win) на случай
+    блокировки прямого запроса.
+  - Зарегистрированы в <code>sources/index.js</code> через side-effect
+    import. Plugin-арх работает без правок ядра.
+  - Pending: currencyapi.com / OpenExchangeRates требуют API key — TODO.
 - [ ] **22.7** Карточка оборудования в каталоге (catalog/)
   - Сохранять выбранную опцию как «изделие» с привязкой к chiller spec
 

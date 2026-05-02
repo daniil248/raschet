@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.5', date: '2026-05-02', items: [
+      '🌐 <b>Phase 22.6: Доп. источники курсов</b> — Национальный банк Украины и Национальный банк Беларуси.',
+      '• <code>shared/currency-rates/sources/nbu-ua.js</code> — НБ Украины (https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange, JSON API, base UAH).',
+      '• <code>shared/currency-rates/sources/nbrb-by.js</code> — НБ Беларуси (https://api.nbrb.by/exrates/rates, JSON API, base BYN).',
+      '• Оба с CORS-proxy fallback (corsproxy.io / allorigins.win) на случай блокировки прямого запроса.',
+      '• Зарегистрированы в <code>sources/index.js</code> через side-effect import — plugin-арх работает без правок ядра.',
+      '• ROADMAP Phase 22.6 закрыт (currencyapi.com / OpenExchangeRates остаются как TODO — требуют API key).',
+      'Файлы: <code>shared/currency-rates/sources/nbu-ua.js</code> (новый), <code>shared/currency-rates/sources/nbrb-by.js</code> (новый), <code>shared/currency-rates/sources/index.js</code> (импорты).',
+    ] },
     { version: '0.60.4', date: '2026-05-02', items: [
       '📥 <b>Phase 22.5: Импорт performance-curves производителей</b> — реальная кривая capacity/COP по T_amb из selection software вендоров (Daikin EWAQ, Trane RTAF, Carrier 30XW, Vertiv Liebert и др.).',
       '• <code>parsePerformanceCurveCsv()</code> — парсер CSV: заголовки T,capacity,cop (или T,capacity,power); разделители , ; tab; авто-сортировка точек по T.',
