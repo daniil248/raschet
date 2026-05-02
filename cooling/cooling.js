@@ -22,7 +22,7 @@
 //   raschet.project.<pid>.cooling.cols.v1
 //   raschet.project.<pid>.cooling.tariff.v1
 
-import { ensureDefaultProject, projectKey } from '../shared/project-storage.js';
+import { ensureDefaultProject, projectKey, listProjects } from '../shared/project-storage.js';
 import * as util from '../meteo/util.js';
 
 import { DEFAULT_CHILLER, COLUMNS, DEFAULT_COLS, CHILLER_COLS } from './calc/chiller-defaults.js';
@@ -283,11 +283,84 @@ function renderStorageMode() {
     return;
   }
   if (_standalone) {
-    el.innerHTML = `<span title="Standalone-режим: данные хранятся в общем разделе LocalStorage без привязки к проекту. Используйте если открыли модуль из закладки/прямой ссылки без активного проекта.">🔓 Standalone</span>`;
+    // v0.59.997: в standalone-режиме показываем кнопку «📤 Сохранить в проект»
+    // только если в системе есть хотя бы один проект (модуль Проекты доступен).
+    let projAvail = false;
+    try { projAvail = (listProjects() || []).length > 0; } catch {}
+    el.innerHTML = `
+      <span title="Standalone-режим: данные хранятся в общем разделе LocalStorage без привязки к проекту. Используйте если открыли модуль из закладки/прямой ссылки без активного проекта.">🔓 Standalone</span>
+      ${projAvail
+        ? `<button type="button" id="cl-save-to-project" style="display:block;width:100%;margin-top:6px;padding:5px 8px;font-size:11.5px;background:#1e40af;color:#fff;border:none;border-radius:3px;cursor:pointer" title="Скопировать активный подбор в выбранный проект. После сохранения вы можете перейти в проект и продолжить работу там.">📤 Сохранить активный подбор в проект</button>`
+        : `<div class="muted" style="font-size:10.5px;margin-top:4px" title="Модуль «Проекты» не активен или не имеет проектов. Создайте проект через главное меню чтобы переносить подборы между сессиями.">💡 Создайте проект (через Hub) для сохранения подборов в проект</div>`
+      }
+    `;
+    const btn = el.querySelector('#cl-save-to-project');
+    if (btn) btn.addEventListener('click', saveActiveSelectionToProject);
     return;
   }
   const projName = (_pid && _pid.name) || 'default';
   el.innerHTML = `<span title="Project-режим: данные привязаны к активному проекту «${util.escAttr(projName)}». Все подборы будут сохранены в проекте.">💼 Проект: <b>${util.escHtml(projName)}</b></span>`;
+}
+
+/* v0.59.997: копирование активного standalone-подбора в выбранный проект.
+   Открывает picker проектов; на выбор — записывает selection в LS-bucket
+   проекта; опционально перенаправляет в project-mode cooling. */
+async function saveActiveSelectionToProject() {
+  const sel = activeSelection();
+  if (!sel) { util.toast('Нет активного подбора для сохранения.', 'err'); return; }
+  let projects = [];
+  try { projects = listProjects() || []; } catch {}
+  if (!projects.length) { util.toast('Нет доступных проектов. Создайте проект через Hub.', 'err'); return; }
+
+  // Простой select-picker через modalOpen
+  const html = `
+    <label>Проект назначения:
+      <select id="cl-save-proj-sel" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font:inherit;font-size:13px">
+        ${projects.map(p => `<option value="${util.escAttr(p.id)}">${util.escHtml(p.name || p.id)}</option>`).join('')}
+      </select>
+    </label>
+    <p class="muted" style="font-size:11.5px;margin:8px 0 0">
+      Подбор «${util.escHtml(sel.name)}» (${sel.options.length} вариант${sel.options.length === 1 ? '' : 'ов'}) будет скопирован в выбранный проект. Standalone-копия сохранится.
+    </p>
+  `;
+  const result = await util.modalOpen(
+    '<h3>📤 Сохранить подбор в проект</h3>',
+    html,
+    async () => {
+      const sel2 = document.getElementById('cl-save-proj-sel');
+      const pid = sel2 ? sel2.value : null;
+      return pid ? { projectId: pid } : null;
+    }
+  );
+  if (!result || !result.projectId) return;
+
+  // Копируем подбор в LS проекта (с новым id, чтобы не конфликтовать).
+  try {
+    const key = projectKey(result.projectId, 'cooling', 'selections.v1');
+    const arr = JSON.parse(localStorage.getItem(key) || '[]');
+    const newSel = JSON.parse(JSON.stringify(sel));
+    newSel.id = 'sel-' + Date.now();
+    // Перегенерируем option id для уникальности в новом контексте
+    const idMap = new Map();
+    for (const o of newSel.options) {
+      const newId = 'opt-' + (Math.floor(Math.random() * 1e6));
+      idMap.set(o.id, newId);
+      o.id = newId;
+    }
+    if (newSel.mainOptionId) newSel.mainOptionId = idMap.get(newSel.mainOptionId) || newSel.mainOptionId;
+    if (newSel.activeOptionId) newSel.activeOptionId = idMap.get(newSel.activeOptionId) || newSel.activeOptionId;
+    arr.push(newSel);
+    localStorage.setItem(key, JSON.stringify(arr));
+    util.toast(`✔ Подбор «${sel.name}» сохранён в проект.`, 'ok');
+    // Опциональный быстрый переход
+    setTimeout(() => {
+      if (confirm('Перейти в проект и открыть подбор?')) {
+        location.href = `../cooling/?projectId=${encodeURIComponent(result.projectId)}`;
+      }
+    }, 500);
+  } catch (e) {
+    util.toast(`Ошибка сохранения: ${e.message}`, 'err');
+  }
 }
 
 function renderModuleActionsHere() {

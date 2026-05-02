@@ -162,6 +162,14 @@ const PROJECT_MODULES = [
     desc: 'Если объект — МДЦ (GDM-600): wizard зон, расстановка стоек/ИБП/кондёров, top-view.',
     color: '#be185d',
   },
+  {
+    id: 'cooling',
+    href: '../cooling/',
+    icon: '❄',
+    label: 'Подбор холодильных систем',
+    desc: 'Технико-экономическое сравнение чиллеров (CHW), DX-систем, free-cooling и CRAC. CAPEX/OPEX/TCO/payback по климатическим данным проекта. Несколько подборов разных систем, в каждом — варианты с ★-основным.',
+    color: '#0891b2',
+  },
 ];
 
 /* ---------- Статусы ---------- */
@@ -312,6 +320,17 @@ function render() {
     const subScs      = listSubProjects(p.id, 'scs-design', { strict: true });
     const subRacks    = listSubProjects(p.id, 'scs-config', { strict: true });
     const subMdc      = listSubProjects(p.id, 'mdc-config', { strict: true });
+    // v0.59.997: подборы холодильных систем хранятся не как sub-projects,
+    // а как массив в LS-bucket cooling.selections.v1 проекта. Читаем напрямую.
+    let subCoolings = [];
+    try {
+      const raw = localStorage.getItem(projectKey(p.id, 'cooling', 'selections.v1'));
+      const arr = raw ? JSON.parse(raw) : [];
+      subCoolings = Array.isArray(arr) ? arr.map(s => ({
+        id: s.id, name: s.name,
+        meta: `${s.options?.length || 0} вариант${(s.options?.length === 1) ? '' : 'ов'}${s.mainOptionId ? ', есть ★' : ''}`,
+      })) : [];
+    } catch { subCoolings = []; }
 
     // v0.59.862: «Карточка модуля появляется только когда есть данные».
     // Singleton-модули (Технолог ЦОД, IT-инвентарь, реестр объекта) видимы
@@ -414,6 +433,23 @@ function render() {
         bodyHtml: renderSubList(subMdc, '../mdc-config/', '🏗'),
       },
       {
+        id: 'cooling', type: 'multi',
+        title: '❄ Подборы холодильных систем', count: subCoolings.length,
+        color: '#0891b2',
+        href: '../cooling/',
+        visible: subCoolings.length > 0,
+        addLabel: '❄ Добавить подбор холодильных систем',
+        bodyHtml: subCoolings.length
+          ? subCoolings.map(s => `
+              <div class="pr-sub-row" style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#fff;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:4px">
+                <span style="font-size:16px">❄</span>
+                <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(s.name)} — ${esc(s.meta)}">${esc(s.name)}</span>
+                <span class="muted" style="font-size:11px">${esc(s.meta)}</span>
+                <a href="${esc(buildModuleHref('../cooling/', { projectId: p.id, fromModule: 'projects', openSelection: s.id }))}" class="pr-btn-sel" style="font-size:12px;padding:3px 10px" title="Открыть этот подбор в модуле «Подбор холодильных систем»">Открыть →</a>
+              </div>`).join('')
+          : '',
+      },
+      {
         id: 'inventory-it', type: 'singleton',
         title: '📦 Реестр IT-оборудования', subtitle: '',
         color: '#0369a1', accent: '#e0f2fe', border: '#7dd3fc',
@@ -492,6 +528,7 @@ function render() {
       'tech-workspace':     { kind: 'singleton',        label: 'Технолог ЦОД',  href: '../tech-workspace/' },
       'inventory-it':       { kind: 'singleton',        label: 'Реестр IT-оборудования', href: '../scs-config/inventory.html' },
       'facility-inventory': { kind: 'singleton',        label: 'Реестр оборудования объекта', href: '../facility-inventory/' },
+      'cooling':            { kind: 'multi-cooling',    label: 'подбор холодильных систем', href: '../cooling/', defaultName: 'Подбор холодильных систем' },
     };
     modulesHost.querySelectorAll('[data-add]').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -514,6 +551,34 @@ function render() {
         // создаём legacy-схему и привязываем к проекту через
         // scheme.projectId. Так схема видна и на главной «Мои схемы»,
         // и на странице проекта (без двойного списка sub-проектов).
+        // v0.59.997: «multi-cooling» — создаёт новый подбор в LS-bucket
+        // cooling.selections.v1 этого проекта, затем редиректит в cooling.
+        if (opt.kind === 'multi-cooling') {
+          try {
+            const key = projectKey(p.id, 'cooling', 'selections.v1');
+            const activeKey = projectKey(p.id, 'cooling', 'activeSelectionId.v1');
+            const arr = JSON.parse(localStorage.getItem(key) || '[]');
+            const newSel = {
+              id: 'sel-' + Date.now(),
+              name: name.trim() || opt.defaultName,
+              mainOptionId: null,
+              activeOptionId: null,
+              options: [],
+            };
+            arr.push(newSel);
+            localStorage.setItem(key, JSON.stringify(arr));
+            localStorage.setItem(activeKey, JSON.stringify(newSel.id));
+            setActiveProjectId(p.id);
+            prToast(`✔ Создан подбор «${newSel.name}»`);
+            try { clearNavStack(); } catch {}
+            location.href = buildModuleHref(opt.href, { projectId: p.id, fromModule: 'projects' });
+          } catch (e) {
+            console.error('[+ Подбор холодильных систем]', e);
+            prToast('Ошибка создания подбора: ' + (e.message || e), 'error');
+          }
+          return;
+        }
+
         if (opt.kind === 'multi-storage') {
           try {
             if (!window.Storage || typeof window.Storage.createProject !== 'function') {
