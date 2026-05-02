@@ -38,6 +38,7 @@ import { drawChillerEnergyChart, drawTcoChart } from './ui/energy-chart.js';
 import { renderCapexForm, renderTcoKpi } from './ui/capex-form.js';
 import { syncCostItemsFromEquipment } from './calc/capex-tco.js';
 import { fetchAndSaveMeteoForProject } from '../shared/meteo-fetch.js';
+import { createServiceOrderForProject } from '../shared/service-bridge.js';
 import { renderComparisonTable } from './ui/comparison-view.js';
 // v0.60.17: stale-imports убраны (buildTopologyFromOptions / simulateTopology
 // — legacy путь, не используется в новой модели per-equipment N+M).
@@ -800,10 +801,73 @@ function applyFocusUI() {
       fi.innerHTML = `<span title="Сейчас редактируется подбор «${util.escAttr(sel?.name || '')}». Видны вкладки уровня подбора: общие свойства + сравнение опций. Кликните на конкретный вариант в сайдбаре, чтобы перейти к редактированию опции.">📋 <b>Редактирование подбора</b>: «${util.escHtml(sel?.name || '—')}» (${sel?.options?.length || 0} вариантов)</span>`;
       fi.className = 'cl-focus-indicator cl-focus-selection';
     } else {
-      fi.innerHTML = `<span title="Сейчас редактируется вариант «${util.escAttr(opt?.name || '')}» подбора «${util.escAttr(sel?.name || '')}». Видны вкладки уровня опции: spec, энергия, CAPEX, топология. Кликните на название подбора в сайдбаре, чтобы перейти к свойствам подбора.">⚙ <b>Редактирование варианта</b>: «${util.escHtml(opt?.name || '—')}» в подборе «${util.escHtml(sel?.name || '')}»</span>`;
+      // v0.60.33: для option-focus добавляем кнопки cross-module действий
+      // (создать наряд монтажа/ТО в Сервисе на основе этой опции).
+      fi.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <span title="Сейчас редактируется вариант «${util.escAttr(opt?.name || '')}» подбора «${util.escAttr(sel?.name || '')}». Видны вкладки уровня опции: spec, энергия, CAPEX, топология. Кликните на название подбора в сайдбаре, чтобы перейти к свойствам подбора.">⚙ <b>Редактирование варианта</b>: «${util.escHtml(opt?.name || '—')}» в подборе «${util.escHtml(sel?.name || '')}»</span>
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            <button type="button" id="cl-push-service-install" class="cl-btn-ghost" style="padding:4px 8px;font-size:11px"
+                    title="Создать в модуле «Сервис» наряд МОНТАЖА с авто-заполнением позиций по equipment[] этой опции (qty из топологии, дефолт-цены по типу/мощности). Откроется Сервис в этом окне.">
+              📤 → Сервис: Монтаж
+            </button>
+            <button type="button" id="cl-push-service-maint" class="cl-btn-ghost" style="padding:4px 8px;font-size:11px"
+                    title="Создать в модуле «Сервис» наряд ТО (квартальное) с авто-заполнением позиций по equipment[] этой опции.">
+              📤 → Сервис: ТО
+            </button>
+          </div>
+        </div>
+      `;
       fi.className = 'cl-focus-indicator cl-focus-option';
+      // Wire push-buttons
+      const pushBtn = (id, type) => {
+        const btn = fi.querySelector(`#${id}`);
+        if (btn) btn.addEventListener('click', () => pushOptionToService(sel, opt, type));
+      };
+      pushBtn('cl-push-service-install', 'install');
+      pushBtn('cl-push-service-maint', 'maintenance');
     }
   }
+}
+
+/* v0.60.33: создать наряд в Сервисе из cooling-опции и навигироваться. */
+async function pushOptionToService(sel, opt, type) {
+  if (!opt?.equipment?.length) {
+    util.toast('У опции нет equipment-групп. Сначала задайте оборудование во вкладке Топология.', 'err');
+    return;
+  }
+  // Динамический импорт order-builder (из service)
+  let builder;
+  try {
+    builder = await import('../service/calc/order-builder.js');
+  } catch (e) {
+    util.toast(`Не удалось загрузить service-модуль: ${e.message}`, 'err');
+    return;
+  }
+  const buildFn = (type === 'maintenance')
+    ? builder.buildMaintenancePositionsFromCoolingOption
+    : builder.buildInstallPositionsFromCoolingOption;
+  const positions = buildFn(opt, _currency);
+  if (!positions.length) {
+    util.toast('Не удалось сгенерировать позиции (нет valid equipment).', 'err');
+    return;
+  }
+  const typeLabel = type === 'maintenance' ? 'ТО' : 'Монтаж';
+  const order = {
+    name: `${typeLabel}: ${sel.name} → ${opt.name}`,
+    type,
+    date: new Date().toISOString().slice(0, 10),
+    coolingSelectionId: sel.id,
+    positions,
+    overheadPct: 15,
+    vatPct: 12,
+    customer: { name: '', contact: '' },
+    notes: `Авто-сгенерировано из cooling-подбора «${sel.name}» / опции «${opt.name}» (${positions.length} позиций).`,
+  };
+  const pid = _standalone ? null : (_pid?.id || null);
+  const result = createServiceOrderForProject(pid, order);
+  util.toast(`✓ Наряд создан в Сервисе. Открываем…`, 'ok');
+  setTimeout(() => { location.href = result.navigateUrl; }, 800);
 }
 
 function renderActiveTab() {
@@ -1469,7 +1533,10 @@ function init() {
     openMeteoBtn.addEventListener('click', () => {
       // openEmbed: записывает return URL+sessionId в URL → location.href
       // редиректит в /meteo/?return=...&returnSession=...&returnLabel=Cooling
-      openEmbed(location.pathname, '../meteo/', 'Подбор холодильных систем');
+      // v0.60.33 fix: location.pathname + location.search чтобы при возврате
+      // не потерять ?pid=... (был баг «при возврате из метео сломалось» —
+      // cooling сваливался на default-проект).
+      openEmbed(location.pathname + location.search, '../meteo/', 'Подбор холодильных систем');
     });
   }
 

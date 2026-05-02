@@ -293,6 +293,32 @@
     </section>
   </main>
 
+  <!-- v0.60.33: defensive inline-init для cooling — гарантирует базовый
+       currency dropdown даже если cooling.js упадёт на import -->
+  <script>
+    (function clDefensiveInit() {
+      try {
+        var FALLBACK_CURRENCIES = [
+          ['₽','Российский рубль'], ['₸','Казахстанский тенге'], ['Br','Белорусский рубль'],
+          ['$','Доллар США'], ['€','Евро'], ['£','Фунт стерлингов'], ['¥','Иена/Юань'],
+        ];
+        var curSel = document.getElementById('cl-currency');
+        if (curSel && !curSel.children.length) {
+          curSel.innerHTML = FALLBACK_CURRENCIES.map(function(c){
+            return '<option value="'+c[0]+'" title="'+c[1]+'">'+c[0]+' — '+c[1]+'</option>';
+          }).join('');
+        }
+        var tarCur = document.getElementById('cl-tariff-cur');
+        if (tarCur && !tarCur.children.length) {
+          tarCur.innerHTML = FALLBACK_CURRENCIES.map(function(c){
+            return '<option value="'+c[0]+'" title="'+c[1]+'">'+c[0]+'</option>';
+          }).join('');
+        }
+        var dateInp = document.getElementById('cl-rates-date');
+        if (dateInp && !dateInp.value) dateInp.value = new Date().toISOString().slice(0,10);
+      } catch(e){ console.warn('[cooling defensive init]', e); }
+    })();
+  </script>
   <script type="module" src="cooling.js"></script>
   <script type="module">
     import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';

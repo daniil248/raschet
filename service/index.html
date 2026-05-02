@@ -109,6 +109,30 @@
     </section>
   </main>
 
+  <!-- v0.60.33: defensive inline-init — гарантирует базовый currency dropdown
+       и context picker placeholder ДАЖЕ если service.js упадёт на import -->
+  <script>
+    (function svDefensiveInit() {
+      try {
+        var FALLBACK_CURRENCIES = [
+          ['₽','Российский рубль'], ['₸','Казахстанский тенге'], ['Br','Белорусский рубль'],
+          ['$','Доллар США'], ['€','Евро'], ['£','Фунт стерлингов'], ['¥','Иена/Юань'],
+        ];
+        var curSel = document.getElementById('sv-currency');
+        if (curSel && !curSel.children.length) {
+          curSel.innerHTML = FALLBACK_CURRENCIES.map(function(c){
+            return '<option value="'+c[0]+'" title="'+c[1]+'">'+c[0]+' — '+c[1]+'</option>';
+          }).join('');
+        }
+        var ctx = document.getElementById('sv-context-picker');
+        if (ctx && !ctx.innerHTML.trim()) {
+          ctx.innerHTML = '<div style="padding:6px;background:#fff7ed;border:1px solid #fdba74;border-radius:3px;font-size:11px;color:#9a3412">⏳ Загрузка контекста… (если не пропадёт через 2с — F12 → Console)</div>';
+        }
+        var dateInp = document.getElementById('sv-rates-date');
+        if (dateInp && !dateInp.value) dateInp.value = new Date().toISOString().slice(0,10);
+      } catch(e){ console.warn('[service defensive init]', e); }
+    })();
+  </script>
   <script type="module" src="service.js"></script>
   <div id="rs-footer-mount"></div>
   <script type="module">

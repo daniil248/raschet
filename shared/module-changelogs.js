@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.33', date: '2026-05-02', items: [
+      '🐛 <b>Fix: cooling сваливался на default-проект при возврате из meteo</b>. По репорту: «при возврате из метео что-то сломалось». Корневая причина: <code>openEmbed(location.pathname, …)</code> терял <code>?pid</code> в originPath → meteo возвращал на <code>cooling/?navResult=…</code> без pid → cooling defaultил к ensureDefaultProject. Исправлено: <code>openEmbed(location.pathname + location.search, …)</code> сохраняет полный URL.',
+      '🛡 <b>Defensive inline-init для cooling и service</b>. По репорту «пусто????»: даже если main module-script упадёт на import, теперь inline-script в HTML заполнит currency dropdown fallback-значениями (₽/₸/$/€/Br/£/¥) + дата курса = today + placeholder в context picker «⏳ Загрузка контекста…». Базовая UI всегда видна.',
+      '📤 <b>Phase 24.7: Cooling → Service push</b>. В focus-индикаторе варианта (option-mode) добавлены кнопки «📤 → Сервис: Монтаж» / «📤 → Сервис: ТО» — один клик создаёт наряд в Сервисе с авто-заполнением позиций по equipment[] этой опции и навигирует в /service/.',
+      '• <code>shared/service-bridge.js::createServiceOrderForProject(pid, order)</code> — переиспользуемое API для записи order в LS (project namespace или standalone) + возврат navigateUrl.',
+      '🌐 <b>Cooling auto-fetch meteo</b> (закрепление v0.60.32): кнопка «🌐 Загрузить метео (1 клик)» в сайдбаре «🌤 Климат» если у проекта задана локация и нет meteo-датасетов.',
+      '📋 <b>Архитектурное правило (запомнено)</b>: «всё что можно вынести в каталоги, должно быть вынесено в соответствующий каталог». См. <code>memory/feedback_use_catalogs.md</code>. Существующее нарушение: WORK_TEMPLATES в service/calc/order-model.js — мигрировать в <code>service/catalog/</code>.',
+      'Файлы: <code>cooling/cooling.js</code>, <code>cooling/index.html</code>, <code>service/index.html</code>, <code>shared/service-bridge.js</code> (новый).',
+    ] },
     { version: '0.60.32', date: '2026-05-02', items: [
       '🌐 <b>Cooling: 1-кликовая загрузка meteo для локации проекта</b>. По логике улучшения UX: «не должно быть пустого экрана если у проекта уже есть локация».',
       '• Если у проекта задана локация (lat/lon в Свойствах проекта) и нет meteo-датасетов — в сайдбаре «🌤 Климат» появляется большая синяя кнопка «🌐 Загрузить метео (1 клик)».',
