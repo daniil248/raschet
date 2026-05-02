@@ -89,6 +89,160 @@ function fmtDate(ts) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+/* ---------- v0.60.2: Свойства проекта — местоположение + multi-location ----------
+   По требованию (2026-05-02):
+     • «В свойствах проекта (основные данные) нужно сразу выбирать место
+       расположения, чтобы сразу передавать данные во все расчётные модули.»
+     • «Будут встречаться проекты с возможностью выбора разных мест,
+       например для разработки типовых решений и проверки их для разных
+       мест и условий эксплуатации.»
+
+   Модель:
+     project.locationMode: 'single' | 'multi' (default 'single')
+     project.location: { city, country, lat, lon }                     // single
+     project.locations: [{ id, name, city, country, lat, lon, isPrimary }]  // multi
+
+   Calc-модули (meteo, cooling, psychrometrics) читают через project-storage
+   и используют location/locations + activeLocationId. Смотри memory
+   feedback_project_location.md и ROADMAP Phase 22.13.
+*/
+function renderProjectProperties(p, host) {
+  const mode = p.locationMode || 'single';
+  let bodyHtml = '';
+  if (mode === 'single') {
+    const loc = p.location || { city: '', country: '', lat: '', lon: '' };
+    bodyHtml = `
+      <div class="pr-prop-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px 12px">
+        <label title="Город / населённый пункт. Используется как человекочитаемое имя локации в калькуляторах.">
+          <span style="font-size:11.5px;color:#475569;display:block">Город:</span>
+          <input type="text" data-loc="city" value="${esc(loc.city || '')}" placeholder="напр. Алматы" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px">
+        </label>
+        <label title="Страна (ISO или название).">
+          <span style="font-size:11.5px;color:#475569;display:block">Страна:</span>
+          <input type="text" data-loc="country" value="${esc(loc.country || '')}" placeholder="напр. Казахстан" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px">
+        </label>
+        <label title="Широта в десятичных градусах WGS-84 (например, 43.238).">
+          <span style="font-size:11.5px;color:#475569;display:block">Широта:</span>
+          <input type="number" step="0.001" data-loc="lat" value="${loc.lat ?? ''}" placeholder="напр. 43.238" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px">
+        </label>
+        <label title="Долгота в десятичных градусах WGS-84 (например, 76.945).">
+          <span style="font-size:11.5px;color:#475569;display:block">Долгота:</span>
+          <input type="number" step="0.001" data-loc="lon" value="${loc.lon ?? ''}" placeholder="напр. 76.945" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px">
+        </label>
+      </div>
+      <p class="muted" style="font-size:11px;margin:8px 0 0">
+        💡 Эта локация автоматически передаётся в все calc-модули проекта (Метеоданные, Подбор холодильных систем, ID-диаграмма). Менять координаты в модулях нельзя — только здесь.
+      </p>
+    `;
+  } else {
+    const locs = Array.isArray(p.locations) ? p.locations : [];
+    bodyHtml = `
+      <p class="muted" style="font-size:11.5px;margin:0 0 8px">
+        🌍 Multi-location проект: для разработки типовых решений и проверки на разных площадках. Calc-модули показывают selector «Локация» в боковой панели и считают для выбранной.
+      </p>
+      <div id="pr-locs-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">
+        ${locs.length ? locs.map(L => `
+          <div class="pr-loc-row" data-loc-id="${esc(L.id)}" style="display:grid;grid-template-columns:auto 1fr 110px 90px 90px auto;gap:6px;align-items:center;padding:6px 8px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;font-size:12px">
+            <button type="button" data-act="loc-primary" data-id="${esc(L.id)}" title="${L.isPrimary ? '★ Основная локация' : 'Сделать основной'}" style="background:none;border:none;cursor:pointer;font-size:14px;color:${L.isPrimary ? '#f59e0b' : '#94a3b8'}">★</button>
+            <input type="text" data-locm="name" data-id="${esc(L.id)}" value="${esc(L.name || L.city || '')}" placeholder="Имя локации" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:3px;font-size:12px">
+            <input type="text" data-locm="city" data-id="${esc(L.id)}" value="${esc(L.city || '')}" placeholder="Город" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:3px;font-size:12px">
+            <input type="number" step="0.001" data-locm="lat" data-id="${esc(L.id)}" value="${L.lat ?? ''}" placeholder="lat" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:3px;font-size:12px">
+            <input type="number" step="0.001" data-locm="lon" data-id="${esc(L.id)}" value="${L.lon ?? ''}" placeholder="lon" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:3px;font-size:12px">
+            <button type="button" data-act="loc-del" data-id="${esc(L.id)}" title="Удалить локацию" style="background:none;border:none;cursor:pointer;color:#dc2626">🗑</button>
+          </div>`).join('') : '<div class="muted" style="font-size:12px;padding:6px">Локаций пока нет.</div>'}
+      </div>
+      <button type="button" id="pr-loc-add" class="pr-btn-sel" style="font-size:12px;padding:5px 12px" title="Добавить новую локацию в этот multi-проект.">+ Добавить локацию</button>
+    `;
+  }
+  host.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <span style="font-size:12.5px;color:#475569" title="Single — одна локация для всего проекта (типовое использование). Multi — несколько локаций (для разработки типовых решений и проверки в разных климат-зонах).">Режим:</span>
+      <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px" title="Одна локация на весь проект. Calc-модули используют её и не позволяют менять.">
+        <input type="radio" name="pr-loc-mode" value="single"${mode === 'single' ? ' checked' : ''}> Single (одна локация)
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px" title="Несколько локаций в проекте — для разработки типовых решений и проверки в разных климат-зонах. Calc-модули показывают selector локации.">
+        <input type="radio" name="pr-loc-mode" value="multi"${mode === 'multi' ? ' checked' : ''}> Multi (несколько локаций)
+      </label>
+    </div>
+    ${bodyHtml}
+  `;
+
+  // Wire mode toggle
+  host.querySelectorAll('input[name="pr-loc-mode"]').forEach(r => {
+    r.addEventListener('change', () => {
+      const newMode = r.value;
+      if (newMode === p.locationMode) return;
+      // Миграция: при переходе single→multi — превращаем единственную локацию в первую запись.
+      // multi→single — берём primary либо первую.
+      let patch = { locationMode: newMode };
+      if (newMode === 'multi') {
+        const cur = p.location || {};
+        const seedLocs = (Array.isArray(p.locations) && p.locations.length)
+          ? p.locations
+          : [{ id: 'loc-' + Date.now(), name: cur.city || 'Локация 1', city: cur.city || '', country: cur.country || '', lat: cur.lat ?? null, lon: cur.lon ?? null, isPrimary: true }];
+        patch.locations = seedLocs;
+      } else {
+        const primary = (p.locations || []).find(L => L.isPrimary) || (p.locations || [])[0];
+        if (primary) patch.location = { city: primary.city, country: primary.country, lat: primary.lat, lon: primary.lon };
+      }
+      updateProject(p.id, patch);
+      render();   // re-render
+    });
+  });
+
+  // Wire single-mode field changes
+  host.querySelectorAll('[data-loc]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const field = inp.dataset.loc;
+      const val = inp.type === 'number' ? (inp.value === '' ? null : Number(inp.value)) : inp.value;
+      const loc = { ...(p.location || {}), [field]: val };
+      updateProject(p.id, { location: loc });
+      prToast('✔ Локация обновлена');
+    });
+  });
+
+  // Wire multi-mode field changes / add / delete / set-primary
+  host.querySelectorAll('[data-locm]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const id = inp.dataset.id;
+      const field = inp.dataset.locm;
+      const val = inp.type === 'number' ? (inp.value === '' ? null : Number(inp.value)) : inp.value;
+      const locs = (p.locations || []).map(L => L.id === id ? { ...L, [field]: val } : L);
+      updateProject(p.id, { locations: locs });
+    });
+  });
+  const addLocBtn = host.querySelector('#pr-loc-add');
+  if (addLocBtn) addLocBtn.addEventListener('click', () => {
+    const locs = [...(p.locations || [])];
+    const newLoc = { id: 'loc-' + Date.now(), name: 'Локация ' + (locs.length + 1), city: '', country: '', lat: null, lon: null, isPrimary: !locs.length };
+    locs.push(newLoc);
+    updateProject(p.id, { locations: locs });
+    render();
+  });
+  host.querySelectorAll('[data-act="loc-primary"]').forEach(b => {
+    b.addEventListener('click', () => {
+      const id = b.dataset.id;
+      const locs = (p.locations || []).map(L => ({ ...L, isPrimary: L.id === id }));
+      updateProject(p.id, { locations: locs });
+      render();
+    });
+  });
+  host.querySelectorAll('[data-act="loc-del"]').forEach(b => {
+    b.addEventListener('click', async () => {
+      const id = b.dataset.id;
+      const L = (p.locations || []).find(x => x.id === id);
+      if (!L) return;
+      const ok = await prConfirm(`Удалить локацию «${L.name || L.city}»?`, 'Calc-модули, использовавшие эту локацию, переключатся на ★ основную.');
+      if (!ok) return;
+      const locs = (p.locations || []).filter(x => x.id !== id);
+      // Если удалили primary — назначим primary первой оставшейся.
+      if (L.isPrimary && locs.length) locs[0].isPrimary = true;
+      updateProject(p.id, { locations: locs });
+      render();
+    });
+  });
+}
+
 /* ---------- Курируемый набор модулей проекта ----------
    Только то, что имеет смысл В КОНТЕКСТЕ ПРОЕКТА:
    - Конструктор схем (универсальный — электрика, гидравлика, механика,
@@ -266,6 +420,7 @@ function render() {
   const p = pid ? getProject(pid) : null;
 
   const headHost = document.getElementById('pr-detail-head');
+  const propsHost = document.getElementById('pr-detail-properties');
   const modulesHost = document.getElementById('pr-detail-modules');
   const actionsHost = document.getElementById('pr-detail-actions');
   const metaHost = document.getElementById('pr-detail-meta');
@@ -275,6 +430,7 @@ function render() {
       <div class="pr-empty">
         Проект не найден. <a href="./">← назад к списку проектов</a>
       </div>`;
+    if (propsHost) propsHost.innerHTML = '';
     if (modulesHost) modulesHost.innerHTML = '';
     if (actionsHost) actionsHost.innerHTML = '';
     if (metaHost) metaHost.innerHTML = '';
@@ -315,6 +471,9 @@ function render() {
     // объект) — singleton'ы проекта, выводятся отдельными кнопками.
     // v0.59.565: strict=true — каждая плитка показывает СВОИ subs, без
     // межсемейного «протекания» (раньше mdc-config плитка показывала и
+    // v0.60.2: render Свойств проекта (location + multi-location toggle).
+    if (propsHost) renderProjectProperties(p, propsHost);
+
     // scs-design subs из-за общего MODULE_FAMILIES).
     const subSchemes  = listSubProjects(p.id, 'schematic',  { strict: true });
     const subScs      = listSubProjects(p.id, 'scs-design', { strict: true });
