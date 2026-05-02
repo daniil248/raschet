@@ -27,54 +27,79 @@
 
 /**
  * Default-параметры экономической модели.
- * Большинство значений — типичные для РФ/ЦА проектов 2025-26.
  *
- * v0.59.994: Введена «родная» валюта значений (currency). Суммы
- * (equipmentCost / installationCost / maintenanceRubPerYear) ХРАНЯТСЯ
- * в этой валюте; на дисплее конвертируются в валюту проекта по курсу
- * на дату расчёта. Это позволяет вводить опции в разных валютах
- * (например, оборудование Daikin закуплено в EUR, монтаж — в KZT) и
- * выводить итоговый отчёт в любой валюте проекта.
+ * v0.59.994: Введена «родная» валюта значений (eco.currency).
+ * v0.59.1002: ПЕР-ПОЛЕВАЯ ВАЛЮТА. По требованию Пользователя 2026-05-02:
+ * «при вводе любой цены, пользователь может выбрать в какой валюте; по
+ * умолчанию стоит валюта проекта; при замене валюты, цена пересчитывается
+ * по курсу на выбранную дату курса; в отчётах и таблицах выводим в валюте
+ * проекта».
+ *
+ * Каждое денежное поле теперь — объект <code>{value, currency}</code>.
+ * Backward compat: если поле задано числом — оно интерпретируется в
+ * eco.currency (legacy default).
  */
 export const DEFAULT_ECONOMICS = {
-  currency: '₽',              // ← v0.59.994: родная валюта сумм этой опции
-  equipmentCost: 0,           // в `currency` — закупочная стоимость оборудования
-  installationCost: 0,        // в `currency` — монтаж/пусконаладка/обвязка
-  maintenanceRubPerYear: 0,   // в `currency`/год — регламентное ТО (имя сохранено для backward-compat)
-  projectLifetimeYears: 20,   // лет — срок сравнения (зафиксировано Пользователем 2026-05-02)
-  discountRatePct: 8,         // %/год — ставка дисконтирования
-  escalationEnergyPct: 5,     // %/год — рост тарифа на электроэнергию
-  escalationMaintPct: 4,      // %/год — рост стоимости ТО
+  currency: '₽',                                // дефолт-валюта новых полей при создании
+  equipmentCost:        { value: 0, currency: '₽' },
+  installationCost:     { value: 0, currency: '₽' },
+  maintenanceRubPerYear:{ value: 0, currency: '₽' },
+  projectLifetimeYears: 20,
+  discountRatePct: 8,
+  escalationEnergyPct: 5,
+  escalationMaintPct: 4,
 };
 
+/** Список денежных полей eco — для генерации формы и конвертации. */
+export const MONEY_FIELDS = [
+  { id: 'equipmentCost',         label: 'Оборудование',   tip: 'Закупочная стоимость оборудования: чиллер/DX-блок + конденсатор + насосы + (опционально) free-cooling модули.' },
+  { id: 'installationCost',      label: 'Монтаж/ПНР',     tip: 'Монтаж + пусконаладка + обвязка трубопроводами + электроподключение + вспомогательные работы.' },
+  { id: 'maintenanceRubPerYear', label: 'ТО (₽/год)',     tip: 'Регламентное ТО: фильтры, чистка теплообменников, заправка хладагента, выезд сервисной бригады.', perYear: true },
+];
+
 /**
- * v0.59.994: Конвертировать суммы opt.eco из «родной» валюты в displayCurrency.
- * Используется перед computeTco: на вход TCO идут уже сконвертированные числа.
+ * Нормализовать денежное поле к виду {value, currency}.
+ * Backward-compat: число → {value: число, currency: defaultCur}.
+ * Object → как есть (с гарантией обоих полей).
+ */
+export function normMoney(field, defaultCur = '₽') {
+  if (field == null) return { value: 0, currency: defaultCur };
+  if (typeof field === 'number') return { value: field, currency: defaultCur };
+  if (typeof field === 'object') {
+    return {
+      value: Number(field.value) || 0,
+      currency: field.currency || defaultCur,
+    };
+  }
+  return { value: 0, currency: defaultCur };
+}
+
+/**
+ * v0.60.0: Конвертировать СУММЫ opt.eco в displayCurrency.
+ * Каждое поле имеет свою native-валюту → конвертируется через convertFn.
+ * Возвращает eco с ПЛОСКИМИ числами (для computeTco), все в displayCurrency.
  *
- * @param {object} eco                — economics с eco.currency
- * @param {string} displayCurrency    — символ валюты для дисплея/расчёта (₽/$/...)
- * @param {function|null} convertFn   — (amount, from, to) => number (уже c rates+date),
- *                                      если null — конвертация = identity (без курса).
- * @returns {object} новый eco-объект с числами в displayCurrency
+ * @param {object} eco                — economics (поля как {value, currency} или числа)
+ * @param {string} displayCurrency    — символ валюты для дисплея/расчёта
+ * @param {function|null} convertFn   — (amount, from, to) => number; если null —
+ *                                      используется значение как есть.
+ * @returns {object} eco с числовыми полями в displayCurrency
  */
 export function convertEcoToCurrency(eco, displayCurrency, convertFn) {
   const e = { ...DEFAULT_ECONOMICS, ...(eco || {}) };
-  const native = e.currency || '₽';
-  if (!convertFn || native === displayCurrency) {
-    return { ...e, currency: displayCurrency };
+  // currencyToIso для convertFn
+  // Конвертируем каждое денежное поле (нормализуя к {value, currency}).
+  const out = { ...e, currency: displayCurrency };
+  for (const f of MONEY_FIELDS) {
+    const m = normMoney(e[f.id], e.currency || '₽');
+    if (!convertFn || m.currency === displayCurrency || !Number.isFinite(m.value) || m.value === 0) {
+      out[f.id] = m.value;
+    } else {
+      const v = convertFn(m.value, m.currency, displayCurrency);
+      out[f.id] = Number.isFinite(v) ? v : m.value;
+    }
   }
-  const conv = (v) => {
-    if (!Number.isFinite(v) || v === 0) return v;
-    const r = convertFn(v, native, displayCurrency);
-    return Number.isFinite(r) ? r : v;
-  };
-  return {
-    ...e,
-    currency: displayCurrency,
-    equipmentCost: conv(e.equipmentCost),
-    installationCost: conv(e.installationCost),
-    maintenanceRubPerYear: conv(e.maintenanceRubPerYear),
-  };
+  return out;
 }
 
 /**

@@ -4,6 +4,18 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.0', date: '2026-05-02', items: [
+      '🔢 <b>Версия 0.60</b>. По требованию Пользователя — переход с длинного 0.59.1001 на компактное 0.60.0 (sub-version reset).',
+      '💱 <b>Per-field currency: каждая цена в своей валюте + дата курса</b>. По требованию: «при вводе любой цены, пользователь может выбрать в какой валюте; при замене валюты, цена пересчитывается по курсу на выбранную дату; в отчётах выводим в валюте проекта».',
+      '• Каждое денежное поле eco — пара <code>{value, currency}</code>: equipmentCost / installationCost / maintenance.',
+      '• Default валюта поля = валюта проекта; пользователь может сменить на любую (₽/$/€/₸/¥/...). При смене — auto-конвертация значения по курсу на _ratesDate (anchor: «оставить ту же сумму, выраженную в новой валюте»).',
+      '• Под каждым полем — эквивалент в валюте проекта «≈ N ₽» в курсивах (если валюта поля ≠ проекта).',
+      '• Backward compat: <code>normMoney()</code> авто-конвертирует legacy-числа из старых сохранений в новый формат.',
+      '📅 <b>«Дата курса валют»</b> — отдельный input в боковой панели cooling. Default = today. Применяется ко всем конвертациям (per-field selectors + display equivalents + TCO).',
+      '• При изменении даты — кеш курсов сбрасывается, перезагружается через fetchRates(date), все вкладки перерисовываются.',
+      '• <code>convertFn</code> теперь принимает символы валют (₽/$/€/...) и конвертирует через <code>currencyToIso()</code> внутри.',
+      'Файлы: <code>cooling/calc/capex-tco.js</code> (DEFAULT_ECONOMICS per-field, MONEY_FIELDS, normMoney, convertEcoToCurrency rewritten), <code>cooling/ui/capex-form.js</code> (moneyRow + currency selector per field + auto-convert), <code>cooling/cooling.js</code> (_ratesDate state + date input + makeConvertFn принимает символы), <code>cooling/cooling.css</code> (.cl-money-input/-conv), <code>cooling/index.html</code> (date input).',
+    ] },
     { version: '0.59.1001', date: '2026-05-02', items: [
       '🖱 <b>Universal Ctrl+wheel zoom + cursor-anchor</b>. По требованию: «для всех модулей, зум только при нажатии ctrl, иначе просто скролл и зумится должно относительно места расположения курсора».',
       '• <code>shared/wheel-zoom.js</code> — переиспользуемый helper attachWheelZoom() для любого модуля.',

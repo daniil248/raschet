@@ -85,21 +85,32 @@ let _currency = '₽';
 let _seq = 1;
 let _selSeq = 1;
 
-// v0.59.994: кеш курсов на текущую calcDate (по умолчанию today). Загружается
-// фоновым запросом при первом render. convertFn() возвращает конвертер
-// (amount, fromIso, toIso) → number, или null если курсы недоступны.
-let _ratesCache = null;        // { date, base, rates } последняя загруженная сводка
+// v0.60.0: кеш курсов на конкретную _ratesDate (по умолчанию today). По
+// требованию: «нужно добавить указание даты на какую принимать курсы валют».
+// При смене _ratesDate — пере-загружаем кеш и перерендериваем активную вкладку.
+// convertFn принимает символы валют (₽/$/€/...) и переводит их в ISO внутри.
+let _ratesCache = null;        // { date, base, rates }
 let _ratesLoading = false;
+let _ratesDate = (() => {
+  try { return localStorage.getItem('cooling.ratesDate.v1') || new Date().toISOString().slice(0, 10); }
+  catch { return new Date().toISOString().slice(0, 10); }
+})();
 async function ensureRatesLoaded() {
-  if (_ratesCache || _ratesLoading) return;
+  if (_ratesLoading) return;
+  if (_ratesCache && _ratesCache.date === _ratesDate) return;
   _ratesLoading = true;
-  try { _ratesCache = await fetchRates(null, null, false); }
+  try { _ratesCache = await fetchRates(null, _ratesDate, false); }
   catch (e) { /* offline / CORS — eco отображается без конвертации */ }
   finally { _ratesLoading = false; }
 }
 function makeConvertFn() {
   if (!_ratesCache) return null;
-  return (amount, fromIso, toIso) => convertRate(amount, fromIso, toIso, _ratesCache);
+  // Принимаем символы (₽/$/€), внутри конвертируем в ISO.
+  return (amount, from, to) => {
+    const fromIso = currencyToIso(from);
+    const toIso = currencyToIso(to);
+    return convertRate(amount, fromIso, toIso, _ratesCache);
+  };
 }
 
 // v0.59.995: новые ключи хранения «подборов».
@@ -429,11 +440,12 @@ function renderActiveTab() {
     const fwrap = $('cl-capex-form-wrap');
     if (fwrap) {
       fwrap.innerHTML = '';
+      const cf = makeConvertFn();
       fwrap.appendChild(renderCapexForm(opt.eco, (next) => {
         opt.eco = next;
         persist();
         renderActiveTab();
-      }, _currency));
+      }, _currency, cf));
     }
     const convertFn = makeConvertFn();
     const rows = buildBinData(hourly, opt.spec);
@@ -615,6 +627,24 @@ function init() {
       _tariffRubKwh = Number.isFinite(v) && v >= 0 ? v : 0;
       persist();
       renderActiveTab();
+    });
+  }
+
+  // v0.60.0: Дата курса валют (применяется ко всем конвертациям).
+  const dateInp = $('cl-rates-date');
+  if (dateInp) {
+    dateInp.value = _ratesDate;
+    dateInp.max = new Date().toISOString().slice(0, 10);
+    dateInp.addEventListener('change', async () => {
+      const newDate = dateInp.value;
+      if (!newDate || newDate === _ratesDate) return;
+      _ratesDate = newDate;
+      try { localStorage.setItem('cooling.ratesDate.v1', _ratesDate); } catch {}
+      // Принудительно сбрасываем кеш и перегружаем на новую дату.
+      _ratesCache = null;
+      await ensureRatesLoaded();
+      renderActiveTab();
+      util.toast(`📅 Курсы валют — на ${_ratesDate}${_ratesCache ? ` (источник: ${_ratesCache.base})` : ''}`, 'ok');
     });
   }
 

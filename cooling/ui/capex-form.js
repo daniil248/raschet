@@ -4,60 +4,69 @@
 // HTML-форма для ввода equipmentCost / installation / maintenance / lifetime /
 // discountRate / escalation. Tooltip на каждом параметре.
 
-import { DEFAULT_ECONOMICS } from '../calc/capex-tco.js';
-import { fmtMoney, CURRENCIES } from '../calc/fc-summary.js';
+import { DEFAULT_ECONOMICS, MONEY_FIELDS, normMoney } from '../calc/capex-tco.js';
+import { fmtMoney, CURRENCIES, currencyToIso } from '../calc/fc-summary.js';
 import { escAttr, escHtml } from '../../meteo/util.js';
 
 /**
- * @param {object} eco — economics parameters (или null → DEFAULT_ECONOMICS).
- *                       eco.currency = «родная» валюта значений в этой опции.
+ * v0.60.0: Per-field currency. Каждое денежное поле — пара {value, currency}.
+ * При смене валюты в селекторе — auto-конвертация значения по курсу через
+ * convertFn (передан caller'ом).
+ *
+ * @param {object} eco — economics parameters
  * @param {function(eco)} onChange
- * @param {string} displayCurrency — валюта проекта/отчёта (используется для
- *                       информативной подсказки о конвертации; не для пересчёта
- *                       значений в форме — они в eco.currency).
+ * @param {string} displayCurrency — валюта проекта/отчёта
+ * @param {function|null} convertFn — (amount, fromIso, toIso) => number
+ *                       привязан к курсам на _ratesDate.
  */
-export function renderCapexForm(eco, onChange, displayCurrency = '₽') {
+export function renderCapexForm(eco, onChange, displayCurrency = '₽', convertFn = null) {
   const e = { ...DEFAULT_ECONOMICS, ...(eco || {}) };
-  const native = e.currency || '₽';
+  // Гарантируем, что денежные поля — объекты {value, currency}.
+  for (const f of MONEY_FIELDS) {
+    e[f.id] = normMoney(e[f.id], e.currency || displayCurrency);
+  }
   const wrap = document.createElement('div');
   wrap.className = 'cl-capex-form';
-  const curOpts = CURRENCIES.map(c =>
-    `<option value="${c.code}"${c.code === native ? ' selected' : ''} title="${c.label}">${c.code} — ${c.label}</option>`
+  const curOptsFor = (sel) => CURRENCIES.map(c =>
+    `<option value="${c.code}"${c.code === sel ? ' selected' : ''} title="${c.label}">${c.code}</option>`
   ).join('');
-  const conversionHint = native !== displayCurrency
-    ? `<div class="cl-capex-conv-hint" title="Суммы вводятся в родной валюте опции (${native}), а в отчётах и сравнении пересчитываются в валюту проекта (${displayCurrency}) по курсу из 💱 Справочника валют.">⇆ Эта опция в <b>${escHtml(native)}</b>; в отчётах/сравнении конвертируется в <b>${escHtml(displayCurrency)}</b> по курсу.</div>`
-    : '';
+  // Per-field денежная строка: input value + select currency. На дисплее
+  // справа от поля — значение в валюте проекта (если отличается).
+  const moneyRow = (field) => {
+    const m = e[field.id];
+    const conv = (convertFn && m.currency !== displayCurrency && m.value > 0)
+      ? convertFn(m.value, m.currency, displayCurrency)
+      : null;
+    const projHint = (Number.isFinite(conv) && conv > 0)
+      ? `<span class="cl-money-conv" title="Эквивалент в валюте проекта (${escAttr(displayCurrency)}) по текущему курсу из 💱 Справочника валют на выбранную дату.">≈ ${conv.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ${escHtml(displayCurrency)}</span>`
+      : '';
+    return `<label title="${escAttr(field.tip)}">
+      ${escHtml(field.label)}${field.perYear ? '' : ''}:
+      <span class="cl-money-input">
+        <input type="number" step="1000" min="0" data-money-id="${escAttr(field.id)}" data-money-attr="value" value="${m.value}">
+        <select data-money-id="${escAttr(field.id)}" data-money-attr="currency" title="Валюта ввода. Default = валюта проекта. При смене — значение пересчитается по курсу.">${curOptsFor(m.currency)}</select>
+      </span>
+      ${projHint}
+    </label>`;
+  };
+
   wrap.innerHTML = `
     <h4 title="Параметры экономической модели TCO/NPV/Payback. Соответствует ISO 15686-5 Life-Cycle Costing.">💰 CAPEX и экономические параметры</h4>
 
     <div class="cl-chiller-section">
-      <div class="cl-chiller-section-title">Валюта ввода для этой опции</div>
-      <div class="cl-chiller-grid">
-        <label title="«Родная» валюта значений CAPEX/OPEX этой опции — в чём введены equipment / installation / ТО. На дисплее и в сравнении конвертируется в валюту проекта по курсу. Можно вводить опции в разных валютах (например, оборудование в EUR, монтаж в KZT) и сводить в любую отчётную валюту.">
-          Валюта значений:
-          <select data-cf="currency">${curOpts}</select>
-        </label>
-      </div>
-      ${conversionHint}
-    </div>
-
-    <div class="cl-chiller-section">
       <div class="cl-chiller-section-title">Капитальные затраты (год 0)</div>
+      <p class="muted" style="font-size:11px;margin:0 0 8px" title="Каждое поле — пара (значение, валюта). Default валюта = валюта проекта (${escAttr(displayCurrency)}). При смене валюты в селекторе значение auto-пересчитывается по курсу на текущую «Дату курса» (выбрана в боковой панели).">
+        ⓘ Каждое поле в собственной валюте. На дисплее эквивалент в валюте проекта (${escHtml(displayCurrency)}). Изменение валюты → автоконвертация по курсу.
+      </p>
       <div class="cl-chiller-grid">
-        <label title="Закупочная стоимость оборудования: чиллер/DX-блок + конденсатор + насосы + (опционально) free-cooling модули. В валюте опции (${native}).">
-          Оборудование, ${escHtml(native)}:<input type="number" step="1000" min="0" data-cf="equipmentCost" value="${e.equipmentCost}">
-        </label>
-        <label title="Монтаж + пусконаладка + обвязка трубопроводами + электроподключение + вспомогательные работы. В валюте опции (${native}).">
-          Монтаж/ПНР, ${escHtml(native)}:<input type="number" step="1000" min="0" data-cf="installationCost" value="${e.installationCost}">
-        </label>
+        ${moneyRow(MONEY_FIELDS[0])}
+        ${moneyRow(MONEY_FIELDS[1])}
       </div>
     </div>
     <div class="cl-chiller-section">
       <div class="cl-chiller-section-title">Эксплуатационные расходы</div>
       <div class="cl-chiller-grid">
-        <label title="Регламентное ТО: фильтры, чистка теплообменников, заправка хладагента, выезд сервисной бригады. В валюте опции (${native}).">
-          ТО, ${escHtml(native)}/год:<input type="number" step="1000" min="0" data-cf="maintenanceRubPerYear" value="${e.maintenanceRubPerYear}">
-        </label>
+        ${moneyRow(MONEY_FIELDS[2])}
         <label title="Срок горизонта оценки TCO. Типично 10–20 лет для HVAC, до 25 лет для крупных чиллеров.">
           Срок проекта, лет:<input type="number" step="1" min="1" max="40" data-cf="projectLifetimeYears" value="${e.projectLifetimeYears}">
         </label>
@@ -82,6 +91,32 @@ export function renderCapexForm(eco, onChange, displayCurrency = '₽') {
     </div>
   `;
   wrap.addEventListener('change', (ev) => {
+    // v0.60.0: per-field money input/select
+    const moneyEl = ev.target.closest('[data-money-id]');
+    if (moneyEl) {
+      const id = moneyEl.dataset.moneyId;
+      const attr = moneyEl.dataset.moneyAttr;
+      const cur = e[id] || { value: 0, currency: displayCurrency };
+      if (attr === 'value') {
+        cur.value = Number(moneyEl.value) || 0;
+        onChange({ ...e, [id]: { ...cur } });
+        return;
+      }
+      if (attr === 'currency') {
+        const oldCur = cur.currency;
+        const newCur = moneyEl.value;
+        if (oldCur === newCur) return;
+        let newValue = cur.value;
+        // Auto-конвертация по курсу при смене валюты (по требованию).
+        if (convertFn && cur.value > 0) {
+          const conv = convertFn(cur.value, oldCur, newCur);
+          if (Number.isFinite(conv) && conv > 0) newValue = Math.round(conv);
+        }
+        onChange({ ...e, [id]: { value: newValue, currency: newCur } });
+        return;
+      }
+    }
+    // Прочие поля (projectLifetimeYears, discountRatePct, escalation*)
     const inp = ev.target.closest('[data-cf]');
     if (!inp) return;
     const field = inp.dataset.cf;

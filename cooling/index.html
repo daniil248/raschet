@@ -140,8 +140,13 @@
           <span style="display:block;margin-bottom:4px">Тариф (вал/кВт·ч):</span>
           <input type="number" id="cl-tariff" min="0" step="0.1" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px">
         </label>
+        <label style="font-size:12px;color:#374151;display:block;margin-bottom:6px"
+               title="Дата на которую брать курсы валют. Применяется ко ВСЕМ конвертациям в текущей сессии cooling: при смене валюты в любом money-поле, при отображении эквивалента в валюте проекта, при расчёте TCO. Default = сегодня.">
+          <span style="display:block;margin-bottom:4px">📅 Дата курса:</span>
+          <input type="date" id="cl-rates-date" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px;font:inherit;font-size:12px">
+        </label>
         <button type="button" class="cl-btn-ghost" id="cl-rates-btn" style="width:100%"
-                title="Открыть справочник курсов валют. Поддерживаемые источники: НБ РК (по умолчанию), ЦБ РФ, ECB через Frankfurter, exchangerate.host. Курсы кешируются по дате.">💱 Курсы валют</button>
+                title="Открыть справочник курсов валют. Поддерживаемые источники: НБ РК (по умолчанию), ЦБ РФ, ECB через Frankfurter, open.er-api.com. Курсы кешируются по дате.">💱 Курсы валют</button>
       </div>
     </aside>
 
