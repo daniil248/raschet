@@ -52,26 +52,48 @@ export const DEFAULT_ECONOMICS = {
 
 /** Список денежных полей eco — для генерации формы и конвертации. */
 export const MONEY_FIELDS = [
-  { id: 'equipmentCost',         label: 'Оборудование',   tip: 'Закупочная стоимость оборудования: чиллер/DX-блок + конденсатор + насосы + (опционально) free-cooling модули.' },
-  { id: 'installationCost',      label: 'Монтаж/ПНР',     tip: 'Монтаж + пусконаладка + обвязка трубопроводами + электроподключение + вспомогательные работы.' },
-  { id: 'maintenanceRubPerYear', label: 'ТО (₽/год)',     tip: 'Регламентное ТО: фильтры, чистка теплообменников, заправка хладагента, выезд сервисной бригады.', perYear: true },
+  { id: 'equipmentCost',         label: 'Оборудование', tip: 'Закупочная стоимость оборудования: чиллер/DX-блок + конденсатор + насосы + (опционально) free-cooling модули.' },
+  { id: 'installationCost',      label: 'Монтаж/ПНР',   tip: 'Монтаж + пусконаладка + обвязка трубопроводами + электроподключение + вспомогательные работы.' },
+  { id: 'maintenanceRubPerYear', label: 'ТО',           tip: 'Регламентное ТО: фильтры, чистка теплообменников, заправка хладагента, выезд сервисной бригады. Стоимость в год.', perYear: true },
 ];
 
 /**
- * Нормализовать денежное поле к виду {value, currency}.
- * Backward-compat: число → {value: число, currency: defaultCur}.
- * Object → как есть (с гарантией обоих полей).
+ * Нормализовать денежное поле к виду {value, currency, items?}.
+ * v0.60.18: добавлены items[] — список статей затрат с собственными
+ * label/value/currency. По требованию Пользователя: «стоимость оборудования
+ * можно собрать как чиллер 5000 + блок насосов 2000, итого 7000».
+ * Если items есть — value = сумма items (с учётом конвертации валют, если
+ * передан convertFn).
+ *
+ * Backward-compat:
+ *   • число → {value: число, currency: defaultCur, items: []}
+ *   • {value, currency} → как есть, items пустой
+ *   • {items: [...], currency} → value считается из items.
  */
 export function normMoney(field, defaultCur = '₽') {
-  if (field == null) return { value: 0, currency: defaultCur };
-  if (typeof field === 'number') return { value: field, currency: defaultCur };
+  if (field == null) return { value: 0, currency: defaultCur, items: [] };
+  if (typeof field === 'number') return { value: field, currency: defaultCur, items: [] };
   if (typeof field === 'object') {
-    return {
-      value: Number(field.value) || 0,
-      currency: field.currency || defaultCur,
-    };
+    const currency = field.currency || defaultCur;
+    const items = Array.isArray(field.items) ? field.items.map(it => ({
+      id: it.id || ('it-' + Math.random().toString(36).slice(2, 8)),
+      label: it.label || '',
+      value: Number(it.value) || 0,
+      currency: it.currency || currency,
+    })) : [];
+    // Если items есть — value = их сумма (в currency поля; convertFn при
+    // отображении может пересчитать). Если items пустые — берём value из field.
+    let value;
+    if (items.length) {
+      value = items.reduce((s, it) => s + (it.currency === currency ? (it.value || 0) : (it.value || 0)), 0);
+      // NB: для true cross-currency-conversion items используется convertEcoToCurrency
+      // на следующем этапе с convertFn. Здесь — простая сумма (assume same currency).
+    } else {
+      value = Number(field.value) || 0;
+    }
+    return { value, currency, items };
   }
-  return { value: 0, currency: defaultCur };
+  return { value: 0, currency: defaultCur, items: [] };
 }
 
 /**
@@ -87,19 +109,52 @@ export function normMoney(field, defaultCur = '₽') {
  */
 export function convertEcoToCurrency(eco, displayCurrency, convertFn) {
   const e = { ...DEFAULT_ECONOMICS, ...(eco || {}) };
-  // currencyToIso для convertFn
-  // Конвертируем каждое денежное поле (нормализуя к {value, currency}).
   const out = { ...e, currency: displayCurrency };
+  const conv = (v, from, to) => {
+    if (!convertFn || from === to || !Number.isFinite(v) || v === 0) return v;
+    const r = convertFn(v, from, to);
+    return Number.isFinite(r) ? r : v;
+  };
   for (const f of MONEY_FIELDS) {
     const m = normMoney(e[f.id], e.currency || '₽');
-    if (!convertFn || m.currency === displayCurrency || !Number.isFinite(m.value) || m.value === 0) {
-      out[f.id] = m.value;
+    if (m.items && m.items.length) {
+      // Σ items, каждая статья в своей валюте → конвертируем в displayCurrency.
+      out[f.id] = m.items.reduce((s, it) =>
+        s + conv(Number(it.value) || 0, it.currency || m.currency, displayCurrency), 0);
     } else {
-      const v = convertFn(m.value, m.currency, displayCurrency);
-      out[f.id] = Number.isFinite(v) ? v : m.value;
+      out[f.id] = conv(m.value, m.currency, displayCurrency);
     }
   }
   return out;
+}
+
+/**
+ * v0.60.18: Тотал поля (с учётом items[]) в его «родной» валюте.
+ * Используется для отображения «итого» в компактной кнопке-кладовке.
+ */
+export function moneyTotalNative(field, defaultCur = '₽') {
+  const m = normMoney(field, defaultCur);
+  if (!m.items || !m.items.length) return { value: m.value, currency: m.currency };
+  // Сумма items в валюте поля (без конвертации — item.currency должен совпадать
+  // или вызывающий код передаст convertFn через moneyTotalConverted).
+  const sum = m.items.reduce((s, it) => s + (Number(it.value) || 0), 0);
+  return { value: sum, currency: m.currency };
+}
+
+/**
+ * v0.60.18: Тотал поля в произвольной валюте displayCurrency
+ * (с per-item конвертацией через convertFn).
+ */
+export function moneyTotalIn(field, displayCurrency, convertFn, defaultCur = '₽') {
+  const m = normMoney(field, defaultCur);
+  const conv = (v, from, to) => {
+    if (!convertFn || from === to || !Number.isFinite(v) || v === 0) return v;
+    const r = convertFn(v, from, to);
+    return Number.isFinite(r) ? r : v;
+  };
+  if (!m.items || !m.items.length) return conv(m.value, m.currency, displayCurrency);
+  return m.items.reduce((s, it) =>
+    s + conv(Number(it.value) || 0, it.currency || m.currency, displayCurrency), 0);
 }
 
 /**

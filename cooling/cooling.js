@@ -22,7 +22,7 @@
 //   raschet.project.<pid>.cooling.cols.v1
 //   raschet.project.<pid>.cooling.tariff.v1
 
-import { ensureDefaultProject, projectKey, listProjects } from '../shared/project-storage.js';
+import { ensureDefaultProject, projectKey, listProjects, getProject, setActiveProjectId } from '../shared/project-storage.js';
 import * as util from '../meteo/util.js';
 
 import { DEFAULT_CHILLER, COLUMNS, DEFAULT_COLS, CHILLER_COLS, isCracType as isCracTypeLocal } from './calc/chiller-defaults.js';
@@ -88,7 +88,8 @@ let _activeTab = 'general';
 //   'selections' — главные ★-варианты всех подборов проекта
 let _compareMode = 'variants';
 let _activeCols = [...DEFAULT_COLS, ...CHILLER_COLS];
-let _tariffRubKwh = 7.5;     // тариф в _currency (валюта проекта)
+let _tariffRubKwh = 7.5;     // тариф в его «родной» валюте _tariffCurrency
+let _tariffCurrency = '₽';   // v0.60.18: тариф может быть введён в любой валюте, в расчётах конвертируется по курсу
 let _currency = '₽';
 let _seq = 1;
 let _selSeq = 1;
@@ -127,6 +128,7 @@ const KEY_SELECTIONS    = ['cooling', 'selections.v1'];
 const KEY_ACTIVE_SEL    = ['cooling', 'activeSelectionId.v1'];
 const KEY_COLS          = ['cooling', 'cols.v1'];
 const KEY_TARIFF        = ['cooling', 'tariff.v1'];
+const KEY_TARIFF_CUR    = ['cooling', 'tariffCurrency.v1'];
 const KEY_CURRENCY      = ['cooling', 'currency.v1'];
 const LEGACY_KEY_OPTS   = ['cooling', 'options.v1'];
 const LEGACY_KEY_ACTIVE = ['cooling', 'activeId.v1'];
@@ -137,7 +139,9 @@ function storageKey(suffix) {
   if (_standalone) {
     return `raschet.cooling.standalone.${suffix.join('.')}`;
   }
-  return projectKey(_pid, ...suffix);
+  // v0.60.18 fix: projectKey ожидает строковый id, а не объект _pid; раньше
+  // хранилось под '[object Object]' из-за неявной toString-конверсии.
+  return projectKey(_pid?.id, ...suffix);
 }
 function loadJson(suffix, fallback) {
   try { const raw = localStorage.getItem(storageKey(suffix)); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
@@ -150,7 +154,46 @@ function persist() {
   saveJson(KEY_ACTIVE_SEL, _activeSelectionId);
   saveJson(KEY_COLS,       _activeCols);
   saveJson(KEY_TARIFF,     _tariffRubKwh);
+  saveJson(KEY_TARIFF_CUR, _tariffCurrency);
   saveJson(KEY_CURRENCY,   _currency);
+}
+
+/* v0.60.18: одноразовая миграция legacy-пути '[object Object]' → правильный pid.
+ * До этой версии storageKey() передавал _pid (project object) в projectKey()
+ * вместо _pid.id, и JS неявно конвертировал object → '[object Object]'. Все
+ * cooling-данные в project-mode писались под единым ключом, не привязанным к
+ * конкретному проекту. После фикса нужно перенести данные в правильный
+ * neymspace pid'а текущего активного проекта. */
+function migrateLegacyObjectObjectKeys() {
+  if (_standalone || !_pid?.id) return;
+  const legacyPrefix = 'raschet.project.[object Object].cooling.';
+  const targetPrefix = `raschet.project.${_pid.id}.cooling.`;
+  let migrated = 0;
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(legacyPrefix)) keys.push(k);
+    }
+    for (const lk of keys) {
+      const suffix = lk.slice(legacyPrefix.length);
+      const tk = targetPrefix + suffix;
+      if (localStorage.getItem(tk) != null) continue;  // уже есть данные — не перетираем
+      const v = localStorage.getItem(lk);
+      if (v != null) { localStorage.setItem(tk, v); migrated++; }
+    }
+    if (migrated) util.toast(`Перенесены данные cooling из legacy-кеша в проект (${migrated} ключ${migrated === 1 ? '' : 'ей'})`, 'info');
+  } catch {}
+}
+
+/* v0.60.18: тариф для расчётов = native тариф, конвертированный в displayCurrency */
+function tariffInDisplayCurrency() {
+  if (!Number.isFinite(_tariffRubKwh) || _tariffRubKwh <= 0) return 0;
+  if (_tariffCurrency === _currency) return _tariffRubKwh;
+  const cf = makeConvertFn();
+  if (!cf) return _tariffRubKwh;  // курс ещё не подгружен — считаем без конвертации
+  const v = cf(_tariffRubKwh, _tariffCurrency, _currency);
+  return Number.isFinite(v) ? v : _tariffRubKwh;
 }
 
 /* ----- Активный подбор / опция ----- */
@@ -490,24 +533,47 @@ function renderStorageMode() {
     el.innerHTML = `<span title="Embed-режим: модуль вызван из «${util.escAttr(_navReturn.label)}». Сделайте подбор и нажмите «✓ Применить и вернуться» в правом верхнем углу.">🔗 Embed: вернуться в <b>${util.escHtml(_navReturn.label)}</b></span>`;
     return;
   }
-  if (_standalone) {
-    // v0.59.997: в standalone-режиме показываем кнопку «📤 Сохранить в проект»
-    // только если в системе есть хотя бы один проект (модуль Проекты доступен).
-    let projAvail = false;
-    try { projAvail = (listProjects() || []).length > 0; } catch {}
-    el.innerHTML = `
-      <span title="Standalone-режим: данные хранятся в общем разделе LocalStorage без привязки к проекту. Используйте если открыли модуль из закладки/прямой ссылки без активного проекта.">🔓 Standalone</span>
-      ${projAvail
-        ? `<button type="button" id="cl-save-to-project" style="display:block;width:100%;margin-top:6px;padding:5px 8px;font-size:11.5px;background:#1e40af;color:#fff;border:none;border-radius:3px;cursor:pointer" title="Скопировать активный подбор в выбранный проект. После сохранения вы можете перейти в проект и продолжить работу там.">📤 Сохранить активный подбор в проект</button>`
-        : `<div class="muted" style="font-size:10.5px;margin-top:4px" title="Модуль «Проекты» не активен или не имеет проектов. Создайте проект через главное меню чтобы переносить подборы между сессиями.">💡 Создайте проект (через Hub) для сохранения подборов в проект</div>`
-      }
-    `;
-    const btn = el.querySelector('#cl-save-to-project');
-    if (btn) btn.addEventListener('click', saveActiveSelectionToProject);
-    return;
-  }
-  const projName = (_pid && _pid.name) || 'default';
-  el.innerHTML = `<span title="Project-режим: данные привязаны к активному проекту «${util.escAttr(projName)}». Все подборы будут сохранены в проекте.">💼 Проект: <b>${util.escHtml(projName)}</b></span>`;
+  // v0.60.18: единый picker «Контекст подбора» — список всех проектов +
+  // опция «Без проекта (разовый)». Решает проблему «при переходе в стандалон
+  // всё равно открывается один и тот же default-проект».
+  let projects = [];
+  try { projects = listProjects() || []; } catch {}
+  const currentVal = _standalone ? '__standalone__' : ((_pid && _pid.id) || '__standalone__');
+  const opts = [
+    `<option value="__standalone__"${currentVal === '__standalone__' ? ' selected' : ''} title="Разовый подбор — данные хранятся в общем LocalStorage без привязки к проекту. Не попадёт в отчёт по проекту.">🔓 Без проекта (разовый)</option>`,
+    ...projects.map(p =>
+      `<option value="${util.escAttr(p.id)}"${currentVal === p.id ? ' selected' : ''} title="Подборы будут сохранены в проекте «${util.escAttr(p.name || p.id)}»">💼 ${util.escHtml(p.name || p.id)}</option>`
+    ),
+  ].join('');
+  el.innerHTML = `
+    <label style="display:block;font-size:11px;font-weight:600;color:#475569;margin-bottom:3px" title="Контекст хранения подборов. Поменяйте здесь, чтобы переключиться на другой проект или на разовый подбор без привязки к проекту.">КОНТЕКСТ ПОДБОРА</label>
+    <select id="cl-context-sel" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px;font:inherit;font-size:12px;background:#fff;cursor:pointer" title="Все ваши подборы и варианты сохраняются в выбранный контекст. При смене — страница перезагружается и подгружаются подборы выбранного контекста.">${opts}</select>
+    ${_standalone && projects.length
+      ? `<button type="button" id="cl-save-to-project" style="display:block;width:100%;margin-top:6px;padding:5px 8px;font-size:11.5px;background:#1e40af;color:#fff;border:none;border-radius:3px;cursor:pointer" title="Скопировать активный подбор в выбранный проект. После сохранения вы можете перейти в проект и продолжить работу там.">📤 Сохранить активный подбор в проект</button>`
+      : ''}
+    ${_standalone && !projects.length
+      ? `<div class="muted" style="font-size:10.5px;margin-top:4px" title="Модуль «Проекты» не активен или не имеет проектов. Создайте проект через главное меню чтобы сохранять подборы в проект.">💡 Создайте проект через Hub, чтобы сохранять подборы в проект</div>`
+      : ''}
+  `;
+  const sel = el.querySelector('#cl-context-sel');
+  if (sel) sel.addEventListener('change', () => {
+    const v = sel.value;
+    if (v === '__standalone__') {
+      // Переключиться в standalone — добавляем ?standalone=1 и перезагружаем.
+      const url = new URL(location.href);
+      url.searchParams.set('standalone', '1');
+      url.searchParams.delete('pid');
+      location.href = url.toString();
+    } else {
+      // Переключиться в project-mode на конкретный проект.
+      const url = new URL(location.href);
+      url.searchParams.delete('standalone');
+      url.searchParams.set('pid', v);
+      location.href = url.toString();
+    }
+  });
+  const btn = el.querySelector('#cl-save-to-project');
+  if (btn) btn.addEventListener('click', saveActiveSelectionToProject);
 }
 
 /* v0.59.997: копирование активного standalone-подбора в выбранный проект.
@@ -764,7 +830,7 @@ function renderActiveTab() {
     const fcEl = $('cl-fc-summary');
     if (fcEl) {
       fcEl.innerHTML = (pSpec && Number(pSpec.ratedCapKw) > 0)
-        ? renderFreeCoolingSummary(rows, pSpec, _tariffRubKwh, hourly, _currency)
+        ? renderFreeCoolingSummary(rows, pSpec, tariffInDisplayCurrency(), hourly, _currency)
         : '<div class="muted">Задайте Rated capacity > 0 во вкладке ❄ Spec для расчёта.</div>';
     }
     const cvs = $('cl-energy-chart');
@@ -785,18 +851,19 @@ function renderActiveTab() {
     const convertFn = makeConvertFn();
     const pSpec = primarySpec(opt);
     const rows = buildBinData(hourly, pSpec);
-    const fc = computeFcSummary(rows, pSpec, _tariffRubKwh, hourly);
+    const tariffDisp = tariffInDisplayCurrency();
+    const fc = computeFcSummary(rows, pSpec, tariffDisp, hourly);
     const ecoConv = convertEcoToCurrency(opt.eco, _currency, convertFn);
-    const tco = computeTco({ annualEnergyKwh: fc ? fc.energyKwh : 0, tariffRubKwh: _tariffRubKwh, eco: ecoConv });
+    const tco = computeTco({ annualEnergyKwh: fc ? fc.energyKwh : 0, tariffRubKwh: tariffDisp, eco: ecoConv });
     // Payback относительно ОСНОВНОГО варианта подбора (а не первого).
     let payback = null;
     const main = sel.options.find(o => o.id === sel.mainOptionId);
     if (main && main.id !== opt.id) {
       const mainSpec = primarySpec(main);
       const bRows = buildBinData(hourly, mainSpec);
-      const bFc = computeFcSummary(bRows, mainSpec, _tariffRubKwh, hourly);
+      const bFc = computeFcSummary(bRows, mainSpec, tariffDisp, hourly);
       const bEcoConv = convertEcoToCurrency(main.eco, _currency, convertFn);
-      const bTco = computeTco({ annualEnergyKwh: bFc ? bFc.energyKwh : 0, tariffRubKwh: _tariffRubKwh, eco: bEcoConv });
+      const bTco = computeTco({ annualEnergyKwh: bFc ? bFc.energyKwh : 0, tariffRubKwh: tariffDisp, eco: bEcoConv });
       payback = discountedPaybackYears(tco, bTco);
     }
     const kpi = $('cl-tco-kpi');
@@ -805,7 +872,7 @@ function renderActiveTab() {
     if (cvs) {
       // TCO chart по всем вариантам ТЕКУЩЕГО подбора (с основным первым).
       const ordered = orderedOptionsForCompare(sel);
-      const allMetrics = compareOptions(ordered, hourly, _tariffRubKwh, _currency, convertFn);
+      const allMetrics = compareOptions(ordered, hourly, tariffDisp, _currency, convertFn);
       drawTcoChart(cvs, allMetrics, _currency);
     }
   } else if (_activeTab === 'topology') {
@@ -926,7 +993,7 @@ function renderActiveTab() {
     // Per-equipment results через новый simulateOptionTopology
     const metrics = simulateOptionTopology(opt, hourly);
     const rwrap = $('cl-topo-results');
-    if (rwrap) rwrap.innerHTML = renderTopologyResults(metrics, _currency, _tariffRubKwh);
+    if (rwrap) rwrap.innerHTML = renderTopologyResults(metrics, _currency, tariffInDisplayCurrency());
   } else if (_activeTab === 'compare') {
     const tbl = $('cl-compare-table');
     if (tbl) {
@@ -949,7 +1016,7 @@ function renderActiveTab() {
       } else {
         ordered = orderedOptionsForCompare(sel);
       }
-      const metrics = compareOptions(ordered, hourly, _tariffRubKwh, _currency, convertFn);
+      const metrics = compareOptions(ordered, hourly, tariffInDisplayCurrency(), _currency, convertFn);
       tbl.innerHTML = renderComparisonTable(metrics, _currency);
     }
   }
@@ -971,13 +1038,37 @@ function init() {
   _navMode = nav.mode;
   _navReturn = nav.return;
   _standalone = (_navMode === 'standalone');
-  if (!_standalone) _pid = ensureDefaultProject();
+  if (!_standalone) {
+    // v0.60.18: уважать ?pid=<id> в URL (из переключателя контекста). Если
+    // нет такого id среди проектов — fallback к ensureDefaultProject().
+    const params = new URLSearchParams(location.search);
+    const urlPid = params.get('pid');
+    if (urlPid) {
+      const proj = getProject(urlPid);
+      if (proj) {
+        setActiveProjectId(urlPid);
+        _pid = proj;
+      } else {
+        _pid = ensureDefaultProject();
+      }
+    } else {
+      _pid = ensureDefaultProject();
+    }
+  }
+
+  // v0.60.18: миграция данных из legacy-пути 'raschet.project.[object Object].cooling.*'
+  // (баг до v0.60.17: storageKey передавал _pid OBJECT в projectKey вместо .id).
+  // Копируем в правильный pid-namespace, если там ещё пусто.
+  migrateLegacyObjectObjectKeys();
 
   _activeCols = loadJson(KEY_COLS, _activeCols);
   const t = Number(loadJson(KEY_TARIFF, null));
   if (Number.isFinite(t) && t >= 0) _tariffRubKwh = t;
   const savedCur = loadJson(KEY_CURRENCY, null);
   if (typeof savedCur === 'string' && savedCur) _currency = savedCur;
+  // v0.60.18: тариф может быть в любой валюте; default = валюта проекта.
+  const savedTarCur = loadJson(KEY_TARIFF_CUR, null);
+  _tariffCurrency = (typeof savedTarCur === 'string' && savedTarCur) ? savedTarCur : _currency;
 
   // v0.59.995: загрузка подборов + миграция legacy bucket _options
   _selections = loadJson(KEY_SELECTIONS, []) || [];
@@ -1031,40 +1122,50 @@ function init() {
     curSel.innerHTML = CURRENCIES.map(c =>
       `<option value="${c.code}"${c.code === _currency ? ' selected' : ''} title="${c.label}">${c.code} — ${c.label}</option>`
     ).join('');
-    curSel.addEventListener('change', async () => {
+    curSel.addEventListener('change', () => {
       const oldCur = _currency;
       const newCur = curSel.value || '₽';
       if (oldCur === newCur) return;
 
-      // v0.59.995: суммы хранятся в native eco.currency и конвертируются на
-      // дисплее автоматически через convertEcoToCurrency. _currency меняет
-      // только display-валюту проекта; eco не трогаем. Тариф ВСЕГДА в
-      // _currency (он не привязан к опции). Если есть тариф — предлагаем
-      // конвертировать ТОЛЬКО его.
-      let factor = 1;
+      // v0.60.18: тариф ТЕПЕРЬ хранится в собственной валюте (_tariffCurrency)
+      // и автоматически конвертируется в валюту проекта при расчётах через
+      // tariffInDisplayCurrency(). Поэтому смена валюты проекта НЕ требует
+      // никакой ручной конвертации тарифа — он останется в той же native-валюте.
+      _currency = newCur;
+      persist();
+      renderActiveTab();
+    });
+  }
+
+  // Tariff-currency select v0.60.18 — заполняем после _currency установлено
+  const tarCurSel = $('cl-tariff-cur');
+  if (tarCurSel) {
+    tarCurSel.innerHTML = CURRENCIES.map(c =>
+      `<option value="${c.code}"${c.code === _tariffCurrency ? ' selected' : ''} title="${c.label}">${c.code}</option>`
+    ).join('');
+    tarCurSel.addEventListener('change', async () => {
+      const oldCur = _tariffCurrency;
+      const newCur = tarCurSel.value || _currency;
+      if (oldCur === newCur) return;
+      // Авто-пересчёт тарифа по курсу при смене валюты тарифа.
+      let newVal = _tariffRubKwh;
       if (_tariffRubKwh > 0) {
-        const ok = await clConfirm(`Конвертировать тариф из ${oldCur} в ${newCur} по текущему курсу? (CAPEX опций уже хранятся в их родных валютах и пересчитываются автоматически.)`);
-        if (ok) {
-          try {
-            const rates = await fetchRates(null, null, false);
-            const fromIso = currencyToIso(oldCur);
-            const toIso   = currencyToIso(newCur);
-            const f = convertRate(1, fromIso, toIso, rates);
-            if (Number.isFinite(f) && f > 0) {
-              factor = f;
-              _tariffRubKwh = +(((_tariffRubKwh || 0) * factor).toFixed(3));
-              util.toast(`Тариф конвертирован: 1 ${oldCur} = ${factor.toFixed(4)} ${newCur} на ${rates.date}`, 'ok');
-            } else {
-              util.toast(`Курс ${fromIso}→${toIso} не найден. Тариф остался прежним.`, 'err');
-            }
-          } catch (e) {
-            util.toast(`Не удалось загрузить курсы: ${e.message}.`, 'err');
+        await ensureRatesLoaded();
+        const cf = makeConvertFn();
+        if (cf) {
+          const v = cf(_tariffRubKwh, oldCur, newCur);
+          if (Number.isFinite(v) && v > 0) {
+            newVal = +(v.toFixed(4));
+            util.toast(`Тариф пересчитан: ${_tariffRubKwh} ${oldCur} → ${newVal} ${newCur}`, 'ok');
+          } else {
+            util.toast(`Курс ${oldCur}→${newCur} не найден. Тариф сохранён без пересчёта.`, 'err');
           }
+        } else {
+          util.toast(`Курсы валют ещё не загружены. Тариф сохранён без пересчёта.`, 'err');
         }
       }
-
-      _currency = newCur;
-      // Обновить input тарифа после конвертации
+      _tariffRubKwh = newVal;
+      _tariffCurrency = newCur;
       const tInp = $('cl-tariff');
       if (tInp) tInp.value = _tariffRubKwh;
       persist();
@@ -1133,10 +1234,10 @@ function init() {
     try {
       const KEY_META_DATA = ['meteo', 'datasets.v1'];
       const KEY_META_ACTIVE = ['meteo', 'activeId.v1'];
-      const datasets = JSON.parse(localStorage.getItem(projectKey(_pid, ...KEY_META_DATA)) || '[]');
+      const datasets = JSON.parse(localStorage.getItem(projectKey(_pid?.id, ...KEY_META_DATA)) || '[]');
       for (const d of datasets) d.activeForProject = (d.id === embedResult.datasetId);
-      localStorage.setItem(projectKey(_pid, ...KEY_META_DATA), JSON.stringify(datasets));
-      localStorage.setItem(projectKey(_pid, ...KEY_META_ACTIVE), JSON.stringify(embedResult.datasetId));
+      localStorage.setItem(projectKey(_pid?.id, ...KEY_META_DATA), JSON.stringify(datasets));
+      localStorage.setItem(projectKey(_pid?.id, ...KEY_META_ACTIVE), JSON.stringify(embedResult.datasetId));
     } catch {}
   }
 

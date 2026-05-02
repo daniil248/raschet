@@ -307,6 +307,117 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
   font-size: 11.5px; color: #92400e;
 }
 
+/* v0.60.18: компактные money-cells + popup-таблица статей затрат */
+.cl-capex-form .cl-capex-hint {
+  font-size: 11px; color: #64748b; margin: 0 0 6px;
+}
+.cl-money-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, max-content));
+  gap: 8px 14px; align-items: end;
+}
+.cl-money-cell {
+  display: inline-flex; flex-direction: column; gap: 3px;
+  min-width: 220px; max-width: 280px;
+}
+.cl-money-cell-lbl {
+  font-size: 11px; font-weight: 600; color: #1e3a8a; letter-spacing: 0.1px;
+}
+.cl-money-cell-btn {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 7px 10px; border: 1px solid #93c5fd; border-radius: 4px;
+  background: #fff; cursor: pointer; font: inherit;
+  transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+  text-align: left;
+}
+.cl-money-cell-btn:hover {
+  border-color: #1e40af; background: #f8fafc;
+  box-shadow: 0 0 0 2px rgba(30,64,175,0.08);
+}
+.cl-money-cell-btn:active { background: #eff6ff; }
+.cl-money-cell-val {
+  font-size: 13px; font-weight: 600; color: #0f172a; white-space: nowrap;
+}
+.cl-money-items-badge {
+  font-size: 10px; color: #1e40af; background: #dbeafe;
+  padding: 2px 6px; border-radius: 8px; white-space: nowrap; font-weight: 500;
+}
+.cl-money-items-badge.cl-money-items-empty { color: #92400e; background: #fef3c7; }
+/* Прочие компактные числовые/select-поля в той же сетке (без бордюра кнопки). */
+.cl-compact-field {
+  display: inline-flex; flex-direction: column; gap: 3px;
+  min-width: 200px; max-width: 240px;
+}
+.cl-compact-field span {
+  font-size: 11px; font-weight: 600; color: #1e3a8a;
+}
+.cl-compact-field input, .cl-compact-field select {
+  padding: 6px 9px; border: 1px solid #93c5fd; border-radius: 4px;
+  font: inherit; font-size: 12.5px; background: #fff;
+}
+.cl-compact-field input:focus, .cl-compact-field select:focus {
+  outline: none; border-color: #1e40af;
+  box-shadow: 0 0 0 2px rgba(30,64,175,0.15);
+}
+
+/* Popup line-items editor */
+.cl-mi-hint { font-size: 11.5px; color: #64748b; margin: 0 0 8px; }
+.cl-mi-field-cur {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: #475569; margin-bottom: 8px;
+}
+.cl-mi-field-cur select {
+  padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 3px;
+  font: inherit; font-size: 12px; background: #f8fafc;
+}
+.cl-mi-table-wrap {
+  border: 1px solid #e2e8f0; border-radius: 4px; overflow: hidden;
+  margin-bottom: 8px;
+}
+.cl-mi-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.cl-mi-table th {
+  background: #f1f5f9; padding: 6px 8px; text-align: left;
+  font-size: 11px; font-weight: 600; color: #475569;
+  text-transform: uppercase; letter-spacing: 0.3px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.cl-mi-table td {
+  padding: 4px 6px; border-bottom: 1px solid #f1f5f9;
+}
+.cl-mi-table tr:last-child td { border-bottom: none; }
+.cl-mi-table input, .cl-mi-table select {
+  width: 100%; padding: 5px 7px; border: 1px solid #cbd5e1; border-radius: 3px;
+  font: inherit; font-size: 12px; background: #fff;
+}
+.cl-mi-table .cl-mi-label  { min-width: 220px; }
+.cl-mi-table .cl-mi-value  { width: 110px; text-align: right; }
+.cl-mi-table .cl-mi-currency { width: 70px; }
+.cl-mi-table input:focus, .cl-mi-table select:focus {
+  outline: none; border-color: #1e40af;
+  box-shadow: 0 0 0 2px rgba(30,64,175,0.12);
+}
+.cl-mi-del {
+  width: 26px; height: 26px; border: 1px solid #fecaca; background: #fff;
+  color: #b91c1c; cursor: pointer; border-radius: 3px; font-size: 14px;
+  line-height: 1; padding: 0;
+}
+.cl-mi-del:hover { background: #fef2f2; border-color: #ef4444; }
+.cl-mi-add-btn {
+  margin: 6px 8px 8px; padding: 6px 12px;
+  border: 1px dashed #93c5fd; background: #f0f9ff; color: #1e40af;
+  border-radius: 3px; cursor: pointer; font-size: 12px; font-weight: 500;
+}
+.cl-mi-add-btn:hover { background: #dbeafe; border-style: solid; }
+.cl-mi-totals {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 8px 12px; background: #ecfdf5; border: 1px solid #a7f3d0;
+  border-radius: 4px; font-size: 13px;
+}
+.cl-mi-total-main b { color: #065f46; font-size: 14px; }
+.cl-mi-total-disp { font-size: 11.5px; color: #047857; font-style: italic; }
+/* Popup модал с таблицей шире обычного */
+.mt-modal-overlay:has(.cl-mi-table-wrap) .mt-modal { max-width: 640px; width: 95%; }
+
 /* FC + OPEX summary */
 .cl-fc-summary { margin: 0; }
 .cl-fc-summary-title {

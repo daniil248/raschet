@@ -4,6 +4,24 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.18', date: '2026-05-02', items: [
+      '💰 <b>Phase 23.1: Line-items для CAPEX в cooling</b>. По требованию: «стоимость оборудования с возможностью наполнения, например чиллер 5000 + блок насосов 2000 итого 7000. Лучше в таблице. … тоже для opex и TCO. При нажатии — таблица, хоть одну строку, хоть подробно».',
+      '• Каждое денежное поле CAPEX/OPEX (Оборудование / Монтаж / ТО) — компактная клик-кнопка с тоталом и бэйджем-счётчиком статей. Клик открывает popup-таблицу: Статья / Сумма / Валюта / × delete + «+ Добавить статью» + Итого в native+валюте проекта.',
+      '• <code>normMoney()</code> расширена: <code>{value, currency, items?: [{id, label, value, currency}]}</code>. Backward-compat: number/single-value поля становятся одной статьёй «Прочее».',
+      '• <code>convertEcoToCurrency()</code> теперь конвертирует каждый item отдельно по его native-валюте. Новые helpers <code>moneyTotalIn()</code> / <code>moneyTotalNative()</code>.',
+      '• CSS: <code>.cl-money-cell</code> ≤ 280px (компактно), popup-таблица в модале до 640px ширины.',
+      '🌐 <b>Валюта тарифа электроэнергии</b>. По требованию: «для стоимости электроэнергии так же выбор валюты сделай». Тариф теперь имеет собственную валюту <code>_tariffCurrency</code> (по умолчанию = валюта проекта); в расчётах конвертируется в displayCurrency через <code>tariffInDisplayCurrency()</code>.',
+      '• При смене валюты тарифа — auto-пересчёт по курсу с toast-уведомлением.',
+      '• При смене валюты проекта тариф НЕ перезаписывается (хранится в native), просто отображается через конвертацию.',
+      '🐛 <b>Bugfix: cooling в project-mode игнорировал URL ?pid и хранил данные под ключом [object Object]</b>. По репорту: «при переходе в стандалон всё ещё перехожу на один единственный проект … как мне добавлять непроектные подборы???».',
+      '• <code>storageKey()</code>: <code>projectKey(_pid?.id, …)</code> вместо <code>projectKey(_pid, …)</code> — раньше project-объект конвертился в [object Object].',
+      '• <code>init()</code>: уважает <code>?pid=&lt;id&gt;</code>, переключает <code>setActiveProjectId</code>; fallback к <code>ensureDefaultProject</code> только если параметр отсутствует.',
+      '• Одноразовая миграция <code>migrateLegacyObjectObjectKeys()</code>: переносит данные из <code>raschet.project.[object Object].cooling.*</code> в правильный pid-namespace.',
+      '🎛 <b>Picker «Контекст подбора» в сайдбаре cooling</b>. Список всех проектов + опция «🔓 Без проекта (разовый)». Смена → reload с правильным <code>?pid=…</code> или <code>?standalone=1</code>. Решает проблему «как добавлять непроектные подборы».',
+      '🧹 <b>Метки UI</b>: убрана хардкод-валюта «(₽/год)» из MONEY_FIELDS — теперь подставляется displayCurrency. Поля становятся компактными (минимум 200–280px ширины); ушло «поле на пол страницы».',
+      '📋 <b>ROADMAP</b>: добавлены Фазы 23 (line-items rollout), 24 (Сервис: монтаж/ТО), 25 (Импорт даташитов климат-оборудования), 26 (SharePoint integration), 27 (MS365 auth — deferred).',
+      'Файлы: <code>cooling/calc/capex-tco.js</code>, <code>cooling/ui/capex-form.js</code>, <code>cooling/cooling.js</code>, <code>cooling/cooling.css</code>, <code>cooling/index.html</code>, <code>shared/project-storage.js</code> (re-exports не менялись), <code>ROADMAP.md</code>, <code>js/engine/constants.js</code>.',
+    ] },
     { version: '0.60.17', date: '2026-05-02', items: [
       '🐛 <b>Bugfix: TCO chart показывал ₽ при выбранной EUR-валюте</b>. По репорту: «почему в графике рубли если валюта выбрана евро».',
       '• <code>drawTcoChart()</code> в cooling/ui/energy-chart.js принимал только metrics — currency была захардкожена как ₽ в title/tooltip/y-axis.',
