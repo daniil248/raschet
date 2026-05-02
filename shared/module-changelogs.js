@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.15', date: '2026-05-02', items: [
+      '🏗 <b>Cooling: уточнение модели — резервирование per-группа, требуемая мощность per-подбор</b>. По уточнениям Пользователя 2026-05-02:',
+      '• «Обычно для группы подбирается один чиллер, а не каждый, так как они одинаковые». — теперь equipment-группа описывается ОДНОЙ записью с qty + N + M + standbyMode (а не qty отдельных записей).',
+      '• «Резервирование относится к одной компоновке и подбору чиллера». — N+M теперь per-EQUIPMENT-GROUP, не per-option и не per-selection.',
+      '• «Необходимая мощность должна быть задана для свойств подбора, а уровни резервирования для каждой опции отдельно». — selection.general = {requiredCoolingKw, safetyMarginPct} (общее для всех вариантов; для сравнения опций с разной мощностью но одинаковой суммарной).',
+      '• Topology tab переработана: показывает свойства ПОДБОРА (требуемая кВт + запас %) + таблицу групп оборудования с qty/N/M/standbyMode + общая связь loopMode.',
+      '• Validation: показывается «Целевая мощность с запасом X кВт. Установлено Y кВт.» с зелёной ✓ или красным ⚠ дефицитом.',
+      '• Новый <code>simulateOptionTopology(option, hourly)</code> в calc/topology.js — расчёт по equipment-группам с per-group N+M+standby.',
+      '• Migration: legacy options/selections авто-апгрейдятся; sel.topology с N+M переносится в первую группу option.equipment.',
+      'Файлы: <code>cooling/cooling.js</code> (normalizeOption + sel.general + Topology tab UI rewrite), <code>cooling/calc/topology.js</code> (simulateOptionTopology новый), <code>js/engine/constants.js</code> (0.60.15).',
+    ] },
     { version: '0.60.14', date: '2026-05-02', items: [
       '📂 <b>/modules/: добавил пропущенные модули</b>. По требованию: «не нашел климата. В этом разделе должны быть абсолютно все модули».',
       '• <b>Технолог ЦОД (концепция)</b> — добавлен в раздел «🗄 Инфраструктура ЦОД». Не было в /modules/ хотя является ключевым модулем.',

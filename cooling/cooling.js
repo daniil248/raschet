@@ -25,7 +25,7 @@
 import { ensureDefaultProject, projectKey, listProjects } from '../shared/project-storage.js';
 import * as util from '../meteo/util.js';
 
-import { DEFAULT_CHILLER, COLUMNS, DEFAULT_COLS, CHILLER_COLS } from './calc/chiller-defaults.js';
+import { DEFAULT_CHILLER, COLUMNS, DEFAULT_COLS, CHILLER_COLS, isCracType as isCracTypeLocal } from './calc/chiller-defaults.js';
 import { buildBinData } from './calc/chiller-bin-calc.js';
 import { computeFcSummary } from './calc/fc-summary.js';
 import { computeTco, DEFAULT_ECONOMICS, discountedPaybackYears, convertEcoToCurrency } from './calc/capex-tco.js';
@@ -37,7 +37,7 @@ import { renderFreeCoolingSummary } from './ui/fc-summary-view.js';
 import { drawChillerEnergyChart, drawTcoChart } from './ui/energy-chart.js';
 import { renderCapexForm, renderTcoKpi } from './ui/capex-form.js';
 import { renderComparisonTable } from './ui/comparison-view.js';
-import { buildTopologyFromOptions, simulateTopology, DEFAULT_TOPOLOGY } from './calc/topology.js';
+import { buildTopologyFromOptions, simulateTopology, simulateOptionTopology, DEFAULT_TOPOLOGY } from './calc/topology.js';
 import { renderTopologyConfig, renderTopologyResults } from './ui/topology-view.js';
 
 import { tableToCsv, downloadCsv } from '../meteo/charts.js';
@@ -161,28 +161,74 @@ function activeOption() {
       || null;
 }
 
-/* v0.60.7 (Phase 22.10.1): нормализация option до новой модели «КОМПЛЕКС»:
- *   option.equipment = [{ id, role, spec, qty }, ...]
+/* v0.60.15 (Phase 22.10.1, refined): модель option-комплекса.
  *
- * Topology — НЕ per-option, а per-selection (общая архитектура для всех
- * вариантов сравнения). Внутри одной selection все options имеют одинаковую
- * топологию (loopMode, N+M, standby), но РАЗНОЕ оборудование.
+ * По уточнению Пользователя 2026-05-02: «обычно для группы подбирается
+ * один чиллер, а не каждый, так как они одинаковые. Резервирование
+ * относится к одной компоновке и подбору чиллера. Количество можно
+ * внести в общие данные. Так же задать общую необходимую мощность и
+ * процент запаса».
  *
- * Backward-compat: если у option есть spec но нет equipment — оборачиваем
- * в один equipment-item.
+ * Модель:
+ *   option = {
+ *     id, name,
+ *     general: {                         // общие данные подбора (новая вкладка)
+ *       requiredCoolingKw,               // суммарная необходимая холодопроизводительность
+ *       safetyMarginPct,                 // процент запаса (default 20)
+ *     },
+ *     equipment: [
+ *       {
+ *         id, role, spec,                // одна группа одинаковых единиц
+ *         qty,                           // количество в группе
+ *         redundancyN,                   // штатно рабочих в группе
+ *         redundancyM,                   // в резерве в группе
+ *         standbyMode: 'cold' | 'hot',   // режим резерва per-group
+ *       }
+ *     ],
+ *     topology: { loopMode: 'common-loop' | 'p2p' },  // только loopMode
+ *     eco: { ... }                       // CAPEX/OPEX комплекса
+ *   }
+ *
+ * Backward-compat:
+ *   • option.spec → equipment: [{spec, qty:1, N:1, M:0, mode:'cold'}]
+ *   • option.topology.{redundancyN,M,standbyMode} → equipment[0] (миграция)
  */
 function normalizeOption(opt) {
   if (!opt) return opt;
-  if (Array.isArray(opt.equipment)) return opt;   // уже новый формат
+
+  // Уже новый формат — only ensure equipment items имеют qty/N/M/standbyMode.
+  if (Array.isArray(opt.equipment)) {
+    let changed = false;
+    const equipment = opt.equipment.map(eq => {
+      const out = { ...eq };
+      if (typeof out.qty !== 'number' || out.qty < 1) { out.qty = 1; changed = true; }
+      if (typeof out.redundancyN !== 'number') { out.redundancyN = Math.max(1, out.qty - 0); changed = true; }
+      if (typeof out.redundancyM !== 'number') { out.redundancyM = Math.max(0, (out.qty || 1) - out.redundancyN); changed = true; }
+      if (!out.standbyMode) { out.standbyMode = 'cold'; changed = true; }
+      return out;
+    });
+    // Если у опции случайно был general (от предыдущей итерации) — удаляем.
+    if (opt.general) { changed = true; const { general, ...rest } = opt; return { ...rest, equipment }; }
+    return changed ? { ...opt, equipment } : opt;
+  }
+
+  // Старый формат с opt.spec — оборачиваем.
   if (!opt.spec) return { ...opt, equipment: [] };
+  const tN = Number(opt.topology?.redundancyN) || 1;
+  const tM = Number(opt.topology?.redundancyM) || 0;
+  const tMode = opt.topology?.standbyMode || 'cold';
   return {
     ...opt,
     equipment: [{
       id: 'eq-' + Math.random().toString(36).slice(2, 8),
       role: deriveRole(opt.spec.systemType),
       spec: opt.spec,
-      qty: 1,
+      qty: tN + tM,
+      redundancyN: tN,
+      redundancyM: tM,
+      standbyMode: tMode,
     }],
+    topology: { loopMode: opt.topology?.loopMode || 'common-loop' },
   };
 }
 
@@ -197,6 +243,12 @@ function deriveRole(sysType) {
 function migrateSelectionsToComplex() {
   let changed = false;
   for (const sel of _selections) {
+    // v0.60.15 (refined): selection.general — общие данные подбора
+    // (требуемая мощность + % запаса). Если нет — добавляем default.
+    if (!sel.general) {
+      sel.general = { requiredCoolingKw: 0, safetyMarginPct: 20 };
+      changed = true;
+    }
     for (let i = 0; i < (sel.options || []).length; i++) {
       const before = sel.options[i];
       const after = normalizeOption(before);
@@ -212,6 +264,13 @@ function makeNewSelection(name) {
   const sel = {
     id: `sel-${_selSeq++}`,
     name: name || `Подбор ${_selections.length + 1}`,
+    // v0.60.15 (refined): свойства подбора — общие для всех вариантов.
+    // По уточнению Пользователя: «необходимая мощность должна быть задана
+    // для свойств подбора, а уровни резервирования для каждой опции отдельно».
+    general: {
+      requiredCoolingKw: 0,    // суммарная необходимая мощность системы
+      safetyMarginPct: 20,     // % запаса (default 20%)
+    },
     mainOptionId: null,
     activeOptionId: null,
     options: [],
@@ -524,25 +583,122 @@ function renderActiveTab() {
       drawTcoChart(cvs, allMetrics);
     }
   } else if (_activeTab === 'topology') {
-    // Топология этого подбора: chillers + CRAC + redundancy
-    if (!sel.topology) sel.topology = { ...DEFAULT_TOPOLOGY };
+    // v0.60.15 (refined): Топология теперь per-OPTION; равзвертка из equipment[].
+    // Свойства подбора (selection.general): requiredCoolingKw + safetyMarginPct.
     const cwrap = $('cl-topo-config-wrap');
     if (cwrap) {
-      cwrap.innerHTML = '';
-      cwrap.appendChild(renderTopologyConfig(sel.topology, (next) => {
-        sel.topology = next;
-        persist();
-        renderActiveTab();
-      }, sel));
+      const general = sel.general || { requiredCoolingKw: 0, safetyMarginPct: 20 };
+      const targetKw = (general.requiredCoolingKw || 0) * (1 + (general.safetyMarginPct || 0) / 100);
+      const installedKw = (opt.equipment || []).reduce((sum, eq) => {
+        if (!eq.spec) return sum;
+        if (isCracTypeLocal(eq.spec.systemType)) return sum;
+        const active = eq.standbyMode === 'hot' ? eq.qty : (eq.redundancyN || eq.qty || 1);
+        return sum + (eq.spec.ratedCapKw || 0) * active;
+      }, 0);
+      const eqRows = (opt.equipment || []).map((eq, i) => {
+        const isCrac = eq.spec && isCracTypeLocal(eq.spec.systemType);
+        return `<tr style="${isCrac ? 'background:#f0f9ff' : 'background:#fffbea'}">
+          <td>${isCrac ? '🌬' : '❄'} ${util.escHtml(eq.spec?.name || `Группа ${i+1}`)}</td>
+          <td>${util.escHtml(eq.spec?.systemType || '?')}</td>
+          <td class="num">${eq.spec?.ratedCapKw || 0}</td>
+          <td><input type="number" min="1" max="20" data-eq-i="${i}" data-eq-f="qty" value="${eq.qty || 1}" style="width:60px"></td>
+          <td><input type="number" min="1" max="20" data-eq-i="${i}" data-eq-f="redundancyN" value="${eq.redundancyN || 1}" style="width:60px"
+                     title="N — штатно работающих в этой группе"></td>
+          <td><input type="number" min="0" max="10" data-eq-i="${i}" data-eq-f="redundancyM" value="${eq.redundancyM || 0}" style="width:60px"
+                     title="M — в резерве в этой группе. N+M ≤ qty."></td>
+          <td><select data-eq-i="${i}" data-eq-f="standbyMode" title="Холодный — резерв off, energy=0. Горячий — резервы работают параллельно с активными.">
+                <option value="cold"${eq.standbyMode === 'cold' ? ' selected' : ''}>❄ Холодный</option>
+                <option value="hot"${eq.standbyMode === 'hot' ? ' selected' : ''}>🔥 Горячий</option>
+              </select></td>
+        </tr>`;
+      }).join('');
+      cwrap.innerHTML = `
+        <h4 title="Топология подбора: оборудование группами + резервирование per-группа.">🔗 Топология «${util.escHtml(opt.name)}»</h4>
+
+        <div class="cl-chiller-section">
+          <div class="cl-chiller-section-title" title="Свойства всего ПОДБОРА (общие для всех вариантов): требуемая мощность системы охлаждения и процент запаса. Для всех опций сравниваются на одной целевой мощности.">📋 Свойства подбора (общие)</div>
+          <div class="cl-chiller-grid">
+            <label title="Суммарная необходимая холодопроизводительность системы (кВт). Должна покрывать IT-нагрузку + потери UPS + теплоприток ограждений + люди.">
+              Требуемая мощн., кВт: <input type="number" min="0" step="10" id="cl-sel-required-kw" value="${general.requiredCoolingKw || 0}">
+            </label>
+            <label title="Процент запаса по мощности. Default 20%. Учитывает рост IT-нагрузки, climate-margin, перегрузки.">
+              Запас, %: <input type="number" min="0" max="100" step="5" id="cl-sel-margin-pct" value="${general.safetyMarginPct || 0}">
+            </label>
+          </div>
+          <p class="muted" style="font-size:11.5px;margin:6px 0 0">
+            Целевая мощность с запасом: <b>${targetKw.toFixed(0)} кВт</b>. Установлено в этой опции: <b>${installedKw.toFixed(0)} кВт</b> ${installedKw >= targetKw ? '<span style="color:#16a34a">✓</span>' : `<span style="color:#b91c1c">⚠ дефицит ${(targetKw - installedKw).toFixed(0)} кВт</span>`}.
+          </p>
+        </div>
+
+        <div class="cl-chiller-section">
+          <div class="cl-chiller-section-title" title="Резервирование задаётся per-группа оборудования. Внутри одной группы все единицы одинаковы; N — рабочих, M — резерв (cold/hot).">📐 Группы оборудования + резервирование</div>
+          ${(opt.equipment || []).length === 0
+            ? '<p class="muted">Нет оборудования. Добавьте варианты через «+ Вариант» в боковой панели.</p>'
+            : `<table class="cl-annual-table" style="font-size:12px">
+                <thead><tr><th>Имя</th><th>Тип</th><th class="num" title="Rated capacity одной единицы">Rated</th><th title="Количество одинаковых единиц в группе">Qty</th><th title="N — рабочих">N</th><th title="M — в резерве">M</th><th title="Режим резерва">Резерв</th></tr></thead>
+                <tbody>${eqRows}</tbody>
+              </table>`}
+        </div>
+
+        <div class="cl-chiller-section">
+          <div class="cl-chiller-section-title">⚙ Связь между группами</div>
+          <div class="cl-chiller-grid">
+            <label title="Тип связи между группами оборудования:
+• Общий контур — CRAC подключены к общему трубопроводу с резервированными чиллерами.
+• Точка-точка — каждый CRAC жёстко привязан к одному чиллеру (1:1).">
+              Тип связи:
+              <select id="cl-sel-loopmode">
+                <option value="common-loop"${(opt.topology?.loopMode || 'common-loop') === 'common-loop' ? ' selected' : ''}>Общий контур</option>
+                <option value="p2p"${opt.topology?.loopMode === 'p2p' ? ' selected' : ''}>Точка-точка (1:1)</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      `;
+      // Wire inputs
+      cwrap.querySelectorAll('[data-eq-i]').forEach(inp => {
+        inp.addEventListener('change', () => {
+          const i = +inp.dataset.eqI;
+          const f = inp.dataset.eqF;
+          const eq = opt.equipment[i]; if (!eq) return;
+          const v = inp.type === 'number' ? Number(inp.value) || 0 : inp.value;
+          eq[f] = v;
+          // Гарантируем N+M ≤ qty
+          if (f === 'qty') {
+            if (eq.redundancyN > eq.qty) eq.redundancyN = eq.qty;
+            if (eq.redundancyN + eq.redundancyM > eq.qty) eq.redundancyM = Math.max(0, eq.qty - eq.redundancyN);
+          }
+          if (f === 'redundancyN' && eq.redundancyN + eq.redundancyM > eq.qty) {
+            eq.redundancyM = Math.max(0, eq.qty - eq.redundancyN);
+          }
+          if (f === 'redundancyM' && eq.redundancyN + eq.redundancyM > eq.qty) {
+            eq.redundancyM = Math.max(0, eq.qty - eq.redundancyN);
+            inp.value = eq.redundancyM;
+          }
+          persist(); renderActiveTab();
+        });
+      });
+      const reqInp = cwrap.querySelector('#cl-sel-required-kw');
+      if (reqInp) reqInp.addEventListener('change', () => {
+        if (!sel.general) sel.general = {};
+        sel.general.requiredCoolingKw = Number(reqInp.value) || 0;
+        persist(); renderActiveTab();
+      });
+      const marInp = cwrap.querySelector('#cl-sel-margin-pct');
+      if (marInp) marInp.addEventListener('change', () => {
+        if (!sel.general) sel.general = {};
+        sel.general.safetyMarginPct = Number(marInp.value) || 0;
+        persist(); renderActiveTab();
+      });
+      const loopSel = cwrap.querySelector('#cl-sel-loopmode');
+      if (loopSel) loopSel.addEventListener('change', () => {
+        if (!opt.topology) opt.topology = {};
+        opt.topology.loopMode = loopSel.value;
+        persist(); renderActiveTab();
+      });
     }
-    // Сборка топологии из вариантов подбора (по типам chiller/crac).
-    const topo = buildTopologyFromOptions(
-      sel.options,
-      sel.topology.loopMode,
-      sel.topology.redundancyN,
-      sel.topology.redundancyM,
-    );
-    const metrics = simulateTopology(topo, hourly);
+    // Per-equipment results через новый simulateOptionTopology
+    const metrics = simulateOptionTopology(opt, hourly);
     const rwrap = $('cl-topo-results');
     if (rwrap) rwrap.innerHTML = renderTopologyResults(metrics, _currency, _tariffRubKwh);
   } else if (_activeTab === 'compare') {

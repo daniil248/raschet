@@ -81,20 +81,131 @@ export function buildTopologyFromOptions(options, loopMode = 'common-loop', redu
 }
 
 /**
- * v0.60.7 (Phase 22.10.1): Построить топологию из ОДНОГО option-комплекса.
+ * v0.60.15 (Phase 22.10.1, refined): Симуляция option-комплекса.
  *
- * Option в новой модели имеет equipment[]: каждый элемент — кусок
- * оборудования с qty (количество одинаковых). Расширяем qty в плоский
- * массив для simulateTopology.
+ * По уточнению Пользователя: redundancy now per-EQUIPMENT-GROUP (не per-option).
+ * Каждая equipment-группа имеет свои qty + N + M + standbyMode.
  *
- * @param {object} option   — { equipment, topology }
- * @returns {TopologyDef}
+ * Алгоритм:
+ *   Для каждой equipment-группы:
+ *     • activeUnits = N (cold) или N+M (hot); coldStandby = qty - activeUnits
+ *     • Если group.role='crac' (или crac-type spec) → CRACs: каждая активная
+ *       единица даёт нагрузку на upstream chillers
+ *     • Если group.role='chiller'|'dx' → активные распределяют общую chiller-load
+ *
+ * Возвращает aggregate metrics + per-group breakdown.
+ *
+ * @param {object} option   — { equipment, topology, general }
+ * @param {Array<object>} hourly  — фильтрованный hourly meteo
+ * @returns {TopologyMetrics}
+ */
+export function simulateOptionTopology(option, hourly) {
+  if (!option || !Array.isArray(option.equipment) || !hourly?.length) {
+    return { totalEnergyKwh: 0, totalCoolingKw: 0, perEquipment: [], bins: [] };
+  }
+
+  // 1. Разделяем equipment на cracs и chillers/dx-plant.
+  const cracGroups = [];
+  const chillerGroups = [];
+  for (const eq of option.equipment) {
+    if (!eq.spec) continue;
+    if (isCracType(eq.spec.systemType)) cracGroups.push(eq);
+    else chillerGroups.push(eq);
+  }
+
+  // 2. Per-group (CRAC) расчёт + сбор bin-нагрузки на chiller.
+  const cracPerEquipment = [];
+  const chillerLoadByBin = new Map();   // tBin → { tBin, hours, load, twbAvg }
+  for (const grp of cracGroups) {
+    const activeUnits = grp.standbyMode === 'hot'
+      ? Math.max(1, (grp.qty || 1))
+      : Math.max(1, grp.redundancyN || (grp.qty || 1));
+    const standbyUnits = (grp.qty || 1) - activeUnits;
+    const cracRows = buildBinData(hourly, grp.spec);
+    let energyKwh = 0, peakKw = 0;
+    for (const r of cracRows) {
+      energyKwh += (r.energy || 0) * activeUnits;
+      const power = (r.power || 0) * activeUnits;
+      if (power > peakKw) peakKw = power;
+      // Нагрузка на upstream chiller от ВСЕХ active CRAC.
+      const cur = chillerLoadByBin.get(r.tBin) || { tBin: r.tBin, hours: r.hours, load: 0, twbAvg: r.twbAvg };
+      cur.load += (r.cracCoolingLoadKw || 0) * activeUnits;
+      chillerLoadByBin.set(r.tBin, cur);
+    }
+    cracPerEquipment.push({
+      kind: 'crac', name: grp.spec.name || `CRAC ${grp.id}`,
+      qty: grp.qty, activeUnits, standbyUnits, role: grp.role,
+      ratedCapKw: (grp.spec.ratedCapKw || 0) * activeUnits,
+      energyKwh, peakKw,
+    });
+    if (standbyUnits > 0 && grp.standbyMode === 'cold') {
+      cracPerEquipment.push({
+        kind: 'crac-cold-standby', name: `${grp.spec.name || 'CRAC'} (резерв)`,
+        qty: standbyUnits, ratedCapKw: (grp.spec.ratedCapKw || 0) * standbyUnits,
+        energyKwh: 0, peakKw: 0,
+      });
+    }
+  }
+  const chillerBins = [...chillerLoadByBin.values()].sort((a, b) => a.tBin - b.tBin);
+
+  // 3. Per-group (chiller/dx) расчёт. Распределяем chiller-load между всеми
+  // активными чиллерами всех групп равномерно (общий контур).
+  const totalActiveChillerUnits = chillerGroups.reduce((sum, grp) => {
+    return sum + (grp.standbyMode === 'hot'
+      ? Math.max(1, (grp.qty || 1))
+      : Math.max(1, grp.redundancyN || (grp.qty || 1)));
+  }, 0);
+
+  const chillerPerEquipment = [];
+  for (const grp of chillerGroups) {
+    const activeUnits = grp.standbyMode === 'hot'
+      ? Math.max(1, (grp.qty || 1))
+      : Math.max(1, grp.redundancyN || (grp.qty || 1));
+    const standbyUnits = (grp.qty || 1) - activeUnits;
+    let energyKwh = 0, peakKw = 0;
+    for (const bin of chillerBins) {
+      // Доля каждой активной единицы.
+      const sharedLoad = totalActiveChillerUnits > 0 ? bin.load / totalActiveChillerUnits : 0;
+      const baseRow = { tBin: bin.tBin, hours: bin.hours, twbAvg: bin.twbAvg };
+      const calc = applyChillerCalc(baseRow, grp.spec);
+      const power = calc.cop > 0 ? sharedLoad / calc.cop : 0;
+      const energy = power * bin.hours * activeUnits;
+      energyKwh += energy;
+      const totalGroupPower = power * activeUnits;
+      if (totalGroupPower > peakKw) peakKw = totalGroupPower;
+    }
+    chillerPerEquipment.push({
+      kind: grp.role === 'dx' ? 'dx' : 'chiller',
+      name: grp.spec.name || `Chiller ${grp.id}`,
+      qty: grp.qty, activeUnits, standbyUnits, role: grp.role,
+      ratedCapKw: (grp.spec.ratedCapKw || 0) * activeUnits,
+      energyKwh, peakKw,
+      standbyMode: grp.standbyMode,
+    });
+    if (standbyUnits > 0 && grp.standbyMode === 'cold') {
+      chillerPerEquipment.push({
+        kind: 'chiller-cold-standby', name: `${grp.spec.name || 'Chiller'} (резерв)`,
+        qty: standbyUnits, ratedCapKw: (grp.spec.ratedCapKw || 0) * standbyUnits,
+        energyKwh: 0, peakKw: 0,
+      });
+    }
+  }
+
+  const perEquipment = [...chillerPerEquipment, ...cracPerEquipment];
+  const totalEnergyKwh = perEquipment.reduce((a, e) => a + e.energyKwh, 0);
+  const totalCoolingKw = cracPerEquipment.reduce((a, e) => a + (e.kind === 'crac' ? e.ratedCapKw : 0), 0);
+
+  return { totalEnergyKwh, totalCoolingKw, perEquipment, bins: chillerBins };
+}
+
+/**
+ * @deprecated v0.60.15 — используйте simulateOptionTopology(option, hourly).
+ * Обёртка для backward-compat: создаёт виртуальный option из массива options.
  */
 export function buildTopologyFromOption(option) {
   if (!option || !Array.isArray(option.equipment)) {
     return { chillers: [], cracs: [], loopMode: 'common-loop', redundancyN: 1, redundancyM: 0, standbyMode: 'cold' };
   }
-  // Развернуть qty>1 в отдельные единицы (с уникальными именами «N #1», «N #2»…).
   const flat = [];
   for (const eq of option.equipment) {
     const q = Math.max(1, Math.round(Number(eq.qty) || 1));
@@ -106,8 +217,8 @@ export function buildTopologyFromOption(option) {
       });
     }
   }
-  const t = option.topology || { loopMode: 'common-loop', redundancyN: 1, redundancyM: 0, standbyMode: 'cold' };
-  return buildTopologyFromOptions(flat, t.loopMode, t.redundancyN, t.redundancyM, t.standbyMode);
+  const t = option.topology || { loopMode: 'common-loop' };
+  return buildTopologyFromOptions(flat, t.loopMode, 1, 0, 'cold');
 }
 
 /**
