@@ -3159,6 +3159,103 @@ standalone-приложение в отдельном. Чтобы использ
 
 ---
 
+## Фаза 30 — Сквозная интеграция Технолога ЦОД
+
+> Зафиксировано Пользователем 2026-05-03: «надеюсь ты уже проработал план
+> интеграции модуля Технолог ЦОД с модулями климата, подбора холода,
+> подбора ИБП, ДГУ, расчёт PUE».
+
+**Цель:** Технолог ЦОД (`tech-workspace/`) — концепция-композер ЦОД, должен
+собирать данные из специализированных calc-модулей в единую концепцию с
+автоматическим расчётом PUE, CAPEX, OPEX. Cross-module flow в обе стороны.
+
+### Текущее состояние
+
+- ✅ **Meteo → Tech-workspace** (Phase 21.3 / 22.13): локация проекта
+  пропагируется через `project.location`; auto-fetch через
+  `shared/meteo-fetch.js`. PUE auto-mode читает meteo через
+  `getActiveMeteoDataset(pid)`.
+- ✅ **Cooling → Tech-workspace (READ)**: `calcPueFromCoolingModule()` читает
+  cooling.selections.v1 проекта, вызывает `simulateOptionTopology()` для
+  расчёта годовой энергии холодильной системы → PUE = (IT + Cool) / IT.
+- ⚠ **UPS / DGU**: только placeholder поля в `concept.upsSystems[]` и
+  `concept.feed.dgu`. Cross-flow в `ups-config/` отсутствует.
+
+### План работ
+
+- [ ] **30.1** Cooling ↔ Tech-workspace (двусторонний bridge):
+  - **PUSH (tech → cooling):** в концепции tech-workspace кнопка «📤 Подобрать
+    холод для этой концепции» — открывает cooling в embed с pre-filled
+    `selection.general.requiredCoolingKw = Σ_rackGroups (powerKw × pue_target)`
+    и locationName из проекта. После «✓ Применить и вернуться» —
+    подбор сохраняется в проект, в tech-workspace показывается link
+    на новый подбор.
+  - **PULL (cooling → tech):** при изменении cooling.selections автоматически
+    пересчитывается PUE концепции (через onCoolingSelectionsChange listener).
+  - **Visual:** в концепции под cooling-блоком показать «Связанный подбор:
+    [имя] — Σ установлено N кВт, годовой COP X.X, PUE-cooling Y.YY».
+
+- [ ] **30.2** UPS-config ↔ Tech-workspace:
+  - **shared/ups-bridge.js** — API для cross-module create/load.
+  - **PUSH:** «📤 Подобрать ИБП» из tech-workspace concept → ups-config в
+    embed с pre-filled IT-load, redundancy, autonomy, batteryTech.
+  - **PULL:** ups-config → возвращается с modelRef (конкретная модель ИБП)
+    + battery (АКБ из battery/), к.п.д. → автообновление
+    `concept.upsSystems[i].modelRef + efficiency`.
+  - **PUE учитывает UPS efficiency:** PUE = (IT + Cool + UPS_loss) / IT.
+
+- [ ] **30.3** Новый модуль `dgu-config/` (вынести из tech-workspace.feed.dgu):
+  - Ввод: P_total (IT + Cooling + UPS_loss + Aux), время автономности (часы).
+  - Расчёт: P_required по mode (ESP/PRP/COP), climate-derate (Δ −5% per
+    1000м над уровнем моря), резервирование (N+1, 2N), топливо (литр/кВт·ч),
+    бак.
+  - Каталог типовых ДГУ (Caterpillar, Cummins, Volvo Penta, FG Wilson) — JSON
+    в `dgu-config/datasheets/`.
+  - Bridge `shared/dgu-bridge.js` для cross-module (как cooling/service-bridge).
+  - Карточка в /modules/, /projects/.
+
+- [ ] **30.4** Comprehensive PUE расчёт:
+  - Текущий: PUE = (IT + Cool) / IT.
+  - Расширить: PUE = (IT + Cool + UPS_loss + TP_loss + Aux_lighting) / IT.
+  - UI breakdown: «PUE = (X кВт·ч IT + Y кВт·ч cool + Z кВт·ч ups-loss + W
+    кВт·ч tp-loss) / X» с per-component bar chart.
+  - 12-месячный график PUE (helps demonstrate seasonal variation).
+
+- [ ] **30.5** Service ↔ Tech-workspace:
+  - В концепции суммарный «Сервис в год» = Σ service.orders[type=maintenance].
+  - При создании концепции — auto-suggest «📤 Создать ТО-наряды для этого
+    оборудования».
+
+- [ ] **30.6** Cross-module reference panel в tech-workspace:
+  - Sidebar секция «🔗 Связанные модули проекта»:
+    - ❄ Cooling: N подборов (link)
+    - 🛠 Service: N нарядов (link)
+    - ⚡ Schematic: N схем (link)
+    - 🔋 UPS-config: M моделей (link)
+    - ⚙ DGU: K ДГУ (link)
+  - Один клик → переход в модуль с pid контекстом.
+
+- [ ] **30.7** Сводный концептуальный отчёт (через `service/report/` шаблоны):
+  - Title page: проект, климат, локация
+  - IT-нагрузка: rackGroups breakdown, total kW, redundancy
+  - Холодоснабжение: tied-cooling-selection summary, годовая энергия, PUE-cool
+  - Электропитание: схема, ИБП-конфигурация, DGU
+  - Comprehensive PUE с графиком
+  - CAPEX-сводка: оборудование + монтаж (из service)
+  - OPEX-сводка: электричество + ТО (из service maintenance orders)
+  - 5/10/20-летний TCO
+
+**Acceptance:**
+- В концепции tech-workspace одной кнопкой попадаешь в cooling/ups-config с
+  pre-filled данными.
+- При сохранении в этих модулях возврат в tech-workspace автоматически
+  обновляет concept.
+- PUE учитывает все компоненты (IT + cooling + UPS + TP + aux).
+- Сводный отчёт собирается из реальных данных всех связанных модулей.
+- ДГУ — отдельный модуль с каталогом и bridge.
+
+---
+
 ## Фаза 27 — Авторизация Microsoft 365 (deferred)
 
 > Зафиксировано Пользователем 2026-05-02: «Позже добавим авторизацию через
