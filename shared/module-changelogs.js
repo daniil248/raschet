@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.6', date: '2026-05-02', items: [
+      '📚 <b>Phase 22.7: Карточка оборудования cooling в каталоге</b>. По roadmap: «Сохранять выбранную опцию как изделие с привязкой к chiller spec».',
+      '• Кнопка «📚 Сохранить в каталог» в chiller-form: создаёт element kind=\'climate\' через <code>shared/element-library.js::saveElement()</code> с прикреплённой <code>specs.coolingSpec = {...spec}</code> + metadata.',
+      '• Кнопка «📥 Из каталога»: <code>listElements({kind:\'climate\'})</code>, фильтрует элементы с <code>specs.coolingSpec</code>, prompt-выбор → spec заменяется на сохранённую.',
+      '• Изделие после сохранения видно в /catalog/ → category climate. Можно использовать в других подборах / других проектах.',
+      '• ROADMAP Phase 22.7 закрыт.',
+      'Файлы: <code>cooling/ui/chiller-form.js</code> (две новые кнопки + handlers через dynamic import element-library).',
+    ] },
     { version: '0.60.5', date: '2026-05-02', items: [
       '🌐 <b>Phase 22.6: Доп. источники курсов</b> — Национальный банк Украины и Национальный банк Беларуси.',
       '• <code>shared/currency-rates/sources/nbu-ua.js</code> — НБ Украины (https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange, JSON API, base UAH).',

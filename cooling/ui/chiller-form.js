@@ -130,7 +130,11 @@ export function renderChillerSpecForm(spec, onChange, onClear) {
       </div>
     </div>
 
-    <div class="cl-chiller-actions">
+    <div class="cl-chiller-actions" style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">
+      <button type="button" class="cl-btn-ghost" data-save-to-catalog
+              title="Сохранить эту chiller/DX-spec как «изделие» в каталог проекта (kind=climate). Затем можно использовать в других подборах через «📚 Из каталога», или экспортировать в общий каталог объекта.">📚 Сохранить в каталог</button>
+      <button type="button" class="cl-btn-ghost" data-load-from-catalog
+              title="Загрузить chiller/DX-spec из каталога — выбрать сохранённый элемент kind=climate с привязанной cooling-spec. Заменяет текущую spec в этом варианте.">📥 Из каталога</button>
       <button type="button" class="cl-btn-ghost" data-clear-chiller title="Сбросить spec и удалить chiller-колонки.">🗑 Сбросить</button>
     </div>
   `;
@@ -144,6 +148,52 @@ export function renderChillerSpecForm(spec, onChange, onClear) {
   });
   wrap.addEventListener('click', async (e) => {
     if (e.target.closest('[data-clear-chiller]')) { onClear(); return; }
+    // v0.60.6 (Phase 22.7): сохранение spec как catalog-элемент kind=climate.
+    if (e.target.closest('[data-save-to-catalog]')) {
+      try {
+        const lib = await import('../../shared/element-library.js');
+        const name = prompt('Название изделия для каталога:', `Чиллер ${s.systemType} ${Math.round(s.ratedCapKw || 0)}кВт`);
+        if (!name) return;
+        const elId = 'cooling-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+        lib.saveElement({
+          id: elId,
+          kind: 'climate',
+          name: name.trim(),
+          manufacturer: 'Custom (cooling)',
+          specs: {
+            coolingSpec: { ...s },
+            ratedCapKw: s.ratedCapKw || 0,
+            ratedCOP: s.ratedCOP || 0,
+            systemType: s.systemType || 'chiller',
+          },
+          notes: `Сохранено из модуля «Подбор холодильных систем» ${new Date().toLocaleString('ru-RU')}. Тип: ${s.systemType}, rated ${s.ratedCapKw}кВт.`,
+        });
+        alert(`✔ Изделие «${name}» сохранено в каталог (kind=climate). Используйте «📥 Из каталога» в других подборах.`);
+      } catch (err) {
+        alert(`❌ Ошибка сохранения в каталог: ${err.message}`);
+      }
+      return;
+    }
+    if (e.target.closest('[data-load-from-catalog]')) {
+      try {
+        const lib = await import('../../shared/element-library.js');
+        const items = lib.listElements({ kind: 'climate' }).filter(el => el.specs?.coolingSpec);
+        if (!items.length) {
+          alert('В каталоге нет сохранённых cooling-spec элементов. Сначала сохраните spec через «📚 Сохранить в каталог».');
+          return;
+        }
+        const lines = items.map((el, i) => `${i+1}. ${el.name} (${el.specs?.systemType || '?'}, ${Math.round(el.specs?.ratedCapKw || 0)}кВт)`).join('\n');
+        const choice = prompt(`Выберите номер изделия:\n\n${lines}`);
+        const idx = parseInt(choice, 10) - 1;
+        if (!Number.isFinite(idx) || idx < 0 || idx >= items.length) return;
+        const picked = items[idx];
+        onChange({ ...DEFAULT_CHILLER, ...picked.specs.coolingSpec });
+        alert(`✔ Загружено: «${picked.name}». Spec заменена.`);
+      } catch (err) {
+        alert(`❌ Ошибка загрузки: ${err.message}`);
+      }
+      return;
+    }
     if (e.target.closest('[data-clear-perfcurve]')) {
       onChange({ ...s, perfCurve: null });
       return;

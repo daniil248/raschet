@@ -2691,8 +2691,16 @@ standalone-приложение в отдельном. Чтобы использ
   - Зарегистрированы в <code>sources/index.js</code> через side-effect
     import. Plugin-арх работает без правок ядра.
   - Pending: currencyapi.com / OpenExchangeRates требуют API key — TODO.
-- [ ] **22.7** Карточка оборудования в каталоге (catalog/)
-  - Сохранять выбранную опцию как «изделие» с привязкой к chiller spec
+- [x] **22.7** Карточка оборудования в каталоге (catalog/) — закрыто v0.60.6
+  - Кнопка «📚 Сохранить в каталог» в chiller-form: создаёт element
+    kind='climate' через <code>shared/element-library.js::saveElement()</code>
+    с прикреплённой <code>specs.coolingSpec = { ...spec }</code> +
+    metadata (manufacturer, ratedCapKw, ratedCOP, systemType, notes).
+  - Кнопка «📥 Из каталога» в chiller-form: <code>listElements({kind:'climate'})</code>,
+    фильтрует те где есть specs.coolingSpec, prompt-выбор → onChange(spec).
+  - Изделие после сохранения видно в catalog/ → category 'climate' и
+    может быть использовано в других подборах / других проектах через
+    catalog → load.
 
 - [x] **22.8** Подборы (selections) с вариантами + main-флаг — закрыто v0.59.995
   - Заменена плоская модель `_options[]` на `_selections[].options[]`.
