@@ -19,6 +19,7 @@
   <script type="module">
     import { mountHeader } from '../shared/app-header.js';
     import { mountHelp } from '../shared/help-panel.js';
+    import { getDatasheetFormatDocsHtml } from './calc/datasheet.js';
     mountHeader({ title: 'Подбор холодильных систем', home: '../hub.html', moduleId: 'cooling', moduleTitle: 'Подбор холодильных систем' });
     mountHelp({
       module: 'cooling',
@@ -41,6 +42,10 @@
         <p>CAPEX (equipment + installation), эксплуатационные параметры (ТО, lifetime, discount rate, эскалация). TCO chart по годам.</p>
         <h4>Tab «⚖ Сравнение»</h4>
         <p>Side-by-side таблица для нескольких опций (до 4-х). Подсветка победителя по каждой метрике. Discounted payback относительно первой опции.</p>
+
+        <h4>Импорт даташита оборудования (JSON, v0.60.20)</h4>
+        <p>В разделе «❄ Spec» кнопка <b>«📥 Импорт даташита (JSON)»</b> открывает модалку с выбором файла, paste-area, кнопками «Вставить пример» / «Скачать пример». После применения spec формы будет заменена данными из JSON.</p>
+        ${getDatasheetFormatDocsHtml()}
       `,
       calcs: `
         <h4>Расчёт чиллера / DX-системы</h4>

@@ -99,7 +99,7 @@ export function buildTopologyFromOptions(options, loopMode = 'common-loop', redu
  * @param {Array<object>} hourly  — фильтрованный hourly meteo
  * @returns {TopologyMetrics}
  */
-export function simulateOptionTopology(option, hourly) {
+export function simulateOptionTopology(option, hourly, requiredCoolingKw = 0) {
   if (!option || !Array.isArray(option.equipment) || !hourly?.length) {
     return { totalEnergyKwh: 0, totalCoolingKw: 0, perEquipment: [], bins: [] };
   }
@@ -143,6 +143,22 @@ export function simulateOptionTopology(option, hourly) {
         kind: 'crac-cold-standby', name: `${grp.spec.name || 'CRAC'} (резерв)`,
         qty: standbyUnits, ratedCapKw: (grp.spec.ratedCapKw || 0) * standbyUnits,
         energyKwh: 0, peakKw: 0,
+      });
+    }
+  }
+
+  // v0.60.21 fix: если CRAC не заданы (chiller-only / dx-only система), но
+  // есть «Требуемая мощн.» из подбора → генерируем нагрузку на чиллеры
+  // равной requiredCoolingKw на все bin'ы. Это исправляет баг «Σ Cooling
+  // = 0 кВт» в Topology-tab при системе без CRAC.
+  if (cracGroups.length === 0 && chillerGroups.length > 0 && requiredCoolingKw > 0) {
+    // Берём bins из первого чиллера для сетки температур.
+    const refSpec = chillerGroups[0].spec;
+    const refRows = buildBinData(hourly, refSpec);
+    for (const r of refRows) {
+      chillerLoadByBin.set(r.tBin, {
+        tBin: r.tBin, hours: r.hours, twbAvg: r.twbAvg,
+        load: requiredCoolingKw,
       });
     }
   }

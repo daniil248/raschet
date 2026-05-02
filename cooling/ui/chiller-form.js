@@ -6,10 +6,15 @@
 //
 // Перенесено из meteo/annual-table.js (renderChillerSpecForm) — модули
 // разделены: расчёт оборудования теперь в Cooling Systems.
+//
+// v0.60.20 (Phase 25.2): добавлена кнопка «📥 Импорт даташита (JSON)» с
+// in-page модалкой (file-upload + paste-area + preview). Все browser-prompt/
+// alert заменены на in-page util.modalOpen / util.toast (правило проекта).
 
 import { DEFAULT_CHILLER, SYSTEM_TYPES, FC_MODES } from '../calc/chiller-defaults.js';
 import { parsePerformanceCurveCsv } from '../calc/chiller-bin-calc.js';
-import { escAttr, escHtml } from '../../meteo/util.js';
+import { parseDatasheet, applyDatasheetToSpec, getExampleDatasheet, DATASHEET_SCHEMA } from '../calc/datasheet.js';
+import { escAttr, escHtml, modalOpen, toast } from '../../meteo/util.js';
 
 /**
  * @param {object} spec — текущая spec (или null → DEFAULT_CHILLER)
@@ -131,6 +136,8 @@ export function renderChillerSpecForm(spec, onChange, onClear) {
     </div>
 
     <div class="cl-chiller-actions" style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">
+      <button type="button" class="cl-btn-ghost" data-import-datasheet
+              title="Импорт полной spec из JSON-даташита производителя (vendor / model / capacity / COP / FC-параметры / performance-curve). Кликните для drag&drop файла, paste JSON или скачивания примера. Формат описан в Справке (❓).">📥 Импорт даташита (JSON)</button>
       <button type="button" class="cl-btn-ghost" data-save-to-catalog
               title="Сохранить эту chiller/DX-spec как «изделие» в каталог проекта (kind=climate). Затем можно использовать в других подборах через «📚 Из каталога», или экспортировать в общий каталог объекта.">📚 Сохранить в каталог</button>
       <button type="button" class="cl-btn-ghost" data-load-from-catalog
@@ -148,11 +155,26 @@ export function renderChillerSpecForm(spec, onChange, onClear) {
   });
   wrap.addEventListener('click', async (e) => {
     if (e.target.closest('[data-clear-chiller]')) { onClear(); return; }
-    // v0.60.6 (Phase 22.7): сохранение spec как catalog-элемент kind=climate.
+
+    // v0.60.20 (Phase 25.2): импорт даташита JSON
+    if (e.target.closest('[data-import-datasheet]')) {
+      const result = await openDatasheetImportModal();
+      if (!result || !result.datasheet) return;
+      const newSpec = applyDatasheetToSpec(result.datasheet, s);
+      onChange(newSpec);
+      const warns = (result.errors && result.errors.length)
+        ? ` (с предупреждениями: ${result.errors.length})`
+        : '';
+      toast(`✔ Spec импортирована из даташита: ${newSpec.name || 'без имени'}${warns}`, 'ok');
+      return;
+    }
+
+    // v0.60.20: catalog-сохранение через in-page модалку (вместо prompt/alert)
     if (e.target.closest('[data-save-to-catalog]')) {
       try {
         const lib = await import('../../shared/element-library.js');
-        const name = prompt('Название изделия для каталога:', `Чиллер ${s.systemType} ${Math.round(s.ratedCapKw || 0)}кВт`);
+        const defaultName = `Чиллер ${s.systemType} ${Math.round(s.ratedCapKw || 0)}кВт`;
+        const name = await clPromptInline('Название изделия для каталога', defaultName);
         if (!name) return;
         const elId = 'cooling-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
         lib.saveElement({
@@ -168,29 +190,31 @@ export function renderChillerSpecForm(spec, onChange, onClear) {
           },
           notes: `Сохранено из модуля «Подбор холодильных систем» ${new Date().toLocaleString('ru-RU')}. Тип: ${s.systemType}, rated ${s.ratedCapKw}кВт.`,
         });
-        alert(`✔ Изделие «${name}» сохранено в каталог (kind=climate). Используйте «📥 Из каталога» в других подборах.`);
+        toast(`✔ «${name}» сохранено в каталог (kind=climate). Используйте «📥 Из каталога» в других подборах.`, 'ok');
       } catch (err) {
-        alert(`❌ Ошибка сохранения в каталог: ${err.message}`);
+        toast(`❌ Ошибка сохранения в каталог: ${err.message}`, 'err');
       }
       return;
     }
+
     if (e.target.closest('[data-load-from-catalog]')) {
       try {
         const lib = await import('../../shared/element-library.js');
         const items = lib.listElements({ kind: 'climate' }).filter(el => el.specs?.coolingSpec);
         if (!items.length) {
-          alert('В каталоге нет сохранённых cooling-spec элементов. Сначала сохраните spec через «📚 Сохранить в каталог».');
+          toast('В каталоге нет cooling-spec изделий. Сохраните spec через «📚 Сохранить в каталог».', 'info');
           return;
         }
-        const lines = items.map((el, i) => `${i+1}. ${el.name} (${el.specs?.systemType || '?'}, ${Math.round(el.specs?.ratedCapKw || 0)}кВт)`).join('\n');
-        const choice = prompt(`Выберите номер изделия:\n\n${lines}`);
-        const idx = parseInt(choice, 10) - 1;
-        if (!Number.isFinite(idx) || idx < 0 || idx >= items.length) return;
-        const picked = items[idx];
-        onChange({ ...DEFAULT_CHILLER, ...picked.specs.coolingSpec });
-        alert(`✔ Загружено: «${picked.name}». Spec заменена.`);
+        const picked = await clPickerModal('Выбор изделия из каталога', items.map(el => ({
+          id: el.id,
+          label: `${el.name} — ${el.specs?.systemType || '?'}, ${Math.round(el.specs?.ratedCapKw || 0)} кВт`,
+          el,
+        })));
+        if (!picked) return;
+        onChange({ ...DEFAULT_CHILLER, ...picked.el.specs.coolingSpec });
+        toast(`✔ Загружено: «${picked.el.name}». Spec заменена.`, 'ok');
       } catch (err) {
-        alert(`❌ Ошибка загрузки: ${err.message}`);
+        toast(`❌ Ошибка загрузки: ${err.message}`, 'err');
       }
       return;
     }
@@ -199,7 +223,6 @@ export function renderChillerSpecForm(spec, onChange, onClear) {
       return;
     }
     if (e.target.closest('[data-import-perfcurve]')) {
-      // Открываем file-picker; парсим CSV; передаём в onChange.
       const inp = document.createElement('input');
       inp.type = 'file';
       inp.accept = '.csv,text/csv,text/plain';
@@ -209,11 +232,11 @@ export function renderChillerSpecForm(spec, onChange, onClear) {
         try {
           const text = await f.text();
           const { points, error } = parsePerformanceCurveCsv(text);
-          if (error) { alert(`❌ Ошибка парсинга CSV: ${error}`); return; }
+          if (error) { toast(`❌ Ошибка парсинга CSV: ${error}`, 'err'); return; }
           onChange({ ...s, perfCurve: points });
-          alert(`✔ Импортировано ${points.length} точек performance-curve. T от ${points[0].T}°C до ${points[points.length-1].T}°C. Расчёт capacity/COP теперь использует кривую.`);
+          toast(`✔ Импортировано ${points.length} точек performance-curve. T от ${points[0].T}°C до ${points[points.length-1].T}°C.`, 'ok');
         } catch (err) {
-          alert(`❌ Не удалось прочитать файл: ${err.message}`);
+          toast(`❌ Не удалось прочитать файл: ${err.message}`, 'err');
         }
       };
       inp.click();
@@ -221,4 +244,149 @@ export function renderChillerSpecForm(spec, onChange, onClear) {
     }
   });
   return wrap;
+}
+
+// =============================================================================
+// In-page модалки (заменяют browser prompt/alert по правилу проекта)
+// =============================================================================
+
+function clPromptInline(label, def = '') {
+  return modalOpen('<h3>Ввод значения</h3>',
+    `<label>${escHtml(label)}:<input type="text" id="cl-pi-input" value="${escAttr(def)}" autofocus></label>`,
+    async () => ({ value: document.getElementById('cl-pi-input').value })
+  ).then(r => r ? r.value : null);
+}
+
+function clPickerModal(title, items) {
+  const opts = items.map(it => `<option value="${escAttr(it.id)}">${escHtml(it.label)}</option>`).join('');
+  return modalOpen(`<h3>${escHtml(title)}</h3>`,
+    `<label>Выберите элемент:<select id="cl-pick-sel" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font:inherit;font-size:13px">${opts}</select></label>`,
+    async () => {
+      const sel = document.getElementById('cl-pick-sel');
+      const id = sel?.value;
+      const item = items.find(it => it.id === id);
+      return item ? { picked: item } : null;
+    }
+  ).then(r => r ? r.picked : null);
+}
+
+/**
+ * Phase 25.2: модалка импорта даташита JSON.
+ * Возвращает {datasheet, errors[]} или null если отменили.
+ */
+function openDatasheetImportModal() {
+  const example = getExampleDatasheet();
+  const body = `
+    <p class="muted" style="font-size:12px;margin:0 0 8px" title="Импорт JSON-даташита холодильного оборудования. Поддерживается drag&drop файла или paste JSON в текстовое поле. После «OK» spec в форме будет заменена на распарсенную.">
+      Импорт JSON-даташита оборудования (схема <code>${escHtml(DATASHEET_SCHEMA)}</code>).
+    </p>
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+      <input type="file" id="cl-ds-file" accept=".json,application/json,text/plain" title="Выберите JSON-файл даташита. Структура описана в кнопке «📋 Пример».">
+      <button type="button" id="cl-ds-example" class="cl-btn-ghost" style="font-size:11px;padding:4px 8px" title="Вставить пример JSON в поле ниже — можно использовать как шаблон.">📋 Вставить пример</button>
+      <button type="button" id="cl-ds-download" class="cl-btn-ghost" style="font-size:11px;padding:4px 8px" title="Скачать пример datasheet.json — заполните своими параметрами и импортируйте обратно.">⬇ Скачать пример</button>
+    </div>
+    <label style="display:block;font-size:12px;color:#475569;margin-bottom:4px" title="Содержимое выбранного файла или ваш paste. Парсится при нажатии «OK».">JSON-содержимое:</label>
+    <textarea id="cl-ds-text" rows="14" style="width:100%;font-family:'Cascadia Code',Consolas,monospace;font-size:11.5px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;resize:vertical" placeholder="Вставьте сюда JSON-даташит или выберите файл выше"></textarea>
+    <div id="cl-ds-preview" style="margin-top:8px;font-size:11.5px"></div>
+  `;
+  const promise = modalOpen(
+    '<h3>📥 Импорт даташита оборудования</h3>',
+    body,
+    async (overlay) => {
+      const txt = overlay.querySelector('#cl-ds-text')?.value || '';
+      if (!txt.trim()) { toast('Поле пустое — вставьте JSON или выберите файл.', 'err'); return null; }
+      const res = parseDatasheet(txt);
+      if (!res.ok) {
+        toast(`❌ Ошибки парсинга: ${res.errors.length}. Смотрите preview ниже.`, 'err');
+        const prev = overlay.querySelector('#cl-ds-preview');
+        if (prev) prev.innerHTML = renderDsErrors(res.errors);
+        return null;
+      }
+      return { ok: true, datasheet: res.datasheet, errors: res.errors };
+    }
+  );
+  // Wire-up after overlay rendered
+  requestAnimationFrame(() => {
+    const overlay = document.querySelector('.mt-modal-overlay');
+    if (!overlay) return;
+    const fileInp = overlay.querySelector('#cl-ds-file');
+    const textArea = overlay.querySelector('#cl-ds-text');
+    const exampleBtn = overlay.querySelector('#cl-ds-example');
+    const downloadBtn = overlay.querySelector('#cl-ds-download');
+    const prev = overlay.querySelector('#cl-ds-preview');
+
+    if (fileInp) fileInp.addEventListener('change', async () => {
+      const f = fileInp.files?.[0]; if (!f) return;
+      try {
+        const txt = await f.text();
+        if (textArea) textArea.value = txt;
+        // Live-preview
+        const res = parseDatasheet(txt);
+        if (prev) prev.innerHTML = res.ok
+          ? renderDsPreview(res.datasheet, res.errors)
+          : renderDsErrors(res.errors);
+      } catch (err) {
+        toast(`Не удалось прочитать файл: ${err.message}`, 'err');
+      }
+    });
+    if (exampleBtn) exampleBtn.addEventListener('click', () => {
+      if (textArea) {
+        textArea.value = example;
+        const res = parseDatasheet(example);
+        if (prev) prev.innerHTML = renderDsPreview(res.datasheet, res.errors);
+      }
+    });
+    if (downloadBtn) downloadBtn.addEventListener('click', () => {
+      const blob = new Blob([example], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'cooling-datasheet-example.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      toast('Пример скачан как cooling-datasheet-example.json', 'ok');
+    });
+    if (textArea) textArea.addEventListener('input', () => {
+      const txt = textArea.value;
+      if (!txt.trim()) { if (prev) prev.innerHTML = ''; return; }
+      const res = parseDatasheet(txt);
+      if (prev) prev.innerHTML = res.ok
+        ? renderDsPreview(res.datasheet, res.errors)
+        : renderDsErrors(res.errors);
+    });
+  });
+  return promise;
+}
+
+function renderDsPreview(ds, warnings) {
+  const fields = [
+    ['Производитель', ds.vendor],
+    ['Модель',       ds.model],
+    ['Тип',          ds.systemType || ds.kind],
+    ['Rated cap, кВт', ds.ratedCapKw ?? ds.ratedCap ?? ds.capacity],
+    ['Rated COP',    ds.ratedCop ?? ds.ratedCOP ?? ds.COP],
+    ['Rated ambient, °C', ds.ambientRated],
+    ['FC mode',      ds.freeCoolingMode],
+    ['Performance-curve, точек', Array.isArray(ds.performanceCurve) ? ds.performanceCurve.length : '—'],
+  ];
+  const rows = fields.filter(([, v]) => v != null && v !== '').map(([k, v]) =>
+    `<tr><td style="color:#64748b">${escHtml(k)}</td><td><b>${escHtml(String(v))}</b></td></tr>`
+  ).join('');
+  return `
+    <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:3px;padding:6px 10px">
+      <div style="color:#065f46;font-weight:600;font-size:12px;margin-bottom:4px" title="Так будут выглядеть основные поля spec после применения даташита.">✔ Preview распарсенных полей</div>
+      <table style="width:100%;border-collapse:collapse;font-size:11.5px"><tbody>${rows}</tbody></table>
+      ${warnings && warnings.length ? `<div style="margin-top:6px;color:#92400e;font-size:11px">⚠ Предупреждений: ${warnings.length}. ${escHtml(warnings.join(' • '))}</div>` : ''}
+    </div>
+  `;
+}
+
+function renderDsErrors(errors) {
+  return `
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:3px;padding:6px 10px">
+      <div style="color:#b91c1c;font-weight:600;font-size:12px;margin-bottom:4px">❌ Ошибки парсинга:</div>
+      <ul style="margin:0;padding-left:18px;font-size:11.5px;color:#991b1b">
+        ${errors.map(e => `<li>${escHtml(e)}</li>`).join('')}
+      </ul>
+    </div>
+  `;
 }

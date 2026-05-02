@@ -800,7 +800,12 @@ function calcPueFromCoolingModule(c, meteoSummary) {
     // Backward-compat: если у option ещё нет equipment[] (legacy), fallback
     // на одиночный buildBinData(spec).
     if (calc.simulateOptionTopology && Array.isArray(main.equipment) && main.equipment.length) {
-      const m = calc.simulateOptionTopology(main, hourly);
+      // v0.60.21: передаём requiredCoolingKw из selection.general для случая
+      // chiller-only системы (без CRAC) — иначе нагрузка = 0.
+      const reqKw = sel?.general
+        ? (Number(sel.general.requiredCoolingKw) || 0) * (1 + (Number(sel.general.safetyMarginPct) || 0) / 100)
+        : 0;
+      const m = calc.simulateOptionTopology(main, hourly, reqKw);
       annualEnergyKwh = m.totalEnergyKwh;
     } else if (calc.simulateTopology && sel.topology && sel.options.some(o => calc.isCracType ? calc.isCracType(o.spec?.systemType) : false)) {
       // Legacy путь — selection-level topology + per-option spec

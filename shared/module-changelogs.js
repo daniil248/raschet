@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.21', date: '2026-05-02', items: [
+      '📦 <b>Единая таблица costItems[]</b> для CAPEX/OPEX. По уточнению: «Одна строка в которой несколько колонок. Стоимость оборудования, стоимость монтажа, стоимость ТО (всё что нужно), количество, чтобы не вписывать каждый однотипный чиллер много раз. Для каждой цены, выбор валюты. Цена может быть в долларах, а монтаж в тенге… При этом все отдельные затраты в общей форме выводим по разделам».',
+      '• Новая модель: <code>eco.costItems = [{id, label, qty, equipmentPrice:{value,currency}, installPrice:{...}, maintenancePerYearPrice:{...}}]</code>.',
+      '• <code>computeEcoTotals(eco, displayCur, convertFn)</code> возвращает <code>{equipmentCost, installationCost, maintenanceRubPerYear}</code> в displayCur с per-cell конвертацией. Каждая ячейка цены конвертируется отдельно.',
+      '• <code>capex-form</code>: одна кнопка «✏ Редактировать состав (N статей)» + блок Σ по разделам (Σ Оборудование / Σ Монтаж / Σ ТО / CAPEX) ниже. Модалка с таблицей 9 колонок (Статья / Кол-во / 3×(Цена+Валюта) / ×).',
+      '• Backward-compat миграция: legacy <code>items[]</code> в 3 раздельных полях → <code>costItems[]</code> по индексу. Legacy single-value тоже подхватывается.',
+      '🐛 <b>Bugfix: chiller-only система показывала Σ Cooling = 0 кВт</b>. По репорту: «??? сколько электричества нужно?». Раньше <code>simulateOptionTopology</code> ожидал CRAC-группы для генерации chiller-load; если их нет — нагрузка = 0 → энергия = 0.',
+      '• <code>simulateOptionTopology(option, hourly, requiredCoolingKw=0)</code> — добавлен 3-й аргумент. Если CRAC отсутствует, генерируется константная нагрузка = requiredCoolingKw на все bin.',
+      '• Все callers обновлены: cooling.js (energy/topology/compare) передают <code>requiredCoolingKwOf(sel)</code>, tech-workspace тоже.',
+      'Файлы: <code>cooling/calc/capex-tco.js</code>, <code>cooling/ui/capex-form.js</code>, <code>cooling/calc/topology.js</code>, <code>cooling/calc/comparison.js</code>, <code>cooling/cooling.js</code>, <code>cooling/cooling.css</code>, <code>tech-workspace/tech-workspace.js</code>.',
+    ] },
     { version: '0.60.20', date: '2026-05-02', items: [
       '🌡 <b>Picker контекста cooling: группировка + локальные подборы холода</b>. По требованию: «здесь не может быть проектов СКС; нет кнопки добавить локальный (подбор холода) проект, не связанный с проектами».',
       '• Опция «➕ Создать новый локальный подбор холода…» — создаёт sketch-проект (<code>kind:\'sketch\', ownerModule:\'cooling\'</code>), не зависящий от ЭЛ-проектов.',

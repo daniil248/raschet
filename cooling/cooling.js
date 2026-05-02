@@ -186,6 +186,16 @@ function migrateLegacyObjectObjectKeys() {
   } catch {}
 }
 
+/* v0.60.21: целевая холодопроизводительность подбора (с запасом).
+ * Используется для расчёта чиллеров когда нет CRAC-групп — иначе чиллер
+ * не имеет нагрузки и energy = 0. */
+function requiredCoolingKwOf(sel) {
+  if (!sel || !sel.general) return 0;
+  const req = Number(sel.general.requiredCoolingKw) || 0;
+  const margin = Number(sel.general.safetyMarginPct) || 0;
+  return req * (1 + margin / 100);
+}
+
 /* v0.60.18: тариф для расчётов = native тариф, конвертированный в displayCurrency */
 function tariffInDisplayCurrency() {
   if (!Number.isFinite(_tariffRubKwh) || _tariffRubKwh <= 0) return 0;
@@ -877,7 +887,7 @@ function renderActiveTab() {
     // v0.60.18: используем simulateOptionTopology для учёта qty + N+M.
     // Per-unit spec → суммарная установленная мощность × N (active) или N+M (hot).
     const pSpec = primarySpec(opt);
-    const tMetrics = simulateOptionTopology(opt, hourly);
+    const tMetrics = simulateOptionTopology(opt, hourly, requiredCoolingKwOf(sel));
     const annualEnergyKwh = tMetrics.totalEnergyKwh;
     // Для одно-spec FC summary удобнее показать «per-unit» rows.
     const rows = buildBinData(hourly, pSpec);
@@ -926,7 +936,7 @@ function renderActiveTab() {
     if (cvs) {
       // TCO chart по всем вариантам ТЕКУЩЕГО подбора (с основным первым).
       const ordered = orderedOptionsForCompare(sel);
-      const allMetrics = compareOptions(ordered, hourly, tariffDisp, _currency, convertFn);
+      const allMetrics = compareOptions(ordered, hourly, tariffDisp, _currency, convertFn, requiredCoolingKwOf(sel));
       drawTcoChart(cvs, allMetrics, _currency);
     }
   } else if (_activeTab === 'topology') {
@@ -1045,7 +1055,7 @@ function renderActiveTab() {
       });
     }
     // Per-equipment results через новый simulateOptionTopology
-    const metrics = simulateOptionTopology(opt, hourly);
+    const metrics = simulateOptionTopology(opt, hourly, requiredCoolingKwOf(sel));
     const rwrap = $('cl-topo-results');
     if (rwrap) rwrap.innerHTML = renderTopologyResults(metrics, _currency, tariffInDisplayCurrency());
   } else if (_activeTab === 'compare') {
@@ -1070,7 +1080,12 @@ function renderActiveTab() {
       } else {
         ordered = orderedOptionsForCompare(sel);
       }
-      const metrics = compareOptions(ordered, hourly, tariffInDisplayCurrency(), _currency, convertFn);
+      // v0.60.21: для compare-mode='selections' каждая опция приходит из
+      // своего подбора с разной requiredCoolingKw. Передаём 0 → fallback на
+      // active-chiller-load (каждая опция по-прежнему симулируется через её
+      // собственное option.equipment[]).
+      const reqKw = (_compareMode === 'selections') ? 0 : requiredCoolingKwOf(sel);
+      const metrics = compareOptions(ordered, hourly, tariffInDisplayCurrency(), _currency, convertFn, reqKw);
       tbl.innerHTML = renderComparisonTable(metrics, _currency);
     }
   }

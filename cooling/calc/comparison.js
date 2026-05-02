@@ -44,7 +44,7 @@ import { computeTco, discountedPaybackYears, convertEcoToCurrency } from './cape
  *
  * @returns {Array<OptionMetrics>}
  */
-export function compareOptions(options, hourly, tariffPerKwh, displayCurrency = '₽', convertFn = null) {
+export function compareOptions(options, hourly, tariffPerKwh, displayCurrency = '₽', convertFn = null, requiredCoolingKw = 0) {
   if (!options || !options.length) return [];
 
   const computed = options.map(opt => {
@@ -64,7 +64,7 @@ export function compareOptions(options, hourly, tariffPerKwh, displayCurrency = 
 
     // Системное энергопотребление через simulateOptionTopology — учитывает
     // qty × per-unit-energy + (cold-резерв = 0; hot-резерв делит нагрузку).
-    const tMetrics = simulateOptionTopology(opt, hourly);
+    const tMetrics = simulateOptionTopology(opt, hourly, requiredCoolingKw);
     const annualEnergyKwh = tMetrics.totalEnergyKwh || 0;
 
     // Часы в FC-режиме считаем по primary spec (только chiller-plant): берём
