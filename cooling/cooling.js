@@ -22,7 +22,7 @@
 //   raschet.project.<pid>.cooling.cols.v1
 //   raschet.project.<pid>.cooling.tariff.v1
 
-import { ensureDefaultProject, projectKey, listProjects, getProject, setActiveProjectId } from '../shared/project-storage.js';
+import { ensureDefaultProject, projectKey, listProjects, getProject, setActiveProjectId, createProject } from '../shared/project-storage.js';
 import * as util from '../meteo/util.js';
 
 import { DEFAULT_CHILLER, COLUMNS, DEFAULT_COLS, CHILLER_COLS, isCracType as isCracTypeLocal } from './calc/chiller-defaults.js';
@@ -533,47 +533,101 @@ function renderStorageMode() {
     el.innerHTML = `<span title="Embed-режим: модуль вызван из «${util.escAttr(_navReturn.label)}». Сделайте подбор и нажмите «✓ Применить и вернуться» в правом верхнем углу.">🔗 Embed: вернуться в <b>${util.escHtml(_navReturn.label)}</b></span>`;
     return;
   }
-  // v0.60.18: единый picker «Контекст подбора» — список всех проектов +
-  // опция «Без проекта (разовый)». Решает проблему «при переходе в стандалон
-  // всё равно открывается один и тот же default-проект».
+  // v0.60.20: picker «Контекст подбора» с группировкой по релевантности cooling.
+  // По требованию Пользователя 2026-05-02: «здесь не может быть проектов СКС;
+  // нет кнопки добавить локальный (подбор холода) проект, не связанного с
+  // проектами». Решено:
+  //   1. Опция «➕ Создать новый локальный подбор холода…» — создаёт sketch-
+  //      проект (ownerModule='cooling'), не зависящий от electrical-проектов.
+  //   2. Группировка: «Локальные подборы холода» (sketch:cooling) → «Проекты с
+  //      подборами холода» (LS уже содержит cooling-данные) → «Прочие проекты»
+  //      (без cooling-данных, можно добавить если нужно).
   let projects = [];
   try { projects = listProjects() || []; } catch {}
   const currentVal = _standalone ? '__standalone__' : ((_pid && _pid.id) || '__standalone__');
-  const opts = [
-    `<option value="__standalone__"${currentVal === '__standalone__' ? ' selected' : ''} title="Разовый подбор — данные хранятся в общем LocalStorage без привязки к проекту. Не попадёт в отчёт по проекту.">🔓 Без проекта (разовый)</option>`,
-    ...projects.map(p =>
-      `<option value="${util.escAttr(p.id)}"${currentVal === p.id ? ' selected' : ''} title="Подборы будут сохранены в проекте «${util.escAttr(p.name || p.id)}»">💼 ${util.escHtml(p.name || p.id)}</option>`
-    ),
-  ].join('');
+
+  const groups = { coolingLocal: [], withCooling: [], others: [] };
+  for (const p of projects) {
+    if (p.kind === 'sketch' && p.ownerModule === 'cooling') groups.coolingLocal.push(p);
+    else if (projectHasCoolingData(p.id)) groups.withCooling.push(p);
+    else groups.others.push(p);
+  }
+  const optEl = (p, icon) =>
+    `<option value="${util.escAttr(p.id)}"${currentVal === p.id ? ' selected' : ''} title="Подборы будут сохранены в проекте «${util.escAttr(p.name || p.id)}»">${icon} ${util.escHtml(p.name || p.id)}</option>`;
+  const grpHtml = (label, opts) => opts.length
+    ? `<optgroup label="${util.escAttr(label)}">${opts.join('')}</optgroup>`
+    : '';
+  const optsHtml = `
+    <option value="__standalone__"${currentVal === '__standalone__' ? ' selected' : ''} title="Разовый подбор — данные хранятся в общем LocalStorage без привязки к проекту. Не попадёт в отчёт по проекту.">🔓 Без проекта (разовый)</option>
+    <option value="__new_local__" title="Создать новый ЛОКАЛЬНЫЙ подбор холода (sketch-проект). Это отдельный контейнер для cooling-подборов, не зависящий от ЭЛ-проектов СКС.">➕ Создать новый локальный подбор холода…</option>
+    ${grpHtml('🌡 Локальные подборы холода',     groups.coolingLocal.map(p => optEl(p, '🌡')))}
+    ${grpHtml('💼 Проекты с подборами холода',   groups.withCooling.map(p => optEl(p, '💼')))}
+    ${grpHtml('📁 Прочие проекты (без cooling)', groups.others.map(p => optEl(p, '📁')))}
+  `;
   el.innerHTML = `
-    <label style="display:block;font-size:11px;font-weight:600;color:#475569;margin-bottom:3px" title="Контекст хранения подборов. Поменяйте здесь, чтобы переключиться на другой проект или на разовый подбор без привязки к проекту.">КОНТЕКСТ ПОДБОРА</label>
-    <select id="cl-context-sel" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px;font:inherit;font-size:12px;background:#fff;cursor:pointer" title="Все ваши подборы и варианты сохраняются в выбранный контекст. При смене — страница перезагружается и подгружаются подборы выбранного контекста.">${opts}</select>
+    <label style="display:block;font-size:11px;font-weight:600;color:#475569;margin-bottom:3px" title="Контекст хранения подборов. Поменяйте здесь, чтобы переключиться на другой проект, разовый подбор или создать локальный подбор холода.">КОНТЕКСТ ПОДБОРА</label>
+    <select id="cl-context-sel" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px;font:inherit;font-size:12px;background:#fff;cursor:pointer" title="🔓 Без проекта — данные в общем LS. 🌡 Локальный подбор холода — отдельный sketch-проект только для cooling. 💼 Проект с подборами холода — уже содержит cooling-данные. 📁 Прочие — ЭЛ/СКС-проекты, добавите cooling-данные если выберете.">${optsHtml}</select>
     ${_standalone && projects.length
       ? `<button type="button" id="cl-save-to-project" style="display:block;width:100%;margin-top:6px;padding:5px 8px;font-size:11.5px;background:#1e40af;color:#fff;border:none;border-radius:3px;cursor:pointer" title="Скопировать активный подбор в выбранный проект. После сохранения вы можете перейти в проект и продолжить работу там.">📤 Сохранить активный подбор в проект</button>`
       : ''}
-    ${_standalone && !projects.length
-      ? `<div class="muted" style="font-size:10.5px;margin-top:4px" title="Модуль «Проекты» не активен или не имеет проектов. Создайте проект через главное меню чтобы сохранять подборы в проект.">💡 Создайте проект через Hub, чтобы сохранять подборы в проект</div>`
-      : ''}
   `;
   const sel = el.querySelector('#cl-context-sel');
-  if (sel) sel.addEventListener('change', () => {
+  if (sel) sel.addEventListener('change', async () => {
     const v = sel.value;
     if (v === '__standalone__') {
-      // Переключиться в standalone — добавляем ?standalone=1 и перезагружаем.
       const url = new URL(location.href);
       url.searchParams.set('standalone', '1');
       url.searchParams.delete('pid');
       location.href = url.toString();
-    } else {
-      // Переключиться в project-mode на конкретный проект.
-      const url = new URL(location.href);
-      url.searchParams.delete('standalone');
-      url.searchParams.set('pid', v);
-      location.href = url.toString();
+      return;
     }
+    if (v === '__new_local__') {
+      // Возвращаем select обратно к текущему значению на случай отмены prompt'а
+      sel.value = currentVal;
+      const name = await clPrompt('Название локального подбора холода', `Подбор холода ${new Date().toLocaleDateString('ru-RU')}`);
+      if (!name || !name.trim()) return;
+      try {
+        const newProj = createProject({
+          name: name.trim(),
+          description: 'Локальный подбор холодильных систем (создан из модуля Cooling, не привязан к ЭЛ-проекту).',
+          kind: 'sketch',
+          ownerModule: 'cooling',
+          status: 'draft',
+        });
+        const url = new URL(location.href);
+        url.searchParams.delete('standalone');
+        url.searchParams.set('pid', newProj.id);
+        location.href = url.toString();
+      } catch (e) {
+        util.toast(`Не удалось создать локальный подбор: ${e.message}`, 'err');
+      }
+      return;
+    }
+    // Обычный проект
+    const url = new URL(location.href);
+    url.searchParams.delete('standalone');
+    url.searchParams.set('pid', v);
+    location.href = url.toString();
   });
   const btn = el.querySelector('#cl-save-to-project');
   if (btn) btn.addEventListener('click', saveActiveSelectionToProject);
+}
+
+/* v0.60.20: проверить, есть ли у проекта данные cooling-модуля в LS.
+   Используется для группировки picker'а контекста подбора. */
+function projectHasCoolingData(pid) {
+  if (!pid) return false;
+  const prefix = `raschet.project.${pid}.cooling.`;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(prefix)) {
+        const v = localStorage.getItem(k);
+        if (v && v !== 'null' && v !== '[]' && v !== '""') return true;
+      }
+    }
+  } catch {}
+  return false;
 }
 
 /* v0.59.997: копирование активного standalone-подбора в выбранный проект.

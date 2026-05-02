@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.20', date: '2026-05-02', items: [
+      '🌡 <b>Picker контекста cooling: группировка + локальные подборы холода</b>. По требованию: «здесь не может быть проектов СКС; нет кнопки добавить локальный (подбор холода) проект, не связанный с проектами».',
+      '• Опция «➕ Создать новый локальный подбор холода…» — создаёт sketch-проект (<code>kind:\'sketch\', ownerModule:\'cooling\'</code>), не зависящий от ЭЛ-проектов.',
+      '• Группировка проектов в выпадающем списке через <code>&lt;optgroup&gt;</code>: «🌡 Локальные подборы холода» / «💼 Проекты с подборами холода» (есть cooling-данные в LS) / «📁 Прочие проекты» (без cooling-данных, можно добавить).',
+      '• Helper <code>projectHasCoolingData(pid)</code> сканирует LS на префикс <code>raschet.project.&lt;pid&gt;.cooling.*</code>.',
+      '📋 <b>Phase 25 (foundation): cooling/calc/datasheet.js</b> — JSON-схема даташита холодильного оборудования. <code>parseDatasheet</code> + <code>applyDatasheetToSpec</code> + <code>getExampleDatasheet</code> + <code>getDatasheetFormatDocsHtml</code>. Wire-up в UI чиллер-формы — следующий шаг.',
+      'Файлы: <code>cooling/cooling.js</code>, <code>cooling/calc/datasheet.js</code> (новый).',
+    ] },
     { version: '0.60.19', date: '2026-05-02', items: [
       '📊 <b>Comparison: системные метрики вместо per-unit</b>. По требованию: «сравнивать нужно не отдельные системы а системы на запрашиваемую мощность».',
       '• <code>compareOptions()</code> переписан: использует <code>simulateOptionTopology(opt, hourly)</code> для системного энергопотребления (учитывает qty + N+M + cold/hot standby) и масштабирует CAPEX/OPEX денежных полей на Σ qty по группам оборудования.',
