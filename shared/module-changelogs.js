@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.38', date: '2026-05-02', items: [
+      '🚨 <b>HOTFIX: Service не загружался — wrong import path</b>. По DevTools-скрину пользователя: <code>Uncaught SyntaxError: The requested module \'../shared/currency-rates/index.js\' does not provide an export named \'currencyToIso\' (at service.js:20:46)</code>.',
+      '• Корневая причина: <code>currencyToIso</code> экспортируется из <code>cooling/calc/fc-summary.js</code>, а не из <code>currency-rates/index.js</code>. Я импортировал его не из того файла → SyntaxError → весь service-модуль не выполнялся → пустой sidebar (только defensive inline-init спасал).',
+      '• Fix: <code>currencyToIso</code> перенесён в импорт из <code>cooling/calc/fc-summary.js</code> (рядом с CURRENCIES).',
+      '• Спасибо за DevTools-скрин — баг найден за 30 секунд.',
+      'Файл: <code>service/service.js</code>.',
+    ] },
     { version: '0.60.37', date: '2026-05-02', items: [
       '🐛 <b>Fix: meteo сохранял датасеты в [object Object] namespace</b>. Был тот же баг, что и в cooling до v0.60.18: <code>_pid = ensureDefaultProject()</code> возвращал OBJECT, а <code>storageKey()</code> передавал _pid в projectKey без .id → шаблонный литерал делал toString → "[object Object]". Все meteo-данные писались под одним «default» namespace, независимо от проекта.',
       '• Fix: <code>_pid</code> теперь хранится как ID-строка. Чтение <code>?pid=</code> из URL + fallback на <code>?return=</code> URL (если cooling embed-ает meteo с pid в return-URL).',
