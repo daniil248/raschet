@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.12', date: '2026-05-02', items: [
+      '🗂 <b>ROADMAP cleanup: отметил уже закрытые пункты</b>.',
+      '• Phase 12.3 (подбор чиллеров/DX/freecooling) — закрыт реализацией модуля /cooling/ в Phase 22.x.',
+      '• Phase 12.4 (расчёт PUE) — закрыт v0.60.3 (Tech-Workspace mode \'cooling-module\' с реальной симуляцией topology).',
+      '• Phase 12.5 (интеграция с mdc-config) — частично закрыт через tech-workspace.',
+      '• Phase 14.1 (шаг сетки 0.05 м минимум) — уже было реализовано в scs-design.',
+      '• Phase 20.7 (площади помещений) — уже было реализовано в tech-workspace (calcAreas).',
+      'Файлы: <code>ROADMAP.md</code>.',
+    ] },
     { version: '0.60.11', date: '2026-05-02', items: [
       '📂 <b>/modules: разделил «Климат и пожаротушение» на 2 секции</b>. По требованию: «это не стоит объединять».',
       '• <b>❄ Климат и охлаждение</b> — Метеоданные / Подбор холодильных систем / ID-диаграмма Молье-Рамзина.',
