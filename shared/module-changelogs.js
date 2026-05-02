@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.994', date: '2026-05-02', items: [
+      '💱 <b>Native-валюта на каждой опции + автоконвертация по курсу проекта</b>. По требованию: «ввод исходных данных можно в любой валюте, валюта отчётов и текущих расчётов настраивается для проекта».',
+      '• Каждая опция имеет <code>eco.currency</code> — родная валюта её CAPEX/OPEX. На дисплее, в TCO и сравнении значения автоматически конвертируются в валюту проекта (<code>_currency</code>) по текущему курсу из 💱 Справочника.',
+      '• CAPEX-форма показывает поля в native-валюте и селектор «Валюта значений» для опции. Жёлтая подсказка: «⇆ Эта опция в EUR; в отчётах конвертируется в KZT по курсу».',
+      '• Курсы фоном загружаются на init модуля; при success — TCO/comparison перерисовываются с конвертацией. При offline/CORS — отображаются native-числа без потери данных.',
+      '• Это даёт возможность вводить опции в разных валютах (оборудование Daikin в EUR, монтаж в KZT, ТО в RUB) и сводить итоговый отчёт в любой валюте проекта.',
+      '🐞 <b>Bug-fix: Add Option / clConfirm не работали</b> — `modalOpen` из meteo/util.js закрывает модалку только при truthy-результате; clPrompt возвращал пустую строку (falsy) → модалка зависала «невидимо». Плюс CSS модалок (mt-modal-overlay/mt-modal) не были подключены на странице cooling — модалка показывалась без стилей. Скопировал mt-modal* + mt-toast* стили в cooling.css. clPrompt/clConfirm теперь возвращают sentinel-объект и распаковывают результат корректно.',
+      '🔗 <b>Cross-module links</b>: в content header meteo + cooling добавлены ссылки на смежные модули (Метеоданные ↔ Подбор холодильных систем ↔ ID-диаграмма ↔ Hub) с tooltip. По требованию: «как забрать обратно (вернуться с выбранным местом)?».',
+      'Файлы: <code>cooling/calc/{capex-tco.js (eco.currency, convertEcoToCurrency), comparison.js (compareOptions принимает displayCurrency + convertFn)}, ui/capex-form.js (Валюта ввода), cooling.js (ensureRatesLoaded + makeConvertFn + thread в TCO/compare; clPrompt/clConfirm fix), cooling.css (mt-modal стили + cl-cross-link), index.html (cross-link)</code>; <code>meteo/{index.html (cross-link), meteo.css (.mt-cross-link)}</code>.',
+    ] },
     { version: '0.59.993', date: '2026-05-02', items: [
       '🔧 <b>Fix источников курсов валют</b> — 3 из 4 не работали (NBK RK CORS, Frankfurter 404 на будущие даты, exchangerate.host требует ключ).',
       '• <b>НБ РК</b>: добавлен fallback через публичные CORS-proxy (corsproxy.io, allorigins.win, codetabs.com) — пробуются последовательно если прямой запрос блокируется CORS-policy.',

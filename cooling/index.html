@@ -138,10 +138,20 @@
     </aside>
 
     <section class="cl-content">
-      <div class="cl-content-header">
-        <h2 id="cl-active-name">— нет активной опции —</h2>
-        <div class="cl-content-meta">
-          <span class="muted" id="cl-active-meta"></span>
+      <div class="cl-content-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div>
+          <h2 id="cl-active-name">— нет активной опции —</h2>
+          <div class="cl-content-meta">
+            <span class="muted" id="cl-active-meta"></span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;font-size:12px">
+          <a href="../meteo/" class="cl-cross-link"
+             title="Перейти в модуль «Метеоданные» — выбрать/загрузить климатический датасет. После выбора активного (⭐) датасета вернитесь сюда — расчёт обновится автоматически.">📅 Метеоданные →</a>
+          <a href="../psychrometrics/" class="cl-cross-link"
+             title="Перейти в модуль «ID-диаграмма Молье-Рамзина» — психрометрический расчёт.">📊 ID-диаграмма →</a>
+          <a href="../hub.html" class="cl-cross-link" style="color:#64748b"
+             title="Вернуться на главную страницу со всеми модулями.">🏠 Hub</a>
         </div>
       </div>
 

@@ -263,6 +263,14 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
 .mt-active-pane { display: flex; flex-direction: column; gap: 12px; }
 .muted { color: #6b7280; }
 
+/* v0.59.994: cross-module links в правом верхнем углу content header */
+.mt-cross-link {
+  color: #1e40af; text-decoration: none; font-weight: 500;
+  padding: 3px 8px; border: 1px solid #cbd5e1; border-radius: 3px;
+  background: #f8fafc;
+}
+.mt-cross-link:hover { background: #dbeafe; border-color: #93c5fd; }
+
 @media (max-width: 760px) {
   .mt-main { grid-template-columns: 1fr; }
   .mt-sidebar { position: static; max-height: none; }

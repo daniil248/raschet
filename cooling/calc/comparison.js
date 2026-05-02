@@ -8,7 +8,7 @@
 
 import { buildBinData } from './chiller-bin-calc.js';
 import { computeFcSummary } from './fc-summary.js';
-import { computeTco, discountedPaybackYears } from './capex-tco.js';
+import { computeTco, discountedPaybackYears, convertEcoToCurrency } from './capex-tco.js';
 
 /**
  * Метрики для одной опции.
@@ -30,26 +30,32 @@ import { computeTco, discountedPaybackYears } from './capex-tco.js';
  *
  * @param {Array<{name, spec, eco}>} options — список опций
  * @param {Array<object>} hourly             — фильтрованный hourly meteo
- * @param {number} tariffRubKwh
+ * @param {number} tariffPerKwh              — тариф (в displayCurrency, уже сконвертирован)
+ * @param {string} displayCurrency           — валюта проекта/отчёта
+ * @param {function|null} convertFn          — (amount, fromIso, toIso) => number,
+ *                                             уже привязан к курсам на нужную дату.
+ *                                             Если null — без конвертации (eco используется как есть).
  *
  * @returns {Array<OptionMetrics>}
  */
-export function compareOptions(options, hourly, tariffRubKwh) {
+export function compareOptions(options, hourly, tariffPerKwh, displayCurrency = '₽', convertFn = null) {
   if (!options || !options.length) return [];
 
-  // Считаем TCO/FC для каждой опции
+  // Считаем TCO/FC для каждой опции с конвертацией eco в displayCurrency
   const computed = options.map(opt => {
     const rows = buildBinData(hourly, opt.spec);
-    const fc = computeFcSummary(rows, opt.spec, tariffRubKwh, hourly);
+    const fc = computeFcSummary(rows, opt.spec, tariffPerKwh, hourly);
+    const ecoConv = convertEcoToCurrency(opt.eco, displayCurrency, convertFn);
     const tco = computeTco({
       annualEnergyKwh: fc ? fc.energyKwh : 0,
-      tariffRubKwh,
-      eco: opt.eco,
+      tariffRubKwh: tariffPerKwh,
+      eco: ecoConv,
     });
     return {
       name: opt.name,
       spec: opt.spec,
-      eco: opt.eco,
+      eco: ecoConv,           // конвертированный (для отображения и сортировки)
+      ecoNative: opt.eco,     // оригинал (родная валюта)
       fc,
       tco,
       annualEnergy: fc ? fc.energyKwh : 0,

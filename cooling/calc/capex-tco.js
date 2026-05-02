@@ -27,17 +27,55 @@
 
 /**
  * Default-параметры экономической модели.
- * Большинство значений — типичные для РФ-проектов 2025-26.
+ * Большинство значений — типичные для РФ/ЦА проектов 2025-26.
+ *
+ * v0.59.994: Введена «родная» валюта значений (currency). Суммы
+ * (equipmentCost / installationCost / maintenanceRubPerYear) ХРАНЯТСЯ
+ * в этой валюте; на дисплее конвертируются в валюту проекта по курсу
+ * на дату расчёта. Это позволяет вводить опции в разных валютах
+ * (например, оборудование Daikin закуплено в EUR, монтаж — в KZT) и
+ * выводить итоговый отчёт в любой валюте проекта.
  */
 export const DEFAULT_ECONOMICS = {
-  equipmentCost: 0,           // ₽ — закупочная стоимость оборудования
-  installationCost: 0,        // ₽ — монтаж/пусконаладка/обвязка
-  maintenanceRubPerYear: 0,   // ₽/год — регламентное ТО
-  projectLifetimeYears: 20,   // лет — срок сравнения. Зафиксировано пользователем 2026-05-02: «нужно 20 лет». Соответствует типичному жизненному циклу HVAC-оборудования (chiller 15–25 лет, DX 10–15) и горизонту проектов ЦОД.
+  currency: '₽',              // ← v0.59.994: родная валюта сумм этой опции
+  equipmentCost: 0,           // в `currency` — закупочная стоимость оборудования
+  installationCost: 0,        // в `currency` — монтаж/пусконаладка/обвязка
+  maintenanceRubPerYear: 0,   // в `currency`/год — регламентное ТО (имя сохранено для backward-compat)
+  projectLifetimeYears: 20,   // лет — срок сравнения (зафиксировано Пользователем 2026-05-02)
   discountRatePct: 8,         // %/год — ставка дисконтирования
   escalationEnergyPct: 5,     // %/год — рост тарифа на электроэнергию
   escalationMaintPct: 4,      // %/год — рост стоимости ТО
 };
+
+/**
+ * v0.59.994: Конвертировать суммы opt.eco из «родной» валюты в displayCurrency.
+ * Используется перед computeTco: на вход TCO идут уже сконвертированные числа.
+ *
+ * @param {object} eco                — economics с eco.currency
+ * @param {string} displayCurrency    — символ валюты для дисплея/расчёта (₽/$/...)
+ * @param {function|null} convertFn   — (amount, from, to) => number (уже c rates+date),
+ *                                      если null — конвертация = identity (без курса).
+ * @returns {object} новый eco-объект с числами в displayCurrency
+ */
+export function convertEcoToCurrency(eco, displayCurrency, convertFn) {
+  const e = { ...DEFAULT_ECONOMICS, ...(eco || {}) };
+  const native = e.currency || '₽';
+  if (!convertFn || native === displayCurrency) {
+    return { ...e, currency: displayCurrency };
+  }
+  const conv = (v) => {
+    if (!Number.isFinite(v) || v === 0) return v;
+    const r = convertFn(v, native, displayCurrency);
+    return Number.isFinite(r) ? r : v;
+  };
+  return {
+    ...e,
+    currency: displayCurrency,
+    equipmentCost: conv(e.equipmentCost),
+    installationCost: conv(e.installationCost),
+    maintenanceRubPerYear: conv(e.maintenanceRubPerYear),
+  };
+}
 
 /**
  * Расчёт TCO/NPV по одной опции.

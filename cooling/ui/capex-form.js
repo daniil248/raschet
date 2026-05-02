@@ -5,39 +5,60 @@
 // discountRate / escalation. Tooltip на каждом параметре.
 
 import { DEFAULT_ECONOMICS } from '../calc/capex-tco.js';
-import { fmtMoney } from '../calc/fc-summary.js';
+import { fmtMoney, CURRENCIES } from '../calc/fc-summary.js';
 import { escAttr, escHtml } from '../../meteo/util.js';
 
 /**
- * @param {object} eco — economics parameters (или null → DEFAULT_ECONOMICS)
+ * @param {object} eco — economics parameters (или null → DEFAULT_ECONOMICS).
+ *                       eco.currency = «родная» валюта значений в этой опции.
  * @param {function(eco)} onChange
- * @param {string} currency — символ валюты для подписей
+ * @param {string} displayCurrency — валюта проекта/отчёта (используется для
+ *                       информативной подсказки о конвертации; не для пересчёта
+ *                       значений в форме — они в eco.currency).
  */
-export function renderCapexForm(eco, onChange, currency = '₽') {
+export function renderCapexForm(eco, onChange, displayCurrency = '₽') {
   const e = { ...DEFAULT_ECONOMICS, ...(eco || {}) };
-  const cur = currency || '₽';
+  const native = e.currency || '₽';
   const wrap = document.createElement('div');
   wrap.className = 'cl-capex-form';
+  const curOpts = CURRENCIES.map(c =>
+    `<option value="${c.code}"${c.code === native ? ' selected' : ''} title="${c.label}">${c.code} — ${c.label}</option>`
+  ).join('');
+  const conversionHint = native !== displayCurrency
+    ? `<div class="cl-capex-conv-hint" title="Суммы вводятся в родной валюте опции (${native}), а в отчётах и сравнении пересчитываются в валюту проекта (${displayCurrency}) по курсу из 💱 Справочника валют.">⇆ Эта опция в <b>${escHtml(native)}</b>; в отчётах/сравнении конвертируется в <b>${escHtml(displayCurrency)}</b> по курсу.</div>`
+    : '';
   wrap.innerHTML = `
     <h4 title="Параметры экономической модели TCO/NPV/Payback. Соответствует ISO 15686-5 Life-Cycle Costing.">💰 CAPEX и экономические параметры</h4>
+
+    <div class="cl-chiller-section">
+      <div class="cl-chiller-section-title">Валюта ввода для этой опции</div>
+      <div class="cl-chiller-grid">
+        <label title="«Родная» валюта значений CAPEX/OPEX этой опции — в чём введены equipment / installation / ТО. На дисплее и в сравнении конвертируется в валюту проекта по курсу. Можно вводить опции в разных валютах (например, оборудование в EUR, монтаж в KZT) и сводить в любую отчётную валюту.">
+          Валюта значений:
+          <select data-cf="currency">${curOpts}</select>
+        </label>
+      </div>
+      ${conversionHint}
+    </div>
+
     <div class="cl-chiller-section">
       <div class="cl-chiller-section-title">Капитальные затраты (год 0)</div>
       <div class="cl-chiller-grid">
-        <label title="Закупочная стоимость оборудования: чиллер/DX-блок + конденсатор + насосы + (опционально) free-cooling модули.">
-          Оборудование, ${escHtml(cur)}:<input type="number" step="1000" min="0" data-cf="equipmentCost" value="${e.equipmentCost}">
+        <label title="Закупочная стоимость оборудования: чиллер/DX-блок + конденсатор + насосы + (опционально) free-cooling модули. В валюте опции (${native}).">
+          Оборудование, ${escHtml(native)}:<input type="number" step="1000" min="0" data-cf="equipmentCost" value="${e.equipmentCost}">
         </label>
-        <label title="Монтаж + пусконаладка + обвязка трубопроводами + электроподключение + вспомогательные работы.">
-          Монтаж/ПНР, ${escHtml(cur)}:<input type="number" step="1000" min="0" data-cf="installationCost" value="${e.installationCost}">
+        <label title="Монтаж + пусконаладка + обвязка трубопроводами + электроподключение + вспомогательные работы. В валюте опции (${native}).">
+          Монтаж/ПНР, ${escHtml(native)}:<input type="number" step="1000" min="0" data-cf="installationCost" value="${e.installationCost}">
         </label>
       </div>
     </div>
     <div class="cl-chiller-section">
       <div class="cl-chiller-section-title">Эксплуатационные расходы</div>
       <div class="cl-chiller-grid">
-        <label title="Регламентное ТО: фильтры, чистка теплообменников, заправка хладагента, выезд сервисной бригады.">
-          ТО, ${escHtml(cur)}/год:<input type="number" step="1000" min="0" data-cf="maintenanceRubPerYear" value="${e.maintenanceRubPerYear}">
+        <label title="Регламентное ТО: фильтры, чистка теплообменников, заправка хладагента, выезд сервисной бригады. В валюте опции (${native}).">
+          ТО, ${escHtml(native)}/год:<input type="number" step="1000" min="0" data-cf="maintenanceRubPerYear" value="${e.maintenanceRubPerYear}">
         </label>
-        <label title="Срок горизонта оценки TCO. Типично 10–20 лет для HVAC, до 25 лет для крупных чиллеров. Свыше lifetime оборудование требует капремонта или замены.">
+        <label title="Срок горизонта оценки TCO. Типично 10–20 лет для HVAC, до 25 лет для крупных чиллеров.">
           Срок проекта, лет:<input type="number" step="1" min="1" max="40" data-cf="projectLifetimeYears" value="${e.projectLifetimeYears}">
         </label>
       </div>

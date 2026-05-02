@@ -28,7 +28,7 @@ import * as util from '../meteo/util.js';
 import { DEFAULT_CHILLER, COLUMNS, DEFAULT_COLS, CHILLER_COLS } from './calc/chiller-defaults.js';
 import { buildBinData } from './calc/chiller-bin-calc.js';
 import { computeFcSummary } from './calc/fc-summary.js';
-import { computeTco, DEFAULT_ECONOMICS, discountedPaybackYears } from './calc/capex-tco.js';
+import { computeTco, DEFAULT_ECONOMICS, discountedPaybackYears, convertEcoToCurrency } from './calc/capex-tco.js';
 import { compareOptions } from './calc/comparison.js';
 
 import { renderChillerSpecForm } from './ui/chiller-form.js';
@@ -52,9 +52,26 @@ let _options = [];
 let _activeId = null;
 let _activeTab = 'spec';
 let _activeCols = [...DEFAULT_COLS, ...CHILLER_COLS];
-let _tariffRubKwh = 7.5;       // тариф в ВЫБРАННОЙ валюте (не обязательно ₽) — переменная сохранила историческое имя
+let _tariffRubKwh = 7.5;       // тариф в _currency (валюта проекта) — переменная сохранила историческое имя
 let _currency = '₽';
 let _seq = 1;
+
+// v0.59.994: кеш курсов на текущую calcDate (по умолчанию today). Загружается
+// фоновым запросом при первом render. convertFn() возвращает конвертер
+// (amount, fromIso, toIso) → number, или null если курсы недоступны.
+let _ratesCache = null;        // { date, base, rates } последняя загруженная сводка
+let _ratesLoading = false;
+async function ensureRatesLoaded() {
+  if (_ratesCache || _ratesLoading) return;
+  _ratesLoading = true;
+  try { _ratesCache = await fetchRates(null, null, false); }
+  catch (e) { /* offline / CORS — eco отображается без конвертации */ }
+  finally { _ratesLoading = false; }
+}
+function makeConvertFn() {
+  if (!_ratesCache) return null;
+  return (amount, fromIso, toIso) => convertRate(amount, fromIso, toIso, _ratesCache);
+}
 
 const KEY_OPTIONS  = ['cooling', 'options.v1'];
 const KEY_ACTIVE   = ['cooling', 'activeId.v1'];
@@ -205,20 +222,23 @@ function renderActiveTab() {
       fwrap.appendChild(renderCapexForm(opt.eco, (next) => {
         opt.eco = next;
         persist();
-        renderActiveTab();   // обновить KPI и chart
+        renderActiveTab();
       }, _currency));
     }
-    // Считаем TCO
+    // v0.59.994: конвертация eco в _currency через курсы
+    const convertFn = makeConvertFn();
     const rows = buildBinData(hourly, opt.spec);
     const fc = computeFcSummary(rows, opt.spec, _tariffRubKwh, hourly);
-    const tco = computeTco({ annualEnergyKwh: fc ? fc.energyKwh : 0, tariffRubKwh: _tariffRubKwh, eco: opt.eco });
+    const ecoConv = convertEcoToCurrency(opt.eco, _currency, convertFn);
+    const tco = computeTco({ annualEnergyKwh: fc ? fc.energyKwh : 0, tariffRubKwh: _tariffRubKwh, eco: ecoConv });
     // Payback относительно baseline (первой опции)
     let payback = null;
     if (_options.length > 1 && _options[0].id !== opt.id) {
       const baseline = _options[0];
       const bRows = buildBinData(hourly, baseline.spec);
       const bFc = computeFcSummary(bRows, baseline.spec, _tariffRubKwh, hourly);
-      const bTco = computeTco({ annualEnergyKwh: bFc ? bFc.energyKwh : 0, tariffRubKwh: _tariffRubKwh, eco: baseline.eco });
+      const bEcoConv = convertEcoToCurrency(baseline.eco, _currency, convertFn);
+      const bTco = computeTco({ annualEnergyKwh: bFc ? bFc.energyKwh : 0, tariffRubKwh: _tariffRubKwh, eco: bEcoConv });
       payback = discountedPaybackYears(tco, bTco);
     }
     const kpi = $('cl-tco-kpi');
@@ -226,13 +246,14 @@ function renderActiveTab() {
     // TCO chart по всем опциям
     const cvs = $('cl-tco-chart');
     if (cvs) {
-      const allMetrics = compareOptions(_options, hourly, _tariffRubKwh);
+      const allMetrics = compareOptions(_options, hourly, _tariffRubKwh, _currency, convertFn);
       drawTcoChart(cvs, allMetrics);
     }
   } else if (_activeTab === 'compare') {
     const tbl = $('cl-compare-table');
     if (tbl) {
-      const metrics = compareOptions(_options, hourly, _tariffRubKwh);
+      const convertFn = makeConvertFn();
+      const metrics = compareOptions(_options, hourly, _tariffRubKwh, _currency, convertFn);
       tbl.innerHTML = renderComparisonTable(metrics, _currency);
     }
   }
@@ -427,15 +448,27 @@ function init() {
   }
 
   renderActive();
+
+  // v0.59.994: подгружаем курсы фоном для конвертации eco-валют. Если есть
+  // активный convertFn — capex-tab/compare-tab сразу пересчитают на следующем
+  // рендере. Если сеть/CORS отказывает — пользователь видит native-числа.
+  ensureRatesLoaded().then(() => {
+    if (_ratesCache && _options.length) renderActiveTab();
+  });
 }
 
+// modalOpen из meteo/util.js закрывается только при truthy-результате onOk.
+// Поэтому возвращаем sentinel-объект, который всегда truthy, и распаковываем
+// в caller'е (для prompt — берём .value; для confirm — true).
 function clConfirm(msg) {
-  return util.modalOpen('<h3>Подтверждение</h3>', `<p>${util.escHtml(msg)}</p>`, async () => true);
+  return util.modalOpen('<h3>Подтверждение</h3>', `<p>${util.escHtml(msg)}</p>`,
+    async () => ({ ok: true })).then(r => !!r);
 }
 function clPrompt(label, def = '') {
   return util.modalOpen('<h3>Ввод значения</h3>',
     `<label>${util.escHtml(label)}:<input type="text" id="cl-prompt-input" value="${util.escAttr(def)}" autofocus></label>`,
-    async () => document.getElementById('cl-prompt-input').value);
+    async () => ({ value: document.getElementById('cl-prompt-input').value })
+  ).then(r => r ? r.value : null);
 }
 
 document.addEventListener('DOMContentLoaded', init);

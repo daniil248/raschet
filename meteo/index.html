@@ -114,10 +114,20 @@
     </aside>
 
     <section class="mt-content">
-      <div class="mt-content-header">
-        <h2 id="mt-active-name">— нет датасета —</h2>
-        <div class="mt-content-meta">
-          <span class="muted" id="mt-active-meta"></span>
+      <div class="mt-content-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div>
+          <h2 id="mt-active-name">— нет датасета —</h2>
+          <div class="mt-content-meta">
+            <span class="muted" id="mt-active-meta"></span>
+          </div>
+        </div>
+        <div class="mt-content-cross-links" style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;font-size:12px">
+          <a href="../cooling/" class="mt-cross-link"
+             title="Перейти в модуль «Подбор холодильных систем» — расчёт чиллеров/DX/free-cooling по этим климатическим данным. Активный (⭐) датасет автоматически используется для расчёта.">❄ Подбор холодильных систем →</a>
+          <a href="../psychrometrics/" class="mt-cross-link"
+             title="Перейти в модуль «ID-диаграмма Молье-Рамзина» — психрометрический расчёт влажного воздуха. Точка с климата может быть взята отсюда.">📊 ID-диаграмма →</a>
+          <a href="../hub.html" class="mt-cross-link" style="color:#64748b"
+             title="Вернуться на главную страницу со всеми модулями.">🏠 Hub</a>
         </div>
       </div>
 

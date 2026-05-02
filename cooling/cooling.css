@@ -58,6 +58,12 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
 }
 .cl-option-actions button:hover { color: #dc2626; }
 
+.cl-cross-link {
+  color: #1e40af; text-decoration: none; font-weight: 500;
+  padding: 3px 8px; border: 1px solid #cbd5e1; border-radius: 3px;
+  background: #f8fafc;
+}
+.cl-cross-link:hover { background: #dbeafe; border-color: #93c5fd; }
 .cl-meteo-status { font-size: 11.5px; color: #475569; padding: 6px 8px; background: #f0f9ff; border-radius: 3px; margin-bottom: 6px; }
 .cl-meteo-status.empty { color: #b91c1c; background: #fef2f2; }
 .cl-meteo-link { display: block; font-size: 11.5px; color: #1e40af; text-decoration: none; padding: 4px 0; }
@@ -230,6 +236,11 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
 }
 .cl-chiller-desc { font-size: 11px; color: #64748b; margin: 4px 0 0; font-style: italic; }
 .cl-chiller-actions { margin-top: 6px; text-align: right; }
+.cl-capex-conv-hint {
+  margin-top: 6px; padding: 6px 10px;
+  background: #fffbea; border: 1px solid #fde68a; border-radius: 3px;
+  font-size: 11.5px; color: #92400e;
+}
 
 /* FC + OPEX summary */
 .cl-fc-summary { margin: 0; }
@@ -278,3 +289,41 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
   .cl-main { grid-template-columns: 1fr; }
   .cl-sidebar { position: static; max-height: none; }
 }
+
+/* v0.59.994: дублируем mt-modal/mt-toast стили из meteo.css (cooling
+   использует util.modalOpen/util.toast из meteo/util.js, а CSS оттуда
+   не подгружается — без них модалки появлялись пустыми невидимыми).
+   Поддержка двойных селекторов: mt-* (родные из util.js) + cl-* (на
+   будущее если когда-нибудь модалка переедет в свой util). */
+.mt-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 10000;
+  display: flex; align-items: center; justify-content: center;
+}
+.mt-modal {
+  background: #fff; border-radius: 8px; width: min(480px, 92vw);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+  display: flex; flex-direction: column;
+}
+.mt-modal-head { padding: 14px 18px 8px; border-bottom: 1px solid #e5e7eb; }
+.mt-modal-head h3 { margin: 0; font-size: 15px; color: #111827; font-weight: 600; }
+.mt-modal-body { padding: 14px 18px; font-size: 13px; color: #374151; }
+.mt-modal-body label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.mt-modal-body input { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 4px; font: inherit; font-size: 13px; }
+.mt-modal-body input:focus { outline: none; border-color: #4f46e5; box-shadow: 0 0 0 2px rgba(79,70,229,0.1); }
+.mt-modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 18px 14px; }
+.mt-modal-btn { padding: 7px 16px; border: 1px solid #d1d5db; background: #fff; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; }
+.mt-modal-btn:hover { background: #f9fafb; }
+.mt-modal-ok { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+.mt-modal-ok:hover { background: #4338ca; }
+
+.mt-toast {
+  position: fixed; top: 16px; right: 16px; z-index: 10001;
+  background: #1f2937; color: #f9fafb; padding: 10px 14px; border-radius: 5px;
+  font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  opacity: 0; transform: translateY(-8px); transition: opacity 0.2s, transform 0.2s;
+}
+.mt-toast.show { opacity: 1; transform: translateY(0); }
+.mt-toast-warn { background: #b45309; }
+.mt-toast-err  { background: #b91c1c; }
+.mt-toast-ok   { background: #15803d; }
+.mt-toast-info { background: #1e40af; }
