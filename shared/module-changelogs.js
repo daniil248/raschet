@@ -4,6 +4,20 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.52', date: '2026-05-03', items: [
+      '📜 <b>ROADMAP Phase 35: история загруженных данных + Корзина</b>. По требованию Пользователя 2026-05-03: «любые загруженные данные должны сохраняться в истории».',
+      '• <code>shared/history-log.js</code> (план): append-only API для всех import/update/delete операций.',
+      '• Soft-delete с возможностью restore через «🗑 Корзина» в sidebar модуля.',
+      '• Permanent delete только из корзины с двойным подтверждением.',
+      '• Per-project лог + глобальная история в global-settings с фильтром по проекту/модулю/дате.',
+      '• Решает: случайное удаление, аудит откуда пришли данные, восстановление при quota-exceeded.',
+      '• Memory-rule: <code>feedback_data_history.md</code>.',
+      '💾 <b>ROADMAP Phase 34: IndexedDB для крупных датасетов</b>. По диагностике: ASHRAE 10 лет (87696 точек ≈ 6-7 МБ) превышает quota LocalStorage (~5-10 МБ).',
+      '• <code>shared/storage-adapter.js</code> (план): API совместимый с loadJson/saveJson, IDB под капотом для крупных данных.',
+      '• Migration meteo datasets из LS → IDB (квота 50 МБ — 2 ГБ).',
+      '• Storage analytics в global-settings + кнопка «Очистить Корзину» (синергия с Phase 35).',
+      'Файлы: <code>ROADMAP.md</code> (две новые фазы).',
+    ] },
     { version: '0.60.51', date: '2026-05-03', items: [
       '🚨 <b>HOTFIX: meteo не сохранял датасеты из-за silent QuotaExceededError</b>. По репорту: «10 раз загружал meteo Темиртау и ни разу не сохранилось». Диагностика через Chrome MCP: LocalStorage 5.68 МБ занят, quota ~7 МБ. ASHRAE Темиртау (10 лет, 87696 точек ≈ 6-7 МБ) превышает квоту → <code>localStorage.setItem</code> бросает QuotaExceededError → старый <code>try { ... } catch {}</code> в saveJson проглатывал silent. Пользователь видел успешный импорт в UI, но после refresh данные исчезали.',
       '• <code>meteo/meteo.js::saveJson</code> теперь явно обрабатывает QuotaExceededError: <code>console.error</code> с подсчётом занятого места + топ-5 крупных ключей + toast «⚠ Не удалось сохранить — превышена квота LocalStorage».',

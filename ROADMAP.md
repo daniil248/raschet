@@ -3390,6 +3390,103 @@ standalone-приложение в отдельном. Чтобы использ
 
 ---
 
+## Фаза 34 — Перенос больших датасетов из LocalStorage в IndexedDB
+
+> Зафиксировано Пользователем 2026-05-03 после диагностики через Chrome MCP:
+> ASHRAE Темиртау (87696 hourly точек ≈ 6-7 МБ JSON) превышает quota
+> LocalStorage (~5-10 МБ на origin) → silent QuotaExceededError → данные
+> не сохранялись. Hotfix v0.60.51 даёт явный toast вместо silent fail,
+> но не решает корневую проблему квоты.
+
+**Цель:** перенести крупные binary/массивные данные (meteo hourly arrays,
+performance curves, BOM-снимки) в IndexedDB (квота 50 МБ — 2 ГБ в зависимости
+от браузера). LocalStorage оставить только для метаданных + project-state.
+
+- [ ] **34.1** Создать `shared/storage-adapter.js`:
+  - API совместимый с текущим `loadJson/saveJson` через project-storage:
+    - `await dbLoad(pid, module, key, fallback)`
+    - `await dbSave(pid, module, key, value)`
+    - `await dbDelete(pid, module, key)`
+    - `await dbList(pid, module)` — список ключей модуля
+  - Под капотом — IndexedDB через минимальный wrapper (без зависимостей).
+  - LocalStorage остаётся для маленьких данных (< 50 КБ): project-meta,
+    activeIds, settings, фильтры.
+
+- [ ] **34.2** Migration: meteo datasets из LS → IDB:
+  - При первом запуске meteo: если в LS есть `meteo.datasets.v1` — копируем
+    в IDB, удаляем из LS (освобождаем 1-7 МБ на namespace).
+  - meteo.js загружает через `await dbLoad(...)` (init становится async).
+  - Backward-compat fallback: если IDB не доступен (старый браузер) —
+    остаёмся на LS.
+
+- [ ] **34.3** Migration: cooling performance-curves в IDB (если есть
+  крупные кривые > 100 КБ).
+
+- [ ] **34.4** Migration: BOM/inventory снимки tech-workspace в IDB (могут
+  быть крупными при 100+ единицах оборудования).
+
+- [ ] **34.5** Storage analytics в global-settings:
+  - Показ занятого места в LS + IDB по модулям.
+  - Кнопка «Очистить старые namespace» (legacy [object Object], orphan-pid
+    проектов которые удалили).
+  - Экспорт/импорт всего LS+IDB как .zip для бэкапа.
+
+**Acceptance:**
+- ASHRAE 25 лет (218400 точек ≈ 16 МБ) сохраняется без проблем.
+- Несколько проектов с крупными meteo-датасетами в одном браузере не
+  конфликтуют по квоте.
+- Settings показывает реальное использование storage.
+
+---
+
+## Фаза 35 — История загруженных данных + Корзина
+
+> Зафиксировано Пользователем 2026-05-03: «любые загруженные данные должны
+> сохраняться в истории». См. <code>memory/feedback_data_history.md</code>.
+
+**Цель:** аудит-trail всех импортов + soft-delete с возможностью restore.
+Решает проблему случайных удалений + позволяет проследить откуда пришли
+данные.
+
+- [ ] **35.1** `shared/history-log.js` — append-only API:
+  - <code>logEntry(pid, module, op, item, snapshot?)</code>
+  - <code>listHistory(pid, filter?)</code>
+  - <code>restore(pid, entryId)</code>
+  - Storage: <code>raschet.project.&lt;pid&gt;.history.v1</code> (LS для
+    маленьких операций, IDB для snapshot-ов > 50 КБ — после Phase 34).
+
+- [ ] **35.2** Интеграция в meteo:
+  - При импорте датасета (любой источник) — log entry с метаданными
+    (источник, локация, период, n записей).
+  - При delete — soft-delete: помечается deleted=true в datasets[],
+    snapshot копируется в history. UI показывает в «🗑 Корзина».
+  - В sidebar кнопка «📜 История» — таймлайн всех операций.
+  - В sidebar «🗑 Корзина (N)» — удалённые датасеты с кнопкой Restore.
+
+- [ ] **35.3** Интеграция в cooling: log при создании/удалении подбора,
+  изменении ★-варианта, обновлении eco.
+
+- [ ] **35.4** Интеграция в service: log при создании/удалении наряда,
+  закрытии (signed-off), импорте из cooling.
+
+- [ ] **35.5** Глобальная история в global-settings:
+  - «📜 История проектов» с фильтром по проекту/модулю/дате/типу операции.
+  - Экспорт в JSON для бэкапа.
+
+- [ ] **35.6** Restore-flow:
+  - Из «🗑 Корзина» одной кнопкой — entry с deleted=false возвращается
+    в активный список модуля.
+  - Permanent delete только из корзины с двойным подтверждением.
+
+**Acceptance:**
+- При импорте Темиртау через ASHRAE → entry в history с timestamp.
+- Удаление любого датасета не теряет данные — soft в Корзину.
+- Из global-settings можно увидеть всю историю всех проектов.
+- При quota-exceeded UI предлагает очистить Корзину для освобождения
+  места.
+
+---
+
 ## Фаза 27 — Авторизация Microsoft 365 (deferred)
 
 > Зафиксировано Пользователем 2026-05-02: «Позже добавим авторизацию через
