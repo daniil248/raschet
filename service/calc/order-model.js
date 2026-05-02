@@ -134,35 +134,11 @@ export function computeOrderTotals(order, displayCurrency = '₽', convertFn = n
 }
 
 /**
- * Шаблоны типовых работ — base-каталог. Можно добавить через UI.
+ * @deprecated v0.60.36 — WORK_TEMPLATES вынесен в каталог
+ * service/catalog/work-templates.js (правило feedback_use_catalogs.md).
+ * Этот re-export оставлен для backward-compat; новый код должен использовать
+ * <code>import { listTemplates } from '../catalog/work-templates.js'</code>.
  */
-export const WORK_TEMPLATES = {
-  install: [
-    { label: 'Монтаж чиллера до 200 кВт', category: 'labor', unit: 'комплект', costPrice: 80000, clientPrice: 130000 },
-    { label: 'Монтаж чиллера 200–500 кВт', category: 'labor', unit: 'комплект', costPrice: 150000, clientPrice: 240000 },
-    { label: 'Монтаж DX-блока', category: 'labor', unit: 'комплект', costPrice: 35000, clientPrice: 60000 },
-    { label: 'Монтаж CRAC прецизионного', category: 'labor', unit: 'комплект', costPrice: 50000, clientPrice: 80000 },
-    { label: 'Опрессовка холодильного контура', category: 'labor', unit: 'комплект', costPrice: 12000, clientPrice: 22000 },
-    { label: 'Заправка R410A', category: 'material', unit: 'кг', costPrice: 3500, clientPrice: 5500 },
-    { label: 'Заправка R32', category: 'material', unit: 'кг', costPrice: 4200, clientPrice: 6500 },
-    { label: 'Заправка R134a', category: 'material', unit: 'кг', costPrice: 4800, clientPrice: 7200 },
-    { label: 'Пусконаладочные работы (ПНР)', category: 'labor', unit: 'комплект', costPrice: 25000, clientPrice: 45000 },
-    { label: 'Командировка инженера (день)', category: 'travel', unit: 'сутки', costPrice: 8000, clientPrice: 15000 },
-  ],
-  maintenance: [
-    { label: 'Регламентное ТО ежемесячное', category: 'labor', unit: 'выезд', costPrice: 6000, clientPrice: 10000 },
-    { label: 'Регламентное ТО квартальное', category: 'labor', unit: 'выезд', costPrice: 12000, clientPrice: 20000 },
-    { label: 'Регламентное ТО годовое', category: 'labor', unit: 'выезд', costPrice: 30000, clientPrice: 50000 },
-    { label: 'Замена воздушных фильтров', category: 'material', unit: 'шт', costPrice: 1200, clientPrice: 2000 },
-    { label: 'Чистка теплообменника', category: 'labor', unit: 'комплект', costPrice: 8000, clientPrice: 14000 },
-    { label: 'Дозаправка хладагента', category: 'material', unit: 'кг', costPrice: 4000, clientPrice: 6500 },
-    { label: 'Анализ масла компрессора', category: 'labor', unit: 'комплект', costPrice: 5000, clientPrice: 9000 },
-  ],
-  'one-off': [
-    { label: 'Аварийный выезд', category: 'travel', unit: 'выезд', costPrice: 15000, clientPrice: 28000 },
-    { label: 'Диагностика неисправности', category: 'labor', unit: 'ч', costPrice: 3500, clientPrice: 6000 },
-    { label: 'Ремонт компрессора', category: 'labor', unit: 'комплект', costPrice: 50000, clientPrice: 90000 },
-  ],
-};
+export { SEED_TEMPLATES as WORK_TEMPLATES } from '../catalog/work-templates.js';
 
 export { CURRENCIES };

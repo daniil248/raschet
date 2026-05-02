@@ -5,9 +5,10 @@
 // service/calc/order-model.js.
 
 import {
-  DEFAULT_ORDER, ORDER_TYPES, POSITION_CATEGORIES, UNITS, WORK_TEMPLATES,
+  DEFAULT_ORDER, ORDER_TYPES, POSITION_CATEGORIES, UNITS,
   defaultPosition, computeOrderTotals, CURRENCIES,
 } from '../calc/order-model.js';
+import { listTemplates } from '../catalog/work-templates.js';
 import {
   buildInstallPositionsFromCoolingOption,
   buildMaintenancePositionsFromCoolingOption,
@@ -359,18 +360,21 @@ async function pickCoolingOptionModal(orderType, displayCurrency) {
 }
 
 async function pickTemplateModal(type, displayCurrency) {
-  const tpls = WORK_TEMPLATES[type] || [];
+  // v0.60.36: используем каталог service/catalog/work-templates.js
+  // (включает SEED + user-кастомные через addTemplate).
+  const tpls = listTemplates(type);
   if (!tpls.length) {
     toast('Нет шаблонов для этого типа наряда.', 'info');
     return null;
   }
-  const opts = tpls.map((t, i) =>
-    `<option value="${i}" title="${escAttr(t.label)} — ${escAttr(t.category)}, ${t.costPrice} ₽ → ${t.clientPrice} ₽">${escHtml(t.label)} (${escHtml(t.category)}, ${t.unit})</option>`
-  ).join('');
+  const opts = tpls.map((t, i) => {
+    const userMark = t.isUser ? '✏ ' : '';
+    return `<option value="${i}" title="${escAttr(t.label)} — ${escAttr(t.category)}, ${t.costPrice} ₽ → ${t.clientPrice} ₽${t.isUser ? ' (пользовательский)' : ' (встроенный)'}">${userMark}${escHtml(t.label)} (${escHtml(t.category)}, ${t.unit})</option>`;
+  }).join('');
   const result = await modalOpen(
     `<h3>📚 Шаблоны типовых работ — ${escHtml(ORDER_TYPES.find(t => t.id === type)?.label || '')}</h3>`,
     `<label>Выберите шаблон:<select id="sv-tpl-sel" size="10" style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font:inherit;font-size:13px">${opts}</select></label>
-     <p class="muted" style="font-size:11.5px;margin-top:6px">Цены в шаблонах указаны в ₽. Если валюта проекта другая — после добавления откорректируйте через select валюты в строке.</p>`,
+     <p class="muted" style="font-size:11.5px;margin-top:6px">✏ — пользовательские, без значка — встроенные. Цены в шаблонах указаны в ₽. Если валюта проекта другая — после добавления откорректируйте через select валюты в строке. Управление каталогом: кнопка «📚 Каталог работ» в сайдбаре.</p>`,
     async () => {
       const sel = document.getElementById('sv-tpl-sel');
       const i = Number(sel?.value);

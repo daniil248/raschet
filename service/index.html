@@ -137,7 +137,14 @@
   <div id="rs-footer-mount"></div>
   <script type="module">
     import { mountFooter } from '../shared/module-footer.js';
-    mountFooter({ moduleId: 'service' });
+    import { APP_VERSION } from '../js/engine/constants.js';
+    import { CHANGELOGS } from '../shared/module-changelogs.js';
+    mountFooter({
+      appVersion: APP_VERSION,
+      moduleId: 'service',
+      moduleTitle: 'Сервис: монтаж и ТО',
+      entries: CHANGELOGS['engine'] || [],
+    });
   </script>
 </body>
 </html>

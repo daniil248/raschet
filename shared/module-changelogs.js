@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.36', date: '2026-05-02', items: [
+      '🐛 <b>Fix: Service footer показывал «Raschet vundefined»</b>. По репорту-скрину пользователя. service/index.html передавал в mountFooter только moduleId; appVersion / moduleTitle / entries были undefined. Исправлено: импортированы APP_VERSION + CHANGELOGS, переданы корректные параметры.',
+      '📚 <b>Phase 24.2: WORK_TEMPLATES вынесены в каталог</b>. По правилу <code>memory/feedback_use_catalogs.md</code>: «всё что можно вынести в каталоги — в соответствующий каталог».',
+      '• Новый <code>service/catalog/work-templates.js</code> с <code>SEED_TEMPLATES</code> (20 типовых работ: монтаж/ТО/разовые) + LS-persistence для пользовательских шаблонов.',
+      '• API: <code>listTemplates(type)</code> (merged seed + user, с флагом <code>isUser</code>), <code>addTemplate / updateTemplate / deleteTemplate / resetUserTemplates</code>, <code>onWorkTemplatesChange(cb)</code> для UI auto-refresh.',
+      '• <code>service/calc/order-model.js</code>: WORK_TEMPLATES → re-export SEED для backward-compat (deprecated).',
+      '• <code>service/ui/order-form.js</code> pickTemplateModal теперь использует <code>listTemplates(type)</code>; user-шаблоны помечены ✏ в picker.',
+      '• UI каталога (CRUD-modal в сайдбаре service) — следующим шагом.',
+      'Файлы: <code>service/catalog/work-templates.js</code> (новый), <code>service/calc/order-model.js</code>, <code>service/ui/order-form.js</code>, <code>service/index.html</code>.',
+    ] },
     { version: '0.60.35', date: '2026-05-02', items: [
       '🔄 <b>Auto-refresh реквизитов в свойствах проекта</b>. По репорту: «реквизиты автоматически не обновляются». Если изменить глобальные реквизиты в шестерёнке ⚙ → «🏢 Реквизиты организации» — теперь блок «Реквизиты компании-исполнителя» в Свойствах проекта мгновенно обновляется (effective profile отражает новые глобальные значения).',
       '• Pub/sub механизм: <code>onCompanyProfileChange(cb)</code> в <code>shared/company-profile.js</code> + DOM-event <code>raschet:company-profile-change</code>.',
