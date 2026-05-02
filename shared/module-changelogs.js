@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.13', date: '2026-05-02', items: [
+      '📏 <b>Phase 14.3 (часть): Scale-bar показывает ЕСКД-масштаб 1:50/100/200</b>.',
+      '• В scs-design plan-view scale-bar теперь рассчитывает приблизительный масштаб печати (1:N) исходя из текущего zoom + DPI экрана (96 dpi default).',
+      '• Snap к ближайшему стандартному ЕСКД масштабу: 1:50/100/200/500/1000/2000/5000.',
+      '• Tooltip объясняет приблизительность (точное значение зависит от DPI экрана и формата печати).',
+      '• Label теперь: «X м · 1:N · шаг Y м · zoom Z%».',
+      '• ROADMAP Phase 14.3 — частично закрыт (рамка-кадр + axes A/B/C — TODO).',
+      'Файлы: <code>scs-design/scs-design.js</code> (renderPlanScaleBar).',
+    ] },
     { version: '0.60.12', date: '2026-05-02', items: [
       '🗂 <b>ROADMAP cleanup: отметил уже закрытые пункты</b>.',
       '• Phase 12.3 (подбор чиллеров/DX/freecooling) — закрыт реализацией модуля /cooling/ в Phase 22.x.',

@@ -3149,8 +3149,25 @@ function renderPlanScaleBar(plan) {
     else break;
   }
   const widthPx = chosen * pxPerM;
-  el.innerHTML = `<div class="sd-plan-scale-bar" style="width:${widthPx.toFixed(0)}px"></div>
-    <div class="sd-plan-scale-label">${chosen} м · шаг ${step} м · zoom ${(zoom * 100).toFixed(0)}%</div>`;
+  // v0.60.13 (Phase 14.3): nominal ratio 1:50 / 1:100 / 1:200 / 1:500.
+  // На экране точный масштаб зависит от DPI. Считаем: 1 м реальный ≈ pxPerM пикселей
+  // на экране. При CSS-стандарте ~96 dpi (1 дюйм=2.54 см) → 1 мм экрана ≈ 3.78 px.
+  // Значит 1 м экрана ≈ 3780 px. Реальный масштаб = pxPerM / 3780.
+  // Округляем до ближайшего стандартного ЕСКД 1:N.
+  const screenPxPerMeter = 3780;
+  const realScale = pxPerM / screenPxPerMeter;       // напр. 0.02 = 1:50
+  const oneToN = realScale > 0 ? Math.round(1 / realScale) : 1;
+  // Snap к ближайшему стандартному масштабу ЕСКД (1:50/100/200/500/1000/2000)
+  const stdScales = [50, 100, 200, 500, 1000, 2000, 5000];
+  let nearestStd = stdScales[0];
+  let minDiff = Math.abs(oneToN - stdScales[0]);
+  for (const s of stdScales) {
+    const d = Math.abs(oneToN - s);
+    if (d < minDiff) { minDiff = d; nearestStd = s; }
+  }
+  el.innerHTML = `<div class="sd-plan-scale-bar" style="width:${widthPx.toFixed(0)}px"
+                       title="Графическая шкала ISO 5457: ${chosen} м реального плана."></div>
+    <div class="sd-plan-scale-label" title="${chosen} м на плане (≈ ${(chosen * pxPerM).toFixed(0)} px на экране). Шаг сетки: ${step} м. Zoom: ${(zoom * 100).toFixed(0)}%. Приблизительный масштаб печати: 1:${nearestStd} (точное значение зависит от DPI экрана и формата печати).">${chosen} м · 1:${nearestStd} · шаг ${step} м · zoom ${(zoom * 100).toFixed(0)}%</div>`;
 }
 
 let focusRackId = null;
