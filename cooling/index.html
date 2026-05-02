@@ -173,6 +173,8 @@
                   title="Сводная таблица годовых часов + стек-бар чарт по интервалам температуры наружного воздуха. FC + OPEX сводка.">📊 Годовая энергия</button>
           <button type="button" class="cl-tab" data-tab="capex"
                   title="CAPEX (equipment + installation), параметры экономики (ТО, lifetime, discount rate). TCO chart по годам.">💰 CAPEX / TCO</button>
+          <button type="button" class="cl-tab" data-tab="topology"
+                  title="Топология холодоснабжения: распределение нагрузки между несколькими чиллерами и CRAC. Поддерживает резервирование (N+M), общий контур и точка-точка. Для активного варианта (option) подбора.">🔗 Топология</button>
           <button type="button" class="cl-tab" data-tab="compare"
                   title="Side-by-side таблица для нескольких опций. Подсветка победителя по каждой метрике.">⚖ Сравнение</button>
         </div>
@@ -215,6 +217,16 @@
           <div class="cl-section-card">
             <h3 title="Кумулятивные дисконтированные затраты по годам для всех опций.">📈 TCO по годам</h3>
             <div class="cl-chart-box"><canvas id="cl-tco-chart"></canvas></div>
+          </div>
+        </div>
+
+        <div class="cl-tab-pane" data-pane="topology" hidden>
+          <div class="cl-section-card" id="cl-topo-config-wrap">
+            <!-- topology-config форма (loop mode + N+M резервирование) -->
+          </div>
+          <div class="cl-section-card">
+            <h3 title="Per-equipment energy: годовое потребление по каждому блоку (чиллеры + CRAC) с долей в общей системе. Учитывает распределение нагрузки CRAC на чиллеры с учётом резервирования.">📊 По оборудованию</h3>
+            <div id="cl-topo-results" class="cl-table-scroll"></div>
           </div>
         </div>
 

@@ -37,6 +37,8 @@ import { renderFreeCoolingSummary } from './ui/fc-summary-view.js';
 import { drawChillerEnergyChart, drawTcoChart } from './ui/energy-chart.js';
 import { renderCapexForm, renderTcoKpi } from './ui/capex-form.js';
 import { renderComparisonTable } from './ui/comparison-view.js';
+import { buildTopologyFromOptions, simulateTopology, DEFAULT_TOPOLOGY } from './calc/topology.js';
+import { renderTopologyConfig, renderTopologyResults } from './ui/topology-view.js';
 
 import { tableToCsv, downloadCsv } from '../meteo/charts.js';
 import { getActiveMeteoDataset, getMeteoFilter, applyFilter } from './meteo-bridge.js';
@@ -457,6 +459,28 @@ function renderActiveTab() {
       const allMetrics = compareOptions(ordered, hourly, _tariffRubKwh, _currency, convertFn);
       drawTcoChart(cvs, allMetrics);
     }
+  } else if (_activeTab === 'topology') {
+    // Топология этого подбора: chillers + CRAC + redundancy
+    if (!sel.topology) sel.topology = { ...DEFAULT_TOPOLOGY };
+    const cwrap = $('cl-topo-config-wrap');
+    if (cwrap) {
+      cwrap.innerHTML = '';
+      cwrap.appendChild(renderTopologyConfig(sel.topology, (next) => {
+        sel.topology = next;
+        persist();
+        renderActiveTab();
+      }, sel));
+    }
+    // Сборка топологии из вариантов подбора (по типам chiller/crac).
+    const topo = buildTopologyFromOptions(
+      sel.options,
+      sel.topology.loopMode,
+      sel.topology.redundancyN,
+      sel.topology.redundancyM,
+    );
+    const metrics = simulateTopology(topo, hourly);
+    const rwrap = $('cl-topo-results');
+    if (rwrap) rwrap.innerHTML = renderTopologyResults(metrics, _currency, _tariffRubKwh);
   } else if (_activeTab === 'compare') {
     const tbl = $('cl-compare-table');
     if (tbl) {

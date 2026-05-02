@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.999', date: '2026-05-02', items: [
+      '🔗 <b>Cooling: вкладка «Топология» подключена</b>. Завершение Phase 22.10.',
+      '• Новая вкладка «🔗 Топология» в cooling: форма настройки loop mode (общий контур / точка-точка) + резервирование чиллеров N+M + per-equipment таблица энергии с долей в общей системе.',
+      '• calc/topology.js → simulateTopology(chillers, cracs, hourly) распределяет нагрузку CRAC между N штатными чиллерами; standby (M) показываются как «⏸ Чиллер (резерв)» с energy=0.',
+      '• Состав топологии берётся из вариантов подбора по типу системы (kind=plant → chillers; kind=crac → cracs).',
+      '• topology config (loopMode, redundancyN, redundancyM) сохраняется per-selection через общий persist().',
+      'Sanity: 2 чиллера 300 кВт (dry FC) + 2 CRAC 100 кВт, N=1+M=1 → активный 240 МВт·ч/год, standby 0, CRAC 2×35 МВт·ч fan, Σ=310 МВт·ч ✓.',
+      'Файлы: <code>cooling/index.html</code> (новая вкладка + панели), <code>cooling/cooling.js</code> (импорт topology + renderActiveTab branch + sel.topology persist), <code>cooling/cooling.css</code> (.cl-topo-config + .cl-topo-stats).',
+    ] },
     { version: '0.59.998', date: '2026-05-02', items: [
       '🎨 <b>Психрометрия: дополнительные тонкие RH-кривые + toggle меток</b>. По требованию: «добавь дополнительные кривые влажности, более тонкие. Подписи к доп. линиям выводятся только если они сами включены».',
       '• Кривые RH разделены на 2 группы: <b>major</b> (10/20/.../90%, толщина 0.5, сплошные, серые) и <b>minor</b> (5/15/25/.../85%, толщина 0.3, штриховые, светло-серые).',
