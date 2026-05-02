@@ -278,11 +278,22 @@ function handlePositionInput(ev, tr, o, onChange, displayCurrency, convertFn, is
     const newCur = targetVal;
     if (oldCur !== newCur) {
       const curVal = Number(positions[idx][col].value) || 0;
-      if (curVal > 0 && convertFn) {
-        const v = convertFn(curVal, oldCur, newCur);
-        if (Number.isFinite(v) && v > 0) {
-          positions[idx][col].value = +(v.toFixed(2));
-          toast(`${oldCur} → ${newCur}: ${curVal} → ${positions[idx][col].value}`, 'info');
+      // v0.60.39 (по репорту: «при переключении валюты значения не пересчитываются»):
+      // явные toast-сообщения если convertFn null или курс не найден.
+      if (curVal > 0) {
+        if (!convertFn) {
+          toast(`⚠ Курсы валют не загружены (${oldCur}→${newCur}). Значение оставлено как есть. Откройте 💱 справочник или подождите загрузки.`, 'err');
+        } else {
+          const v = convertFn(curVal, oldCur, newCur);
+          if (Number.isFinite(v) && v > 0) {
+            positions[idx][col].value = +(v.toFixed(2));
+            // Также явно обновим input в DOM (на случай если onChange не сразу re-render)
+            const valInp = tr.querySelector(`.sv-pos-val[data-col="${col}"]`);
+            if (valInp) valInp.value = positions[idx][col].value;
+            toast(`✓ ${curVal} ${oldCur} → ${positions[idx][col].value} ${newCur}`, 'ok');
+          } else {
+            toast(`⚠ Курс ${oldCur}→${newCur} не найден. Значение оставлено как есть.`, 'err');
+          }
         }
       }
       positions[idx][col].currency = newCur;

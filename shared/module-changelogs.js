@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.39', date: '2026-05-02', items: [
+      '🔄 <b>Service: явные toast при смене валюты ячейки</b>. По репорту: «при переключении валюты значения не пересчитываются». Раньше если convertFn был null (курсы не загружены) — ничего не происходило молча.',
+      '• Теперь явный toast: <code>«⚠ Курсы валют не загружены (₸→₽). Значение оставлено как есть. Откройте 💱 справочник или подождите загрузки.»</code>',
+      '• Если конверсия успешна — зелёный toast <code>«✓ 35000 ₸ → 6000 ₽»</code>.',
+      '• Также input в DOM явно обновляется новым значением (не ждём re-render через onChange).',
+      '• Если курс не найден (например для редкой пары) — отдельный warning.',
+      'Файл: <code>service/ui/order-form.js</code>.',
+    ] },
     { version: '0.60.38', date: '2026-05-02', items: [
       '🚨 <b>HOTFIX: Service не загружался — wrong import path</b>. По DevTools-скрину пользователя: <code>Uncaught SyntaxError: The requested module \'../shared/currency-rates/index.js\' does not provide an export named \'currencyToIso\' (at service.js:20:46)</code>.',
       '• Корневая причина: <code>currencyToIso</code> экспортируется из <code>cooling/calc/fc-summary.js</code>, а не из <code>currency-rates/index.js</code>. Я импортировал его не из того файла → SyntaxError → весь service-модуль не выполнялся → пустой sidebar (только defensive inline-init спасал).',
