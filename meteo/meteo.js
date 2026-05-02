@@ -17,7 +17,7 @@
 // =========================================================================
 
 import { ensureDefaultProject, projectKey } from '../shared/project-storage.js';
-import { detectNavMode, renderModuleActions } from '../shared/module-nav.js';
+import { detectNavMode, renderModuleActions, completeReturn, cancelReturn } from '../shared/module-nav.js';
 import * as util from './util.js';
 import { getAll as getSources } from './sources/index.js';
 import { drawTempHistogram, drawHumidityHistogram, drawMonthlyTempChart, drawWindRose, renderDaysInRangeTable } from './charts.js';
@@ -161,6 +161,51 @@ function renderDatasetsList() {
   }).join('');
 }
 
+// ─── v0.60.31: жирный embed-баннер сверху content
+function renderEmbedBanner() {
+  const banner = $('mt-embed-banner');
+  if (!banner) return;
+  if (_navMode !== 'embed' || !_navReturn) {
+    banner.hidden = true;
+    return;
+  }
+  const d = _datasets.find(x => x.id === _activeId);
+  const hasActive = !!d;
+  banner.hidden = false;
+  banner.style.cssText = 'margin:8px 0 12px;padding:10px 14px;background:linear-gradient(90deg,#fef3c7,#fffbeb);border:2px solid #f59e0b;border-radius:6px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap';
+  banner.innerHTML = `
+    <div style="font-size:13px;color:#78350f">
+      🔗 <b>Embed-режим</b>: вы выбираете датасет для модуля «${util.escHtml(_navReturn.label || 'исходный')}».
+      ${hasActive ? `Активный: <b>${util.escHtml(d.name)}</b> (${util.escHtml(d.locationName || '')}, ${d.lat?.toFixed(3) || '?'}, ${d.lon?.toFixed(3) || '?'}).` : '⚠ Выберите датасет в списке слева, или импортируйте новый.'}
+    </div>
+    <div style="display:flex;gap:6px">
+      <button type="button" id="mt-embed-apply" ${hasActive ? '' : 'disabled style="opacity:0.4;cursor:not-allowed"'}
+              style="padding:8px 16px;background:#16a34a;color:#fff;border:1px solid #16a34a;border-radius:4px;cursor:pointer;font:inherit;font-size:13px;font-weight:600"
+              title="Применить выбранный датасет и вернуться в исходный модуль. project.location обновится координатами этого датасета.">
+        ✓ Применить и вернуться
+      </button>
+      <button type="button" id="mt-embed-cancel"
+              style="padding:8px 14px;background:#fff;color:#475569;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;font:inherit;font-size:12.5px"
+              title="Вернуться без передачи датасета.">
+        ✗ Отмена
+      </button>
+    </div>
+  `;
+  const applyBtn = banner.querySelector('#mt-embed-apply');
+  if (applyBtn && hasActive) applyBtn.addEventListener('click', () => {
+    const payload = {
+      datasetId: d.id, datasetName: d.name,
+      locationName: d.locationName || '',
+      lat: d.lat || null, lon: d.lon || null,
+      dateFrom: d.dateFrom || null, dateTo: d.dateTo || null,
+      recordsCount: (d.hourly || []).length,
+    };
+    completeReturn(_navReturn, payload);
+  });
+  const cancelBtn = banner.querySelector('#mt-embed-cancel');
+  if (cancelBtn) cancelBtn.addEventListener('click', () => cancelReturn(_navReturn));
+}
+
 // ─── Render: активный датасет
 function renderActive() {
   // v0.59.995: cross-links / return-buttons
@@ -191,6 +236,10 @@ function renderActive() {
       },
     });
   }
+  // v0.60.31: жирный embed-баннер сверху + кнопка «✓ Выбрать ЭТОТ датасет
+  // и вернуться» — пользователь должен сразу понимать что он в embed-режиме
+  // и как вернуться. По репорту: «назад в модуль подбора холода не передаёт».
+  renderEmbedBanner();
 
   const d = _datasets.find(x => x.id === _activeId);
   const empty = $('mt-empty');

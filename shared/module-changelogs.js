@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.31', date: '2026-05-02', items: [
+      '🔗 <b>Жирный embed-баннер в meteo</b>. По репорту: «назад в модуль подбора холода не передаёт». Кнопка «✓ Применить и вернуться» в верхнем углу была компактная и неприметная — пользователь её не замечал.',
+      '• Новый видимый баннер сверху content (золотой 2px border, gradient-фон): объясняет что вы в embed-режиме, кто исходный модуль, какой датасет сейчас активный.',
+      '• Большая зелёная кнопка «✓ Применить и вернуться» (16px padding, font-weight 600).',
+      '• Если нет активного датасета — кнопка disabled с подсказкой «выберите датасет в списке слева».',
+      '• «✗ Отмена» рядом для возврата без выбора.',
+      '• completeReturn() передаёт payload {datasetId, datasetName, locationName, lat, lon, dateFrom, dateTo, recordsCount}; cooling.js (v0.60.30) уже обновляет project.location координатами.',
+      'Файлы: <code>meteo/meteo.js</code>, <code>meteo/index.html</code>.',
+    ] },
     { version: '0.60.30', date: '2026-05-02', items: [
       '🐛 <b>Service: fix renderModuleActions сигнатуры</b>. По репорту: «ещё не работает, вообще». В service.js передавал navMode + navReturn отдельно, а API ждёт <code>{ navContext: { mode, return }, crossLinks: [{href,label,title}], getPayload }</code>. Это могло тихо throw → context picker не отрисовывался.',
       '• Также добавлен version-marker «v0.60.30» в console.warn / error чтобы было видно в DevTools какая версия загружена (помогает диагностике cache-проблем).',
