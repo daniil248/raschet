@@ -108,10 +108,18 @@
 
   <main class="cl-main">
     <aside class="cl-sidebar rs-sidebar">
+      <!-- v0.59.995: индикатор режима хранения (Project / Standalone / Embed) -->
+      <div id="cl-storage-mode" class="cl-storage-mode" title="Текущий режим хранения данных модуля."></div>
+
       <div class="cl-section">
-        <h3 title="Конфигурации систем охлаждения для сравнения. До 4 опций. Первая — baseline для расчёта payback.">⚙ Конфигурации</h3>
+        <h3 title="Подборы систем охлаждения. В одном проекте может быть несколько подборов (например «Чиллер для серверной A», «DX для офиса B»). В каждом подборе — варианты оборудования для сравнения, один помечается ★ как основной.">📋 Подборы</h3>
         <div id="cl-options-list" class="cl-options-list"></div>
-        <button type="button" class="cl-btn-primary" id="cl-add-option" title="Добавить новую опцию для сравнения. Копирует параметры активной.">+ Добавить опцию</button>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button type="button" class="cl-btn-primary" id="cl-add-selection" style="flex:1"
+                  title="Создать новый подбор. В нём будете добавлять варианты оборудования для сравнения.">+ Подбор</button>
+          <button type="button" class="cl-btn-ghost" id="cl-add-option" style="flex:1"
+                  title="Добавить вариант оборудования в активный подбор. Копирует параметры выбранного варианта.">+ Вариант</button>
+        </div>
       </div>
 
       <div class="cl-section">
@@ -145,14 +153,9 @@
             <span class="muted" id="cl-active-meta"></span>
           </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;font-size:12px">
-          <a href="../meteo/" class="cl-cross-link"
-             title="Перейти в модуль «Метеоданные» — выбрать/загрузить климатический датасет. После выбора активного (⭐) датасета вернитесь сюда — расчёт обновится автоматически.">📅 Метеоданные →</a>
-          <a href="../psychrometrics/" class="cl-cross-link"
-             title="Перейти в модуль «ID-диаграмма Молье-Рамзина» — психрометрический расчёт.">📊 ID-диаграмма →</a>
-          <a href="../hub.html" class="cl-cross-link" style="color:#64748b"
-             title="Вернуться на главную страницу со всеми модулями.">🏠 Hub</a>
-        </div>
+        <!-- v0.59.995: cross-links/return-buttons рендерятся динамически в
+             зависимости от mode (standalone / embed / project). См. cooling.js. -->
+        <div id="cl-content-actions" style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;font-size:12px"></div>
       </div>
 
       <div id="cl-empty" class="cl-empty">

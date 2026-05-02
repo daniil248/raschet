@@ -17,6 +17,7 @@
 // =========================================================================
 
 import { ensureDefaultProject, projectKey } from '../shared/project-storage.js';
+import { detectNavMode, renderModuleActions } from '../shared/module-nav.js';
 import * as util from './util.js';
 import { getAll as getSources } from './sources/index.js';
 import { drawTempHistogram, drawHumidityHistogram, drawMonthlyTempChart, drawWindRose, renderDaysInRangeTable } from './charts.js';
@@ -39,6 +40,8 @@ let _activeCols = [...DEFAULT_COLS];
 //   periodFrom / periodTo: 'YYYY-MM-DD' — при mode='period'
 // Заменяет более узкий _annualYear (v0.59.971) — теперь фильтр глобальный.
 let _filter = { mode: 'all', year: '', periodFrom: '', periodTo: '' };
+let _navMode = null;     // v0.59.995: 'standalone' | 'embed' | 'project'
+let _navReturn = null;
 
 const KEY_DATA = ['meteo', 'datasets.v1'];
 const KEY_ACTIVE = ['meteo', 'activeId.v1'];
@@ -160,6 +163,35 @@ function renderDatasetsList() {
 
 // ─── Render: активный датасет
 function renderActive() {
+  // v0.59.995: cross-links / return-buttons
+  const actionsEl = $('mt-content-actions');
+  if (actionsEl) {
+    renderModuleActions(actionsEl, {
+      navContext: { mode: _navMode, return: _navReturn },
+      crossLinks: [
+        // В project-mode показываем cross-link на cooling. По требованию:
+        // «А вот ссылка Подбор холодильных систем может быть доступна
+        // только если у пользователя есть доступ к этому модулю» —
+        // permissions пока не реализованы, делаем всегда видимым TODO.
+        { href: '../cooling/', label: '❄ Подбор холодильных систем →',
+          title: 'Перейти в модуль «Подбор холодильных систем» — расчёт чиллеров/DX/free-cooling по этим климатическим данным.' },
+      ],
+      getPayload: () => {
+        const d = _datasets.find(x => x.id === _activeId);
+        return {
+          datasetId: d?.id || null,
+          datasetName: d?.name || null,
+          locationName: d?.locationName || null,
+          lat: d?.lat || null,
+          lon: d?.lon || null,
+          dateFrom: d?.dateFrom || null,
+          dateTo: d?.dateTo || null,
+          recordsCount: (d?.hourly || []).length,
+        };
+      },
+    });
+  }
+
   const d = _datasets.find(x => x.id === _activeId);
   const empty = $('mt-empty');
   const pane = $('mt-active-pane');
@@ -332,6 +364,12 @@ function computeAshraeFromHourly(hourly) {
 
 // ─── Init
 function init() {
+  // v0.59.995: режим работы (standalone / embed / project) — определяет
+  // какие cross-links / return-buttons показать.
+  const nav = detectNavMode();
+  _navMode = nav.mode;
+  _navReturn = nav.return;
+
   _pid = ensureDefaultProject();
   _datasets = loadJson(KEY_DATA, []) || [];
   _activeId = loadJson(KEY_ACTIVE, null);

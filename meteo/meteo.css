@@ -263,13 +263,22 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
 .mt-active-pane { display: flex; flex-direction: column; gap: 12px; }
 .muted { color: #6b7280; }
 
-/* v0.59.994: cross-module links в правом верхнем углу content header */
-.mt-cross-link {
+/* v0.59.995: shared module-nav (cross-links + return Apply/Cancel).
+   Стили дублируют cooling.css, чтобы оба модуля работали независимо. */
+.mod-nav-cross-link {
   color: #1e40af; text-decoration: none; font-weight: 500;
   padding: 3px 8px; border: 1px solid #cbd5e1; border-radius: 3px;
-  background: #f8fafc;
+  background: #f8fafc; font-size: 12px;
 }
-.mt-cross-link:hover { background: #dbeafe; border-color: #93c5fd; }
+.mod-nav-cross-link:hover { background: #dbeafe; border-color: #93c5fd; }
+.mod-nav-btn-primary, .mod-nav-btn-cancel {
+  padding: 6px 14px; border-radius: 4px; cursor: pointer;
+  font-size: 12.5px; font-weight: 500; border: 1px solid transparent;
+}
+.mod-nav-btn-primary { background: #16a34a; color: #fff; border-color: #16a34a; }
+.mod-nav-btn-primary:hover { background: #15803d; }
+.mod-nav-btn-cancel { background: #f3f4f6; color: #374151; border-color: #d1d5db; }
+.mod-nav-btn-cancel:hover { background: #e5e7eb; }
 
 @media (max-width: 760px) {
   .mt-main { grid-template-columns: 1fr; }

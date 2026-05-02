@@ -4,6 +4,29 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.995', date: '2026-05-02', items: [
+      '🏗 <b>Подборы (selections) с вариантами + main-флаг</b>. По требованию: «в одном проекте может быть несколько подборов разных систем, и в каждом несколько вариантов, один из которых основной. Варианты не активные можно удалять».',
+      '• Заменена плоская модель <code>_options[]</code> на <code>_selections[].options[]</code>.',
+      '• Sidebar: список подборов (📋, жёлтый фон) → разворачивается активный со списком вариантов. Кнопки «+ Подбор» и «+ Вариант».',
+      '• Каждый подбор имеет mainOptionId — ★-метка на варианте; защищён от удаления (нельзя удалить пока не выбран другой основной). Используется как baseline для расчёта payback в comparison.',
+      '• LS-миграция: старые <code>cooling.options.v1</code> автоматически оборачиваются в один подбор «Подбор по умолчанию», первая опция становится ★.',
+      '🔀 <b>Storage modes: standalone / project / embed</b>. По требованию: «модуль должен работать как часть проекта, так и как стандалон-приложение … вернуться ровно туда, откуда пришли».',
+      '• <code>?standalone=1</code> — данные в <code>raschet.cooling.standalone.*</code>, без привязки к проекту. Никаких cross-links / return-buttons.',
+      '• default — <code>raschet.project.&lt;pid&gt;.cooling.*</code> (project-scoped).',
+      '• <code>?return=PATH&amp;returnSession=ID&amp;returnLabel=...</code> — embed-mode: показываются кнопки «✓ Применить и вернуться» (передаёт payload через LS-bridge) / «✗ Отмена» (просто redirect без данных).',
+      '• Индикатор режима в sidebar: 💼 Проект / 🔓 Standalone / 🔗 Embed.',
+      '🧭 <b>shared/module-nav.js</b> — переиспользуемый pattern для возврата между модулями. API: <code>detectNavMode()</code>, <code>renderModuleActions()</code>, <code>completeReturn(ctx, payload)</code>, <code>cancelReturn(ctx)</code>, <code>readEmbedResult()</code>. Можно использовать в любом модуле (meteo уже подключен).',
+      '• Удалены статичные cross-link кнопки (cooling→meteo, meteo→cooling, hub) — заменены динамическим renderModuleActions(). Кнопки на смежные модули показываются ТОЛЬКО в project-mode (по требованию: «при запуске стандалон ссылки не нужны»).',
+      '• Hub-ссылка убрана отовсюду — она уже в общем app-header слева.',
+      '🔮 <b>ROADMAP Phase 22.10 (топология холодоснабжения)</b> — новая задача по требованию пользователя 2026-05-02:',
+      '• Тип CRAC: dx-air / crac-water / crac-water+compressor (Stulz DX-glycol) / crac-water+fc-loop (отдельный контур фрикулинга).',
+      '• Топология: chillers ↔ CRACs через common-loop (резервирование N+1 / 2N через общий header) либо point-to-point (один-в-один).',
+      '• Симуляция: распределение нагрузки между чиллерами с учётом redundancy + бин-расчёт энергии по T_amb.',
+      '• Файл будущего модуля: <code>cooling/calc/topology.js</code> + UI вкладка «🔗 Топология».',
+      '🔧 <b>Auto-conversion упрощено</b>: суммы хранятся в native eco.currency и конвертируются на дисплее автоматически. Смена валюты проекта НЕ трогает CAPEX опций (они в своих валютах). Запрос конвертации — только для тарифа (он в _currency).',
+      'Файлы новые: <code>shared/module-nav.js</code>.',
+      'Файлы изменены: <code>cooling/cooling.js</code> (selections-модель, modes), <code>cooling/cooling.css</code> (sel-row, main-badge, cl-storage-mode, mod-nav-*), <code>cooling/index.html</code> (новая sidebar секция, dynamic actions), <code>meteo/{meteo.js, index.html, meteo.css}</code> (dynamic actions), <code>js/engine/constants.js, shared/module-changelogs.js, ROADMAP.md</code>.',
+    ] },
     { version: '0.59.994', date: '2026-05-02', items: [
       '💱 <b>Native-валюта на каждой опции + автоконвертация по курсу проекта</b>. По требованию: «ввод исходных данных можно в любой валюте, валюта отчётов и текущих расчётов настраивается для проекта».',
       '• Каждая опция имеет <code>eco.currency</code> — родная валюта её CAPEX/OPEX. На дисплее, в TCO и сравнении значения автоматически конвертируются в валюту проекта (<code>_currency</code>) по текущему курсу из 💱 Справочника.',

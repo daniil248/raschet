@@ -121,14 +121,9 @@
             <span class="muted" id="mt-active-meta"></span>
           </div>
         </div>
-        <div class="mt-content-cross-links" style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;font-size:12px">
-          <a href="../cooling/" class="mt-cross-link"
-             title="Перейти в модуль «Подбор холодильных систем» — расчёт чиллеров/DX/free-cooling по этим климатическим данным. Активный (⭐) датасет автоматически используется для расчёта.">❄ Подбор холодильных систем →</a>
-          <a href="../psychrometrics/" class="mt-cross-link"
-             title="Перейти в модуль «ID-диаграмма Молье-Рамзина» — психрометрический расчёт влажного воздуха. Точка с климата может быть взята отсюда.">📊 ID-диаграмма →</a>
-          <a href="../hub.html" class="mt-cross-link" style="color:#64748b"
-             title="Вернуться на главную страницу со всеми модулями.">🏠 Hub</a>
-        </div>
+        <!-- v0.59.995: cross-links/return-buttons рендерятся динамически
+             в зависимости от mode и referrer. См. meteo.js. -->
+        <div id="mt-content-actions" style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;font-size:12px"></div>
       </div>
 
       <div id="mt-empty" class="mt-empty">

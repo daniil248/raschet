@@ -44,17 +44,44 @@ import { CURRENCIES, currencyToIso } from './calc/fc-summary.js';
 import { open as openRatesDialog } from '../shared/currency-rates/rates-dialog.js';
 import { fetchRates, convert as convertRate } from '../shared/currency-rates/index.js';
 import '../shared/currency-rates/sources/index.js';
+import { detectNavMode, renderModuleActions } from '../shared/module-nav.js';
 
 const $ = (id) => document.getElementById(id);
 
-let _pid = null;
-let _options = [];
-let _activeId = null;
+/* v0.59.995: модель данных
+ * Cooling может работать в двух режимах хранения (определяется через
+ * URL ?standalone=1 либо явный флаг в LS):
+ *
+ *   1) PROJECT mode (default) — данные привязаны к activeProject.
+ *      LS-ключ: raschet.project.<pid>.cooling.<key>
+ *
+ *   2) STANDALONE mode — данные общие, без привязки к проекту.
+ *      LS-ключ: raschet.cooling.standalone.<key>
+ *
+ * Структура данных в обоих режимах:
+ *   _selections: [
+ *     { id, name, mainOptionId, activeOptionId, options: [
+ *       { id, name, spec, eco }     // eco.currency = native валюта
+ *     ]}
+ *   ]
+ *
+ * В одном проекте может быть несколько подборов (разные системы — например
+ * «Чиллер для серверной A» и «DX для офиса B»). В каждом подборе несколько
+ * опций (вариантов оборудования), одна — основная. Не-основные можно
+ * удалять. Удалить основную нельзя — нужно сначала перевыбрать main.
+ */
+let _pid = null;             // project object (или null в standalone)
+let _standalone = false;     // режим хранения = standalone
+let _navMode = null;         // 'standalone' | 'embed' | 'project' (см. shared/module-nav.js)
+let _navReturn = null;       // { path, sessionId, label } для embed-mode
+let _selections = [];        // массив подборов
+let _activeSelectionId = null;
 let _activeTab = 'spec';
 let _activeCols = [...DEFAULT_COLS, ...CHILLER_COLS];
-let _tariffRubKwh = 7.5;       // тариф в _currency (валюта проекта) — переменная сохранила историческое имя
+let _tariffRubKwh = 7.5;     // тариф в _currency (валюта проекта)
 let _currency = '₽';
 let _seq = 1;
+let _selSeq = 1;
 
 // v0.59.994: кеш курсов на текущую calcDate (по умолчанию today). Загружается
 // фоновым запросом при первом render. convertFn() возвращает конвертер
@@ -73,31 +100,69 @@ function makeConvertFn() {
   return (amount, fromIso, toIso) => convertRate(amount, fromIso, toIso, _ratesCache);
 }
 
-const KEY_OPTIONS  = ['cooling', 'options.v1'];
-const KEY_ACTIVE   = ['cooling', 'activeId.v1'];
-const KEY_COLS     = ['cooling', 'cols.v1'];
-const KEY_TARIFF   = ['cooling', 'tariff.v1'];
-const KEY_CURRENCY = ['cooling', 'currency.v1'];
+// v0.59.995: новые ключи хранения «подборов».
+// Старые KEY_OPTIONS / KEY_ACTIVE используются для миграции legacy-данных.
+const KEY_SELECTIONS    = ['cooling', 'selections.v1'];
+const KEY_ACTIVE_SEL    = ['cooling', 'activeSelectionId.v1'];
+const KEY_COLS          = ['cooling', 'cols.v1'];
+const KEY_TARIFF        = ['cooling', 'tariff.v1'];
+const KEY_CURRENCY      = ['cooling', 'currency.v1'];
+const LEGACY_KEY_OPTS   = ['cooling', 'options.v1'];
+const LEGACY_KEY_ACTIVE = ['cooling', 'activeId.v1'];
 
+/* В standalone-режиме project-storage не используется — хранимся под
+   raschet.cooling.standalone.<module>.<key> чтобы не мешать project-data. */
+function storageKey(suffix) {
+  if (_standalone) {
+    return `raschet.cooling.standalone.${suffix.join('.')}`;
+  }
+  return projectKey(_pid, ...suffix);
+}
 function loadJson(suffix, fallback) {
-  if (!_pid) return fallback;
-  try { const raw = localStorage.getItem(projectKey(_pid, ...suffix)); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
+  try { const raw = localStorage.getItem(storageKey(suffix)); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
 }
 function saveJson(suffix, value) {
-  if (!_pid) return;
-  try { localStorage.setItem(projectKey(_pid, ...suffix), JSON.stringify(value)); } catch {}
+  try { localStorage.setItem(storageKey(suffix), JSON.stringify(value)); } catch {}
 }
 function persist() {
-  saveJson(KEY_OPTIONS,  _options);
-  saveJson(KEY_ACTIVE,   _activeId);
-  saveJson(KEY_COLS,     _activeCols);
-  saveJson(KEY_TARIFF,   _tariffRubKwh);
-  saveJson(KEY_CURRENCY, _currency);
+  saveJson(KEY_SELECTIONS, _selections);
+  saveJson(KEY_ACTIVE_SEL, _activeSelectionId);
+  saveJson(KEY_COLS,       _activeCols);
+  saveJson(KEY_TARIFF,     _tariffRubKwh);
+  saveJson(KEY_CURRENCY,   _currency);
 }
 
-function activeOption() {
-  return _options.find(o => o.id === _activeId) || null;
+/* ----- Активный подбор / опция ----- */
+function activeSelection() {
+  return _selections.find(s => s.id === _activeSelectionId) || null;
 }
+function activeOption() {
+  const sel = activeSelection();
+  if (!sel) return null;
+  return sel.options.find(o => o.id === sel.activeOptionId)
+      || sel.options[0]
+      || null;
+}
+function makeNewSelection(name) {
+  const sel = {
+    id: `sel-${_selSeq++}`,
+    name: name || `Подбор ${_selections.length + 1}`,
+    mainOptionId: null,
+    activeOptionId: null,
+    options: [],
+  };
+  return sel;
+}
+function makeNewOption(name, baseSpec, baseEco) {
+  return {
+    id: `opt-${_seq++}`,
+    name: name || 'Новая опция',
+    spec: { ...(baseSpec || DEFAULT_CHILLER) },
+    eco:  { ...(baseEco || DEFAULT_ECONOMICS), currency: (baseEco?.currency || _currency) },
+  };
+}
+
+// Удалены: legacy activeOption() (см. новую выше).
 
 /* ----- Hourly из meteo с применённым фильтром ----- */
 function getHourly() {
@@ -107,28 +172,56 @@ function getHourly() {
   return { hourly: applyFilter(m.hourly, filter), dataset: m.dataset, filter };
 }
 
-/* ----- Sidebar list ----- */
-function renderOptionsList() {
+/* ----- Sidebar: list of selections with nested options ----- */
+function renderSelectionsList() {
   const root = $('cl-options-list');
   if (!root) return;
-  if (!_options.length) {
-    root.innerHTML = '<div class="muted" style="font-size:11.5px;padding:6px 0">Опций пока нет. Добавьте первую — она станет baseline для сравнения.</div>';
+  if (!_selections.length) {
+    root.innerHTML = '<div class="muted" style="font-size:11.5px;padding:6px 0">Подборов пока нет. Кнопка «+ Добавить подбор» — создаст первый. В подборе можно держать несколько вариантов оборудования для сравнения.</div>';
     return;
   }
-  root.innerHTML = _options.map((o, i) => {
-    const cls = o.id === _activeId ? 'cl-option-row active' : 'cl-option-row';
-    const baseline = i === 0 ? ' <span style="color:#16a34a;font-size:10px">★ baseline</span>' : '';
-    return `<div class="${cls}" data-id="${util.escAttr(o.id)}">
-      <span class="cl-option-name">${util.escHtml(o.name)}${baseline}</span>
-      <span class="cl-option-actions">
-        <button type="button" data-act="rename" data-id="${util.escAttr(o.id)}" title="Переименовать">✏</button>
-        <button type="button" data-act="delete" data-id="${util.escAttr(o.id)}" title="Удалить опцию">🗑</button>
-      </span>
-      <span class="cl-option-meta" style="grid-column:1/-1">
-        ${util.escHtml(o.spec.systemType)} · ${Math.round(o.spec.ratedCapKw)} кВт${o.spec.systemType === 'chiller' ? ' · FC: ' + (o.spec.freeCoolingMode || 'none') : ''}
-      </span>
-    </div>`;
-  }).join('');
+  const html = [];
+  for (const sel of _selections) {
+    const selActive = sel.id === _activeSelectionId;
+    const selCls = selActive ? 'cl-sel-row active' : 'cl-sel-row';
+    html.push(`<div class="cl-sel-block">
+      <div class="${selCls}" data-act-sel="activate" data-sel-id="${util.escAttr(sel.id)}">
+        <span class="cl-sel-name" title="${util.escHtml(sel.name)} — кликните чтобы сделать подбор активным.">📋 ${util.escHtml(sel.name)}</span>
+        <span class="cl-sel-actions">
+          <button type="button" data-act-sel="rename" data-sel-id="${util.escAttr(sel.id)}" title="Переименовать подбор">✏</button>
+          <button type="button" data-act-sel="delete" data-sel-id="${util.escAttr(sel.id)}" title="Удалить подбор со всеми вариантами">🗑</button>
+        </span>
+        <span class="cl-sel-meta" style="grid-column:1/-1">
+          ${sel.options.length} вариант${(sel.options.length === 1) ? '' : (sel.options.length >= 2 && sel.options.length <= 4 ? 'а' : 'ов')}
+        </span>
+      </div>`);
+    if (selActive) {
+      if (!sel.options.length) {
+        html.push('<div class="muted" style="font-size:11px;padding:4px 14px">Вариантов нет. Кнопка «+ Добавить вариант» ниже добавит первый.</div>');
+      } else {
+        for (const o of sel.options) {
+          const isMain = sel.mainOptionId === o.id;
+          const isActiveOpt = sel.activeOptionId === o.id;
+          const cls = `cl-option-row${isActiveOpt ? ' active' : ''}${isMain ? ' main' : ''}`;
+          const mainBadge = isMain ? '<span class="cl-main-badge" title="Основной вариант — нельзя удалить пока не выбран другой основной. Используется как baseline для расчёта payback в сравнении.">★ основной</span>' : '';
+          html.push(`<div class="${cls}" data-opt-id="${util.escAttr(o.id)}">
+            <span class="cl-option-name" title="Кликните чтобы открыть этот вариант в табах справа.">${util.escHtml(o.name)} ${mainBadge}</span>
+            <span class="cl-option-actions">
+              ${isMain ? '' : `<button type="button" data-act-opt="setmain" data-opt-id="${util.escAttr(o.id)}" title="Сделать основным вариантом подбора (заменит ★ метку, защитит от удаления)">★</button>`}
+              <button type="button" data-act-opt="rename" data-opt-id="${util.escAttr(o.id)}" title="Переименовать вариант">✏</button>
+              ${isMain ? `<button type="button" data-act-opt="delete-blocked" title="Нельзя удалить основной вариант. Сначала сделайте основным другой вариант через ★." disabled style="opacity:0.4;cursor:not-allowed">🗑</button>`
+                       : `<button type="button" data-act-opt="delete" data-opt-id="${util.escAttr(o.id)}" title="Удалить вариант">🗑</button>`}
+            </span>
+            <span class="cl-option-meta" style="grid-column:1/-1">
+              ${util.escHtml(o.spec.systemType)} · ${Math.round(o.spec.ratedCapKw)} кВт${o.spec.systemType === 'chiller' ? ' · FC: ' + (o.spec.freeCoolingMode || 'none') : ''}
+            </span>
+          </div>`);
+        }
+      }
+    }
+    html.push('</div>');
+  }
+  root.innerHTML = html.join('');
 }
 
 function renderMeteoStatus() {
@@ -155,28 +248,74 @@ function renderMeteoStatus() {
 
 /* ----- Active panel ----- */
 function renderActive() {
+  const sel = activeSelection();
   const opt = activeOption();
   const empty = $('cl-empty');
   const pane = $('cl-active-pane');
   renderMeteoStatus();
-  renderOptionsList();
-  if (!opt) {
+  renderSelectionsList();
+  renderStorageMode();
+  renderModuleActionsHere();
+  if (!sel || !opt) {
     if (empty) empty.style.display = 'flex';
     if (pane) pane.hidden = true;
-    $('cl-active-name').textContent = '— нет активной опции —';
-    $('cl-active-meta').textContent = '';
+    $('cl-active-name').textContent = sel
+      ? `📋 ${sel.name} — нет активного варианта`
+      : '— нет активного подбора —';
+    $('cl-active-meta').textContent = sel
+      ? 'Добавьте вариант оборудования через «+ Добавить вариант» или выберите существующий слева.'
+      : 'Создайте подбор через «+ Добавить подбор» в боковой панели.';
     return;
   }
   if (empty) empty.style.display = 'none';
   if (pane) pane.hidden = false;
-  $('cl-active-name').textContent = opt.name;
+  const isMain = sel.mainOptionId === opt.id ? ' ★' : '';
+  $('cl-active-name').textContent = `📋 ${sel.name} → ${opt.name}${isMain}`;
   $('cl-active-meta').textContent = `${opt.spec.systemType} · rated ${Math.round(opt.spec.ratedCapKw)} кВт · COP ${opt.spec.ratedCOP}`;
   renderActiveTab();
 }
 
+function renderStorageMode() {
+  const el = $('cl-storage-mode');
+  if (!el) return;
+  if (_navMode === 'embed' && _navReturn) {
+    el.innerHTML = `<span title="Embed-режим: модуль вызван из «${util.escAttr(_navReturn.label)}». Сделайте подбор и нажмите «✓ Применить и вернуться» в правом верхнем углу.">🔗 Embed: вернуться в <b>${util.escHtml(_navReturn.label)}</b></span>`;
+    return;
+  }
+  if (_standalone) {
+    el.innerHTML = `<span title="Standalone-режим: данные хранятся в общем разделе LocalStorage без привязки к проекту. Используйте если открыли модуль из закладки/прямой ссылки без активного проекта.">🔓 Standalone</span>`;
+    return;
+  }
+  const projName = (_pid && _pid.name) || 'default';
+  el.innerHTML = `<span title="Project-режим: данные привязаны к активному проекту «${util.escAttr(projName)}». Все подборы будут сохранены в проекте.">💼 Проект: <b>${util.escHtml(projName)}</b></span>`;
+}
+
+function renderModuleActionsHere() {
+  const root = $('cl-content-actions');
+  if (!root) return;
+  renderModuleActions(root, {
+    navContext: { mode: _navMode, return: _navReturn },
+    crossLinks: [],   // в project-mode крос-ссылок не показываем (по требованию,
+                       // ссылка на Hub есть в общем app-header слева).
+    getPayload: () => {
+      // payload для возврата: id активного подбора + id основного варианта.
+      const sel = activeSelection();
+      const opt = activeOption();
+      return {
+        selectionId: sel?.id || null,
+        selectionName: sel?.name || null,
+        mainOptionId: sel?.mainOptionId || null,
+        activeOptionId: opt?.id || null,
+        // Можно расширить в будущем по запросу вызывающего модуля.
+      };
+    },
+  });
+}
+
 function renderActiveTab() {
+  const sel = activeSelection();
   const opt = activeOption();
-  if (!opt) return;
+  if (!sel || !opt) return;
   document.querySelectorAll('.cl-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === _activeTab));
   document.querySelectorAll('.cl-tab-pane').forEach(p => p.hidden = (p.dataset.pane !== _activeTab));
 
@@ -190,29 +329,25 @@ function renderActiveTab() {
         const sysTypeChanged = (opt.spec.systemType || 'chiller') !== (next.systemType || 'chiller');
         opt.spec = next;
         persist();
-        if (sysTypeChanged) renderActiveTab();   // re-render форму с новыми секциями
-        // Также обновляем sidebar list (там показан тип)
-        renderOptionsList();
+        if (sysTypeChanged) renderActiveTab();
+        renderSelectionsList();
       }, () => {
         opt.spec = { ...DEFAULT_CHILLER };
         persist();
         renderActiveTab();
-        renderOptionsList();
+        renderSelectionsList();
       }));
     }
   } else if (_activeTab === 'energy') {
     const rows = buildBinData(hourly, opt.spec);
-    // FC summary
     const fcEl = $('cl-fc-summary');
     if (fcEl) {
       fcEl.innerHTML = (opt.spec && Number(opt.spec.ratedCapKw) > 0)
         ? renderFreeCoolingSummary(rows, opt.spec, _tariffRubKwh, hourly, _currency)
         : '<div class="muted">Задайте Rated capacity > 0 во вкладке ❄ Spec для расчёта.</div>';
     }
-    // Chart
     const cvs = $('cl-energy-chart');
     if (cvs) drawChillerEnergyChart(cvs, rows);
-    // Table
     const tbl = $('cl-annual-table');
     if (tbl) tbl.innerHTML = renderAnnualTable(rows, _activeCols);
   } else if (_activeTab === 'capex') {
@@ -225,55 +360,106 @@ function renderActiveTab() {
         renderActiveTab();
       }, _currency));
     }
-    // v0.59.994: конвертация eco в _currency через курсы
     const convertFn = makeConvertFn();
     const rows = buildBinData(hourly, opt.spec);
     const fc = computeFcSummary(rows, opt.spec, _tariffRubKwh, hourly);
     const ecoConv = convertEcoToCurrency(opt.eco, _currency, convertFn);
     const tco = computeTco({ annualEnergyKwh: fc ? fc.energyKwh : 0, tariffRubKwh: _tariffRubKwh, eco: ecoConv });
-    // Payback относительно baseline (первой опции)
+    // Payback относительно ОСНОВНОГО варианта подбора (а не первого).
     let payback = null;
-    if (_options.length > 1 && _options[0].id !== opt.id) {
-      const baseline = _options[0];
-      const bRows = buildBinData(hourly, baseline.spec);
-      const bFc = computeFcSummary(bRows, baseline.spec, _tariffRubKwh, hourly);
-      const bEcoConv = convertEcoToCurrency(baseline.eco, _currency, convertFn);
+    const main = sel.options.find(o => o.id === sel.mainOptionId);
+    if (main && main.id !== opt.id) {
+      const bRows = buildBinData(hourly, main.spec);
+      const bFc = computeFcSummary(bRows, main.spec, _tariffRubKwh, hourly);
+      const bEcoConv = convertEcoToCurrency(main.eco, _currency, convertFn);
       const bTco = computeTco({ annualEnergyKwh: bFc ? bFc.energyKwh : 0, tariffRubKwh: _tariffRubKwh, eco: bEcoConv });
       payback = discountedPaybackYears(tco, bTco);
     }
     const kpi = $('cl-tco-kpi');
     if (kpi) kpi.innerHTML = renderTcoKpi(tco, payback, _currency);
-    // TCO chart по всем опциям
     const cvs = $('cl-tco-chart');
     if (cvs) {
-      const allMetrics = compareOptions(_options, hourly, _tariffRubKwh, _currency, convertFn);
+      // TCO chart по всем вариантам ТЕКУЩЕГО подбора (с основным первым).
+      const ordered = orderedOptionsForCompare(sel);
+      const allMetrics = compareOptions(ordered, hourly, _tariffRubKwh, _currency, convertFn);
       drawTcoChart(cvs, allMetrics);
     }
   } else if (_activeTab === 'compare') {
     const tbl = $('cl-compare-table');
     if (tbl) {
       const convertFn = makeConvertFn();
-      const metrics = compareOptions(_options, hourly, _tariffRubKwh, _currency, convertFn);
+      const ordered = orderedOptionsForCompare(sel);
+      const metrics = compareOptions(ordered, hourly, _tariffRubKwh, _currency, convertFn);
       tbl.innerHTML = renderComparisonTable(metrics, _currency);
     }
   }
 }
 
+/* Упорядочить варианты подбора так, чтобы основной шёл первым (он —
+   baseline для расчёта payback в comparison.js). */
+function orderedOptionsForCompare(sel) {
+  if (!sel || !sel.options.length) return [];
+  const main = sel.options.find(o => o.id === sel.mainOptionId);
+  if (!main) return sel.options;
+  return [main, ...sel.options.filter(o => o.id !== main.id)];
+}
+
 /* ----- Init ----- */
 function init() {
-  _pid = ensureDefaultProject();
-  _options = loadJson(KEY_OPTIONS, []) || [];
-  _activeId = loadJson(KEY_ACTIVE, null);
+  // v0.59.995: режим работы модуля (standalone / embed / project).
+  const nav = detectNavMode();
+  _navMode = nav.mode;
+  _navReturn = nav.return;
+  _standalone = (_navMode === 'standalone');
+  if (!_standalone) _pid = ensureDefaultProject();
+
   _activeCols = loadJson(KEY_COLS, _activeCols);
   const t = Number(loadJson(KEY_TARIFF, null));
   if (Number.isFinite(t) && t >= 0) _tariffRubKwh = t;
   const savedCur = loadJson(KEY_CURRENCY, null);
   if (typeof savedCur === 'string' && savedCur) _currency = savedCur;
-  if (_activeId && !_options.some(o => o.id === _activeId)) _activeId = _options[0]?.id || null;
-  // Гарантируем уникальность счётчика id
-  for (const o of _options) {
-    const m = /opt-(\d+)/.exec(o.id);
-    if (m) _seq = Math.max(_seq, +m[1] + 1);
+
+  // v0.59.995: загрузка подборов + миграция legacy bucket _options
+  _selections = loadJson(KEY_SELECTIONS, []) || [];
+  _activeSelectionId = loadJson(KEY_ACTIVE_SEL, null);
+
+  if (!_selections.length) {
+    // Миграция: если есть старые _options — обернуть в один подбор.
+    const legacyOpts = loadJson(LEGACY_KEY_OPTS, []) || [];
+    const legacyActive = loadJson(LEGACY_KEY_ACTIVE, null);
+    if (legacyOpts.length) {
+      const sel = makeNewSelection('Подбор по умолчанию');
+      sel.options = legacyOpts.map(o => ({
+        ...o,
+        eco: { ...DEFAULT_ECONOMICS, ...(o.eco || {}), currency: o.eco?.currency || _currency },
+      }));
+      sel.mainOptionId = legacyActive && sel.options.some(o => o.id === legacyActive)
+        ? legacyActive
+        : sel.options[0].id;
+      sel.activeOptionId = legacyActive || sel.mainOptionId;
+      _selections.push(sel);
+      _activeSelectionId = sel.id;
+      // Зафиксировать миграцию (legacy keys больше не пишем, но и не удаляем
+      // — пусть остаются на случай отката).
+      persist();
+      util.toast(`Мигрированы ${legacyOpts.length} опций в новый подбор «Подбор по умолчанию»`, 'info');
+    }
+  }
+
+  // Восстановить активность
+  if (_activeSelectionId && !_selections.some(s => s.id === _activeSelectionId)) {
+    _activeSelectionId = _selections[0]?.id || null;
+  }
+  if (!_activeSelectionId && _selections.length) _activeSelectionId = _selections[0].id;
+
+  // Гарантируем уникальность счётчиков id
+  for (const sel of _selections) {
+    const m1 = /sel-(\d+)/.exec(sel.id);
+    if (m1) _selSeq = Math.max(_selSeq, +m1[1] + 1);
+    for (const o of (sel.options || [])) {
+      const m = /opt-(\d+)/.exec(o.id);
+      if (m) _seq = Math.max(_seq, +m[1] + 1);
+    }
   }
 
   // Валюта select
@@ -287,16 +473,14 @@ function init() {
       const newCur = curSel.value || '₽';
       if (oldCur === newCur) return;
 
-      // Если есть введённые суммы — предложить конвертацию по курсу
-      const hasMoney = _options.some(o =>
-        (o.eco?.equipmentCost || 0) > 0 ||
-        (o.eco?.installationCost || 0) > 0 ||
-        (o.eco?.maintenanceRubPerYear || 0) > 0
-      ) || _tariffRubKwh > 0;
-
+      // v0.59.995: суммы хранятся в native eco.currency и конвертируются на
+      // дисплее автоматически через convertEcoToCurrency. _currency меняет
+      // только display-валюту проекта; eco не трогаем. Тариф ВСЕГДА в
+      // _currency (он не привязан к опции). Если есть тариф — предлагаем
+      // конвертировать ТОЛЬКО его.
       let factor = 1;
-      if (hasMoney) {
-        const ok = await clConfirm(`Конвертировать все CAPEX/OPEX/тариф из ${oldCur} в ${newCur} по текущему курсу? (Иначе — заменится только символ валюты, числа сохранятся.)`);
+      if (_tariffRubKwh > 0) {
+        const ok = await clConfirm(`Конвертировать тариф из ${oldCur} в ${newCur} по текущему курсу? (CAPEX опций уже хранятся в их родных валютах и пересчитываются автоматически.)`);
         if (ok) {
           try {
             const rates = await fetchRates(null, null, false);
@@ -305,19 +489,13 @@ function init() {
             const f = convertRate(1, fromIso, toIso, rates);
             if (Number.isFinite(f) && f > 0) {
               factor = f;
-              for (const o of _options) {
-                if (!o.eco) continue;
-                o.eco.equipmentCost         = Math.round((o.eco.equipmentCost         || 0) * factor);
-                o.eco.installationCost      = Math.round((o.eco.installationCost      || 0) * factor);
-                o.eco.maintenanceRubPerYear = Math.round((o.eco.maintenanceRubPerYear || 0) * factor);
-              }
               _tariffRubKwh = +(((_tariffRubKwh || 0) * factor).toFixed(3));
-              util.toast(`Конвертировано по курсу 1 ${oldCur} = ${factor.toFixed(4)} ${newCur} на ${rates.date}`, 'ok');
+              util.toast(`Тариф конвертирован: 1 ${oldCur} = ${factor.toFixed(4)} ${newCur} на ${rates.date}`, 'ok');
             } else {
-              util.toast(`Курс ${fromIso}→${toIso} не найден в источнике. Числа не конвертированы, заменён только символ.`, 'err');
+              util.toast(`Курс ${fromIso}→${toIso} не найден. Тариф остался прежним.`, 'err');
             }
           } catch (e) {
-            util.toast(`Не удалось загрузить курсы: ${e.message}. Числа не конвертированы.`, 'err');
+            util.toast(`Не удалось загрузить курсы: ${e.message}.`, 'err');
           }
         }
       }
@@ -359,55 +537,120 @@ function init() {
     });
   });
 
-  // Add option
-  const addBtn = $('cl-add-option');
-  if (addBtn) {
-    addBtn.addEventListener('click', async () => {
-      const base = activeOption();
-      const name = await clPrompt('Название новой опции', `Опция ${_options.length + 1}`);
+  // Add selection
+  const addSelBtn = $('cl-add-selection');
+  if (addSelBtn) {
+    addSelBtn.addEventListener('click', async () => {
+      const name = await clPrompt('Название нового подбора', `Подбор ${_selections.length + 1}`);
       if (name == null) return;
-      const newOpt = {
-        id: `opt-${_seq++}`,
-        name: (name.trim() || `Опция ${_options.length + 1}`),
-        spec: { ...(base ? base.spec : DEFAULT_CHILLER) },
-        eco:  { ...(base ? base.eco  : DEFAULT_ECONOMICS) },
-      };
-      _options.push(newOpt);
-      _activeId = newOpt.id;
+      const sel = makeNewSelection(name.trim());
+      _selections.push(sel);
+      _activeSelectionId = sel.id;
       persist();
       renderActive();
-      util.toast('Опция создана', 'ok');
+      util.toast(`Подбор «${sel.name}» создан. Добавьте варианты оборудования через «+ Вариант».`, 'ok');
     });
   }
 
-  // Sidebar list clicks
-  $('cl-options-list').addEventListener('click', async (e) => {
-    const actBtn = e.target.closest('button[data-act]');
-    if (actBtn) {
-      e.stopPropagation();
-      const id = actBtn.dataset.id;
-      const act = actBtn.dataset.act;
-      const opt = _options.find(o => o.id === id);
-      if (!opt) return;
-      if (act === 'rename') {
-        const newName = await clPrompt('Новое название', opt.name);
-        if (newName == null) return;
-        opt.name = newName.trim() || opt.name;
-        persist(); renderOptionsList(); renderActive();
-      } else if (act === 'delete') {
-        const ok = await clConfirm(`Удалить опцию «${opt.name}»?`);
+  // Add option (variant) into active selection
+  const addBtn = $('cl-add-option');
+  if (addBtn) {
+    addBtn.addEventListener('click', async () => {
+      let sel = activeSelection();
+      if (!sel) {
+        const ok = await clConfirm('Сначала нужно создать подбор. Создать «Подбор по умолчанию»?');
         if (!ok) return;
-        _options = _options.filter(o => o.id !== id);
-        if (_activeId === id) _activeId = _options[0]?.id || null;
+        sel = makeNewSelection('Подбор по умолчанию');
+        _selections.push(sel);
+        _activeSelectionId = sel.id;
+      }
+      const base = activeOption();
+      const name = await clPrompt('Название нового варианта', `Вариант ${sel.options.length + 1}`);
+      if (name == null) return;
+      const newOpt = makeNewOption(
+        (name.trim() || `Вариант ${sel.options.length + 1}`),
+        base ? base.spec : null,
+        base ? base.eco  : null,
+      );
+      sel.options.push(newOpt);
+      sel.activeOptionId = newOpt.id;
+      if (!sel.mainOptionId) sel.mainOptionId = newOpt.id;  // первый = main
+      persist();
+      renderActive();
+      util.toast(`Вариант «${newOpt.name}» создан${sel.mainOptionId === newOpt.id && sel.options.length === 1 ? ' (★ основной)' : ''}.`, 'ok');
+    });
+  }
+
+  // Sidebar list clicks: selection + option actions
+  $('cl-options-list').addEventListener('click', async (e) => {
+    // === Selection actions ===
+    const selBtn = e.target.closest('button[data-act-sel]');
+    if (selBtn) {
+      e.stopPropagation();
+      const id = selBtn.dataset.selId;
+      const act = selBtn.dataset.actSel;
+      const sel = _selections.find(s => s.id === id);
+      if (!sel) return;
+      if (act === 'rename') {
+        const newName = await clPrompt('Новое название подбора', sel.name);
+        if (newName == null) return;
+        sel.name = newName.trim() || sel.name;
         persist(); renderActive();
+      } else if (act === 'delete') {
+        const ok = await clConfirm(`Удалить подбор «${sel.name}» со всеми ${sel.options.length} вариантами?`);
+        if (!ok) return;
+        _selections = _selections.filter(s => s.id !== id);
+        if (_activeSelectionId === id) _activeSelectionId = _selections[0]?.id || null;
+        persist(); renderActive();
+        util.toast(`Подбор удалён`, 'info');
       }
       return;
     }
-    const row = e.target.closest('.cl-option-row');
-    if (row) {
-      _activeId = row.dataset.id;
-      persist();
-      renderActive();
+    const selRow = e.target.closest('.cl-sel-row');
+    if (selRow && !e.target.closest('button')) {
+      _activeSelectionId = selRow.dataset.selId;
+      persist(); renderActive();
+      return;
+    }
+
+    // === Option actions ===
+    const optBtn = e.target.closest('button[data-act-opt]');
+    if (optBtn) {
+      e.stopPropagation();
+      const id = optBtn.dataset.optId;
+      const act = optBtn.dataset.actOpt;
+      const sel = activeSelection();
+      if (!sel) return;
+      const opt = sel.options.find(o => o.id === id);
+      if (!opt) return;
+      if (act === 'rename') {
+        const newName = await clPrompt('Новое название варианта', opt.name);
+        if (newName == null) return;
+        opt.name = newName.trim() || opt.name;
+        persist(); renderActive();
+      } else if (act === 'setmain') {
+        sel.mainOptionId = id;
+        persist(); renderActive();
+        util.toast(`«${opt.name}» теперь основной вариант подбора`, 'ok');
+      } else if (act === 'delete') {
+        if (sel.mainOptionId === id) {
+          util.toast('Нельзя удалить основной вариант. Сначала сделайте основным другой вариант через ★.', 'err');
+          return;
+        }
+        sel.options = sel.options.filter(o => o.id !== id);
+        if (sel.activeOptionId === id) sel.activeOptionId = sel.options[0]?.id || null;
+        persist(); renderActive();
+        util.toast(`Вариант «${opt.name}» удалён`, 'info');
+      }
+      return;
+    }
+    const optRow = e.target.closest('.cl-option-row');
+    if (optRow && !e.target.closest('button')) {
+      const sel = activeSelection();
+      if (sel) {
+        sel.activeOptionId = optRow.dataset.optId;
+        persist(); renderActive();
+      }
     }
   });
 
@@ -453,7 +696,7 @@ function init() {
   // активный convertFn — capex-tab/compare-tab сразу пересчитают на следующем
   // рендере. Если сеть/CORS отказывает — пользователь видит native-числа.
   ensureRatesLoaded().then(() => {
-    if (_ratesCache && _options.length) renderActiveTab();
+    if (_ratesCache && _selections.length) renderActiveTab();
   });
 }
 
