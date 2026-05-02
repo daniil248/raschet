@@ -449,7 +449,7 @@ export function plotProcess(ctx, points, color = '#0d47a1') {
            stroke-width="2" marker-end="url(#arrow)"/>`;
 }
 
-export function arrowDefs() {
+export function arrowDefs(opts) {
   const colors = {
     arrow:       '#0d47a1',
     'arrow-P':   '#e65100',
@@ -465,5 +465,18 @@ export function arrowDefs() {
             markerWidth="6" markerHeight="6" orient="auto">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="${col}"/>
     </marker>`).join('');
-  return `<defs>${markers}</defs>`;
+  // v0.59.1000: clipPath для plot-области. Используется чтобы линии
+  // процессов не выходили за рамку диаграммы (по требованию Пользователя
+  // 2026-05-02). Размеры берём из opts если переданы, иначе глобальный
+  // viewport (фолбэк для обратной совместимости — но для production
+  // ВСЕГДА передаём opts).
+  let clip = '';
+  if (opts && Number.isFinite(opts.marginL)) {
+    const x = opts.marginL;
+    const y = opts.marginT;
+    const w = opts.width - opts.marginL - opts.marginR;
+    const h = opts.height - opts.marginT - opts.marginB;
+    clip = `<clipPath id="psy-plot-clip"><rect x="${x}" y="${y}" width="${w}" height="${h}"/></clipPath>`;
+  }
+  return `<defs>${markers}${clip}</defs>`;
 }

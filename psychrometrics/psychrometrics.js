@@ -2127,7 +2127,13 @@ function renderChart(sts) {
   });
   const ctx = { X, Y, pos, inv, style, opts };
   _chartCtx = { X, Y, pos, inv, opts, style };
-  let overlay = arrowDefs();
+  let overlay = arrowDefs(opts);
+  // v0.59.1000: накапливаем линии процессов в отдельный буфер, чтобы потом
+  // обернуть их в <g clip-path="url(#psy-plot-clip)"> — линии процессов не
+  // должны выходить за пределы диаграммы. По требованию Пользователя.
+  // Badges (кружки + подписи) и точки рисуются ВНЕ clip-группы, чтобы
+  // оставаться видимыми у самой границы.
+  let procLines = '';
 
   const zoneId = S.comfortZoneId || (S.showComfortZone !== false ? 'tc99-rec' : '');
   if (zoneId === 'tc99-all') {
@@ -2209,14 +2215,14 @@ function renderChart(sts) {
       dx = sign * PAIR_OFFSET_PX * nx;
       dy = sign * PAIR_OFFSET_PX * ny;
     }
-    overlay += drawProcessPath(ctx, a, b, pr.type, color, pr, { dx, dy });
+    procLines += drawProcessPath(ctx, a, b, pr.type, color, pr, { dx, dy });
     if (pr.type === 'M' || pr.type === 'R') {
       const refKey = pr.type === 'M' ? pr.mixWith : pr.recupWith;
       const refIdx = parseInt(refKey, 10);
       if (Number.isFinite(refIdx) && sts[refIdx]) {
         const r = sts[refIdx];
         const [rx, ry] = pos(r.W, r.T);
-        overlay += `<line x1="${rx}" y1="${ry}" x2="${bx}" y2="${by}"
+        procLines += `<line x1="${rx}" y1="${ry}" x2="${bx}" y2="${by}"
                      stroke="${color}" stroke-width="1" stroke-dasharray="4,3" opacity="0.6"/>`;
       }
     }
@@ -2232,14 +2238,71 @@ function renderChart(sts) {
     const procName = pr.name || PROC_SHORT_NAME[pr.type] || '';
     badges.push({ x: mx, y: my, type: pr.type, color, name: procName });
   }
-  badges.forEach(b => {
+  // v0.59.1000: оборачиваем линии процессов в clip-group → линии не выходят
+  // за рамку диаграммы. Badges, подписи, точки рисуются после — они снаружи
+  // клипа и могут быть на самой границе.
+  overlay += `<g clip-path="url(#psy-plot-clip)">${procLines}</g>`;
+
+  // v0.59.1000: greedy анти-наложение для подписей badges. По требованию:
+  // «запрет на накладывание надписей, сдвигай всё что можно».
+  // Алгоритм: сначала регистрируем все «занятые» рамки (номера точек,
+  // сами badge-кружки), потом размещаем подписи badge'ов с проверкой
+  // bbox-конфликта и сдвигом по Y до свободного слота.
+  const PLACED_RECTS = [];
+
+  // (a) Зарезервировать area вокруг каждого номера точки и кружка badge.
+  sts.forEach((st) => {
+    if (!st) return;
+    const [px, py] = pos(st.W, st.T);
+    // Номер точки рисуется в (px+7, py-5), font-size 12 → ~16px квадратик
+    PLACED_RECTS.push({ x1: px + 4, y1: py - 18, x2: px + 22, y2: py - 2 });
+    // Сама точка — кружок r=4
+    PLACED_RECTS.push({ x1: px - 5, y1: py - 5, x2: px + 5, y2: py + 5 });
+  });
+  // (b) Зарезервировать area под каждым badge-кружком (r=8 + текст типа)
+  for (const b of badges) {
+    PLACED_RECTS.push({ x1: b.x - 9, y1: b.y - 9, x2: b.x + 9, y2: b.y + 9 });
+  }
+  function approxLabelW(text) { return Math.max(40, (text || '').length * 5.2); }
+  function tryPlaceLabel(cx, cy, w, h) {
+    // Возвращает {x, y} с минимальным сдвигом по Y от cy, не пересекая PLACED_RECTS.
+    // Пробуем cy, потом cy+12, cy-12, cy+24, cy-24, ... до 8 сдвигов.
+    for (let step = 0; step <= 8; step++) {
+      for (const sign of (step === 0 ? [1] : [1, -1])) {
+        const yTry = cy + sign * step * 12;
+        const r = { x1: cx - w/2, y1: yTry - h, x2: cx + w/2, y2: yTry };
+        const overlap = PLACED_RECTS.some(pr =>
+          !(r.x2 < pr.x1 || r.x1 > pr.x2 || r.y2 < pr.y1 || r.y1 > pr.y2)
+        );
+        if (!overlap) {
+          PLACED_RECTS.push(r);
+          return { x: cx, y: yTry };
+        }
+      }
+    }
+    // Не нашли — возвращаем оригинал (зарегистрируем чтобы следующие тоже знали).
+    const r = { x1: cx - w/2, y1: cy - h, x2: cx + w/2, y2: cy };
+    PLACED_RECTS.push(r);
+    return { x: cx, y: cy };
+  }
+
+  // Сортируем badges слева-направо для устойчивого порядка размещения.
+  const sortedBadges = [...badges].sort((a, b) => a.x - b.x);
+  for (const b of sortedBadges) {
     overlay += `<g transform="translate(${b.x},${b.y})">
       <circle r="8" fill="#fff" stroke="${b.color}" stroke-width="1.5"/>
       <text y="3.5" text-anchor="middle" font-size="10" font-weight="700" fill="${b.color}">${b.type}</text>
-      ${b.name ? `<text y="22" text-anchor="middle" font-size="9" fill="${b.color}" font-weight="600"
-        paint-order="stroke" stroke="#fff" stroke-width="2.5">${escAttr(b.name)}</text>` : ''}
     </g>`;
-  });
+    if (b.name) {
+      const w = approxLabelW(b.name);
+      const h = 12;
+      const cy = b.y + 22;       // желаемая позиция (под кружком)
+      const placed = tryPlaceLabel(b.x, cy, w, h);
+      overlay += `<text x="${placed.x}" y="${placed.y}" text-anchor="middle"
+        font-size="9" fill="${b.color}" font-weight="600"
+        paint-order="stroke" stroke="#fff" stroke-width="2.5">${escAttr(b.name)}</text>`;
+    }
+  }
   // Кольцо-подсветка активной точки (если карточка в фокусе)
   if (Number.isFinite(_activePoint) && sts[_activePoint]) {
     const st = sts[_activePoint];
