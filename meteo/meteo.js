@@ -54,7 +54,34 @@ function loadJson(suffix, fallback) {
 }
 function saveJson(suffix, value) {
   if (!_pid) return;
-  try { localStorage.setItem(projectKey(_pid, ...suffix), JSON.stringify(value)); } catch {}
+  try {
+    localStorage.setItem(projectKey(_pid, ...suffix), JSON.stringify(value));
+  } catch (e) {
+    // v0.60.51: явная обработка QuotaExceededError. По репорту: «10 раз
+    // загружал meteo Темиртау и ни разу не сохранилось». Корневая причина —
+    // ASHRAE 10 лет (87696 точек) ≈ 6-7 MB → превышает LS quota (~5-10MB).
+    const isQuota = e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message || ''));
+    if (isQuota) {
+      // Подсчёт занятого места + список крупнейших ключей для подсказки
+      let totalKB = 0; const big = [];
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          const v = localStorage.getItem(k);
+          const sz = (k.length + (v?.length || 0)) * 2 / 1024;
+          totalKB += sz;
+          if (sz > 50) big.push({ k, kb: Math.round(sz) });
+        }
+      } catch {}
+      big.sort((a, b) => b.kb - a.kb);
+      const topList = big.slice(0, 5).map(x => `• ${x.k} — ${x.kb} КБ`).join('\n');
+      const msg = `⚠ Превышена квота LocalStorage (~${Math.round(totalKB)} КБ занято). Большой meteo-датасет (${suffix.join('.')}) НЕ сохранён. Топ-5 крупных ключей:\n${topList}\n\nРешение: откройте DevTools → Application → Local Storage и удалите stale-данные (например legacy [object Object] namespace), либо используйте более короткий период meteo.`;
+      console.error('[meteo v0.60.51] LS quota exceeded:', msg);
+      try { util.toast('⚠ Не удалось сохранить — превышена квота LocalStorage. См. console.', 'err'); } catch {}
+    } else {
+      console.error('[meteo] saveJson error:', e);
+    }
+  }
 }
 
 function persist() {
@@ -466,7 +493,21 @@ function init() {
       const v = localStorage.getItem(lk);
       if (v != null) { localStorage.setItem(tk, v); migrated++; }
     }
-    if (migrated) console.info(`[meteo v0.60.37] Мигрировано ${migrated} legacy-ключей из [object Object] → ${_pid}`);
+    if (migrated) {
+      console.info(`[meteo v0.60.37] Мигрировано ${migrated} legacy-ключей из [object Object] → ${_pid}`);
+      // v0.60.51: освобождаем legacy namespace [object Object] чтобы не
+      // занимало место в LS (часто 1-2 МБ meteo-датасетов). По репорту
+      // пользователя про quota-exceeded.
+      try {
+        let freed = 0;
+        for (const lk of keys) {
+          const sz = (localStorage.getItem(lk) || '').length;
+          localStorage.removeItem(lk);
+          freed += sz;
+        }
+        console.info(`[meteo v0.60.51] Очищено legacy [object Object] namespace: ~${Math.round(freed / 1024)} КБ освобождено`);
+      } catch {}
+    }
   } catch {}
   _datasets = loadJson(KEY_DATA, []) || [];
   _activeId = loadJson(KEY_ACTIVE, null);

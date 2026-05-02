@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.51', date: '2026-05-03', items: [
+      '🚨 <b>HOTFIX: meteo не сохранял датасеты из-за silent QuotaExceededError</b>. По репорту: «10 раз загружал meteo Темиртау и ни разу не сохранилось». Диагностика через Chrome MCP: LocalStorage 5.68 МБ занят, quota ~7 МБ. ASHRAE Темиртау (10 лет, 87696 точек ≈ 6-7 МБ) превышает квоту → <code>localStorage.setItem</code> бросает QuotaExceededError → старый <code>try { ... } catch {}</code> в saveJson проглатывал silent. Пользователь видел успешный импорт в UI, но после refresh данные исчезали.',
+      '• <code>meteo/meteo.js::saveJson</code> теперь явно обрабатывает QuotaExceededError: <code>console.error</code> с подсчётом занятого места + топ-5 крупных ключей + toast «⚠ Не удалось сохранить — превышена квота LocalStorage».',
+      '• <b>Auto-cleanup legacy [object Object] namespace</b>: после успешной миграции в правильный pid, legacy ключи удаляются → освобождается 1-2 МБ для новых meteo-датасетов.',
+      '🔬 <b>Phase 32.3 UI: auto-suggest материалов</b> в форме наряда после выбора работы из шаблонов. Если у seed-template задан workType + equipmentKind, открывается модалка «Рекомендуемые материалы» с qty calc через consumptionRate.perKw × capacityKw. Чекбоксы для выбора, qty редактируется. Клиент-цена = себес × 1.4.',
+      'Файлы: <code>meteo/meteo.js</code>, <code>service/ui/order-form.js</code>.',
+    ] },
     { version: '0.60.50', date: '2026-05-03', items: [
       '🚨 <b>HOTFIX: meteo-bridge игнорировал ?pid → cooling видел чужой датасет</b>. По репорту: «не возвращает данные» (cooling в Qarmet проекте показывал Берлин вместо ASHRAE Темиртау).',
       '• Корневая причина: <code>cooling/meteo-bridge.js::getActiveMeteoDataset()</code> использовал <code>ensureDefaultProject()</code> — это всегда первый проект в списке (TBC Bank), независимо от ?pid в URL. Когда cooling работал в Qarmet, бридж читал meteo из дефолтного проекта.',

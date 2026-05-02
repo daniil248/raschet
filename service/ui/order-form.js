@@ -167,11 +167,26 @@ export function renderOrderForm(order, onChange, displayCurrency = '₽', conver
       return;
     }
     if (ev.target.closest('#sv-add-template')) {
-      const tpl = await pickTemplateModal(o.type, displayCurrency);
-      if (tpl) {
-        const next = { ...o, positions: [...o.positions, tpl] };
-        onChange(next);
+      const result = await pickTemplateModal(o.type, displayCurrency);
+      if (!result) return;
+      const newPositions = [result.position];
+      // v0.60.51 (Phase 32.3): auto-suggest материалов если у работы задан
+      // workType + equipmentKind. Считаем рекомендуемое qty через
+      // consumptionRate.perKw × capacityKw (если есть).
+      if (result.workType && result.equipmentKind) {
+        const matBridge = await import('../catalog/materials.js');
+        const suggestions = matBridge.suggestMaterialsForWork(result.workType, result.equipmentKind);
+        if (suggestions.length) {
+          const picked = await suggestMaterialsModal(suggestions, result.capacityKw);
+          if (picked && picked.length) {
+            newPositions.push(...picked);
+            toast(`✓ Добавлено: 1 работа + ${picked.length} материалов`, 'ok');
+          } else {
+            toast(`✓ Работа добавлена (без рекомендуемых материалов)`, 'ok');
+          }
+        }
       }
+      onChange({ ...o, positions: [...o.positions, ...newPositions] });
       return;
     }
     if (ev.target.closest('#sv-add-material')) {
@@ -477,13 +492,100 @@ async function pickTemplateModal(type, displayCurrency) {
   );
   if (!result) return null;
   const t = tpls[result.idx];
+  // v0.60.51: дефолтная валюта по категории (material → $, прочие → ₸).
+  // Возвращаем position + transient meta для auto-suggest материалов.
+  const cur = t.category === 'material' ? '$' : '₸';
   return {
-    id: 'pos-' + Math.random().toString(36).slice(2, 8),
-    label: t.label,
-    category: t.category,
-    qty: 1,
-    unit: t.unit,
-    costPrice:   { value: t.costPrice,   currency: '₽' },
-    clientPrice: { value: t.clientPrice, currency: '₽' },
+    position: {
+      id: 'pos-' + Math.random().toString(36).slice(2, 8),
+      label: t.label,
+      category: t.category,
+      qty: 1,
+      unit: t.unit,
+      costPrice:   { value: t.costPrice,   currency: cur },
+      clientPrice: { value: t.clientPrice, currency: cur },
+    },
+    workType:      t.workType || null,
+    equipmentKind: t.equipmentKind || null,
+    capacityKw:    Number(t.capacityKw) || null,
   };
+}
+
+/**
+ * v0.60.51 (Phase 32.3): модалка-предложение добавить рекомендуемые материалы
+ * после выбора работы. Если у материала есть consumptionRate.perKw —
+ * предлагаемое qty = capacityKw × perKw (округляем вверх). Иначе qty = 1.
+ *
+ * @param {Array<object>} suggestions — материалы, найденные suggestMaterialsForWork
+ * @param {number|null} capacityKw — для расчёта qty по consumptionRate
+ * @returns {Promise<Array<object>|null>} массив positions или null если cancel
+ */
+async function suggestMaterialsModal(suggestions, capacityKw) {
+  const calcQty = (m) => {
+    if (m.consumptionRate?.perKw && Number.isFinite(capacityKw)) {
+      const v = m.consumptionRate.perKw * capacityKw;
+      return Math.max(1, Math.ceil(v * 10) / 10);  // округление до 0.1
+    }
+    return 1;
+  };
+  const rows = suggestions.map((m, i) => {
+    const qty = calcQty(m);
+    const totalPrice = (m.defaultPrice?.value || 0) * qty;
+    const totalStr = `${totalPrice.toLocaleString('ru-RU')} ${m.defaultPrice?.currency || ''}`;
+    const userMark = m.isUser ? '✏' : '📦';
+    const consumptionStr = m.consumptionRate?.perKw && capacityKw
+      ? `<span class="muted" style="font-size:10.5px"> · ${m.consumptionRate.perKw} ${m.consumptionRate.unit} × ${capacityKw} кВт</span>`
+      : '';
+    return `<tr data-idx="${i}">
+      <td><input type="checkbox" data-pick checked></td>
+      <td>${userMark} <b>${escHtml(m.name)}</b>${m.sku ? ` <span class="muted" style="font-size:10.5px">${escHtml(m.sku)}</span>` : ''}${consumptionStr}</td>
+      <td class="num"><input type="number" min="0" step="0.5" data-qty value="${qty}" style="width:60px;padding:3px 5px;border:1px solid #cbd5e1;border-radius:3px;text-align:right"></td>
+      <td>${escHtml(m.unit)}</td>
+      <td class="num">${(m.defaultPrice?.value || 0).toLocaleString('ru-RU')} ${escHtml(m.defaultPrice?.currency || '')}</td>
+      <td class="num"><b>${escHtml(totalStr)}</b></td>
+    </tr>`;
+  }).join('');
+
+  const result = await modalOpen(
+    `<h3>📦 Рекомендуемые материалы для этой работы</h3>`,
+    `<p class="muted" style="font-size:11.5px;margin:0 0 8px">
+       Найдено ${suggestions.length} материалов, привязанных к этому виду работ${capacityKw ? ` (мощность ${capacityKw} кВт — qty рассчитан по consumption rate)` : ''}. Снимите галочку чтобы пропустить, или измените qty.
+     </p>
+     <div style="max-height:50vh;overflow:auto;border:1px solid #e2e8f0;border-radius:3px">
+       <table style="width:100%;border-collapse:collapse;font-size:12px">
+         <thead><tr style="background:#f1f5f9;font-size:10.5px;color:#475569;text-transform:uppercase;letter-spacing:0.3px">
+           <th style="padding:6px 8px;width:32px"></th>
+           <th style="padding:6px 8px;text-align:left">Материал</th>
+           <th style="padding:6px 8px;text-align:right;width:80px">Qty</th>
+           <th style="padding:6px 8px;text-align:left;width:60px">Ед.</th>
+           <th style="padding:6px 8px;text-align:right;width:90px">Цена/ед</th>
+           <th style="padding:6px 8px;text-align:right;width:100px">Сумма</th>
+         </tr></thead>
+         <tbody>${rows}</tbody>
+       </table>
+     </div>
+     <p class="muted" style="font-size:11px;margin-top:6px">💡 Клиент-цена = себес × 1.4 (40% маржа). Можно отредактировать после добавления.</p>`,
+    async (overlay) => {
+      const trs = overlay.querySelectorAll('tr[data-idx]');
+      const picked = [];
+      trs.forEach(tr => {
+        const chk = tr.querySelector('[data-pick]');
+        if (!chk?.checked) return;
+        const idx = Number(tr.dataset.idx);
+        const m = suggestions[idx];
+        const qty = Number(tr.querySelector('[data-qty]')?.value) || 1;
+        picked.push({
+          ...defaultPosition('₸', 'material'),
+          label: m.name + (m.sku ? ` (${m.sku})` : ''),
+          category: 'material',
+          qty,
+          unit: m.unit,
+          costPrice:   { value: m.defaultPrice?.value || 0, currency: m.defaultPrice?.currency || '₸' },
+          clientPrice: { value: Math.round((m.defaultPrice?.value || 0) * 1.4), currency: m.defaultPrice?.currency || '₸' },
+        });
+      });
+      return { ok: true, payload: picked };
+    }
+  );
+  return result?.payload || null;
 }
