@@ -17,8 +17,13 @@ import { ensureDefaultProject, projectKey, listProjects, getProject, setActivePr
 import { fetchRates, convert as convertRate, currencyToIso } from '../shared/currency-rates/index.js';
 import * as util from '../meteo/util.js';
 import { CURRENCIES } from '../cooling/calc/fc-summary.js';
-import { DEFAULT_ORDER, ORDER_TYPES } from './calc/order-model.js';
+import { DEFAULT_ORDER, ORDER_TYPES, defaultPosition } from './calc/order-model.js';
 import { renderOrderForm } from './ui/order-form.js';
+import {
+  buildInstallPositionsFromCoolingOption,
+  buildMaintenancePositionsFromCoolingOption,
+  loadCoolingSelectionsForContext,
+} from './calc/order-builder.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -164,6 +169,98 @@ function _renderContextPickerInner(el) {
   });
 }
 
+/* v0.60.29: rich empty-state — большие CTA + список cooling-подборов
+   текущего контекста для one-click создания нарядов. */
+function renderRichEmptyState(host) {
+  if (!host) return;
+  const params = new URLSearchParams(location.search);
+  const pid = params.get('standalone') === '1' ? null : (params.get('pid') || _pid?.id || null);
+  const selections = loadCoolingSelectionsForContext(pid);
+  const cardsHtml = selections.flatMap(sel => {
+    return (sel.options || []).map(opt => {
+      const eqCount = (opt.equipment || []).length;
+      const totalQty = (opt.equipment || []).reduce((s, eq) => s + (Number(eq.qty) || 0), 0);
+      return `<div class="sv-cool-card" data-sel-id="${util.escAttr(sel.id)}" data-opt-id="${util.escAttr(opt.id)}" title="Создать наряд монтажа на основе этой cooling-опции (${eqCount} групп оборудования, Σ qty=${totalQty}). Можно потом переключить тип на ТО или Разовая.">
+        <div class="sv-cool-card-title">${util.escHtml(sel.name)} → ${util.escHtml(opt.name)}</div>
+        <div class="sv-cool-card-meta">${eqCount} групп · Σ qty = ${totalQty} шт</div>
+        <div class="sv-cool-card-actions">
+          <button type="button" class="sv-btn-ghost" data-quick-type="install" data-sel-id="${util.escAttr(sel.id)}" data-opt-id="${util.escAttr(opt.id)}" title="Создать наряд МОНТАЖА с авто-заполнением позиций">+ Монтаж</button>
+          <button type="button" class="sv-btn-ghost" data-quick-type="maintenance" data-sel-id="${util.escAttr(sel.id)}" data-opt-id="${util.escAttr(opt.id)}" title="Создать наряд ТО (квартальное) с авто-заполнением позиций">+ ТО</button>
+        </div>
+      </div>`;
+    });
+  }).join('');
+
+  host.innerHTML = `
+    <div class="sv-empty-rich">
+      <h3>🛠 Сервис: монтаж и ТО</h3>
+      <p class="muted" style="font-size:13px;max-width:520px;margin:0 auto 12px">
+        Расчёт стоимости работ для инженера сервиса: себестоимость + клиент-цена с маржой и НДС. По проекту или разовые работы.
+      </p>
+      <div style="display:flex;gap:10px;justify-content:center;margin-bottom:16px;flex-wrap:wrap">
+        <button type="button" class="sv-btn-primary sv-cta-big" id="sv-empty-add">+ Создать пустой наряд</button>
+      </div>
+      ${selections.length ? `
+        <div style="margin-top:18px;text-align:left">
+          <h4 style="text-align:center;margin:0 0 8px;color:#475569;font-size:13px;text-transform:uppercase;letter-spacing:0.4px" title="Найдены cooling-подборы в текущем контексте. Один клик создаст наряд с авто-заполнением позиций (qty из топологии, цены — дефолтные по типу/мощности). Редактируйте после создания.">
+            ❄ Создать из cooling-подбора (найдено опций: ${selections.reduce((s, x) => s + (x.options?.length || 0), 0)})
+          </h4>
+          <div class="sv-cool-cards">
+            ${cardsHtml}
+          </div>
+        </div>
+      ` : `
+        <p class="muted" style="font-size:11.5px;margin-top:14px">
+          ℹ Нет cooling-подборов в текущем контексте. Создайте подбор в модуле «❄ Подбор холодильных систем» — после этого здесь появятся карточки для one-click создания монтажных нарядов.
+        </p>
+      `}
+    </div>
+  `;
+  // Wire CTA buttons
+  const addBtn = host.querySelector('#sv-empty-add');
+  if (addBtn) addBtn.addEventListener('click', () => $('sv-add-order')?.click());
+  host.querySelectorAll('[data-quick-type]').forEach(btn => {
+    btn.addEventListener('click', () => quickCreateFromCooling(
+      btn.dataset.selId, btn.dataset.optId, btn.dataset.quickType
+    ));
+  });
+}
+
+/* v0.60.29: одно-клик создание наряда из cooling-подбора. */
+function quickCreateFromCooling(selId, optId, type) {
+  const params = new URLSearchParams(location.search);
+  const pid = params.get('standalone') === '1' ? null : (params.get('pid') || _pid?.id || null);
+  const selections = loadCoolingSelectionsForContext(pid);
+  const sel = selections.find(s => s.id === selId);
+  const opt = sel?.options?.find(o => o.id === optId);
+  if (!sel || !opt) {
+    util.toast('Подбор/опция не найдены', 'err');
+    return;
+  }
+  const builder = (type === 'maintenance')
+    ? buildMaintenancePositionsFromCoolingOption
+    : buildInstallPositionsFromCoolingOption;
+  const positions = builder(opt, _currency);
+  if (!positions.length) {
+    util.toast('У опции нет equipment-групп. Сначала задайте оборудование во вкладке Топология.', 'err');
+    return;
+  }
+  const typeLabel = type === 'maintenance' ? 'ТО' : 'Монтаж';
+  const newOrd = {
+    ...DEFAULT_ORDER,
+    id: 'ord-' + (_seq++),
+    name: `${typeLabel}: ${sel.name} → ${opt.name}`,
+    type,
+    coolingSelectionId: sel.id,
+    positions,
+  };
+  _orders.push(newOrd);
+  _activeOrderId = newOrd.id;
+  persist();
+  renderActive();
+  util.toast(`Наряд «${newOrd.name}» создан с ${positions.length} позициями`, 'ok');
+}
+
 function projectHasServiceData(pid) {
   if (!pid) return false;
   const prefix = `raschet.project.${pid}.service.`;
@@ -206,6 +303,8 @@ function renderActive() {
   const pane = $('sv-active-pane');
   const order = activeOrder();
   if (!order) {
+    // v0.60.29: rich empty state с CTA + auto-suggest из cooling-подборов
+    try { renderRichEmptyState(empty); } catch (e) { console.error('[service] empty state error:', e); }
     if (empty) empty.style.display = 'flex';
     if (pane) pane.hidden = true;
     return;

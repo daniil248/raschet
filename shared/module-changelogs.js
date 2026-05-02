@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.29', date: '2026-05-02', items: [
+      '🚀 <b>Rich empty state в Service-модуле</b>. Новый сервис-модуль теперь стартует с информативным экраном вместо лаконичного «нет активного наряда».',
+      '• Большой заголовок и описание модуля.',
+      '• CTA «+ Создать пустой наряд».',
+      '• Авто-обнаружение cooling-подборов в текущем контексте: для каждой cooling-опции карточка с метаданными (qty групп, Σ qty) + кнопки «+ Монтаж» / «+ ТО» — один клик создаёт наряд с авто-заполнением позиций (qty из топологии, цены — дефолтные).',
+      '• Если cooling-подборов нет — подсказка «создайте подбор в модуле ❄ Подбор холодильных систем».',
+      '• Quick-create flow: <code>quickCreateFromCooling(selId, optId, type)</code> читает selection/option из LS, генерирует positions через <code>order-builder</code>, добавляет наряд, делает активным.',
+      'Файлы: <code>service/service.js</code>, <code>service/service.css</code>.',
+    ] },
     { version: '0.60.28', date: '2026-05-02', items: [
       '🎨 <b>Phase 28.1: Единый shell конфигураторов</b> (foundation). По требованию: «может сделать для всех конфигураторов один вид?».',
       '• Новый <code>shared/configurator-shell.css</code> с CSS variables (--rs-cfg-sidebar-w, --rs-cfg-accent, --rs-cfg-border) и базовыми классами: <code>.rs-cfg-shell</code> (grid sidebar+content), <code>.rs-cfg-sidebar</code>, <code>.rs-cfg-content</code>, <code>.rs-cfg-context</code>, <code>.rs-cfg-section</code>, <code>.rs-cfg-list / .rs-cfg-list-row</code>, <code>.rs-cfg-tabs / .rs-cfg-tab</code>, <code>.rs-cfg-card</code>, <code>.rs-cfg-focus</code>, <code>.rs-cfg-empty</code>.',
