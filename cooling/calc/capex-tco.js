@@ -163,10 +163,69 @@ function normCostItemRow(it, defaultCur) {
     id: it.id || rid(),
     label: String(it.label || ''),
     qty: Number(it.qty) > 0 ? Number(it.qty) : 1,
+    linkedGroupId: it.linkedGroupId || null,    // v0.60.23: привязка к equipment-группе
     equipmentPrice:          normPriceCell(it.equipmentPrice, cur),
     installPrice:            normPriceCell(it.installPrice, cur),
     maintenancePerYearPrice: normPriceCell(it.maintenancePerYearPrice, cur),
   };
+}
+
+/**
+ * v0.60.23: Синхронизировать costItems с option.equipment — для каждой
+ * группы оборудования создаём/обновляем «автостроку» (с linkedGroupId).
+ * qty берётся из топологии (Σ qty по группе = N+M). Пользовательские строки
+ * (без linkedGroupId) и их порядок сохраняются.
+ *
+ * По требованию Пользователя 2026-05-02: «думал количество основных железок
+ * будет жёстко связано с количеством в опции, остальные позиции
+ * пользовательские».
+ *
+ * @param {object} eco
+ * @param {Array<object>} equipment — option.equipment[]
+ * @param {string} defaultCur
+ * @returns {Array<object>} обновлённый costItems[]
+ */
+export function syncCostItemsFromEquipment(eco, equipment, defaultCur = '₽') {
+  const items = normCostItems(eco, defaultCur).map(it => ({ ...it }));
+  const groups = Array.isArray(equipment) ? equipment.filter(eq => eq && eq.spec) : [];
+
+  const autoByGroup = new Map();
+  for (const it of items) {
+    if (it.linkedGroupId) autoByGroup.set(it.linkedGroupId, it);
+  }
+
+  const updatedAuto = [];
+  for (const grp of groups) {
+    const qty = Number(grp.qty) || 1;
+    const existing = autoByGroup.get(grp.id);
+    if (existing) {
+      existing.qty = qty;
+      // Не перетираем label если пользователь его уже изменил — но синкаем имя из spec
+      // только если label пуст или это default.
+      const def = grp.spec.name || `Группа ${grp.id}`;
+      if (!existing.label || existing.label === '' || existing.label.startsWith('Группа ')) {
+        existing.label = def;
+      }
+      updatedAuto.push(existing);
+    } else {
+      updatedAuto.push(normCostItemRow({
+        id: rid(),
+        linkedGroupId: grp.id,
+        label: grp.spec.name || `Группа ${grp.id}`,
+        qty,
+        equipmentPrice:          { value: 0, currency: defaultCur },
+        installPrice:            { value: 0, currency: defaultCur },
+        maintenancePerYearPrice: { value: 0, currency: defaultCur },
+      }, defaultCur));
+    }
+  }
+
+  // Пользовательские строки (без linkedGroupId) или строки, чья группа была удалена.
+  const userRows = items.filter(it => !it.linkedGroupId || !groups.some(g => g.id === it.linkedGroupId));
+  // Если у row был linkedGroupId, но группа удалилась — очищаем флаг (станет user-row).
+  for (const r of userRows) if (r.linkedGroupId) r.linkedGroupId = null;
+
+  return [...updatedAuto, ...userRows];
 }
 
 function normPriceCell(cell, defaultCur) {

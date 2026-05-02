@@ -36,6 +36,7 @@ import { renderAnnualTable, renderColumnPicker } from './ui/annual-table-view.js
 import { renderFreeCoolingSummary } from './ui/fc-summary-view.js';
 import { drawChillerEnergyChart, drawTcoChart } from './ui/energy-chart.js';
 import { renderCapexForm, renderTcoKpi } from './ui/capex-form.js';
+import { syncCostItemsFromEquipment } from './calc/capex-tco.js';
 import { renderComparisonTable } from './ui/comparison-view.js';
 // v0.60.17: stale-imports убраны (buildTopologyFromOptions / simulateTopology
 // — legacy путь, не используется в новой модели per-equipment N+M).
@@ -83,6 +84,10 @@ let _navReturn = null;       // { path, sessionId, label } для embed-mode
 let _selections = [];        // массив подборов
 let _activeSelectionId = null;
 let _activeTab = 'general';
+// v0.60.23: фокус — что именно сейчас редактирует пользователь.
+//   'selection' — фокус на подборе (видны selection-scope tabs: general, compare)
+//   'option'    — фокус на конкретном варианте (видны option-scope tabs: spec, energy, capex, topology)
+let _focus = 'selection';
 // v0.60.8 (Phase 22.11): режим compare-вкладки.
 //   'variants' — варианты текущего подбора (default)
 //   'selections' — главные ★-варианты всех подборов проекта
@@ -516,23 +521,28 @@ function renderActive() {
   renderSelectionsList();
   renderStorageMode();
   renderModuleActionsHere();
-  if (!sel || !opt) {
+  // v0.60.23: показываем пэйн если есть sel (для selection-tabs general/compare).
+  // Если ещё и opt — option-tabs тоже доступны.
+  if (!sel) {
     if (empty) empty.style.display = 'flex';
     if (pane) pane.hidden = true;
-    $('cl-active-name').textContent = sel
-      ? `📋 ${sel.name} — нет активного варианта`
-      : '— нет активного подбора —';
-    $('cl-active-meta').textContent = sel
-      ? 'Добавьте вариант оборудования через «+ Добавить вариант» или выберите существующий слева.'
-      : 'Создайте подбор через «+ Добавить подбор» в боковой панели.';
+    $('cl-active-name').textContent = '— нет активного подбора —';
+    $('cl-active-meta').textContent = 'Создайте подбор через «+ Подбор» в боковой панели.';
     return;
   }
   if (empty) empty.style.display = 'none';
   if (pane) pane.hidden = false;
-  const isMain = sel.mainOptionId === opt.id ? ' ★' : '';
-  $('cl-active-name').textContent = `📋 ${sel.name} → ${opt.name}${isMain}`;
-  const pSpec = primarySpec(opt) || {};
-  $('cl-active-meta').textContent = `${pSpec.systemType || '?'} · rated ${Math.round(pSpec.ratedCapKw || 0)} кВт · COP ${pSpec.ratedCOP || '?'}`;
+  // Если фокус option, но opt нет — авто-сваливаемся в selection-фокус.
+  if (_focus === 'option' && !opt) _focus = 'selection';
+  if (_focus === 'option' && opt) {
+    const isMain = sel.mainOptionId === opt.id ? ' ★' : '';
+    $('cl-active-name').textContent = `📋 ${sel.name} → ${opt.name}${isMain}`;
+    const pSpec = primarySpec(opt) || {};
+    $('cl-active-meta').textContent = `${pSpec.systemType || '?'} · rated ${Math.round(pSpec.ratedCapKw || 0)} кВт · COP ${pSpec.ratedCOP || '?'}`;
+  } else {
+    $('cl-active-name').textContent = `📋 ${sel.name}`;
+    $('cl-active-meta').textContent = `${sel.options.length} вариантов · общие свойства подбора`;
+  }
   renderActiveTab();
 }
 
@@ -723,10 +733,43 @@ function renderModuleActionsHere() {
   });
 }
 
+/* v0.60.23: применить focus (selection|option) — скрыть/показать tabs по scope.
+ * Если текущая активная вкладка не в текущем scope — переключаемся на первую
+ * вкладку нужного scope. */
+function applyFocusUI() {
+  const sel = activeSelection();
+  const opt = activeOption();
+  document.querySelectorAll('.cl-tab').forEach(b => {
+    const scope = b.dataset.scope;
+    const visible = (scope === _focus);
+    b.style.display = visible ? '' : 'none';
+  });
+  // Если текущий tab не в этом scope — переключаемся.
+  const curBtn = document.querySelector(`.cl-tab[data-tab="${_activeTab}"]`);
+  if (!curBtn || curBtn.dataset.scope !== _focus) {
+    const fallback = document.querySelector(`.cl-tab[data-scope="${_focus}"]`);
+    if (fallback) _activeTab = fallback.dataset.tab;
+  }
+  // Focus-индикатор
+  const fi = document.getElementById('cl-focus-indicator');
+  if (fi) {
+    if (_focus === 'selection') {
+      fi.innerHTML = `<span title="Сейчас редактируется подбор «${util.escAttr(sel?.name || '')}». Видны вкладки уровня подбора: общие свойства + сравнение опций. Кликните на конкретный вариант в сайдбаре, чтобы перейти к редактированию опции.">📋 <b>Редактирование подбора</b>: «${util.escHtml(sel?.name || '—')}» (${sel?.options?.length || 0} вариантов)</span>`;
+      fi.className = 'cl-focus-indicator cl-focus-selection';
+    } else {
+      fi.innerHTML = `<span title="Сейчас редактируется вариант «${util.escAttr(opt?.name || '')}» подбора «${util.escAttr(sel?.name || '')}». Видны вкладки уровня опции: spec, энергия, CAPEX, топология. Кликните на название подбора в сайдбаре, чтобы перейти к свойствам подбора.">⚙ <b>Редактирование варианта</b>: «${util.escHtml(opt?.name || '—')}» в подборе «${util.escHtml(sel?.name || '')}»</span>`;
+      fi.className = 'cl-focus-indicator cl-focus-option';
+    }
+  }
+}
+
 function renderActiveTab() {
   const sel = activeSelection();
   const opt = activeOption();
-  if (!sel || !opt) return;
+  if (!sel) return;
+  applyFocusUI();
+  // Для option-scope нужен opt; для selection-scope — нет.
+  if (_focus === 'option' && !opt) return;
   document.querySelectorAll('.cl-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === _activeTab));
   document.querySelectorAll('.cl-tab-pane').forEach(p => p.hidden = (p.dataset.pane !== _activeTab));
 
@@ -906,6 +949,12 @@ function renderActiveTab() {
     if (fwrap) {
       fwrap.innerHTML = '';
       const cf = makeConvertFn();
+      // v0.60.23: синхронизируем costItems с option.equipment[] перед рендером —
+      // основные «железки» получают qty из топологии (linkedGroupId), label
+      // авто-обновляется. Пользовательские позиции (без linkedGroupId)
+      // сохраняются как есть.
+      opt.eco = { ...opt.eco, costItems: syncCostItemsFromEquipment(opt.eco, opt.equipment, _currency) };
+      persist();
       fwrap.appendChild(renderCapexForm(opt.eco, (next) => {
         opt.eco = next;
         persist();
@@ -1010,6 +1059,15 @@ function renderActiveTab() {
               </select>
             </label>
           </div>
+          <p class="muted" style="font-size:11.5px;margin:8px 0 0;padding:6px 10px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:3px" title="Принцип расчёта при нескольких CRAC, подключённых к чиллерам:
+1. Каждый CRAC рассчитывается отдельно — energy_CRAC_i = power_per_unit × hours × activeUnits.
+2. Тепловая нагрузка на upstream чиллер = Σ cracCoolingLoadKw × activeUnits по всем CRAC-группам (для каждого bin температуры).
+3. Эта суммарная нагрузка распределяется РАВНОМЕРНО между всеми активными чиллерами всех групп: load_per_chiller = total_load / Σ activeChillerUnits. Каждый чиллер видит часть нагрузки = load/N (или load/(N+M) для hot-резерва).
+4. energy_chiller_i = (load_per_chiller / COP_chiller) × hours × activeUnits.
+5. Σ energy системы = Σ energy_CRAC + Σ energy_chiller (cold-резерв = 0).
+Так считаются и chiller-only системы (без CRAC) — нагрузка берётся из «Требуемая мощн.» подбора и распределяется на активные чиллеры.">
+            ℹ <b>Расчёт при нескольких CRAC ↔ один или несколько чиллеров</b>: общая теплонагрузка от ВСЕХ active CRAC суммируется по интервалам температуры, затем распределяется равномерно между всеми active чиллерами всех групп. Hover на этом блоке для подробностей.
+          </p>
         </div>
       `;
       // Wire inputs
@@ -1398,6 +1456,8 @@ function init() {
     const selRow = e.target.closest('.cl-sel-row');
     if (selRow && !e.target.closest('button')) {
       _activeSelectionId = selRow.dataset.selId;
+      // v0.60.23: клик по подбору → focus = selection (только selection-tabs)
+      _focus = 'selection';
       persist(); renderActive();
       return;
     }
@@ -1438,6 +1498,8 @@ function init() {
       const sel = activeSelection();
       if (sel) {
         sel.activeOptionId = optRow.dataset.optId;
+        // v0.60.23: клик по варианту → focus = option (только option-tabs)
+        _focus = 'option';
         persist(); renderActive();
       }
     }

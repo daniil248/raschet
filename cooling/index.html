@@ -181,19 +181,21 @@
       </div>
 
       <div id="cl-active-pane" class="cl-active-pane" hidden>
+        <!-- v0.60.23: индикатор контекста — что сейчас редактируется -->
+        <div id="cl-focus-indicator" class="cl-focus-indicator" title="Сейчас в фокусе. Кликайте по подбору / опции в сайдбаре для смены."></div>
         <div class="cl-tabs">
-          <button type="button" class="cl-tab active" data-tab="general"
-                  title="Свойства всего подбора: требуемая мощность системы охлаждения + процент запаса. Общие условия для всех вариантов сравнения.">📋 Свойства подбора</button>
-          <button type="button" class="cl-tab" data-tab="spec"
-                  title="Параметры ОДНОГО агрегата + уровень резервирования. Количество агрегатов в системе считается автоматически из требуемой мощности (Свойства подбора) и rated этого агрегата.">❄ Spec (1 агрегат)</button>
-          <button type="button" class="cl-tab" data-tab="energy"
-                  title="Сводная таблица годовых часов + стек-бар чарт по интервалам температуры наружного воздуха. FC + OPEX сводка.">📊 Годовая энергия</button>
-          <button type="button" class="cl-tab" data-tab="capex"
-                  title="CAPEX (equipment + installation), параметры экономики (ТО, lifetime, discount rate). TCO chart по годам.">💰 CAPEX / TCO</button>
-          <button type="button" class="cl-tab" data-tab="topology"
-                  title="Топология холодоснабжения: распределение нагрузки между несколькими чиллерами и CRAC. Поддерживает резервирование (N+M), общий контур и точка-точка. Для активного варианта (option) подбора.">🔗 Топология</button>
-          <button type="button" class="cl-tab" data-tab="compare"
-                  title="Side-by-side таблица для нескольких опций. Подсветка победителя по каждой метрике.">⚖ Сравнение</button>
+          <button type="button" class="cl-tab active" data-tab="general" data-scope="selection"
+                  title="ПОДБОР-уровень. Свойства всего подбора: требуемая мощность системы охлаждения + процент запаса. Общие условия для всех вариантов.">📋 Свойства подбора</button>
+          <button type="button" class="cl-tab" data-tab="compare" data-scope="selection"
+                  title="ПОДБОР-уровень. Side-by-side таблица для нескольких опций подбора. Подсветка победителя по каждой метрике.">⚖ Сравнение</button>
+          <button type="button" class="cl-tab" data-tab="spec" data-scope="option"
+                  title="ОПЦИЯ-уровень. Параметры ОДНОГО агрегата + уровень резервирования. Количество агрегатов в системе считается автоматически из требуемой мощности подбора и rated этого агрегата.">❄ Spec (1 агрегат)</button>
+          <button type="button" class="cl-tab" data-tab="energy" data-scope="option"
+                  title="ОПЦИЯ-уровень. Сводная таблица годовых часов + стек-бар чарт по интервалам температуры наружного воздуха. FC + OPEX сводка по этой опции.">📊 Годовая энергия</button>
+          <button type="button" class="cl-tab" data-tab="capex" data-scope="option"
+                  title="ОПЦИЯ-уровень. CAPEX (equipment + installation), параметры экономики (ТО, lifetime, discount rate). TCO chart по годам для этой опции.">💰 CAPEX / TCO</button>
+          <button type="button" class="cl-tab" data-tab="topology" data-scope="option"
+                  title="ОПЦИЯ-уровень. Топология холодоснабжения этой опции: распределение нагрузки между несколькими чиллерами и CRAC. Резервирование (N+M), общий контур / точка-точка.">🔗 Топология</button>
         </div>
 
         <div class="cl-tab-pane" data-pane="general">

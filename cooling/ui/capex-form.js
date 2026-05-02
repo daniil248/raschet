@@ -154,19 +154,31 @@ export async function openCostItemsModal(initialItems, displayCurrency, convertF
     </thead>
   `;
 
-  const renderRows = () => items.map((it, idx) => `
-    <tr data-row="${idx}">
-      <td><input type="text" class="cl-ci-label" data-attr="label" value="${escAttr(it.label || '')}" placeholder="Например: Чиллер York YLAA200..." title="Произвольное описание позиции."></td>
-      <td><input type="number" min="1" step="1" class="cl-ci-qty" data-attr="qty" value="${Number(it.qty) || 1}" title="Количество единиц этой позиции."></td>
+  const renderRows = () => items.map((it, idx) => {
+    const isAuto = !!it.linkedGroupId;
+    const lockIcon = isAuto ? '🔒' : '';
+    const qtyTitle = isAuto
+      ? `Авто-qty из топологии (linkedGroupId=${it.linkedGroupId}). Чтобы изменить — отредактируйте qty группы оборудования во вкладке «🔗 Топология». Это правило: «количество основных железок жёстко связано с количеством в опции».`
+      : 'Количество единиц этой позиции (пользовательская).';
+    const labelTitle = isAuto
+      ? 'Авто-связано с группой оборудования. Можно переименовать.'
+      : 'Произвольное описание позиции.';
+    const delBtn = isAuto
+      ? `<button type="button" disabled class="cl-mi-del" style="opacity:0.3;cursor:not-allowed" title="Авто-строка от группы оборудования. Удалите группу во вкладке Топология чтобы убрать строку.">×</button>`
+      : `<button type="button" class="cl-mi-del" title="Удалить эту позицию.">×</button>`;
+    return `
+    <tr data-row="${idx}" class="${isAuto ? 'cl-ci-auto-row' : ''}">
+      <td>${lockIcon}<input type="text" class="cl-ci-label" data-attr="label" value="${escAttr(it.label || '')}" placeholder="Например: Чиллер York YLAA200..." title="${escAttr(labelTitle)}"></td>
+      <td><input type="number" min="1" step="1" class="cl-ci-qty" data-attr="qty" value="${Number(it.qty) || 1}" title="${escAttr(qtyTitle)}"${isAuto ? ' readonly style="background:#f1f5f9;color:#64748b;cursor:not-allowed"' : ''}></td>
       <td><input type="number" min="0" step="100" class="cl-ci-val" data-col="equipmentPrice" data-attr="value" value="${Number(it.equipmentPrice?.value) || 0}" title="Стоимость одной единицы оборудования."></td>
       <td><select class="cl-ci-cur" data-col="equipmentPrice" data-attr="currency" title="Валюта стоимости оборудования.">${curOptsFor(it.equipmentPrice?.currency || displayCurrency)}</select></td>
       <td><input type="number" min="0" step="100" class="cl-ci-val" data-col="installPrice" data-attr="value" value="${Number(it.installPrice?.value) || 0}" title="Стоимость монтажа+ПНР для одной единицы."></td>
       <td><select class="cl-ci-cur" data-col="installPrice" data-attr="currency" title="Валюта стоимости монтажа.">${curOptsFor(it.installPrice?.currency || displayCurrency)}</select></td>
       <td><input type="number" min="0" step="100" class="cl-ci-val" data-col="maintenancePerYearPrice" data-attr="value" value="${Number(it.maintenancePerYearPrice?.value) || 0}" title="Стоимость ТО за год для одной единицы."></td>
       <td><select class="cl-ci-cur" data-col="maintenancePerYearPrice" data-attr="currency" title="Валюта стоимости ТО.">${curOptsFor(it.maintenancePerYearPrice?.currency || displayCurrency)}</select></td>
-      <td><button type="button" class="cl-mi-del" title="Удалить эту позицию.">×</button></td>
+      <td>${delBtn}</td>
     </tr>
-  `).join('');
+  `;}).join('');
 
   const renderTotals = () => {
     // Native totals (без конвертации, в валюте каждой ячейки) — отображаем
@@ -214,7 +226,10 @@ export async function openCostItemsModal(initialItems, displayCurrency, convertF
       const idx = Number(tr.dataset.row);
       if (!items[idx]) return;
       items[idx].label = tr.querySelector('.cl-ci-label')?.value || '';
-      items[idx].qty   = Number(tr.querySelector('.cl-ci-qty')?.value) || 1;
+      // v0.60.23: для linkedGroupId-строк qty НЕ читаем из DOM (readonly).
+      if (!items[idx].linkedGroupId) {
+        items[idx].qty = Number(tr.querySelector('.cl-ci-qty')?.value) || 1;
+      }
       ['equipmentPrice', 'installPrice', 'maintenancePerYearPrice'].forEach(col => {
         const valInp = tr.querySelector(`.cl-ci-val[data-col="${col}"]`);
         const curSel = tr.querySelector(`.cl-ci-cur[data-col="${col}"]`);
@@ -304,9 +319,12 @@ export async function openCostItemsModal(initialItems, displayCurrency, convertF
     });
     overlay.addEventListener('click', (ev) => {
       const del = ev.target.closest('.cl-mi-del');
-      if (del) {
+      if (del && !del.disabled) {
         const tr = del.closest('tr[data-row]');
-        items.splice(Number(tr.dataset.row), 1);
+        const idx = Number(tr.dataset.row);
+        // v0.60.23: auto-row нельзя удалять — только через топологию.
+        if (items[idx]?.linkedGroupId) return;
+        items.splice(idx, 1);
         repaintRows();
       }
     });

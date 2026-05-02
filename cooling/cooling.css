@@ -418,6 +418,27 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
 /* Popup модал с таблицей шире обычного */
 .mt-modal-overlay:has(.cl-mi-table-wrap) .mt-modal { max-width: 640px; width: 95%; }
 
+/* v0.60.23: focus-индикатор (selection vs option) над tabs */
+.cl-focus-indicator {
+  margin: 0 0 8px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.cl-focus-indicator b { font-weight: 600; }
+.cl-focus-indicator.cl-focus-selection {
+  background: #fef3c7; border: 1px solid #fcd34d; color: #78350f;
+  border-left: 3px solid #f59e0b;
+}
+.cl-focus-indicator.cl-focus-option {
+  background: #dbeafe; border: 1px solid #93c5fd; color: #1e3a8a;
+  border-left: 3px solid #2563eb;
+}
+
+/* Auto-row (привязана к equipment-группе): подсвечена голубым, qty замкнута */
+.cl-ci-auto-row { background: #f0f9ff; }
+.cl-ci-auto-row td:first-child { position: relative; }
+
 /* v0.60.21: единая таблица «Состав оборудования» (costItems) + sectional totals */
 .cl-cost-edit-btn {
   display: inline-flex; align-items: center; gap: 6px;

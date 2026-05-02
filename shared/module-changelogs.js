@@ -4,6 +4,18 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.23', date: '2026-05-02', items: [
+      '🎯 <b>Tabs разделены по scope: подбор / опция</b>. По требованию: «не очевидно какие вкладки к чему относятся, давай раздели, при выборе подбора, вкладки для подбора и общие данные, а при выборе опции, только данные по опции».',
+      '• Tabs scoped: <code>data-scope="selection"</code> (Свойства подбора + Сравнение) vs <code>data-scope="option"</code> (Spec + Энергия + CAPEX + Топология).',
+      '• Клик по подбору в сайдбаре → <code>_focus = \'selection\'</code> (видны только selection-tabs). Клик по варианту → <code>_focus = \'option\'</code>.',
+      '• Цветной focus-индикатор над tabs: жёлтый «📋 Редактирование подбора» / синий «⚙ Редактирование варианта». Показывает контекст и подсказывает как переключиться.',
+      '🔗 <b>Авто-привязка qty основных «железок» к топологии</b>. По требованию: «думал количество основных железок будет жёстко связано с количеством в опции, остальные позиции пользовательские».',
+      '• Новый helper <code>syncCostItemsFromEquipment(eco, equipment, displayCur)</code> в <code>cooling/calc/capex-tco.js</code>: для каждой equipment-группы создаёт/обновляет авто-строку с <code>linkedGroupId</code>, qty берётся из топологии (Σ qty группы = N+M).',
+      '• Перед рендером CAPEX вкладки cooling.js синхронизирует costItems → авто-строки сверху, пользовательские позиции снизу.',
+      '• В модалке «Состав оборудования»: авто-строки помечены 🔒 + readonly qty + disabled кнопка удаления. Цены и валюты редактируются как обычно.',
+      'ℹ <b>Подсказка по CRAC ↔ чиллер</b>. По вопросу: «не знаю как рассчитывать CRAC которые несколько подключены к одному чиллеру». В блоке «⚙ Связь между группами» добавлена пояснительная панель + полный hover-tooltip с алгоритмом: load_per_chiller = Σ cracCoolingLoadKw / Σ activeChillerUnits.',
+      'Файлы: <code>cooling/index.html</code>, <code>cooling/cooling.js</code>, <code>cooling/cooling.css</code>, <code>cooling/calc/capex-tco.js</code>, <code>cooling/ui/capex-form.js</code>.',
+    ] },
     { version: '0.60.22', date: '2026-05-02', items: [
       '🐛 <b>Fix: пересчёт по курсу при смене валюты ячейки costItems</b>. По репорту: «пересчёт не работает (надо)». В таблице «Состав оборудования» при изменении select валюты столбца Стоимость оборудования / Монтаж / ТО — value теперь автоматически пересчитывается через convertFn по курсу на «Дату курса», input в DOM обновляется визуально, toast уведомляет о факте конверсии.',
       '🛠 <b>Phase 24.1 (foundation): service/calc/order-model.js</b> — модель «наряда» сервисных/монтажных работ. ORDER_TYPES (install/maintenance/one-off), POSITION_CATEGORIES (labor/material/travel/subcontract/other), <code>computeOrderTotals</code> (себес → накладные → клиент → НДС → маржа), WORK_TEMPLATES каталог типовых работ. UI и orchestrator — следующий шаг.',
