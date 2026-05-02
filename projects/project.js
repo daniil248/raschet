@@ -107,31 +107,67 @@ function fmtDate(ts) {
    feedback_project_location.md и ROADMAP Phase 22.13.
 */
 function renderProjectProperties(p, host) {
+  // v0.60.10: реквизиты проекта + локация. По требованию: «так же добавить
+  // прочие данные проекта, полный адрес, эти данные должны быть там, в
+  // свойствах проекта». Реквизиты хранятся в project.requisites (object),
+  // чтобы не засорять плоский project namespace.
+  const r = p.requisites || {};
+  const requisitesHtml = `
+    <div class="pr-req-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px 12px;margin-bottom:14px">
+      <label title="Шифр проекта (короткий код по системе ГИП заказчика). Обычно пишется в шапке всех чертежей. Пример: 25013-GEP-ENG-ELC-901.">
+        <span style="font-size:11.5px;color:#475569;display:block">Обозначение / шифр:</span>
+        <input type="text" data-req="code" value="${esc(r.code || '')}" placeholder="напр. 25013-GEP-ENG-ELC-901" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px">
+      </label>
+      <label title="Заказчик / клиент (юр. или физ. лицо). Выводится в шапке отчёта и BOM.">
+        <span style="font-size:11.5px;color:#475569;display:block">Заказчик:</span>
+        <input type="text" data-req="customer" value="${esc(r.customer || '')}" placeholder="напр. Qarmet" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px">
+      </label>
+      <label title="Объект / адрес объекта. Полный адрес — улица, город, страна. Используется в шапке отчёта.">
+        <span style="font-size:11.5px;color:#475569;display:block">Объект / адрес:</span>
+        <input type="text" data-req="address" value="${esc(r.address || '')}" placeholder="напр. г. Темиртау, ул. Заводская 1" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px">
+      </label>
+      <label title="Стадия проектирования: ТЭО / П (Проект) / РД (Рабочая документация) / EPC / ввод в эксплуатацию.">
+        <span style="font-size:11.5px;color:#475569;display:block">Стадия:</span>
+        <input type="text" data-req="stage" value="${esc(r.stage || '')}" placeholder="напр. П / РД" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px">
+      </label>
+      <label title="ГИП (Главный Инженер Проекта) или ответственный исполнитель.">
+        <span style="font-size:11.5px;color:#475569;display:block">ГИП / исполнитель:</span>
+        <input type="text" data-req="gip" value="${esc(r.gip || '')}" placeholder="напр. Малыхин Д." style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px">
+      </label>
+      <label title="Тип/категория объекта (ЦОД, серверная, диспетчерская, электрощитовая, и т.п.). Используется в отчётах для контекста.">
+        <span style="font-size:11.5px;color:#475569;display:block">Тип объекта:</span>
+        <input type="text" data-req="objectType" value="${esc(r.objectType || '')}" placeholder="напр. МЦОД / серверная" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px">
+      </label>
+    </div>
+    <label title="Развёрнутое описание проекта: цель, особенности, ключевые требования. Выводится в общей шапке отчёта.">
+      <span style="font-size:11.5px;color:#475569;display:block;margin-bottom:4px">Общее описание:</span>
+      <textarea data-req="description" rows="3" placeholder="Краткое описание проекта — цели, состав, особенности." style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px;font:inherit;font-size:12.5px;resize:vertical">${esc(r.description || '')}</textarea>
+    </label>
+    <hr style="border:none;border-top:1px dashed #cbd5e1;margin:14px 0">
+    <h4 style="margin:0 0 8px;font-size:12.5px;color:#075985;text-transform:uppercase;letter-spacing:0.4px" title="Местоположение объекта — задаётся выбором датасета из модуля Метеоданные. Передаётся во все calc-модули (cooling, психрометрия) автоматически.">📍 Местоположение объекта</h4>
+  `;
+
   const mode = p.locationMode || 'single';
   let bodyHtml = '';
   if (mode === 'single') {
     const loc = p.location || { city: '', country: '', lat: '', lon: '' };
+    const hasLoc = !!(loc.city || loc.lat);
     bodyHtml = `
-      <div class="pr-prop-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px 12px">
-        <label title="Город / населённый пункт. Используется как человекочитаемое имя локации в калькуляторах.">
-          <span style="font-size:11.5px;color:#475569;display:block">Город:</span>
-          <input type="text" data-loc="city" value="${esc(loc.city || '')}" placeholder="напр. Алматы" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px">
-        </label>
-        <label title="Страна (ISO или название).">
-          <span style="font-size:11.5px;color:#475569;display:block">Страна:</span>
-          <input type="text" data-loc="country" value="${esc(loc.country || '')}" placeholder="напр. Казахстан" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px">
-        </label>
-        <label title="Широта в десятичных градусах WGS-84 (например, 43.238).">
-          <span style="font-size:11.5px;color:#475569;display:block">Широта:</span>
-          <input type="number" step="0.001" data-loc="lat" value="${loc.lat ?? ''}" placeholder="напр. 43.238" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px">
-        </label>
-        <label title="Долгота в десятичных градусах WGS-84 (например, 76.945).">
-          <span style="font-size:11.5px;color:#475569;display:block">Долгота:</span>
-          <input type="number" step="0.001" data-loc="lon" value="${loc.lon ?? ''}" placeholder="напр. 76.945" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px">
-        </label>
+      <div class="pr-loc-display" style="padding:10px 12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:4px;margin-bottom:8px">
+        ${hasLoc
+          ? `<div style="font-size:13px;font-weight:600;color:#075985">📍 ${esc(loc.city || '?')}${loc.country ? `, ${esc(loc.country)}` : ''}</div>
+             <div style="font-size:11.5px;color:#475569;margin-top:3px">Координаты: ${loc.lat ?? '?'}, ${loc.lon ?? '?'}</div>`
+          : `<div style="font-size:12.5px;color:#92400e">⚠ Местоположение не задано. Выберите датасет из модуля Метеоданные.</div>`
+        }
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button type="button" id="pr-pick-meteo-loc" class="pr-btn-sel" style="font-size:12px;padding:6px 14px"
+                title="Открыть модуль «Метеоданные» в embed-режиме: выберите нужный датасет (или загрузите новый по координатам), нажмите «✓ Применить и вернуться» — координаты заполнятся автоматически.">📅 Выбрать из Метеоданных →</button>
+        <button type="button" id="pr-pick-map" class="pr-btn-sel" style="font-size:12px;padding:6px 14px"
+                title="Выбрать точку на карте OpenStreetMap. Для привязки к конкретному месту, разработки трасс и внеплощадочных кабельных линий.">🗺 Выбрать на карте</button>
       </div>
       <p class="muted" style="font-size:11px;margin:8px 0 0">
-        💡 Эта локация автоматически передаётся в все calc-модули проекта (Метеоданные, Подбор холодильных систем, ID-диаграмма). Менять координаты в модулях нельзя — только здесь.
+        💡 Эта локация автоматически передаётся во все calc-модули проекта (Метеоданные, Подбор холодильных систем, ID-диаграмма). Менять координаты в модулях нельзя — только здесь.
       </p>
     `;
   } else {
@@ -155,6 +191,7 @@ function renderProjectProperties(p, host) {
     `;
   }
   host.innerHTML = `
+    ${requisitesHtml}
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
       <span style="font-size:12.5px;color:#475569" title="Single — одна локация для всего проекта (типовое использование). Multi — несколько локаций (для разработки типовых решений и проверки в разных климат-зонах).">Режим:</span>
       <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px" title="Одна локация на весь проект. Calc-модули используют её и не позволяют менять.">
@@ -190,7 +227,17 @@ function renderProjectProperties(p, host) {
     });
   });
 
-  // Wire single-mode field changes
+  // Wire requisites field changes (project.requisites = {code, customer, address, stage, gip, objectType, description})
+  host.querySelectorAll('[data-req]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const field = inp.dataset.req;
+      const val = inp.value;
+      const requisites = { ...(p.requisites || {}), [field]: val };
+      updateProject(p.id, { requisites });
+    });
+  });
+
+  // Wire single-mode field changes (legacy — оставлено для multi-mode совместимости)
   host.querySelectorAll('[data-loc]').forEach(inp => {
     inp.addEventListener('change', () => {
       const field = inp.dataset.loc;
@@ -200,6 +247,85 @@ function renderProjectProperties(p, host) {
       prToast('✔ Локация обновлена');
     });
   });
+
+  // v0.60.10: «📅 Выбрать из Метеоданных» — embed-pattern
+  const pickMeteoBtn = host.querySelector('#pr-pick-meteo-loc');
+  if (pickMeteoBtn) {
+    pickMeteoBtn.addEventListener('click', async () => {
+      try {
+        const nav = await import('../shared/module-nav.js');
+        nav.openEmbed(location.pathname + location.search, '../meteo/', `Свойства проекта «${p.name}»`);
+      } catch (e) { prToast('Ошибка: ' + e.message, 'error'); }
+    });
+  }
+
+  // v0.60.10: «🗺 Выбрать на карте» — Leaflet/OpenStreetMap picker
+  const pickMapBtn = host.querySelector('#pr-pick-map');
+  if (pickMapBtn) {
+    pickMapBtn.addEventListener('click', () => openMapPicker(p));
+  }
+}
+
+/* v0.60.10: Picker точки на карте OpenStreetMap (Leaflet).
+   По требованию Пользователя 2026-05-02: «для проекта так же добавь
+   выбор точки на карте. для привязки к конкретному месту и разработки
+   кабельных трасс внеплощадочных. можно интегрировать с openstreetmap».
+   Открывает модалку с картой + click для выбора координат.
+   После выбора пишет в project.location {city: '', lat, lon}. Reverse-
+   geocoding (для авто-заполнения city/country) — TODO в Phase 22.13.x. */
+function openMapPicker(p) {
+  if (typeof L === 'undefined') { prToast('Leaflet не загрузился (проверьте интернет)', 'error'); return; }
+  const overlay = document.createElement('div');
+  overlay.className = 'pr-overlay';
+  overlay.innerHTML = `
+    <div class="pr-modal" style="max-width:720px;width:92vw">
+      <h3>🗺 Выбор точки на карте</h3>
+      <p class="muted" style="font-size:12px;margin:0 0 8px">Кликните по карте для выбора координат. Координаты заполнятся в свойствах проекта.</p>
+      <div id="pr-map-host" style="width:100%;height:420px;border:1px solid #cbd5e1;border-radius:4px"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:10px;flex-wrap:wrap">
+        <span id="pr-map-coords" style="font-size:12px;color:#475569">Координаты: не выбраны</span>
+        <div style="display:flex;gap:6px">
+          <button type="button" class="pr-btn-cancel" id="pr-map-cancel">Отмена</button>
+          <button type="button" class="pr-btn-primary" id="pr-map-apply" disabled>Применить</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const cur = p.location || {};
+  const startLat = cur.lat || 51.0;
+  const startLon = cur.lon || 71.0;
+  const map = L.map(overlay.querySelector('#pr-map-host')).setView([startLat, startLon], cur.lat ? 12 : 5);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18,
+    attribution: '© OpenStreetMap contributors',
+  }).addTo(map);
+  let marker = null;
+  if (cur.lat && cur.lon) {
+    marker = L.marker([cur.lat, cur.lon]).addTo(map);
+    overlay.querySelector('#pr-map-coords').textContent = `Координаты: ${cur.lat.toFixed(4)}, ${cur.lon.toFixed(4)}`;
+    overlay.querySelector('#pr-map-apply').disabled = false;
+  }
+  let pickedLat = cur.lat, pickedLon = cur.lon;
+  map.on('click', (e) => {
+    pickedLat = +e.latlng.lat.toFixed(4);
+    pickedLon = +e.latlng.lng.toFixed(4);
+    if (marker) marker.setLatLng([pickedLat, pickedLon]);
+    else marker = L.marker([pickedLat, pickedLon]).addTo(map);
+    overlay.querySelector('#pr-map-coords').textContent = `Координаты: ${pickedLat}, ${pickedLon}`;
+    overlay.querySelector('#pr-map-apply').disabled = false;
+  });
+  overlay.querySelector('#pr-map-cancel').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#pr-map-apply').addEventListener('click', () => {
+    if (!Number.isFinite(pickedLat) || !Number.isFinite(pickedLon)) return;
+    const loc = { ...(p.location || {}), lat: pickedLat, lon: pickedLon };
+    updateProject(p.id, { location: loc });
+    prToast(`✔ Координаты применены: ${pickedLat}, ${pickedLon}`);
+    overlay.remove();
+    render();
+  });
+  // Trigger resize в случае если карта рендерится в скрытом контейнере (pre-modal)
+  setTimeout(() => map.invalidateSize(), 100);
 
   // Wire multi-mode field changes / add / delete / set-primary
   host.querySelectorAll('[data-locm]').forEach(inp => {
@@ -1143,6 +1269,31 @@ function _initAfterDom() {
   // getActiveProjectId(), видели тот же контекст.
   const pid = getPid();
   if (pid && getProject(pid)) setActiveProjectId(pid);
+
+  // v0.60.10 (Phase 22.13): получаем payload из embed-вызова Метеоданных
+  // (через ?navResult=<sid>). Если пришёл — записываем lat/lon/locationName
+  // в project.location.
+  (async () => {
+    try {
+      const nav = await import('../shared/module-nav.js');
+      const result = nav.readEmbedResult();
+      if (result && pid && Number.isFinite(result.lat) && Number.isFinite(result.lon)) {
+        const proj = getProject(pid);
+        if (proj) {
+          const loc = {
+            ...(proj.location || {}),
+            lat: result.lat,
+            lon: result.lon,
+            city: result.locationName || proj.location?.city || '',
+          };
+          updateProject(pid, { location: loc });
+          prToast(`✔ Локация принята из Метеоданных: ${loc.city || `${result.lat}, ${result.lon}`}`);
+          render();
+        }
+      }
+    } catch (e) { console.warn('[project.js] readEmbedResult failed:', e); }
+  })();
+
   render();
 
   // Re-render когда Auth state resolved — иначе сначала рендер в local

@@ -4,6 +4,21 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.10', date: '2026-05-02', items: [
+      '📋 <b>Свойства проекта расширены: реквизиты + локация через Метео + карта OpenStreetMap</b>. По требованиям Пользователя 2026-05-02.',
+      '<b>Реквизиты проекта</b> (project.requisites = {code, customer, address, stage, gip, objectType, description}):',
+      '• Шифр (обозначение), Заказчик, Объект/адрес, Стадия (П/РД), ГИП/исполнитель, Тип объекта, Общее описание (textarea).',
+      '• Все поля с tooltip-ами. Будут выводиться в шапке отчёта (модуль reports/).',
+      '<b>Локация: выбор через embed Метеоданных</b>:',
+      '• Кнопка «📅 Выбрать из Метеоданных →» — open-embed nav.openEmbed() → meteo показывает Apply/Cancel buttons → payload {lat, lon, locationName} приходит обратно через readEmbedResult() в _initAfterDom.',
+      '• Координаты сохраняются в project.location, инфо-блок показывает «📍 Город, Страна · координаты».',
+      '<b>Локация: выбор на карте OpenStreetMap (Leaflet)</b>:',
+      '• Кнопка «🗺 Выбрать на карте» открывает модальное окно с Leaflet + OSM-tiles.',
+      '• Click по карте → marker + координаты → «Применить» сохраняет в project.location.',
+      '• Подходит для привязки к конкретному месту и разработки кабельных трасс внеплощадочных (большой длины) — TODO в Phase 22.13.x под отдельную задачу.',
+      '<b>Hub: переименование</b>: «Конфигуратор шкафа» → «Конфигуратор телеком/серверного шкафа», «Компоновщик шкафа» → «Компоновщик телеком/серверного шкафа» (по требованию: «для этих модулей добавь слово телеком/серверный»).',
+      'Файлы: <code>projects/project.js</code> (renderProjectProperties + requisites + meteo embed handler + openMapPicker), <code>projects/project.html</code> (Leaflet CDN), <code>hub.html</code> (переименование), <code>modules/index.html</code> (переименование).',
+    ] },
     { version: '0.60.9', date: '2026-05-02', items: [
       '🖱 <b>Phase 22.12: Ctrl+wheel zoom раскатан по модулям</b>. Универсальный принцип «без Ctrl — нативный скролл страницы».',
       '• <code>js/engine/interaction.js</code> (общий SVG-canvas для schematic/scs-design) — добавлен Ctrl-check + cursor-anchored zoom.',
