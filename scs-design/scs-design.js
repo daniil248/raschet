@@ -4277,6 +4277,115 @@ function exportPlanSvg() {
   return { svg, W: W + 40, H: H + 80, racks: placed.length, links: getVisibleLinks().length };
 }
 
+/* v0.60.16 (Phase 14.4): Экспорт SVG в РЕАЛЬНОМ масштабе печати.
+   В отличие от exportPlanSvg() (px-based), здесь:
+   • width/height в мм — для точной печати на принтере / в PDF.
+   • viewBox в тех же мм-единицах.
+   • Линии ЕСКД-толщины (0.7мм основные, 0.35мм вспом.) в реальных
+     миллиметрах, не масштабируются.
+   • Авто-кадр для популярных пар (1:50/A1, 1:100/A3, 1:200/A3) —
+     или произвольный масштаб + формат листа.
+
+   По roadmap Phase 14.4: «Печать в реальных размерах. Экспорт SVG с
+   физическими размерами; кнопка «Печать 1:50 на A1»; цвета линий
+   ЕСКД (0.7мм основная, 0.35мм вспомогательная)».
+*/
+function exportPlanSvgRealScale(scaleN, paperFormat) {
+  const plan = getPlan();
+  const racks = getProjectInstances();
+  const placed = racks.filter(r => plan.positions[r.id]);
+  if (!placed.length) { updateStatus('⚠ План пуст — нечего экспортировать.'); return; }
+
+  // Физический размер плана (м):
+  // Каждая клетка = plan.step м; всего PLAN_COLS × PLAN_ROWS клеток.
+  // На печати: 1 м реального плана = 1000/scaleN мм бумаги.
+  const planWm = PLAN_COLS * plan.step;        // ширина плана, м
+  const planHm = PLAN_ROWS * plan.step;        // высота, м
+  const mmPerM = 1000 / scaleN;                // мм бумаги на 1 м реального
+  const planWmm = planWm * mmPerM;
+  const planHmm = planHm * mmPerM;
+  // px-координаты в SVG: используем те же, что в plan, но финально width/height
+  // указываем в мм. Конвертация px→mm идёт через viewBox.
+  const W = PLAN_COLS * PLAN_CELL_PX;
+  const H = PLAN_ROWS * PLAN_CELL_PX;
+  const margin = 20;                            // мм отступ вокруг плана
+  const sheetWmm = planWmm + 2 * margin;
+  const sheetHmm = planHmm + 2 * margin;
+
+  // Стандартные форматы листов (мм)
+  const PAPER = {
+    'A0': [841, 1189], 'A1': [594, 841], 'A2': [420, 594],
+    'A3': [297, 420], 'A4': [210, 297],
+  };
+  const targetSheet = PAPER[paperFormat];
+  let warning = '';
+  if (targetSheet) {
+    const [maxShort, maxLong] = targetSheet;   // portrait orientation
+    const fitsPortrait = (sheetWmm <= maxShort && sheetHmm <= maxLong);
+    const fitsLandscape = (sheetWmm <= maxLong && sheetHmm <= maxShort);
+    if (!fitsPortrait && !fitsLandscape) {
+      warning = `⚠ План ${planWm.toFixed(1)}×${planHm.toFixed(1)} м в масштабе 1:${scaleN} даёт ${planWmm.toFixed(0)}×${planHmm.toFixed(0)} мм — НЕ влезает в ${paperFormat} (${maxShort}×${maxLong} мм). Уменьшите масштаб (1:${Math.ceil(scaleN * 1.5 / 50) * 50}+) или возьмите больший формат.`;
+    }
+  }
+
+  // viewBox масштабирует SVG-координаты (px) в финальные мм.
+  const viewBox = `0 0 ${W + 40} ${H + 80}`;
+  const lines = [];
+  lines.push(`<?xml version="1.0" encoding="UTF-8"?>`);
+  lines.push(`<svg xmlns="http://www.w3.org/2000/svg"
+    width="${sheetWmm.toFixed(1)}mm" height="${sheetHmm.toFixed(1)}mm"
+    viewBox="${viewBox}"
+    font-family="-apple-system,Segoe UI,Arial,sans-serif">`);
+  lines.push(`<rect width="100%" height="100%" fill="#ffffff"/>`);
+  // Заголовок (header) с масштабом
+  const dateStr = new Date().toLocaleDateString('ru');
+  lines.push(`<text x="20" y="26" font-size="16" font-weight="600" fill="#1f2937">План зала СКС · ${dateStr} · М 1:${scaleN}${paperFormat ? ` · ${paperFormat}` : ''}</text>`);
+
+  // Сетка
+  const gx = 20, gy = 46;
+  lines.push(`<g transform="translate(${gx},${gy})">`);
+  // ЕСКД: основная рамка — толщина 0.7мм. Через viewBox: 1мм бумаги ≈ W/sheetWmm px.
+  const pxPerMm = (W + 40) / sheetWmm;
+  const ESKD_MAIN = (0.7 * pxPerMm).toFixed(2);
+  const ESKD_THIN = (0.35 * pxPerMm).toFixed(2);
+  lines.push(`<rect width="${W}" height="${H}" fill="#fafafa" stroke="#1f2937" stroke-width="${ESKD_MAIN}"/>`);
+  for (let c = 1; c < PLAN_COLS; c++) lines.push(`<line x1="${c*PLAN_CELL_PX}" y1="0" x2="${c*PLAN_CELL_PX}" y2="${H}" stroke="#9ca3af" stroke-width="${ESKD_THIN}"/>`);
+  for (let r = 1; r < PLAN_ROWS; r++) lines.push(`<line x1="0" y1="${r*PLAN_CELL_PX}" x2="${W}" y2="${r*PLAN_CELL_PX}" stroke="#9ca3af" stroke-width="${ESKD_THIN}"/>`);
+
+  // Стойки — упрощённый рендер (плотные прямоугольники).
+  placed.forEach(r => {
+    const p = plan.positions[r.id]; if (!p) return;
+    const x = p.x * PLAN_CELL_PX, y = p.y * PLAN_CELL_PX;
+    const w = (r.frame?.widthMm || 600) / 1000 / plan.step * PLAN_CELL_PX;
+    const h = (r.frame?.depthMm || 1000) / 1000 / plan.step * PLAN_CELL_PX;
+    lines.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#dbeafe" stroke="#1f2937" stroke-width="${ESKD_MAIN}"/>`);
+    lines.push(`<text x="${x + w/2}" y="${y + h/2 + 4}" text-anchor="middle" font-size="${(2.5 * pxPerMm).toFixed(1)}" fill="#1f2937">${escapeSvg(r.designation || '?')}</text>`);
+  });
+
+  lines.push(`</g>`);
+  // Шкала-ruler (1 м линия в углу)
+  const rx = gx, ry = gy + H + 20;
+  const onMpx = mmPerM * pxPerMm;
+  lines.push(`<g transform="translate(${rx},${ry})">`);
+  lines.push(`<line x1="0" y1="0" x2="${onMpx.toFixed(1)}" y2="0" stroke="#1f2937" stroke-width="${ESKD_MAIN}"/>`);
+  lines.push(`<text x="0" y="${(2.5 * pxPerMm + 14).toFixed(1)}" font-size="${(3.5 * pxPerMm).toFixed(1)}" fill="#1f2937">0</text>`);
+  lines.push(`<text x="${onMpx.toFixed(1)}" y="${(2.5 * pxPerMm + 14).toFixed(1)}" text-anchor="end" font-size="${(3.5 * pxPerMm).toFixed(1)}" fill="#1f2937">1 м</text>`);
+  lines.push(`</g>`);
+
+  lines.push(`</svg>`);
+  const svg = lines.join('\n');
+  const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const fn = paperFormat
+    ? `scs-plan-1-${scaleN}-${paperFormat}-${dateStamp()}.svg`
+    : `scs-plan-1-${scaleN}-${dateStamp()}.svg`;
+  a.href = url; a.download = fn;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+  updateStatus(`✔ План в масштабе 1:${scaleN} (${paperFormat || 'произв.'}) экспортирован: ${sheetWmm.toFixed(0)}×${sheetHmm.toFixed(0)} мм. ${warning}`);
+}
+
 // v0.59.320: PNG-экспорт через растеризацию SVG в <canvas>.
 // Переиспользует тот же SVG-билдер (exportPlanSvg с перехватом download).
 function exportPlanPng() {
@@ -4705,6 +4814,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sd-plan-autolay')?.addEventListener('click', autoLayout);
   document.getElementById('sd-plan-svg')?.addEventListener('click', exportPlanSvg);
   document.getElementById('sd-plan-png')?.addEventListener('click', exportPlanPng);
+  // v0.60.16 (Phase 14.4): SVG в реальных мм для печати
+  document.getElementById('sd-plan-svg-1to50-a1')?.addEventListener('click', () => exportPlanSvgRealScale(50, 'A1'));
+  document.getElementById('sd-plan-svg-1to100-a3')?.addEventListener('click', () => exportPlanSvgRealScale(100, 'A3'));
+  document.getElementById('sd-plan-svg-1to200-a3')?.addEventListener('click', () => exportPlanSvgRealScale(200, 'A3'));
   document.getElementById('sd-plan-add-tray-h')?.addEventListener('click', () => addTray('h'));
   document.getElementById('sd-plan-add-tray-v')?.addEventListener('click', () => addTray('v'));
   document.getElementById('sd-plan-auto-trays')?.addEventListener('click', autoGenerateTrays);
