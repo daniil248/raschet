@@ -387,19 +387,26 @@ export function renderAshraeDatasheet(d, locationName) {
       </tbody>
     </table>
 
-    <h4 class="mt-ashrae-band mt-band-m">Monthly Climatic Design Conditions</h4>
+    <h4 class="mt-ashrae-band mt-band-m" title="Среднемесячные климатические параметры по ASHRAE Handbook Fundamentals 2021 гл. 14: average drybulb, std deviation, heating/cooling degree-days с двумя базами (10°C и 18.3°C), средняя скорость ветра. Колонка Annual — среднегодовое значение или сумма по месяцам.">Monthly Climatic Design Conditions</h4>
     <table class="mt-ashrae-table">
       <thead>
-        <tr><th rowspan="2">Параметр</th><th>Annual</th>${MONTHS.map(m => `<th>${m}</th>`).join('')}</tr>
+        <tr><th rowspan="2" title="Климатический параметр. Hover на ячейке слева → расшифровка.">Параметр</th><th title="Среднегодовое значение (или сумма для DD).">Annual</th>${MONTHS.map(m => `<th title="Месячное значение для ${m}.">${m}</th>`).join('')}</tr>
       </thead>
       <tbody>
-        <tr><td><b>DBAvg, °C</b></td><td>${fmt(a.annual.DBAvg)}</td>${a.monthly.map(m => `<td>${fmt(m.DBAvg)}</td>`).join('')}</tr>
-        <tr><td><b>DBStd</b></td><td>${fmt(a.annual.DBStdYear)}</td>${a.monthly.map(m => `<td>${fmt(m.DBStd)}</td>`).join('')}</tr>
-        <tr><td><b>HDD10.0</b></td><td>${fmt(a.annual.HDD10, 0)}</td>${a.monthly.map(m => `<td>${fmt(m.HDD10, 0)}</td>`).join('')}</tr>
-        <tr><td><b>HDD18.3</b></td><td>${fmt(a.annual.HDD183, 0)}</td>${a.monthly.map(m => `<td>${fmt(m.HDD183, 0)}</td>`).join('')}</tr>
-        <tr><td><b>CDD10.0</b></td><td>${fmt(a.annual.CDD10, 0)}</td>${a.monthly.map(m => `<td>${fmt(m.CDD10, 0)}</td>`).join('')}</tr>
-        <tr><td><b>CDD18.3</b></td><td>${fmt(a.annual.CDD183, 0)}</td>${a.monthly.map(m => `<td>${fmt(m.CDD183, 0)}</td>`).join('')}</tr>
-        <tr><td><b>WSAvg, м/с</b></td><td>${fmt(a.annual.WSAvg)}</td>${a.monthly.map(m => `<td>${fmt(m.WSAvg)}</td>`).join('')}</tr>
+        <tr title="Drybulb Average — средняя температура наружного воздуха по «сухому термометру» (стандартная T_amb), °C. По месяцам = mean(T_i) за все часы месяца. Annual = mean(monthly).">
+          <td><b>DBAvg, °C</b></td><td>${fmt(a.annual.DBAvg)}</td>${a.monthly.map(m => `<td>${fmt(m.DBAvg)}</td>`).join('')}</tr>
+        <tr title="Drybulb Standard deviation — стандартное отклонение среднесуточных температур (мера изменчивости climate). Считается по day-mean values. Высокое σ → континентальный климат, низкое → морской.">
+          <td><b>DBStd, °C</b></td><td>${fmt(a.annual.DBStdYear)}</td>${a.monthly.map(m => `<td>${fmt(m.DBStd)}</td>`).join('')}</tr>
+        <tr title="Heating Degree Days, база 10°C: HDD10 = Σ max(0, 10 − T_avg_day) за все дни месяца. Используется для оценки нагрузки на отопление с пониженной базой (для тёплых регионов или промышленных помещений с низкой setpoint).">
+          <td><b>HDD10.0, °C·сут</b></td><td>${fmt(a.annual.HDD10, 0)}</td>${a.monthly.map(m => `<td>${fmt(m.HDD10, 0)}</td>`).join('')}</tr>
+        <tr title="Heating Degree Days, база 18.3°C (= 65°F): HDD18.3 = Σ max(0, 18.3 − T_avg_day). Стандартная база ASHRAE/US, эквивалент HDD65. Прямой множитель в формуле прикидочной годовой нагрузки на отопление: Q_год ≈ HDD × UA × 24.">
+          <td><b>HDD18.3, °C·сут</b></td><td>${fmt(a.annual.HDD183, 0)}</td>${a.monthly.map(m => `<td>${fmt(m.HDD183, 0)}</td>`).join('')}</tr>
+        <tr title="Cooling Degree Days, база 10°C: CDD10 = Σ max(0, T_avg_day − 10). Используется для оценки нагрузки на охлаждение в высокопотребительных помещениях (ЦОД, серверные с set-point ≈ 22°C, фактически работают холоднее наружного выше 10°C).">
+          <td><b>CDD10.0, °C·сут</b></td><td>${fmt(a.annual.CDD10, 0)}</td>${a.monthly.map(m => `<td>${fmt(m.CDD10, 0)}</td>`).join('')}</tr>
+        <tr title="Cooling Degree Days, база 18.3°C (= 65°F): CDD18.3 = Σ max(0, T_avg_day − 18.3). Стандартная база ASHRAE для жилых/коммерческих систем кондиционирования. Q_охл_год ≈ CDD × UA × 24.">
+          <td><b>CDD18.3, °C·сут</b></td><td>${fmt(a.annual.CDD183, 0)}</td>${a.monthly.map(m => `<td>${fmt(m.CDD183, 0)}</td>`).join('')}</tr>
+        <tr title="Wind Speed Average — средняя скорость ветра по часам месяца, м/с. Косвенно влияет на эффективность air-cooled конденсаторов (выше ветер → лучше теплоотдача), на инфильтрацию здания и на солнечно-ветровые расчёты для розы ветров.">
+          <td><b>WSAvg, м/с</b></td><td>${fmt(a.annual.WSAvg)}</td>${a.monthly.map(m => `<td>${fmt(m.WSAvg)}</td>`).join('')}</tr>
       </tbody>
     </table>
 

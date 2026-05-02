@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Подбор холодильных систем</title>
+  <link rel="stylesheet" href="../shared/styles/base.css">
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <link rel="stylesheet" href="cooling.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="../shared/auth.js"></script>
+  <script src="../shared/auth-gate.js" defer></script>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    import { mountHelp } from '../shared/help-panel.js';
+    mountHeader({ title: 'Подбор холодильных систем', home: '../hub.html', moduleId: 'cooling', moduleTitle: 'Подбор холодильных систем' });
+    mountHelp({
+      module: 'cooling',
+      title: 'Модуль подбора холодильных систем',
+      usage: `
+        <h4>Назначение</h4>
+        <p>Технико-экономическое сравнение чиллеров, DX-систем и решений с фрикулингом по климатическим данным проекта. CAPEX/OPEX/TCO/payback для подбора оптимального оборудования.</p>
+        <h4>Связь с другими модулями</h4>
+        <ul>
+          <li><b>Метеоданные</b> — источник климатического ряда (T_amb, RH). Cooling Systems использует <i>активный для проекта</i> (⭐) датасет и тот же глобальный фильтр периода.</li>
+          <li><b>ID-диаграмма</b> — психрометрические формулы (T_wb через Stull 2011 продублированы в cooling/calc/psychro-formulas.js).</li>
+        </ul>
+        <h4>Архитектура</h4>
+        <p>Расчётная часть (<code>cooling/calc/*.js</code>) — pure-функции без зависимости от DOM. Используются как библиотека из других модулей. Графический слой (<code>cooling/ui/*.js</code>) импортирует calc и DOM.</p>
+        <h4>Tab «❄ Spec»</h4>
+        <p>Спецификация одной системы охлаждения: тип (чиллер/DX-air/DX-pumped), rated capacity/COP, T-correction, free-cooling параметры.</p>
+        <h4>Tab «📊 Annual energy»</h4>
+        <p>Annual hours table с расчётом capacity/COP/FC%/power/energy по бинам T_amb. Stacked-bar чарт «компрессор + FC aux» по бинам.</p>
+        <h4>Tab «💰 CAPEX / TCO»</h4>
+        <p>CAPEX (equipment + installation), эксплуатационные параметры (ТО, lifetime, discount rate, эскалация). TCO chart по годам.</p>
+        <h4>Tab «⚖ Сравнение»</h4>
+        <p>Side-by-side таблица для нескольких опций (до 4-х). Подсветка победителя по каждой метрике. Discounted payback относительно первой опции.</p>
+      `,
+      calcs: `
+        <h4>Расчёт чиллера / DX-системы</h4>
+
+        <h5>Поддерживаемые типы систем</h5>
+        <ul>
+          <li><b>Чиллер (CHW)</b> — водяной контур охлаждённой воды. Поддерживает free-cooling (dry/wet).</li>
+          <li><b>DX air-cooled (RTU/сплит)</b> — direct expansion с воздушным конденсатором. Без FC.</li>
+          <li><b>DX с pumped refrigerant FC</b> — DX с насосом хладагента (Liebert/Vertiv pumped refrigerant economizer). Когда T<sub>amb</sub> достаточно холодная, компрессор отключается.</li>
+        </ul>
+
+        <h5>Capacity и COP correction</h5>
+        <ul>
+          <li><code>Capacity(T) = ratedCap × (1 + capCorr × (T<sub>amb</sub> − T<sub>rated</sub>))</code> — снижается с ростом T<sub>amb</sub>. Air-cooled: −1.5%/°C.</li>
+          <li><code>COP<sub>mech</sub>(T) = ratedCOP × (1 + 0.02 × (T<sub>rated</sub> − T<sub>amb</sub>))</code> clamp [0.6×; 1.8×].</li>
+        </ul>
+
+        <h5>Free-cooling chiller</h5>
+        <ul>
+          <li><b>dry</b> — drycooler, T<sub>ref</sub> = T<sub>db</sub>. Без водопотребления.</li>
+          <li><b>wet</b> — cooling tower, T<sub>ref</sub> = T<sub>wb</sub> (Stull 2011). Эффективнее.</li>
+          <li>FC fraction: <code>fc = clamp((CHWS − T<sub>ref</sub>) / approach, 0, 1)</code>.</li>
+        </ul>
+
+        <h5>DX pumped refrigerant FC</h5>
+        <ul>
+          <li>Бинарный режим: <code>fc = 1</code> если T<sub>db</sub> ≤ threshold, иначе <code>fc = 0</code>.</li>
+          <li>Threshold обычно T<sub>indoor_supply</sub> − 5°C.</li>
+        </ul>
+
+        <h5>Power и Energy</h5>
+        <ul>
+          <li><code>P<sub>mech</sub> = (1 − fc) × Capacity / COP<sub>mech</sub></code></li>
+          <li><code>P<sub>aux</sub> = aux% × ratedCap / 100</code> (только если fc &gt; 0)</li>
+          <li><code>P<sub>total</sub> = P<sub>mech</sub> + P<sub>aux</sub></code>; <code>COP<sub>eff</sub> = Capacity / P<sub>total</sub></code></li>
+          <li><code>Energy = P<sub>total</sub> × hours_in_bin</code></li>
+        </ul>
+
+        <h4>Расчёт CAPEX / TCO / Payback</h4>
+        <ul>
+          <li><b>CAPEX</b> = equipmentCost + installationCost (₽, year 0).</li>
+          <li><b>OPEX_t</b> = energy_t + maint_t, где energy_t = annualKwh × tariff × (1+escE)<sup>t-1</sup>.</li>
+          <li><b>TCO (NPV)</b> = CAPEX + Σ<sub>t=1..N</sub> OPEX_t / (1+r)<sup>t</sup>, где r = discount rate.</li>
+          <li><b>Discounted Payback</b> — год, в котором кумулятивный дисконтированный денежный поток (saved_OPEX − ΔCAPEX) переходит через 0.</li>
+        </ul>
+
+        <h5>Источники методики</h5>
+        <ul>
+          <li>ASHRAE Handbook — Fundamentals (2021) гл. 18 «Refrigeration» — capacity correction, COP curves.</li>
+          <li>ASHRAE Standard 90.1 — IPLV bin-method с economizer modifier.</li>
+          <li>ASHRAE Handbook — Applications (2023) гл. 38 «Owning and Operating Costs».</li>
+          <li>ISO 15686-5:2017 «Buildings — Service life planning — Life-cycle costing».</li>
+          <li>EN 15459-1:2017 «Energy performance of buildings — Economic evaluation».</li>
+          <li>Vertiv / Liebert Pumped Refrigerant Economizer whitepapers — DX-FC threshold logic.</li>
+          <li>Stull R. (2011) «Wet-Bulb Temperature from Relative Humidity and Air Temperature».</li>
+          <li>ASHRAE TC 9.9 «Thermal Guidelines for Data Processing Environments» — рекомендуемые CHWS.</li>
+        </ul>
+
+        <p style="font-size:11px;color:#94a3b8;margin-top:10px">
+          ⚠ Это упрощённая методика для быстрой оценки. Не учитывает part-load на нагрузке (предполагается работа на rated capacity), реальные кривые COP(T_cond) производителя, defrost-циклы. Для точного расчёта используйте симулятор IES / EnergyPlus с performance maps конкретного оборудования.
+        </p>
+      `
+    });
+  </script>
+
+  <main class="cl-main">
+    <aside class="cl-sidebar rs-sidebar">
+      <div class="cl-section">
+        <h3 title="Конфигурации систем охлаждения для сравнения. До 4 опций. Первая — baseline для расчёта payback.">⚙ Конфигурации</h3>
+        <div id="cl-options-list" class="cl-options-list"></div>
+        <button type="button" class="cl-btn-primary" id="cl-add-option" title="Добавить новую опцию для сравнения. Копирует параметры активной.">+ Добавить опцию</button>
+      </div>
+
+      <div class="cl-section">
+        <h3 title="Источник климатических данных для расчёта. Активный для проекта (⭐) датасет из модуля Метеоданные.">🌤 Климат</h3>
+        <div id="cl-meteo-status" class="cl-meteo-status"></div>
+        <a class="cl-meteo-link" href="../meteo/" title="Перейти в модуль Метеоданные для загрузки/выбора датасета">📅 Открыть Метеоданные →</a>
+      </div>
+
+      <div class="cl-section">
+        <h3 title="Глобальный тариф на электроэнергию + валюта для CAPEX/OPEX/TCO. Применяется ко всем опциям. Курсы валют — кнопкой 💱.">💰 Тариф и валюта</h3>
+        <label style="font-size:12px;color:#374151;display:block;margin-bottom:6px"
+               title="Валюта для всех расчётов CAPEX/OPEX/TCO. Курсы валют доступны через кнопку 💱 ниже.">
+          <span style="display:block;margin-bottom:4px">Валюта:</span>
+          <select id="cl-currency" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px"></select>
+        </label>
+        <label style="font-size:12px;color:#374151;display:block;margin-bottom:6px"
+               title="Тариф на электроэнергию (валюта/кВт·ч). Default 7.5 — типичный тариф РФ для коммерческих/ЦОД-объектов; для других стран корректируйте.">
+          <span style="display:block;margin-bottom:4px">Тариф (вал/кВт·ч):</span>
+          <input type="number" id="cl-tariff" min="0" step="0.1" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px">
+        </label>
+        <button type="button" class="cl-btn-ghost" id="cl-rates-btn" style="width:100%"
+                title="Открыть справочник курсов валют. Поддерживаемые источники: НБ РК (по умолчанию), ЦБ РФ, ECB через Frankfurter, exchangerate.host. Курсы кешируются по дате.">💱 Курсы валют</button>
+      </div>
+    </aside>
+
+    <section class="cl-content">
+      <div class="cl-content-header">
+        <h2 id="cl-active-name">— нет активной опции —</h2>
+        <div class="cl-content-meta">
+          <span class="muted" id="cl-active-meta"></span>
+        </div>
+      </div>
+
+      <div id="cl-empty" class="cl-empty">
+        <div>
+          <h3>Нет активной опции</h3>
+          <p class="muted">Слева — добавьте конфигурацию или загрузите датасет в модуле Метеоданные.</p>
+        </div>
+      </div>
+
+      <div id="cl-active-pane" class="cl-active-pane" hidden>
+        <div class="cl-tabs">
+          <button type="button" class="cl-tab active" data-tab="spec"
+                  title="Спецификация одной системы охлаждения: тип, rated, FC параметры.">❄ Spec</button>
+          <button type="button" class="cl-tab" data-tab="energy"
+                  title="Annual hours table + stacked-bar чарт по бинам T_amb. FC + OPEX сводка.">📊 Annual energy</button>
+          <button type="button" class="cl-tab" data-tab="capex"
+                  title="CAPEX (equipment + installation), параметры экономики (ТО, lifetime, discount rate). TCO chart по годам.">💰 CAPEX / TCO</button>
+          <button type="button" class="cl-tab" data-tab="compare"
+                  title="Side-by-side таблица для нескольких опций. Подсветка победителя по каждой метрике.">⚖ Сравнение</button>
+        </div>
+
+        <div class="cl-tab-pane" data-pane="spec">
+          <div class="cl-section-card" id="cl-spec-form-wrap">
+            <!-- chiller spec form инжектится сюда -->
+          </div>
+        </div>
+
+        <div class="cl-tab-pane" data-pane="energy" hidden>
+          <div class="cl-section-card">
+            <h3 title="Сводка по фрикулингу + годовое потребление + OPEX за год + экономия vs noFC.">📊 Сводка</h3>
+            <div id="cl-fc-summary"></div>
+          </div>
+          <div class="cl-section-card">
+            <h3 title="Stacked-bar: годовое эл. потребление по бинам T_amb. Красное — компрессор, зелёное — насосы/вентиляторы FC.">📊 Энергия по бинам T_amb</h3>
+            <div class="cl-chart-box"><canvas id="cl-energy-chart"></canvas></div>
+          </div>
+          <div class="cl-section-card">
+            <div class="cl-table-toolbar">
+              <h3 style="margin:0" title="Pivot-таблица: бины Ambient T °C × агрегаты hours/days/RH/twb + chiller-метрики (capacity/COP/FC%/power/energy).">📐 Annual hours table</h3>
+              <span class="muted" style="flex:1;font-size:11.5px">Бины Ambient T °C — данные из активного meteo-датасета</span>
+              <button type="button" class="cl-btn-ghost" id="cl-cols-btn" title="Выбор отображаемых столбцов.">🔧 Столбцы</button>
+              <button type="button" class="cl-btn-primary" id="cl-export-btn" title="Экспорт текущей таблицы в CSV (UTF-8 с BOM).">📥 Экспорт CSV</button>
+            </div>
+            <div class="cl-col-picker-wrap" id="cl-col-picker-wrap" hidden></div>
+            <div id="cl-annual-table" class="cl-table-scroll"></div>
+          </div>
+        </div>
+
+        <div class="cl-tab-pane" data-pane="capex" hidden>
+          <div class="cl-section-card" id="cl-capex-form-wrap">
+            <!-- capex form инжектится сюда -->
+          </div>
+          <div class="cl-section-card">
+            <h3 title="KPI текущей конфигурации с TCO/Payback.">📊 TCO KPI</h3>
+            <div id="cl-tco-kpi"></div>
+          </div>
+          <div class="cl-section-card">
+            <h3 title="Кумулятивные дисконтированные затраты по годам для всех опций.">📈 TCO по годам</h3>
+            <div class="cl-chart-box"><canvas id="cl-tco-chart"></canvas></div>
+          </div>
+        </div>
+
+        <div class="cl-tab-pane" data-pane="compare" hidden>
+          <div class="cl-section-card">
+            <h3 title="Side-by-side таблица всех опций. Зелёная подсветка — победитель по метрике. Payback относительно первой (baseline).">⚖ Технико-экономическое сравнение опций</h3>
+            <div id="cl-compare-table" class="cl-table-scroll"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="cooling.js"></script>
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
+    import { APP_VERSION } from '../js/engine/constants.js';
+    import { CHANGELOGS } from '../shared/module-changelogs.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'cooling', moduleTitle: 'Подбор холодильных систем', entries: CHANGELOGS['engine'] || [] });
+  </script>
+</body>
+</html>

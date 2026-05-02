@@ -1,0 +1,280 @@
+/* cooling.css — стили для модуля «Подбор холодильных систем»
+   Стилистика близка к meteo.css для визуальной согласованности модулей. */
+
+body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #1f2937; background: #f3f4f6; }
+
+.cl-main {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 12px;
+  padding: 12px;
+  min-height: calc(100vh - 60px);
+}
+
+.cl-sidebar {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+}
+
+.cl-section h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 4px;
+}
+
+.cl-options-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.cl-option-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+  padding: 8px 10px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.1s;
+}
+.cl-option-row:hover { background: #eff6ff; border-color: #93c5fd; }
+.cl-option-row.active { background: #dbeafe; border-color: #1e40af; }
+.cl-option-name { font-weight: 600; color: #1e3a8a; }
+.cl-option-meta { font-size: 11px; color: #64748b; }
+.cl-option-actions button {
+  background: transparent; border: none; cursor: pointer; padding: 2px 4px; font-size: 12px; color: #64748b;
+}
+.cl-option-actions button:hover { color: #dc2626; }
+
+.cl-meteo-status { font-size: 11.5px; color: #475569; padding: 6px 8px; background: #f0f9ff; border-radius: 3px; margin-bottom: 6px; }
+.cl-meteo-status.empty { color: #b91c1c; background: #fef2f2; }
+.cl-meteo-link { display: block; font-size: 11.5px; color: #1e40af; text-decoration: none; padding: 4px 0; }
+.cl-meteo-link:hover { text-decoration: underline; }
+
+.cl-content {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.cl-content-header h2 { margin: 0; font-size: 18px; color: #1e3a8a; }
+.cl-content-meta { margin-top: 4px; font-size: 12px; color: #64748b; }
+
+.cl-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 60px 20px;
+  color: #6b7280;
+}
+
+.cl-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 8px;
+}
+.cl-tab {
+  padding: 7px 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: #6b7280;
+  font-weight: 500;
+}
+.cl-tab:hover { background: #f3f4f6; color: #111827; }
+.cl-tab.active {
+  background: #fff;
+  color: #1e40af;
+  border-color: #93c5fd;
+  border-bottom-color: #fff;
+  font-weight: 600;
+  margin-bottom: -1px;
+}
+.cl-tab-pane { display: flex; flex-direction: column; gap: 12px; }
+.cl-tab-pane[hidden] { display: none !important; }
+
+.cl-section-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  padding: 12px;
+}
+.cl-section-card h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.cl-chart-box { position: relative; height: 320px; }
+
+.cl-table-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.cl-btn-ghost, .cl-btn-primary {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  font-weight: 500;
+}
+.cl-btn-ghost { background: #f3f4f6; color: #374151; border-color: #d1d5db; }
+.cl-btn-ghost:hover { background: #e5e7eb; }
+.cl-btn-primary { background: #1e40af; color: #fff; }
+.cl-btn-primary:hover { background: #1e3a8a; }
+
+.cl-table-scroll { max-height: 70vh; overflow: auto; border: 1px solid #e5e7eb; border-radius: 4px; }
+.cl-annual-table, .cl-comparison-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+.cl-annual-table th, .cl-annual-table td,
+.cl-comparison-table th, .cl-comparison-table td {
+  padding: 5px 9px;
+  border: 1px solid #e5e7eb;
+  text-align: left;
+}
+.cl-annual-table th { background: #f3f4f6; position: sticky; top: 0; font-weight: 600; color: #374151; }
+.cl-annual-table td.num, .cl-annual-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.cl-annual-table tfoot td { background: #eff6ff; font-weight: 600; }
+
+.cl-comparison-table th { background: #f3f4f6; font-weight: 600; }
+.cl-comparison-table tbody th { background: #f9fafb; text-align: left; }
+.cl-comparison-table .cl-cmp-winner { background: #d1fae5; font-weight: 600; color: #065f46; }
+
+.cl-col-picker-wrap {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+.cl-col-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 4px 12px;
+}
+.cl-col-picker-row { display: flex; gap: 6px; align-items: center; font-size: 12px; cursor: pointer; }
+.cl-col-picker-row input { cursor: pointer; }
+
+/* Chiller spec form (адаптация из meteo) */
+.cl-chiller-form h4 {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1e40af;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.cl-chiller-section { margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px dashed #cbd5e1; }
+.cl-chiller-section:last-child { border-bottom: none; }
+.cl-chiller-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #075985;
+  letter-spacing: 0.3px;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+.cl-chiller-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 12px;
+}
+.cl-chiller-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11.5px;
+  color: #1e3a8a;
+  font-weight: 500;
+}
+.cl-chiller-grid input, .cl-chiller-grid select {
+  padding: 5px 8px;
+  border: 1px solid #93c5fd;
+  border-radius: 3px;
+  font: inherit;
+  font-size: 12.5px;
+  background: #fff;
+}
+.cl-chiller-grid input:focus, .cl-chiller-grid select:focus {
+  outline: none;
+  border-color: #1e40af;
+  box-shadow: 0 0 0 2px rgba(30,64,175,0.15);
+}
+.cl-chiller-desc { font-size: 11px; color: #64748b; margin: 4px 0 0; font-style: italic; }
+.cl-chiller-actions { margin-top: 6px; text-align: right; }
+
+/* FC + OPEX summary */
+.cl-fc-summary { margin: 0; }
+.cl-fc-summary-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #075985;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 6px 10px;
+  background: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+}
+.cl-fc-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1px;
+  background: #6ee7b7;
+  border: 1px solid #6ee7b7;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  overflow: hidden;
+}
+.cl-fc-kpi {
+  padding: 8px 10px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.cl-fc-kpi-lbl {
+  font-size: 10.5px;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-weight: 600;
+}
+.cl-fc-kpi-val { font-size: 14px; color: #0f172a; font-weight: 700; }
+.cl-fc-kpi-sub { font-size: 11px; font-weight: 400; color: #16a34a; }
+.cl-fc-kpi-saving { background: #f0fdf4; }
+.cl-fc-kpi-saving .cl-fc-kpi-val { color: #15803d; }
+
+@media (max-width: 760px) {
+  .cl-main { grid-template-columns: 1fr; }
+  .cl-sidebar { position: static; max-height: none; }
+}

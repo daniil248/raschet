@@ -2625,6 +2625,64 @@ ups) рисуют фиксированный набор полей. Не все 
 
 ---
 
+## Фаза 22 — Подбор холодильных систем (Cooling Systems) 🆕
+
+> Добавлено 2026-05-02. Stand-alone модуль для технико-экономического сравнения
+> чиллеров (CHW), DX-систем (air-cooled, pumped refrigerant) и решений с
+> фрикулингом по климатическим данным проекта.
+
+**Архитектурное требование** (Пользователь 2026-05-02): «модули должны быть
+построены так, что расчётная часть в отдельных файлах, а их графическое
+standalone-приложение в отдельном. Чтобы использовать расчётную часть без
+графики в других приложениях если это не требуется». Реализовано через
+строгое разделение `cooling/calc/*.js` (pure, no DOM) и `cooling/ui/*.js`
+(DOM-aware). Calc-функции импортируются в любой модуль как pure-библиотека.
+
+**Подзадачи:**
+
+- [x] **22.1** Stand-alone модуль `cooling/` с calc/ + ui/ — закрыто v0.59.991
+  - `cooling/calc/{chiller-defaults,chiller-bin-calc,fc-summary,capex-tco,comparison,psychro-formulas}.js`
+  - `cooling/ui/{chiller-form,energy-chart,fc-summary-view,annual-table-view,capex-form,comparison-view}.js`
+  - `cooling/cooling.js + index.html + cooling.css` — orchestrator
+  - `cooling/meteo-bridge.js` — слабая связь с meteo через project-storage
+  - 4 вкладки: Spec / Annual energy / CAPEX-TCO / Сравнение
+  - Несколько именованных опций (baseline + варианты для сравнения)
+  - Discounted payback, NPV, эскалация цен, кривая TCO по годам
+  - Side-by-side таблица сравнения с подсветкой победителя
+- [x] **22.2** Multi-currency + справочник курсов — закрыто v0.59.991
+  - 10 валют (₽/$/€/₸/¥/£/Br/₺/₴/CHF) для CAPEX/OPEX/TCO
+  - `shared/currency-rates/` plugin-арх источников: НБ РК (default), ЦБ РФ,
+    ECB через Frankfurter, exchangerate.host
+  - LS-кеш курсов по дате+источник; UI-диалог 💱 из cooling
+- [x] **22.3** Документация методики — закрыто v0.59.991
+  - Source list: ASHRAE HoF 2021 гл. 18, ASHRAE 90.1 IPLV bin-method,
+    ASHRAE Applications гл. 38 «Owning and Operating Costs»,
+    ISO 15686-5 Life-Cycle Costing, EN 15459-1, Vertiv/Liebert pumped
+    refrigerant whitepapers, Stull (2011) Wet-Bulb, ASHRAE TC 9.9
+  - Раскрывающаяся секция «📐 Методика расчёта (формулы)» в форме spec
+  - Help-панель модуля с полным описанием
+- [ ] **22.4** Интеграция с Технологом ЦОД (Фаза 20.12 — PUE)
+  - Технолог тянет годовое эл. потребление чиллера из активной cooling-spec
+    проекта вместо упрощённого `Q_IT / COP_const`
+- [ ] **22.5** Импорт реальных performance-curves производителей
+  - Daikin/Trane/Carrier/Liebert chiller selection software → CSV bin-таблица
+  - Замена IPLV-оценки на эмпирическую кривую COP(T) от вендора
+- [ ] **22.6** Доп. источники курсов (по запросу)
+  - НБ Украины, НБ Беларуси, currencyapi.com, OpenExchangeRates
+  - Plugin: новый файл `shared/currency-rates/sources/<id>.js` с register({...})
+- [ ] **22.7** Карточка оборудования в каталоге (catalog/)
+  - Сохранять выбранную опцию как «изделие» с привязкой к chiller spec
+
+**Acceptance:**
+- Calc-функции импортируются и работают без DOM (можно прогнать в Node).
+- TCO/payback совпадает с ручным расчётом по ISO 15686-5 на типовом примере.
+- Multi-currency: смена валюты пересчитывает все KPI без потери ввода.
+- Курсы кешируются по дате; повторный запрос не идёт в сеть.
+- Cooling работает без активного meteo-датасета (показывает empty-state со
+  ссылкой на /meteo).
+
+---
+
 ## Фаза 21 — Метеоданные 🆕
 
 > Добавлено 2026-04-30. Stand-alone модуль для импорта климатических рядов.

@@ -19,9 +19,12 @@
 import { ensureDefaultProject, projectKey } from '../shared/project-storage.js';
 import * as util from './util.js';
 import { getAll as getSources } from './sources/index.js';
-import { drawTempHistogram, drawHumidityHistogram, drawMonthlyTempChart, drawWindRose, renderDaysInRangeTable, drawChillerEnergyChart } from './charts.js';
+import { drawTempHistogram, drawHumidityHistogram, drawMonthlyTempChart, drawWindRose, renderDaysInRangeTable } from './charts.js';
 import { renderAshraeDatasheet } from './ashrae-datasheet.js';
-import { COLUMNS, DEFAULT_CHILLER, buildBinData, renderAnnualTable, exportAnnualTableCsv, renderColumnPicker, renderChillerSpecForm, renderFreeCoolingSummary } from './annual-table.js';
+// v0.59.991: модуль подбора чиллеров вынесен в /cooling. Meteo теперь
+// работает только с климатическими данными. Annual hours table остаётся
+// здесь как чисто климатический pivot (без chiller-cols).
+import { COLUMNS, DEFAULT_COLS, buildBinData, renderAnnualTable, exportAnnualTableCsv, renderColumnPicker } from './annual-table.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -29,24 +32,18 @@ let _pid = null;
 let _datasets = [];
 let _activeId = null;
 let _activeTab = 'summary';
-let _activeCols = COLUMNS.filter(c => c.default).map(c => c.id);
-let _chillerSpec = null;
+let _activeCols = [...DEFAULT_COLS];
 // v0.59.986: ГЛОБАЛЬНЫЙ фильтр периода — применяется ко всем вкладкам.
 //   mode: 'all' | 'year' | 'period'
 //   year: '2023' (string) — используется при mode='year'
 //   periodFrom / periodTo: 'YYYY-MM-DD' — при mode='period'
 // Заменяет более узкий _annualYear (v0.59.971) — теперь фильтр глобальный.
 let _filter = { mode: 'all', year: '', periodFrom: '', periodTo: '' };
-// v0.59.989: тариф ₽/кВт·ч для расчёта годовых эксплуатационных затрат
-//   и экономии от free-cooling. Default 7.5 — типичный тариф РФ для ЦОД.
-let _tariffRubKwh = 7.5;
 
 const KEY_DATA = ['meteo', 'datasets.v1'];
 const KEY_ACTIVE = ['meteo', 'activeId.v1'];
 const KEY_COLS = ['meteo', 'annualCols.v1'];
-const KEY_CHILLER = ['meteo', 'chillerSpec.v1'];
 const KEY_FILTER = ['meteo', 'globalFilter.v1'];
-const KEY_TARIFF = ['meteo', 'tariffRubKwh.v1'];
 
 function loadJson(suffix, fallback) {
   if (!_pid) return fallback;
@@ -61,9 +58,7 @@ function persist() {
   saveJson(KEY_DATA, _datasets);
   saveJson(KEY_ACTIVE, _activeId);
   saveJson(KEY_COLS, _activeCols);
-  saveJson(KEY_CHILLER, _chillerSpec);
   saveJson(KEY_FILTER, _filter);
-  saveJson(KEY_TARIFF, _tariffRubKwh);
 }
 
 /* v0.59.986: Применить глобальный фильтр к hourly. Возвращает массив
@@ -263,24 +258,11 @@ function renderActiveTab() {
     const pivot = $('mt-pivot-table');
     if (pivot) pivot.innerHTML = renderDaysInRangeTable(hourly);
   } else if (_activeTab === 'annual') {
-    const rows = buildBinData(hourly, _chillerSpec);
+    // v0.59.991: чисто климатический pivot — без chiller. Подбор оборудования
+    // вынесен в отдельный модуль /cooling.
+    const rows = buildBinData(hourly);
     const tbl = $('mt-annual-table');
     if (tbl) tbl.innerHTML = renderAnnualTable(rows, _activeCols);
-    // v0.59.989: сводка FC + OPEX, если задан chillerSpec
-    const sumEl = $('mt-fc-summary');
-    if (sumEl) {
-      sumEl.innerHTML = (_chillerSpec && Number(_chillerSpec.ratedCapKw) > 0)
-        ? renderFreeCoolingSummary(rows, _chillerSpec, _tariffRubKwh, hourly)
-        : '';
-    }
-    // v0.59.990: stacked-bar chart по бинам (мех + aux)
-    const chartCvs = $('mt-chiller-energy-chart');
-    const chartWrap = $('mt-chiller-energy-chart-wrap');
-    if (chartCvs && chartWrap) {
-      const hasSpec = !!(_chillerSpec && Number(_chillerSpec.ratedCapKw) > 0);
-      chartWrap.hidden = !hasSpec;
-      if (hasSpec) drawChillerEnergyChart(chartCvs, rows);
-    }
   } else if (_activeTab === 'ashrae') {
     renderAshraeBlock(d, hourly);
   }
@@ -354,13 +336,15 @@ function init() {
   _datasets = loadJson(KEY_DATA, []) || [];
   _activeId = loadJson(KEY_ACTIVE, null);
   _activeCols = loadJson(KEY_COLS, _activeCols);
-  _chillerSpec = loadJson(KEY_CHILLER, null);
+  // v0.59.991: миграция — убираем chiller-cols которые могли быть сохранены
+  // от старых версий, т.к. эти столбцы переехали в /cooling.
+  const CHILLER_COL_IDS = ['capacity', 'copMech', 'fcFraction', 'cop', 'power', 'energy'];
+  _activeCols = _activeCols.filter(c => !CHILLER_COL_IDS.includes(c));
+  if (!_activeCols.length) _activeCols = [...DEFAULT_COLS];
   const savedFilter = loadJson(KEY_FILTER, null);
   if (savedFilter && typeof savedFilter === 'object') {
     _filter = { mode: 'all', year: '', periodFrom: '', periodTo: '', ...savedFilter };
   }
-  const savedTariff = Number(loadJson(KEY_TARIFF, null));
-  if (Number.isFinite(savedTariff) && savedTariff >= 0) _tariffRubKwh = savedTariff;
   if (_activeId && !_datasets.some(d => d.id === _activeId)) _activeId = _datasets[0]?.id || null;
 
   renderImportButtons();
@@ -435,42 +419,16 @@ function init() {
     onGlobalFilterChange();
   });
 
-  // Annual hours toolbar — работает на текущем глобальном фильтре
+  // Annual hours toolbar — чисто климатический pivot. Подбор оборудования
+  // (chillerSpec / FC / OPEX / charts) — в модуле /cooling.
   const reRenderAnnual = () => {
     const d = _datasets.find(x => x.id === _activeId);
     if (!d) return;
     const filtered = getFilteredHourly(d);
-    const rows = buildBinData(filtered, _chillerSpec);
+    const rows = buildBinData(filtered);
     const tbl = $('mt-annual-table');
     if (tbl) tbl.innerHTML = renderAnnualTable(rows, _activeCols);
-    // v0.59.989: пересчёт сводки FC/OPEX
-    const sumEl = $('mt-fc-summary');
-    if (sumEl) {
-      sumEl.innerHTML = (_chillerSpec && Number(_chillerSpec.ratedCapKw) > 0)
-        ? renderFreeCoolingSummary(rows, _chillerSpec, _tariffRubKwh, filtered)
-        : '';
-    }
-    // v0.59.990: пересчёт stacked-bar чарта
-    const chartCvs = $('mt-chiller-energy-chart');
-    const chartWrap = $('mt-chiller-energy-chart-wrap');
-    if (chartCvs && chartWrap) {
-      const hasSpec = !!(_chillerSpec && Number(_chillerSpec.ratedCapKw) > 0);
-      chartWrap.hidden = !hasSpec;
-      if (hasSpec) drawChillerEnergyChart(chartCvs, rows);
-    }
   };
-
-  // Тариф ₽/кВт·ч
-  const tariffInp = $('mt-tariff');
-  if (tariffInp) {
-    tariffInp.value = _tariffRubKwh;
-    tariffInp.addEventListener('change', () => {
-      const v = Number(tariffInp.value);
-      _tariffRubKwh = Number.isFinite(v) && v >= 0 ? v : 0;
-      persist();
-      reRenderAnnual();
-    });
-  }
 
   const colsBtn = $('mt-cols-btn');
   if (colsBtn) {
@@ -478,50 +436,15 @@ function init() {
     colsBtn.addEventListener('click', () => {
       if (!wrap) return;
       wrap.hidden = !wrap.hidden;
-      // Очищаем-перерендериваем при каждом раскрытии (флаг hasChiller мог измениться)
       if (!wrap.hidden) {
         wrap.innerHTML = '';
+        // hasChillerSpec=false — chiller-cols отключены, видны только в /cooling.
         wrap.appendChild(renderColumnPicker(_activeCols, (next) => {
           _activeCols = next;
           persist();
           reRenderAnnual();
-        }, !!(_chillerSpec && Number(_chillerSpec.ratedCapKw) > 0)));
+        }, false));
       }
-    });
-  }
-
-  const chillerBtn = $('mt-chiller-btn');
-  if (chillerBtn) {
-    const wrap = $('mt-chiller-wrap');
-    // v0.59.987: re-render формы при каждом изменении spec (нужно чтобы
-    // секции FC/DX-FC показывались/скрывались сразу при смене systemType).
-    const renderForm = () => {
-      if (!wrap || wrap.hidden) return;
-      wrap.innerHTML = '';
-      wrap.appendChild(renderChillerSpecForm(_chillerSpec, (next) => {
-        const sysTypeChanged = (_chillerSpec?.systemType || 'chiller') !== (next.systemType || 'chiller');
-        _chillerSpec = next;
-        // Auto-enable chiller-columns если ratedCapKw введён впервые.
-        if (next && Number(next.ratedCapKw) > 0) {
-          const chillerCols = ['capacity', 'copMech', 'fcFraction', 'cop', 'power', 'energy'];
-          for (const c of chillerCols) if (!_activeCols.includes(c)) _activeCols.push(c);
-        }
-        persist();
-        reRenderAnnual();
-        if (sysTypeChanged) renderForm();   // показать/скрыть секции FC/DX-FC
-      }, () => {
-        _chillerSpec = null;
-        _activeCols = _activeCols.filter(c => !['capacity','copMech','fcFraction','cop','power','energy'].includes(c));
-        persist();
-        reRenderAnnual();
-        wrap.hidden = true;
-        util.toast('Chiller/DX spec сброшен', 'info');
-      }));
-    };
-    chillerBtn.addEventListener('click', () => {
-      if (!wrap) return;
-      wrap.hidden = !wrap.hidden;
-      renderForm();
     });
   }
 
@@ -531,7 +454,7 @@ function init() {
       const d = _datasets.find(x => x.id === _activeId);
       if (!d) return;
       const filtered = getFilteredHourly(d);
-      const rows = buildBinData(filtered, _chillerSpec);
+      const rows = buildBinData(filtered);
       const tag = _filter.mode === 'year' && _filter.year ? `-${_filter.year}`
         : _filter.mode === 'period' ? `-${_filter.periodFrom || 'start'}_${_filter.periodTo || 'end'}`
         : '-allyears';

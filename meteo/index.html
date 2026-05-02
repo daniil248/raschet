@@ -28,11 +28,11 @@
         <h4>Назначение</h4>
         <p>Сбор климатических рядов (температура, влажность, ветер) для расчёта PUE, freecooling-потенциала, диаграмм i-d и параметров климат-системы ЦОД. Plugin-арх источников: Open-Meteo REST, ASHRAE design conditions, ручная rp5 CSV.</p>
         <h4>Tab «📋 Сводка»</h4>
-        <p>KPI + гистограмма температуры (бины 1°C, ось Y — дней/год) + сводка HDD/CDD.</p>
+        <p>KPI + гистограмма температуры (интервалы 1°C, ось Y — дней/год) + сводка HDD/CDD.</p>
         <h4>Tab «📊 Графики»</h4>
-        <p>Гистограмма влажности RH (бины 5%), линия среднемесячной T с min/max envelope, матрица «дней с T в бине × год».</p>
-        <h4>Tab «📋 Annual hours table»</h4>
-        <p>Pivot-таблица бинов температуры с настраиваемыми столбцами (часы/год, дни/год, RH avg/min/max, ветер). Экспорт в CSV/Excel.</p>
+        <p>Гистограмма влажности RH (интервалы 5%), линия среднемесячной T с min/max envelope, матрица «дней в интервале T × год».</p>
+        <h4>Tab «📋 Годовые часы (таблица)»</h4>
+        <p>Сводная таблица интервалов температуры с настраиваемыми столбцами (часы/год, дни/год, RH avg/min/max, ветер). Экспорт в CSV/Excel.</p>
       `,
       calcs: `
         <h4>Производные показатели</h4>
@@ -65,7 +65,7 @@
         <h5>Free-cooling chiller (dry/wet)</h5>
         <ul>
           <li><b>dry</b> — drycooler / dry cooler, T<sub>ref</sub> = T<sub>db</sub>. Простой, без водопотребления, но меньше часов FC.</li>
-          <li><b>wet</b> — cooling tower / градирня, T<sub>ref</sub> = T<sub>wb</sub> (Stull 2011 из avg RH в бине). Эффективнее (запас 5–10°C), но требует подпитки.</li>
+          <li><b>wet</b> — cooling tower / градирня, T<sub>ref</sub> = T<sub>wb</sub> (Stull 2011 из средней RH в интервале). Эффективнее (запас 5–10°C), но требует подпитки.</li>
           <li>FC fraction (0..1): <code>fc = clamp((CHWS − T<sub>ref</sub>) / approach, 0, 1)</code>.</li>
           <li>100% когда T<sub>ref</sub> ≤ CHWS − approach; 0% когда T<sub>ref</sub> ≥ CHWS; между — линейный partial FC.</li>
         </ul>
@@ -82,7 +82,7 @@
           <li><code>P<sub>mech</sub> = (1 − fc) × Capacity / COP<sub>mech</sub></code> — компрессор.</li>
           <li><code>P<sub>aux</sub> = aux% × ratedCap / 100</code> (только если fc &gt; 0) — насосы / вентиляторы FC.</li>
           <li><code>P<sub>total</sub> = P<sub>mech</sub> + P<sub>aux</sub></code>; COP<sub>eff</sub> = Capacity / P<sub>total</sub> (15–30 при 100% FC).</li>
-          <li><code>Energy = P<sub>total</sub> × hours_in_bin</code>; Σ по всем бинам = годовое потребление.</li>
+          <li><code>Energy = P<sub>total</sub> × часы_в_интервале</code>; Σ по всем интервалам = годовое потребление.</li>
         </ul>
 
         <h5>Источники методики</h5>
@@ -149,11 +149,11 @@
 
         <div class="mt-tabs">
           <button type="button" class="mt-tab active" data-tab="summary"
-                  title="Сводка: ключевые KPI (T средняя/мин/макс/99%, FreeCool часы) + гистограмма распределения температуры по бинам 1°C + табличная сводка (HDD/CDD).">📋 Сводка</button>
+                  title="Сводка: ключевые KPI (T средняя/мин/макс/99%, FreeCool часы) + гистограмма распределения температуры по интервалам 1°C + табличная сводка (HDD/CDD).">📋 Сводка</button>
           <button type="button" class="mt-tab" data-tab="charts"
-                  title="Графики: распределение влажности RH (бины 5%), среднемесячная T с диапазоном min..max, роза ветров (16 румбов), pivot-матрица «дней с T в бине × год».">📊 Графики</button>
+                  title="Графики: распределение влажности RH (интервалы 5%), среднемесячная T с диапазоном min..max, роза ветров (16 румбов), сводная матрица «дней с T в интервале × год».">📊 Графики</button>
           <button type="button" class="mt-tab" data-tab="annual"
-                  title="Annual hours table: бин Ambient T °C × часы/дни года, с настраиваемыми колонками (RH, ветер, мощность чиллера). Экспорт CSV.">📐 Annual hours</button>
+                  title="Сводная таблица годовых часов: интервалы температуры наружного воздуха (°C, шаг 1°C) × часы/дни года, с настраиваемыми столбцами (RH, ветер). Расчёт чиллеров — в отдельном модуле «Подбор холодильных систем». Экспорт CSV.">📐 Годовые часы</button>
           <button type="button" class="mt-tab" data-tab="ashrae"
                   title="ASHRAE Design Conditions (HoF гл. 14): расчётные температуры heating 99.6%/99.0% и cooling 0.4%/1.0%/2.0% с MCWB и MCDP.">🌡 ASHRAE design</button>
         </div>
@@ -175,7 +175,7 @@
           </div>
 
           <div class="mt-section-card">
-            <h3>📈 Распределение температуры (бины по 1 °C, ось Y — дней / год)</h3>
+            <h3 title="Гистограмма распределения температуры наружного воздуха. Каждый столбец = 1°C интервал; высота = сколько дней в году T попадает в этот интервал. Зелёная подсветка слева — потенциал прямого фрикулинга (T &lt; 14°C).">📈 Распределение температуры (интервалы по 1 °C, ось Y — дней / год)</h3>
             <div class="mt-chart-box"><canvas id="mt-hist-canvas"></canvas></div>
           </div>
 
@@ -187,7 +187,7 @@
 
         <div class="mt-tab-pane" data-pane="charts" hidden>
           <div class="mt-section-card">
-            <h3>💧 Распределение относительной влажности (бины 5 %, ось Y — дней / год)</h3>
+            <h3 title="Гистограмма распределения относительной влажности. Интервалы по 5%, высота столбца = сколько дней в году RH попадает в этот интервал. Помогает оценить нагрузку на систему увлажнения/осушения.">💧 Распределение относительной влажности (интервалы 5 %, ось Y — дней / год)</h3>
             <div class="mt-chart-box"><canvas id="mt-rh-canvas"></canvas></div>
           </div>
           <div class="mt-section-card">
@@ -200,8 +200,8 @@
             <div class="mt-windrose-wrap"><canvas id="mt-windrose-canvas" width="480" height="480"></canvas></div>
           </div>
           <div class="mt-section-card">
-            <h3>📅 Дней с T в бине × год</h3>
-            <p class="muted" style="font-size:11.5px;margin:0 0 8px">Каждая ячейка — кол-во дней (по среднесуточной T) при данном бине T в данном году. Последняя колонка — среднее по годам.</p>
+            <h3 title="Сводная матрица: строки = интервалы T (1°C), колонки = годы. В ячейке — кол-во дней этого года, в которых среднесуточная T попадала в данный интервал. Последняя колонка — среднее по всем годам. Помогает оценить год-к-году вариативность климата.">📅 Дней в интервале T × год</h3>
+            <p class="muted" style="font-size:11.5px;margin:0 0 8px">Каждая ячейка — кол-во дней (по среднесуточной T) в указанном интервале T в данном году. Последняя колонка — среднее по годам.</p>
             <div id="mt-pivot-table" class="mt-table-scroll"></div>
           </div>
         </div>
@@ -209,27 +209,16 @@
         <div class="mt-tab-pane" data-pane="annual" hidden>
           <div class="mt-section-card">
             <div class="mt-annual-toolbar">
-              <h3 style="margin:0" title="Pivot-таблица: бины Ambient T °C (целочисленные диапазоны 1°C) × агрегированные показатели (часы/год, дни/год, RH avg/min/max, ветер, мощность чиллера если задана spec).">📐 Annual hours table</h3>
-              <span class="muted" style="flex:1;font-size:11.5px" title="Период выборки задаётся ГЛОБАЛЬНЫМ фильтром выше (📅 Период).">Бины Ambient T °C × часы/дни в году.</span>
-              <label style="display:inline-flex;gap:4px;align-items:center;font-size:12px"
-                     title="Тариф на электроэнергию (₽/кВт·ч) для расчёта годовых эксплуатационных затрат и денежной экономии от free-cooling. Default 7.5 — типичный тариф РФ для коммерческих/ЦОД-объектов. Установите 0 чтобы скрыть OPEX-метрики.">
-                💰 ₽/кВт·ч:
-                <input type="number" id="mt-tariff" min="0" step="0.1" style="width:60px;padding:3px 6px;font-size:12px;border:1px solid #cbd5e1;border-radius:3px">
-              </label>
-              <button type="button" class="mt-btn-ghost" id="mt-chiller-btn"
-                      title="Спецификация чиллера/DX-системы для расчёта Capacity (T-correction), COP (IPLV-curve), Power и годовой энергии. Опции: free-cooling (dry/wet), DX air-cooled, DX с pumped refrigerant.">❄ Chiller / DX</button>
+              <h3 style="margin:0" title="Сводная таблица: интервалы температуры наружного воздуха (целочисленные диапазоны 1°C) × агрегированные показатели (часы/год, дни/год, RH avg/min/max, ветер). Расчёт мощности чиллера/DX и годовой энергии — в отдельном модуле «Подбор холодильных систем».">📐 Годовые часы (сводная таблица)</h3>
+              <span class="muted" style="flex:1;font-size:11.5px" title="Период выборки задаётся ГЛОБАЛЬНЫМ фильтром выше (📅 Период).">Интервалы температуры наружного воздуха × часы/дни в году.</span>
+              <a href="../cooling/" class="mt-btn-ghost" style="text-decoration:none"
+                 title="Перейти в модуль «Подбор холодильных систем» — расчёт чиллеров/DX/free-cooling по этим климатическим данным.">❄ Подбор оборудования →</a>
               <button type="button" class="mt-btn-ghost" id="mt-cols-btn"
-                      title="Выбор отображаемых столбцов: hours/days/% года, RH avg/min/max, ветер, capacity/COP/power/energy чиллера, FC% часы фрикулинга.">🔧 Столбцы</button>
+                      title="Выбор отображаемых столбцов: hours/days/% года, RH avg/min/max, ветер.">🔧 Столбцы</button>
               <button type="button" class="mt-btn-primary" id="mt-export-btn"
                       title="Экспорт текущей таблицы (с применённым фильтром и активными столбцами) в CSV. Файл UTF-8 с BOM, открывается в Excel.">📥 Экспорт CSV</button>
             </div>
-            <div class="mt-chiller-wrap" id="mt-chiller-wrap" hidden></div>
             <div class="mt-col-picker-wrap" id="mt-col-picker-wrap" hidden></div>
-            <div id="mt-fc-summary"></div>
-            <div class="mt-chart-box" id="mt-chiller-energy-chart-wrap" hidden
-                 title="Стек-бар: годовое эл. потребление по бинам T_amb. Красное — компрессор (мех. охлаждение), зелёное — насосы/вентиляторы FC. Слева (низкие T) обычно зелёный = free-cooling работает, справа (высокие T) красный = только компрессор.">
-              <canvas id="mt-chiller-energy-chart"></canvas>
-            </div>
             <div id="mt-annual-table" class="mt-table-scroll"></div>
           </div>
         </div>

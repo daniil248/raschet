@@ -4,6 +4,29 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.59.991', date: '2026-05-02', items: [
+      '🆕 <b>Новый модуль «Подбор холодильных систем» (/cooling)</b>. По требованию: «вынеси подбор чиллеров и холодильных систем … в отдельный модуль». Архитектурно разделён на pure-calc и UI слои.',
+      '<b>Архитектура модуля</b>:',
+      '• <code>cooling/calc/*.js</code> — чистые функции (no DOM, переиспользуемые из любого модуля): chiller-defaults / chiller-bin-calc / fc-summary / capex-tco / comparison / psychro-formulas.',
+      '• <code>cooling/ui/*.js</code> — DOM-aware рендереры: chiller-form / energy-chart / fc-summary-view / annual-table-view / capex-form / comparison-view.',
+      '• <code>cooling/cooling.js</code> + <code>index.html</code> + <code>cooling.css</code> — standalone GUI orchestrator.',
+      '• <code>cooling/meteo-bridge.js</code> — слабая связь с meteo: читает active dataset через project-storage, без cross-module hard-deps.',
+      '<b>Возможности</b>:',
+      '• 4 вкладки: ❄ Spec / 📊 Annual energy / 💰 CAPEX-TCO / ⚖ Сравнение.',
+      '• Несколько именованных опций для сравнения (4+); первая — baseline для расчёта payback.',
+      '• Полный CAPEX/OPEX/TCO/NPV/Discounted Payback (ISO 15686-5, ASHRAE Applications гл. 38, EN 15459-1). Default lifetime 20 лет (зафиксировано пользователем 2026-05-02).',
+      '• Эскалация цен на электроэнергию и ТО, ставка дисконтирования.',
+      '• Side-by-side comparison таблица с подсветкой победителя по каждой метрике.',
+      '• TCO-chart по годам для всех опций.',
+      '<b>Multi-currency</b>: валюта настраивается (₽/$/€/₸/¥/₽/£/Br/₺/₴/CHF). Все суммы (CAPEX, OPEX, TCO) форматируются в выбранной валюте.',
+      '<b>Справочник курсов валют</b> (<code>shared/currency-rates/</code>): plugin-арх источников. Зарегистрированы: НБ РК (default), ЦБ РФ (через cbr-xml-daily.ru), ECB через Frankfurter.app, exchangerate.host. Кеш в LS по дате+источник; принудительное обновление; clearCache. UI-диалог 💱 «Курсы валют» доступен из cooling.',
+      '<b>Meteo очищен</b>: убраны chiller-spec form, FC summary, energy chart, tariff input, all chiller columns. Meteo теперь работает только с климатикой; ссылка «❄ Подбор оборудования →» в toolbar Annual hours ведёт в /cooling.',
+      '<b>Терминология RU</b>: «бины/Bins/Ambient T» → «интервалы/Темп. наружн. возд.» во всём meteo + ASHRAE design + COLUMNS labels.',
+      '<b>Tooltips на всех ASHRAE параметрах</b>: DBAvg/DBStd/HDD10.0/HDD18.3/CDD10.0/CDD18.3/WSAvg + Monthly Climatic Design Conditions заголовок + KPI.',
+      '<b>Hub</b>: новая карточка «Подбор холодильных систем».',
+      'Файлы новые: <code>cooling/index.html, cooling.js, cooling.css, calc/{chiller-defaults,chiller-bin-calc,fc-summary,capex-tco,comparison,psychro-formulas}.js, ui/{chiller-form,energy-chart,fc-summary-view,annual-table-view,capex-form,comparison-view}.js, meteo-bridge.js</code>; <code>shared/currency-rates/{index,rates-dialog}.js + sources/{nbk-rk,cbr-rf,frankfurter,exchangerate-host,index}.js</code>.',
+      'Файлы изменены: <code>meteo/{annual-table.js (slim climate-only),meteo.js,index.html,ashrae-datasheet.js}</code>; <code>hub.html</code>.',
+    ] },
     { version: '0.59.990', date: '2026-05-01', items: [
       '📊 <b>Stacked-bar чарт по бинам T_amb: компрессор + FC aux</b>. Визуализация над таблицей при заданной chillerSpec.',
       '• X = Ambient T (°C) бины, Y = годовая энергия (кВт·ч/год).',
