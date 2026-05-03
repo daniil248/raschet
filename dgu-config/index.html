@@ -130,7 +130,9 @@
   <div id="rs-footer-mount"></div>
   <script type="module">
     import { mountFooter } from '../shared/module-footer.js';
-    mountFooter({ moduleId: 'engine' });
+    import { APP_VERSION } from '../js/engine/constants.js';
+    import { CHANGELOGS } from '../shared/module-changelogs.js';
+    mountFooter({ appVersion: APP_VERSION, moduleId: 'dgu-config', moduleTitle: 'ДГУ-конфигуратор', entries: CHANGELOGS['engine'] || [] });
   </script>
 
   <script type="module" src="dgu-config.js"></script>

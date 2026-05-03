@@ -112,7 +112,8 @@ async function _loadCoolingDatasheets() {
 // v0.60.71 (Phase 30.3 cont.): DGU datasheets как builtin (ДГУ — kind='dgu').
 async function _loadDguDatasheets() {
   try {
-    const m = await import('../dgu-config/datasheets/index.js');
+    // v0.60.92: каталог переехал в shared/catalogs/dgu.js
+    const m = await import('./catalogs/dgu.js');
     if (!m.DGU_DATASHEETS) return [];
     return m.DGU_DATASHEETS.map(d => {
       // v0.60.72: series = product-line (C18/C32/3516/QSL9/TAD941GE/P200H).
@@ -150,13 +151,53 @@ async function _loadDguDatasheets() {
   } catch (e) { console.warn('[catalog-bridge] dgu-datasheets', e.message); return []; }
 }
 
+// v0.60.92 (Пользователь 2026-05-03): DRUPS (Diesel Rotary UPS) — Hitec /
+// Piller / Euro-Diesel. Отдельный kind 'drups' (НЕ дгу, НЕ ИБП — гибрид).
+async function _loadDrupsDatasheets() {
+  try {
+    const m = await import('./catalogs/drups.js');
+    if (!m.DRUPS_DATASHEETS) return [];
+    return m.DRUPS_DATASHEETS.map(d => {
+      const modelClean = String(d.model || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
+      const sp = modelClean.indexOf(' ');
+      const seriesParsed = sp > 0 ? modelClean.slice(0, sp) : modelClean;
+      const kva = Number(d.nameplateKva) || 0;
+      const variantBucket = kva < 500 ? 'до 500 кВА'
+        : kva < 1500 ? '500–1500 кВА'
+        : kva < 2500 ? '1500–2500 кВА'
+        : '> 2500 кВА';
+      return {
+        id: `drups-${d.vendor}-${d.model}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
+        kind: 'drups',
+        subKind: 'Diesel Rotary UPS',
+        category: 'equipment',
+        label: `${d.vendor} ${d.model}`,
+        manufacturer: d.vendor,
+        series: seriesParsed,
+        variant: variantBucket,
+        powerKw: d.nameplateKw,
+        notes: d.notes || '',
+        tags: ['drups', 'rotary-ups', d.flywheelType, d.engineModel].filter(Boolean),
+        physical: d.physical || {},
+        drups: {
+          nameplateKva: d.nameplateKva, nameplateKw: d.nameplateKw,
+          voltage: d.voltage, phase: d.phase, freq: d.freq,
+          flywheelType: d.flywheelType, autonomySec: d.autonomySec,
+          engineModel: d.engineModel, dieselKw: d.dieselKw, sfcLkWh: d.sfcLkWh,
+          efficiency: d.efficiency,
+        },
+      };
+    });
+  } catch (e) { console.warn('[catalog-bridge] drups-datasheets', e.message); return []; }
+}
+
 /**
  * Синхронизирует все legacy-каталоги в element-library как builtins.
  * Вызывается при старте приложения (в engine/index.js и в подпрограммах).
  * Возвращает Promise<{ panels, ups, batteries, transformers, cableTypes, total }>
  */
 export async function syncLegacyToLibrary() {
-  const [panels, upses, batteries, transformers, cableTypes, breakers, mvSw, rackData, coolingDs, dguDs] = await Promise.all([
+  const [panels, upses, batteries, transformers, cableTypes, breakers, mvSw, rackData, coolingDs, dguDs, drupsDs] = await Promise.all([
     _loadPanels(),
     _loadUpses(),
     _loadBatteries(),
@@ -167,12 +208,13 @@ export async function syncLegacyToLibrary() {
     _loadRackCatalogData(),
     _loadCoolingDatasheets(),
     _loadDguDatasheets(),
+    _loadDrupsDatasheets(),  // v0.60.92
   ]);
 
   // Очистим предыдущие builtin (перерегистрируем актуальные)
   clearBuiltins();
 
-  const all = [...panels, ...upses, ...batteries, ...transformers, ...cableTypes, ...breakers, ...mvSw, ...rackData, ...coolingDs, ...dguDs];
+  const all = [...panels, ...upses, ...batteries, ...transformers, ...cableTypes, ...breakers, ...mvSw, ...rackData, ...coolingDs, ...dguDs, ...drupsDs];
   registerBuiltins(all);
 
   const racks = rackData.filter(e => e.kind === 'rack').length;

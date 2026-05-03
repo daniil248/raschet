@@ -4,6 +4,32 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.92', date: '2026-05-03', items: [
+      '🐛 <b>Fix: dgu-config footer показывал «Raschet vundefined»</b> — забыл передать APP_VERSION + CHANGELOGS в mountFooter. По репорту Пользователя «и номер все таки верни». Исправлено.',
+      '',
+      '⚡ <b>Каталог ДГУ расширен до 2500 кВА</b>. По запросу Пользователя 2026-05-03 «добавь в каталог номиналы дгу до 2500 кВА». Добавлены 8 моделей:',
+      '• <b>Caterpillar:</b> 3516B (1800 кВА), 3520C (2000 кВА), C175-16 (2500 кВА).',
+      '• <b>Cummins:</b> C2000D5/QSK60-G14 (2000), C2250D5/QSK60-G15 (2250), C2500D5/QSK78-G16 (2500).',
+      '• <b>MTU (Rolls-Royce):</b> 16V4000G94S (2000), 20V4000G94S (2500). Series 4000 — стандарт data-centre industry.',
+      '',
+      '🌀 <b>НОВЫЙ КАТАЛОГ: DRUPS (Diesel Rotary UPS)</b>. По запросу Пользователя «дизель динамические ИБП типа Hitec или Pillar».',
+      '• Принцип: маховик (5-15 сек kinetic storage) + дизель + синхронная машина на одном валу. Нет батарей, КПД 96-97%, срок 25-30 лет, PUE 1.1-1.2.',
+      '• <code>shared/catalogs/drups.js</code> — 8 моделей:',
+      '  - <b>Hitec PowerPRO:</b> 300 / 1500 / 3000 кВА',
+      '  - <b>Piller UNIBLOCK UBT+:</b> 300 / 1670 / 3000 кВА (high-speed magnetic flywheel)',
+      '  - <b>Euro-Diesel NO-BREAK KS-XF:</b> 1250 / 2500 кВА',
+      '• Новый kind <code>drups</code> в element-library.',
+      '• Регистрация в catalog-bridge: видны в /catalog/ с series=vendor-line, variant=capacity bucket.',
+      '',
+      '🏛 <b>Architecture: каталоги перенесены в shared/catalogs/</b> (правило feedback_use_catalogs.md). По запросу «может все таки даташиты будут в каталоге соответствующем».',
+      '• <code>dgu-config/datasheets/index.js</code> → re-export shim к <code>shared/catalogs/dgu.js</code>.',
+      '• <code>dgu-config/datasheets/drups.js</code> → re-export shim к <code>shared/catalogs/drups.js</code>.',
+      '• <code>shared/catalog-bridge.js</code> импортирует напрямую из shared/catalogs/.',
+      '',
+      '🔌 <b>ISO 8528 modes расширены</b>: ESP / PRP / LTP / COP (общие) + DCC / DCP / DCS / MCSP (ЦОД ISO 8528-13).',
+      '',
+      'Файлы: <code>dgu-config/index.html</code> (footer fix), <code>shared/catalogs/dgu.js</code> + <code>drups.js</code> (новые), <code>dgu-config/datasheets/*.js</code> (re-export shims), <code>shared/catalog-bridge.js</code>, <code>shared/element-library.js</code>.',
+    ] },
     { version: '0.60.91', date: '2026-05-03', items: [
       '🔄 <b>dgu-config: auto-fill параметров из выбранного проекта</b>. По запросу Пользователя 2026-05-03 «мощность должна передаваться из проекта, так же все параметры проекта, включая место расположение, климат».',
       '• <code>loadFromProject()</code> async — читает 3 источника:',
