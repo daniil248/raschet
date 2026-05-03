@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.68', date: '2026-05-03', items: [
+      '🔄 <b>Phase 30.5: TW → Service auto-create ТО-наряд</b>. По roadmap «auto-suggest 📤 Создать ТО-наряды для этого оборудования».',
+      '• tech-workspace tab «⚙ Топология охлаждения» — новая секция «🛠 Связь с модулем «Сервис»» (показывается ТОЛЬКО если в проекте уже есть cooling-подбор).',
+      '• Кнопка «📋 Создать ТО-наряд из этого подбора →» — один клик:',
+      '  1. Читает основной (★) вариант подбора через _readCoolingSummary.',
+      '  2. <code>buildMaintenancePositionsFromCoolingOption(main, ₽, sel)</code> → позиции (квартальное ТО × qty × 4 + фильтры + хладагент).',
+      '  3. <code>createServiceOrderForProject(pid, {type:\'maintenance\', name, positions, coolingSelectionId})</code> → создаёт наряд в LS.',
+      '  4. Toast «✓ Создан наряд: N позиций» + redirect через 800ms в /service/.',
+      '• Service module автоматически открывает созданный наряд (он становится активным через KEY_ACTIVE_ID).',
+      'Файлы: <code>tech-workspace/tech-workspace.js</code>.',
+    ] },
     { version: '0.60.67', date: '2026-05-03', items: [
       '📄 <b>Phase 30.7: расширенная пояснительная записка</b>. Cross-module данные в отчёте Технолога ЦОД.',
       '• <b>Раздел 4a — Подбор холодильных систем (связанный):</b> читает <code>cooling.selections.v1</code> + <code>activeSelectionId.v1</code> проекта, показывает основной (★) вариант: тип системы, COP, требуемая холодопроизводительность, Σ установлено, CAPEX (оборудование + монтаж), OPEX обслуживания, lifetime для TCO. Ссылка на /cooling/.',

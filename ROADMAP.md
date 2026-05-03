@@ -3269,10 +3269,9 @@ standalone-приложение в отдельном. Чтобы использ
   - UI tab PUE: 8 строк breakdown с tooltip\'ами + override η_ups / η_tp / aux %.
   - **Не сделано:** 12-месячный график PUE (seasonal) — отложено до подходящей задачи.
 
-- [ ] **30.5** Service ↔ Tech-workspace:
-  - В концепции суммарный «Сервис в год» = Σ service.orders[type=maintenance].
-  - При создании концепции — auto-suggest «📤 Создать ТО-наряды для этого
-    оборудования».
+- [x] **30.5** Service ↔ Tech-workspace (v0.60.67-68):
+  - [x] В концепции суммарный «Сервис в год» = Σ service.orders[type=maintenance] — раздел 6b отчёта (v0.60.67).
+  - [x] Кнопка «📋 Создать ТО-наряд из этого подбора →» в coolsys-tab (v0.60.68): читает основной вариант подбора → buildMaintenancePositionsFromCoolingOption → createServiceOrderForProject → редирект в /service/. Один клик.
 
 - [x] **30.6** Cross-module reference panel в tech-workspace (v0.60.62):
   - Sidebar секция «🔗 Связанные модули проекта» — 8 модулей со счётчиками.

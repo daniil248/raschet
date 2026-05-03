@@ -1225,6 +1225,21 @@ function renderDetails(c, ro) {
             </button>
             <a class="tw-pue-link" href="../cooling/" target="_blank" title="Открыть cooling в новой вкладке без pre-fill (для просмотра существующих подборов).">↗ Открыть cooling</a>
           </div>
+          ${(() => {
+            // Phase 30.5 (v0.60.68): кнопка «📋 Создать ТО-наряд» — показывается
+            // только если в проекте уже есть cooling-подбор. Иначе сначала надо его создать.
+            const cs = _readCoolingSummary();
+            if (!cs) return '';
+            return `<h5 class="tw-section-h5">🛠 Связь с модулем «Сервис: монтаж и ТО»</h5>
+              <p class="muted tw-details-note">В проекте создан подбор «<b>${escHtml(cs.selectionName)}</b>». Можно одной кнопкой сгенерировать ТО-наряд из основного варианта (★) — позиции автоматически рассчитаются по составу оборудования (квартальное ТО × qty + фильтры + дозаправка хладагента).</p>
+              <div class="tw-pue-actions">
+                <button type="button" class="tw-bind-btn" data-tw-action="create-maint-order" ${ro ? 'disabled' : ''}
+                        title="Создать ТО-наряд для основного варианта подбора «${escAttr(cs.selectionName)} → ${escAttr(cs.mainOptionName)}». Позиции: квартальное ТО × ${cs.totalQty} ед. × 4 раза/год + фильтры + хладагент. Открывает /service/ для редактирования.">
+                  📋 Создать ТО-наряд из этого подбора →
+                </button>
+                <a class="tw-pue-link" href="../service/?project=${escAttr(_pid)}" target="_blank" title="Открыть модуль «Сервис: монтаж и ТО» в новой вкладке.">↗ Открыть Сервис</a>
+              </div>`;
+          })()}
         </div>
       </div>`;
   }
@@ -2050,6 +2065,48 @@ function bindListEvents() {
       } catch (e) {
         console.error('[fetch-meteo]', e);
         twToast(`Ошибка загрузки: ${e.message || e}`, 'warn');
+      }
+      return;
+    }
+
+    // Phase 30.5 (v0.60.68): «📋 Создать ТО-наряд из этого подбора»
+    // Читает основной (★) вариант подбора cooling, формирует maintenance-
+    // позиции через buildMaintenancePositionsFromCoolingOption и создаёт
+    // наряд в service через createServiceOrderForProject.
+    const createMaintOrder = e.target.closest('[data-tw-action="create-maint-order"]');
+    if (createMaintOrder) {
+      try {
+        if (!_pid) { twToast('Нет активного проекта.', 'warn'); return; }
+        const sels = JSON.parse(localStorage.getItem(`raschet.project.${_pid}.cooling.selections.v1`) || '[]');
+        if (!Array.isArray(sels) || !sels.length) { twToast('В проекте нет cooling-подборов.', 'warn'); return; }
+        const activeId = JSON.parse(localStorage.getItem(`raschet.project.${_pid}.cooling.activeSelectionId.v1`) || 'null');
+        const sel = sels.find(s => s.id === activeId) || sels[0];
+        const main = sel.options.find(o => o.id === sel.mainOptionId) || sel.options[0];
+        if (!main) { twToast('У подбора нет вариантов.', 'warn'); return; }
+
+        // Динамически импортируем builder и service-bridge
+        const [{ buildMaintenancePositionsFromCoolingOption }, { createServiceOrderForProject }] = await Promise.all([
+          import('../service/calc/order-builder.js'),
+          import('../shared/service-bridge.js'),
+        ]);
+        const positions = buildMaintenancePositionsFromCoolingOption(main, '₽', sel);
+        if (!positions.length) {
+          twToast('У основного варианта нет equipment-групп. Сначала задайте оборудование во вкладке Топология cooling.', 'warn');
+          return;
+        }
+        const orderName = `ТО: ${sel.name} → ${main.name}`;
+        const result = createServiceOrderForProject(_pid, {
+          name: orderName,
+          type: 'maintenance',
+          coolingSelectionId: sel.id,
+          positions,
+        });
+        twToast(`✓ Создан наряд № «${result.id}»: ${positions.length} позиций. Открываю /service/…`, 'ok');
+        // Переходим в /service/ через 1 сек чтобы юзер увидел toast
+        setTimeout(() => { location.href = result.navigateUrl; }, 800);
+      } catch (err) {
+        console.error('[create-maint-order]', err);
+        twToast(`Ошибка: ${err.message || err}`, 'warn');
       }
       return;
     }
