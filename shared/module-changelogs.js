@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.61', date: '2026-05-03', items: [
+      '📜 <b>Phase 35.5: глобальная история проектов</b>. Toolbar /projects/ получил кнопку «📜 История проектов» — модалка со ВСЕМИ событиями всех проектов.',
+      '• Cross-project аудит-trail: meteo-импорты, cooling-загрузки, service-наряды, удаления — всё в одной таблице.',
+      '• Фильтры: по проекту 📁, по модулю 📦, по типу события ⚡ (cross-зависимые).',
+      '• Колонки: Время / Проект / Модуль / Событие / Объект / Источник + tag triggeredFrom.',
+      '• Кнопка «📥 JSON» — экспорт всей истории как JSON для бэкапа/аудита (имя файла raschet-history-YYYY-MM-DD.json).',
+      '• Корзина-счётчик в header модалки: «в корзине: N» (общая по всем проектам).',
+      '• ESC / клик вне модалки / × — закрытие.',
+      'Файлы: <code>projects/index.html</code>, <code>projects/projects.js</code>.',
+    ] },
     { version: '0.60.60', date: '2026-05-03', items: [
       '🔄 <b>Phase 35.6: cross-module restore</b>. Восстановление meteo-датасета прямо из cooling-корзины — без перехода в /meteo/.',
       '• cooling Trash: при restore с itemKind=\'meteo-dataset\' пишет dataset обратно в IDB и помечает ⭐activeForProject=true.',

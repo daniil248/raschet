@@ -12,6 +12,7 @@ import { buildModuleHref, clearNavStack } from '../shared/project-context.js';
 import { migrateOrphanSchemes } from '../shared/scheme-orphan-migration.js';
 import { downloadBackup, readBackupFile, restoreFromJson, getLastBackupInfo, getAutoBackupSettings } from '../shared/backup.js';
 import { APP_VERSION } from '../js/engine/constants.js';
+import { historyList, historyTrash, historyStats } from '../shared/history-log.js';
 
 // v0.59.507: автоматическая миграция orphan-схем при первом заходе на
 // /projects/. Schemes без projectId → привязываем к контейнеру с тем же
@@ -763,6 +764,10 @@ function _initAfterDom() {
     }
   } catch {}
 
+  // Phase 35.5 (v0.60.61): «📜 История проектов» — глобальная история всех
+  // событий по всем проектам с фильтром.
+  document.getElementById('pr-history-global')?.addEventListener('click', openGlobalHistoryModal);
+
   // v0.59.854: «💾 Бэкап» — скачать ВСЕ данные LocalStorage как JSON-файл.
   document.getElementById('pr-backup')?.addEventListener('click', () => {
     try {
@@ -934,6 +939,161 @@ function _initAfterDom() {
     setActiveProjectId(p.id);
     prToast('✔ Проект создан и сделан активным');
     render();
+  });
+}
+
+// =============================================================================
+// Phase 35.5 (v0.60.61): глобальная история — все события по всем проектам.
+// =============================================================================
+const GLOBAL_HIST_ACTION_LABELS = {
+  'import':  { icon: '➕', label: 'Импорт', color: '#0d8a4e' },
+  'update':  { icon: '✏', label: 'Обновлено', color: '#0369a1' },
+  'delete':  { icon: '🗑', label: 'Удалено', color: '#92400e' },
+  'restore': { icon: '↩', label: 'Восстановлено', color: '#7c3aed' },
+  'purge':   { icon: '✕', label: 'Удалено навсегда', color: '#991b1b' },
+};
+const GLOBAL_HIST_MODULE_ICONS = {
+  'meteo': '🌤', 'cooling': '❄', 'service': '🛠',
+  'ups-config': '🔋', 'mdc-config': '🏗',
+};
+
+function ghFmtTs(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  return d.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+async function openGlobalHistoryModal() {
+  const projects = listProjects();
+  const sketchAndFull = projects.filter(p => p.id);
+  if (!sketchAndFull.length) {
+    prToast('Нет проектов — нечего показывать в истории', 'info');
+    return;
+  }
+  // Собираем все события по всем проектам.
+  const allEvents = [];
+  let totalTrash = 0;
+  for (const proj of sketchAndFull) {
+    try {
+      const events = await historyList(proj.id);
+      const trash = await historyTrash(proj.id);
+      totalTrash += trash.length;
+      for (const ev of events) {
+        allEvents.push({ ...ev, _projectId: proj.id, _projectName: proj.name || proj.id });
+      }
+    } catch (e) {
+      console.warn(`[global-history] failed for project ${proj.id}:`, e);
+    }
+  }
+  allEvents.sort((a, b) => b.ts - a.ts);
+
+  // Уникальные значения для фильтров.
+  const uniqProjects = Array.from(new Set(allEvents.map(e => e._projectId)));
+  const uniqModules = Array.from(new Set(allEvents.map(e => e.module).filter(Boolean)));
+  const uniqActions = Array.from(new Set(allEvents.map(e => e.action).filter(Boolean)));
+
+  const escAttr = (s) => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const escHtml = (s) => escAttr(s);
+
+  const renderRows = (events) => events.length === 0
+    ? `<tr><td colspan="6" style="text-align:center;color:#64748b;padding:16px">Нет событий по выбранным фильтрам.</td></tr>`
+    : events.map(ev => {
+        const meta = GLOBAL_HIST_ACTION_LABELS[ev.action] || { icon: '?', label: ev.action, color: '#64748b' };
+        const modIcon = GLOBAL_HIST_MODULE_ICONS[ev.module] || '📦';
+        return `<tr style="border-bottom:1px solid #f1f5f9">
+          <td style="padding:6px 8px;font-size:11.5px;color:#475569;white-space:nowrap">${escHtml(ghFmtTs(ev.ts))}</td>
+          <td style="padding:6px 8px;font-size:11.5px;font-weight:500" title="${escAttr(ev._projectId)}">${escHtml(ev._projectName)}</td>
+          <td style="padding:6px 8px;font-size:12px">${modIcon} ${escHtml(ev.module)}</td>
+          <td style="padding:6px 8px;font-size:12px"><span style="color:${meta.color}">${meta.icon} ${escHtml(meta.label)}</span></td>
+          <td style="padding:6px 8px;font-size:12px">${escHtml(ev.itemName || ev.itemId || '—')}</td>
+          <td style="padding:6px 8px;font-size:11px;color:#64748b">${escHtml(ev.source || '')}${ev.payload?.triggeredFrom ? ` <span style="opacity:0.7" title="Из какого модуля инициирован">(${escHtml(ev.payload.triggeredFrom)})</span>` : ''}</td>
+        </tr>`;
+      }).join('');
+
+  const projectsByIdMap = new Map(sketchAndFull.map(p => [p.id, p.name || p.id]));
+  const filtersHtml = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center;font-size:12px">
+      <label title="Фильтр по проекту">📁 <select id="gh-filter-project" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:3px"><option value="">Все проекты (${uniqProjects.length})</option>${uniqProjects.map(pid => `<option value="${escAttr(pid)}">${escHtml(projectsByIdMap.get(pid) || pid)}</option>`).join('')}</select></label>
+      <label title="Фильтр по модулю">📦 <select id="gh-filter-module" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:3px"><option value="">Все модули</option>${uniqModules.map(m => `<option value="${escAttr(m)}">${GLOBAL_HIST_MODULE_ICONS[m] || ''} ${escHtml(m)}</option>`).join('')}</select></label>
+      <label title="Фильтр по типу события">⚡ <select id="gh-filter-action" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:3px"><option value="">Все события</option>${uniqActions.map(a => `<option value="${escAttr(a)}">${(GLOBAL_HIST_ACTION_LABELS[a]?.label) || a}</option>`).join('')}</select></label>
+      <span class="muted" style="margin-left:auto;font-size:11px">Всего: <b id="gh-count">${allEvents.length}</b> событий, в корзине: <b style="color:#92400e">${totalTrash}</b></span>
+      <button type="button" id="gh-export" style="padding:4px 8px;font-size:11px;border:1px solid #16a34a;background:#dcfce7;color:#15803d;border-radius:3px;cursor:pointer" title="Скачать историю как JSON для бэкапа/аудита">📥 JSON</button>
+    </div>`;
+
+  const html = `
+    ${filtersHtml}
+    <div style="max-height:60vh;overflow-y:auto;border:1px solid #e2e8f0;border-radius:4px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead style="position:sticky;top:0;background:#f8fafc;z-index:1">
+          <tr>
+            <th style="padding:6px 8px;text-align:left;font-weight:600;border-bottom:2px solid #cbd5e1">Время</th>
+            <th style="padding:6px 8px;text-align:left;font-weight:600;border-bottom:2px solid #cbd5e1">Проект</th>
+            <th style="padding:6px 8px;text-align:left;font-weight:600;border-bottom:2px solid #cbd5e1">Модуль</th>
+            <th style="padding:6px 8px;text-align:left;font-weight:600;border-bottom:2px solid #cbd5e1">Событие</th>
+            <th style="padding:6px 8px;text-align:left;font-weight:600;border-bottom:2px solid #cbd5e1">Объект</th>
+            <th style="padding:6px 8px;text-align:left;font-weight:600;border-bottom:2px solid #cbd5e1">Источник</th>
+          </tr>
+        </thead>
+        <tbody id="gh-tbody">${renderRows(allEvents)}</tbody>
+      </table>
+    </div>`;
+
+  // Используем prConfirm-подобный modal через util? У projects.js нет общего
+  // util — делаем native overlay по аналогии с existing modals.
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;justify-content:center;align-items:center;padding:24px';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:8px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);width:min(95vw,1100px);max-height:90vh;display:flex;flex-direction:column">
+      <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between">
+        <h3 style="margin:0;font-size:16px">📜 Глобальная история проектов Raschet</h3>
+        <button type="button" id="gh-close" style="background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;padding:0;line-height:1" title="Закрыть">×</button>
+      </div>
+      <div style="padding:14px 18px;overflow:auto;flex:1">${html}</div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('#gh-close').addEventListener('click', close);
+  document.addEventListener('keydown', function escClose(e) {
+    if (e.key === 'Escape') { close(); document.removeEventListener('keydown', escClose); }
+  });
+
+  // Фильтрация при изменении select-ов.
+  const tbody = overlay.querySelector('#gh-tbody');
+  const countEl = overlay.querySelector('#gh-count');
+  const refilter = () => {
+    const fp = overlay.querySelector('#gh-filter-project').value;
+    const fm = overlay.querySelector('#gh-filter-module').value;
+    const fa = overlay.querySelector('#gh-filter-action').value;
+    const filtered = allEvents.filter(ev => {
+      if (fp && ev._projectId !== fp) return false;
+      if (fm && ev.module !== fm) return false;
+      if (fa && ev.action !== fa) return false;
+      return true;
+    });
+    tbody.innerHTML = renderRows(filtered);
+    countEl.textContent = filtered.length;
+  };
+  overlay.querySelector('#gh-filter-project').addEventListener('change', refilter);
+  overlay.querySelector('#gh-filter-module').addEventListener('change', refilter);
+  overlay.querySelector('#gh-filter-action').addEventListener('change', refilter);
+
+  // Экспорт JSON.
+  overlay.querySelector('#gh-export').addEventListener('click', () => {
+    try {
+      const data = { exportedAt: new Date().toISOString(), totalEvents: allEvents.length, events: allEvents };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `raschet-history-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      prToast(`✓ JSON скачан: ${allEvents.length} событий`, 'ok');
+    } catch (e) {
+      prToast(`❌ Не удалось экспортировать: ${e.message}`, 'err');
+    }
   });
 }
 
