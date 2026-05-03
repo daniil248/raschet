@@ -41,8 +41,8 @@ function _parseSeriesFromModel(modelStr) {
   // Letters end at separator → just letters (KHJA-..., EWAQ-..., RTAF, PCW)
   if (after === '' || /^[\s\-_(]/.test(after)) return { series: letters, variant: '' };
 
-  // Letters followed by digits — check structure
-  // Case A: letters + digits + separator: letters+digits = series (MR33 120, S³C040-1106)
+  // v0.60.79: smarter parsing для конкатенированных моделей.
+  // Case A: letters + digits + separator (MR33 120, S³C040-1106)
   const seqDigitsMatch = after.match(/^(\d+)([\s\-_(])/);
   if (seqDigitsMatch) {
     const digits = seqDigitsMatch[1];
@@ -52,10 +52,19 @@ function _parseSeriesFromModel(modelStr) {
   }
 
   // Case B: letters + digits + non-separator (MR33150-B / YLAA0250HE):
-  // Take first 2 digits as part of series (typical Kehua MR33 case).
-  // YLAA0250HE будет «YLAA02» — несовершенно, но 1 случай из ~30.
-  const firstDigits = after.match(/^(\d{1,2})/);
-  if (firstDigits) return { series: letters + firstDigits[1], variant: '' };
+  // - Если digits начинаются с «0» И длина ≥4 → padded capacity (YLAA0250HE),
+  //   series = letters only.
+  // - Иначе digits начинаются с цифры суффикса серии (MR33150-B → MR33),
+  //   берём первые 2 digits.
+  const longDigits = after.match(/^(\d+)/);
+  if (longDigits) {
+    const allDigits = longDigits[1];
+    if (allDigits.startsWith('0') && allDigits.length >= 4) {
+      return { series: letters, variant: '' };
+    }
+    // First 2 digits = series suffix (MR33150-B → "MR" + "33")
+    return { series: letters + allDigits.slice(0, 2), variant: '' };
+  }
 
   return { series: letters, variant: '' };
 }

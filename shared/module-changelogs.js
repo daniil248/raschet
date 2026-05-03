@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.79', date: '2026-05-03', items: [
+      '🔧 <b>Series parser: «MR33150-B» → «MR33» (раньше «MR»)</b>. Smart-handling конкатенированных моделей.',
+      '• Heuristic: если digits начинаются с «0» И длина ≥4 → padded capacity (York «YLAA0250HE» → series=«YLAA»). Иначе digits начинаются с цифры суффикса серии (Kehua «MR33150-B» → series=«MR33»).',
+      '• Покрывает все основные паттерны: KHJA-P30AU/KHNA-X25E (буквы до «-»), MR33 120 / MR33150-B (letters+33), S³C040-1106 (S³C+040), YLAA0250HE (YLAA только), 30RB AquaForce / 3516 DE1500 (digit-leading).',
+      'Файлы: <code>shared/element-schemas.js</code>.',
+    ] },
     { version: '0.60.78', date: '2026-05-03', items: [
       '🐛 <b>DGU climate derate был 0% — bug-fix</b>. Репорт Пользователя 2026-05-03 «где дирейтинги???».',
       '• Причина: <code>calcDguRequired(input)</code> ожидал climate как nested object <code>input.climate.{altitudeM, ambientTC, humidityPct}</code>, но UI передаёт ПЛОСКИЕ поля <code>input.altitudeM / ambientTC / humidityPct</code>. Это давало <code>climate={}</code> в калькуляторе → derate всегда 0%.',
