@@ -3258,8 +3258,8 @@ standalone-приложение в отдельном. Чтобы использ
   - [x] Карточка в /modules/index.html + строка в техническом реестре.
   - [x] Регистрация в catalog через catalog-bridge (kind='dgu', 14 моделей видны в catalog).
   - [x] Cross-module panel в tech-workspace показывает «⚡ ДГУ».
-  - [ ] **Не сделано:** shared/dgu-bridge.js generic API (как service-bridge) — пока используется URL-params.
-  - [ ] **Не сделано:** PULL — ДГУ-конфигуратор после подбора возвращает modelRef в concept.feed.dgu.modelRef.
+  - [ ] **Не сделано:** shared/dgu-bridge.js generic API (как service-bridge) — пока используется URL-params + LS-bridge.
+  - [x] **PULL (v0.60.81-82):** dgu-config автосохраняет best-match в LS-bridge <code>raschet.project.&lt;pid&gt;.dgu-config.selected.v1</code>. TW показывает кнопку «↩ Применить из dgu-config» если есть свежий выбор. Click записывает modelRef в concept.feed.dgu.
 
 - [x] **30.4** Comprehensive PUE расчёт (v0.60.63 — частично):
   - PUE = 1 + (P<sub>cool</sub> + P<sub>ups-loss</sub> + P<sub>tp-loss</sub> + P<sub>aux</sub>) / P<sub>IT</sub>.

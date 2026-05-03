@@ -579,7 +579,41 @@ function renderFeedSection(feed, isReadOnly) {
         ⚙ Подобрать ДГУ →
       </a>
     ` : ''}
+    ${(() => {
+      // Phase 30.3 PULL (v0.60.82): читаем выбранную ДГУ модель из dgu-config.
+      // Если модель свежее (< 1 час) и отличается от concept.feed.dgu.modelRef —
+      // показываем кнопку «↩ Применить из dgu-config».
+      const sel = _readDguSelected();
+      if (!sel || !sel.vendor || !sel.model) return '';
+      const cur = feed.dgu.modelRef || {};
+      const sameAsCur = cur.manufacturer === sel.vendor && cur.model === sel.model;
+      if (sameAsCur) return '';
+      return `<button type="button" class="tw-bind-btn" data-tw-action="apply-dgu-selected" ${ro ? 'disabled' : ''}
+        style="background:#dcfce7;border-color:#16a34a;color:#15803d"
+        title="Применить ${escAttr(sel.vendor)} ${escAttr(sel.model)} (${sel.nameplateKw} кВт) из dgu-config к концепции. Сохранено там ${ageHint(sel.ts)}.">
+        ↩ Применить ${escHtml(sel.vendor)} ${escHtml(sel.model)} из dgu-config
+      </button>`;
+    })()}
   </div>`;
+}
+
+// Phase 30.3 PULL helper: читает selected DGU из LS-bridge dgu-config.
+function _readDguSelected() {
+  if (!_pid) return null;
+  try {
+    const raw = localStorage.getItem(projectKey(_pid, 'dgu-config', 'selected.v1'));
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
+function ageHint(ts) {
+  if (!ts) return 'давно';
+  const sec = Math.round((Date.now() - ts) / 1000);
+  if (sec < 60) return 'только что';
+  if (sec < 3600) return Math.round(sec / 60) + ' мин назад';
+  if (sec < 86400) return Math.round(sec / 3600) + ' ч назад';
+  return Math.round(sec / 86400) + ' дн назад';
 }
 
 // ─── Render: compare mode (multi-variant side-by-side, Phase 20.10)
@@ -2084,6 +2118,30 @@ function bindListEvents() {
         console.error('[fetch-meteo]', e);
         twToast(`Ошибка загрузки: ${e.message || e}`, 'warn');
       }
+      return;
+    }
+
+    // Phase 30.3 PULL (v0.60.82): «↩ Применить выбранную ДГУ из dgu-config».
+    const applyDguSelected = e.target.closest('[data-tw-action="apply-dgu-selected"]');
+    if (applyDguSelected) {
+      const sel = _readDguSelected();
+      if (!sel) { twToast('Нет сохранённой ДГУ-модели в dgu-config.', 'warn'); return; }
+      if (!cur.concept.feed) cur.concept.feed = {};
+      if (!cur.concept.feed.dgu) cur.concept.feed.dgu = { needed: true };
+      cur.concept.feed.dgu.modelRef = {
+        id: `dgu-${sel.vendor}-${sel.model}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
+        manufacturer: sel.vendor,
+        model: sel.model,
+        nameplateKw: sel.nameplateKw,
+        engineModel: sel.engineModel,
+      };
+      // Опционально подтягиваем kw из nameplateKw если в концепции 0
+      if (!cur.concept.feed.dgu.kw && sel.nameplateKw) {
+        cur.concept.feed.dgu.kw = sel.nameplateKw;
+      }
+      persistVariants();
+      renderActiveVariant();
+      twToast(`✓ Применена ДГУ: ${sel.vendor} ${sel.model} (${sel.nameplateKw} кВт)`, 'ok');
       return;
     }
 

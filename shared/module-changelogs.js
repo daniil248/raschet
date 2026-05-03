@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.82', date: '2026-05-03', items: [
+      '🔄 <b>Phase 30.3 PULL: TW читает выбранную ДГУ-модель из dgu-config</b>. Завершает round-trip TW → dgu-config → TW.',
+      '• tech-workspace tab «🔌 Ввод (ТП и ДГУ)» — рядом с «⚙ Подобрать ДГУ →» появляется «↩ Применить &lt;Vendor Model&gt; из dgu-config» (зелёная) если в LS-bridge есть свежая selected-модель и она отличается от текущего modelRef.',
+      '• ageHint() показывает «только что / N мин назад / N ч назад» в title.',
+      '• Click → concept.feed.dgu.modelRef = {manufacturer, model, nameplateKw, engineModel}. Также опционально обновляет concept.feed.dgu.kw из nameplateKw (если был 0).',
+      '• Helper <code>_readDguSelected()</code> читает <code>raschet.project.&lt;pid&gt;.dgu-config.selected.v1</code>.',
+      '• <b>Round-trip flow:</b> TW «⚙ Подобрать ДГУ» → dgu-config (URL pre-fill) → пользователь меняет параметры → recalcAndRender автосохраняет best match → возврат в TW → «↩ Применить» — готово.',
+      'Файлы: <code>tech-workspace/tech-workspace.js</code>.',
+    ] },
     { version: '0.60.81', date: '2026-05-03', items: [
       '⚡ <b>dgu-config: per-project state + project-picker</b>.',
       '• Все параметры расчёта (loadKw / mode / redundancy / climate / autonomy / vendor) сохраняются под <code>raschet.project.&lt;pid&gt;.dgu-config.state.v1</code> при каждом изменении.',
