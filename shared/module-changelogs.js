@@ -4,6 +4,21 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.85', date: '2026-05-03', items: [
+      '🔗 <b>Phase 36.1 START: TW-варианты ↔ sketch-проекты</b>. Каждый вариант концепции может иметь связанный sub-project для разработки схем (schematic / scs-design / cooling.selections / service.orders).',
+      '• Variant model: новые поля <code>linkedSketchProjectId</code> (id sub-project) и <code>approvedAt</code> (ts утверждения). Backward-compat миграция в migrateVariant.',
+      '• Sidebar variants: под каждым именем — green-row «🔗 &lt;sketch-name&gt; ↗» (если linked) или dashed-row «➕ Sketch-проект для схем» (если не создан).',
+      '• Кнопка ➕ → twPrompt для имени → <code>createSubProject(_pid, \'tech-workspace\', {name, designation})</code>. Default name = «&lt;Variant&gt; — схемы».',
+      '• Кнопка ↗ → открыть карточку проекта в /projects/?focus=&lt;id&gt; в новой вкладке.',
+      '',
+      '✓ <b>Phase 36.3 START: approve-flow для variants</b>.',
+      '• Кнопка «✓» (approve) рядом с ⭐/📋/🗑. Click → twConfirm → <code>v.approvedAt = ts</code>.',
+      '• Bonus: если других primary нет, утверждённый вариант автоматически становится primary.',
+      '• Утверждённый variant получает зелёный circle-badge ✓ в sidebar.',
+      '• Снять утверждение можно тем же кликом по ✓ (с подтверждением).',
+      '',
+      'Файлы: <code>tech-workspace/tech-workspace.js</code>, <code>tech-workspace/tech-workspace.css</code>.',
+    ] },
     { version: '0.60.84', date: '2026-05-03', items: [
       '🔧 <b>Series parser: поддержка многословных серий</b>. По запросу Пользователя 2026-05-03: «Galaxy VL это серия».',
       '• Strategy: убираем «(...)» в конце, берём токены до первого all-digit (capacity).',

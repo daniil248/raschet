@@ -157,6 +157,12 @@ function newVariant(name) {
     name: name || 'Базовый вариант',
     primary: false,
     readOnly: false,
+    // v0.60.85 (Phase 36.1): linkedSketchProjectId — id sub-project, в котором
+    // ведётся разработка схем для этого варианта (schematic / scs-design /
+    // cooling.selections и т.д.). Создаётся по требованию через UI «➕ Создать
+    // sketch-проект для разработки схем». null = ещё не создан.
+    linkedSketchProjectId: null,
+    approvedAt: null,                  // ts утверждения (≠ null = approved variant)
     createdAt: Date.now(),
     concept: {
       // v0.59.900: блок «Объект» — общие данные проекта/стройплощадки
@@ -193,6 +199,10 @@ function newVariant(name) {
 // ─── Migration: backward-compat для старых variants со скалярными полями
 function migrateVariant(v) {
   if (!v || !v.concept) return v;
+  // v0.60.85 (Phase 36.1): добавляем linkedSketchProjectId / approvedAt поля
+  // в старые варианты без них.
+  if (typeof v.linkedSketchProjectId === 'undefined') v.linkedSketchProjectId = null;
+  if (typeof v.approvedAt === 'undefined') v.approvedAt = null;
   const c = v.concept;
   // racks (single) → rackGroups[]
   if (!Array.isArray(c.rackGroups)) {
@@ -369,14 +379,31 @@ function renderVariantsList() {
     const active = v.id === _activeId ? ' active' : '';
     const primary = v.primary ? ' <span class="tw-badge-primary" title="Основной вариант">⭐</span>' : '';
     const readonly = v.readOnly ? ' <span class="tw-badge-readonly" title="Передан в проектирование">🔒</span>' : '';
+    const approved = v.approvedAt ? ' <span class="tw-badge-approved" title="Утверждён ' + new Date(v.approvedAt).toLocaleDateString('ru-RU') + '">✓</span>' : '';
+    // v0.60.85 (Phase 36.1): sketch-project link.
+    let sketchRow = '';
+    if (v.linkedSketchProjectId) {
+      const sub = _pid ? listSubProjects(_pid, 'tech-workspace').find(p => p.id === v.linkedSketchProjectId) : null;
+      const subName = sub ? (sub.name || sub.designation || sub.id) : '<i>проект удалён</i>';
+      sketchRow = `<div class="tw-variant-sketch" title="Sketch-проект для разработки схем (schematic / scs-design / cooling.selections / service.orders) этого варианта концепции.">
+        🔗 <a href="../projects/?focus=${escAttr(v.linkedSketchProjectId)}" target="_blank" style="color:#0d8a4e">${escHtml(subName)}</a>
+        <button type="button" data-act="open-sketch" data-vid="${v.id}" title="Открыть sketch-проект в новой вкладке (карточка проекта со списком модулей)">↗</button>
+      </div>`;
+    } else {
+      sketchRow = `<div class="tw-variant-sketch tw-variant-sketch-empty" title="Создать sketch-проект для разработки схем этого варианта (отдельная электрическая схема, СКС, cooling-подбор, наряды).">
+        <button type="button" class="tw-bind-btn" data-act="create-sketch" data-vid="${v.id}" style="font-size:11px;padding:3px 6px">➕ Sketch-проект для схем</button>
+      </div>`;
+    }
     return `<div class="tw-variant-row${active}" data-vid="${v.id}">
       <span class="tw-variant-name" title="${escAttr(v.name)}">${escHtml(v.name)}</span>
-      ${primary}${readonly}
+      ${primary}${readonly}${approved}
       <span class="tw-variant-actions">
+        ${!v.approvedAt ? `<button type="button" data-act="approve" data-vid="${v.id}" title="✓ Утвердить вариант. После утверждения можно генерить итоговый BOM и КП.">✓</button>` : ''}
         <button type="button" data-act="primary" data-vid="${v.id}" title="Сделать основным">⭐</button>
         <button type="button" data-act="duplicate" data-vid="${v.id}" title="Дублировать">📋</button>
         <button type="button" data-act="delete" data-vid="${v.id}" title="Удалить">🗑</button>
       </span>
+      ${sketchRow}
     </div>`;
   }).join('');
 }
@@ -3177,7 +3204,7 @@ function init() {
   bindReport();
   bindHandoff();
   // Sidebar variants list events
-  $('tw-variants-list').addEventListener('click', (e) => {
+  $('tw-variants-list').addEventListener('click', async (e) => {
     const actBtn = e.target.closest('button[data-act]');
     if (actBtn) {
       e.stopPropagation();
@@ -3186,6 +3213,10 @@ function init() {
       if (act === 'duplicate') duplicateVariant(vid);
       else if (act === 'delete') deleteVariant(vid);
       else if (act === 'primary') makePrimary(vid);
+      // v0.60.85 (Phase 36): sketch-project + approve actions
+      else if (act === 'create-sketch') await createSketchForVariant(vid);
+      else if (act === 'open-sketch') openSketchForVariant(vid);
+      else if (act === 'approve') await approveVariant(vid);
       return;
     }
     const row = e.target.closest('.tw-variant-row');
@@ -3205,6 +3236,69 @@ function init() {
   renderCrossModulePanel().catch(e => console.warn('[tech-workspace] cross-module panel failed:', e));
   // v0.60.76: project context picker.
   renderProjectContext();
+}
+
+// v0.60.85 (Phase 36.1): создаёт sketch-project для варианта концепции —
+// в нём ведётся независимая разработка схем (schematic / scs-design / cooling /
+// service / etc.). Variant.linkedSketchProjectId = id созданного sub-project.
+async function createSketchForVariant(vid) {
+  if (!_pid) { twToast('Нет родительского проекта.', 'warn'); return; }
+  const v = _variants.find(x => x.id === vid);
+  if (!v) return;
+  if (v.linkedSketchProjectId) {
+    twToast('Sketch-проект уже создан для этого варианта.', 'info');
+    return;
+  }
+  const defaultName = `${v.name} — схемы`;
+  const name = await twPrompt('Название sketch-проекта:', defaultName, 'Создание sketch-проекта');
+  if (!name) return;
+  try {
+    const sub = createSubProject(_pid, 'tech-workspace', { name: name.trim(), designation: v.name });
+    v.linkedSketchProjectId = sub.id;
+    persistVariants();
+    renderVariantsList();
+    twToast(`✓ Создан sketch-проект «${sub.name}». Откройте /projects/ → ${sub.name} для разработки схем.`, 'ok');
+  } catch (err) {
+    console.error('[tech-workspace] createSketch failed:', err);
+    twToast('Ошибка создания: ' + (err.message || err), 'warn');
+  }
+}
+
+// v0.60.85: открыть sketch-project в новой вкладке.
+function openSketchForVariant(vid) {
+  const v = _variants.find(x => x.id === vid);
+  if (!v?.linkedSketchProjectId) return;
+  // Открываем карточку проекта (там список модулей с прямыми ссылками)
+  window.open(`../projects/?focus=${encodeURIComponent(v.linkedSketchProjectId)}`, '_blank');
+}
+
+// v0.60.85 (Phase 36.3): утвердить вариант. После утверждения — readonly
+// badge ✓, sketch-project помечается как «утверждённый» (TODO в Phase 36.3.x:
+// статус в /projects/), концепция становится источником итогового BOM.
+async function approveVariant(vid) {
+  const v = _variants.find(x => x.id === vid);
+  if (!v) return;
+  if (v.approvedAt) {
+    const ok = await twConfirm('Вариант уже утверждён. Снять статус «утверждено»?', 'Снять утверждение');
+    if (!ok) return;
+    v.approvedAt = null;
+    persistVariants();
+    renderVariantsList();
+    twToast('Утверждение снято.', 'info');
+    return;
+  }
+  const ok = await twConfirm(
+    `Утвердить вариант «${v.name}» как итоговый? После утверждения он считается основой для BOM, КП и передачи в проектирование. Снять утверждение можно позже.`,
+    '✓ Утвердить вариант'
+  );
+  if (!ok) return;
+  v.approvedAt = Date.now();
+  // Auto-mark as primary если других primary нет
+  if (!_variants.some(x => x.primary)) v.primary = true;
+  persistVariants();
+  renderVariantsList();
+  renderActiveVariant();
+  twToast(`✓ Вариант «${v.name}» утверждён.`, 'ok');
 }
 
 // v0.60.76 (по требованию Пользователя 2026-05-03 «модуль Технолог ЦОД должен
