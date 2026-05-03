@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.65', date: '2026-05-03', items: [
+      '🇨🇳 <b>Kehua: 19 даташитов в каталог cooling/datasheets/</b>. По запросу Пользователя 2026-05-03 «даташиты должны входить в каталог оборудования».',
+      '• <b>KHJA series</b> (in-room precision AC, R410A): 7.5 / 12.5 / 20 / 30 / 40 / 60 / 80 / 100 кВт. Fixed-frequency + dual-system 60/80/100 kW.',
+      '• <b>KHNA-X series</b> (inter-row column AC): 25 / 35 / 50 / 65 кВт — air-cooled. Дополнительные модели <code>KHNA-X*E</code> с интегрированным freon-pump cabinet (KHE01/02/03) → systemType=\'dx-pumped-fc\' с порогом 13°C для natural-cooling switch (annual saving до 40% по Kehua).',
+      '• <b>KHCA-X series</b> (rack-mounted): 3.5 / 7.5 / 12.5 кВт (5U / 8U / 10U) — DC inverter rotary, slide-out maintenance, WiseRow/WiseCabinet integration.',
+      '• Параметры из официальных User Manuals (2023-2024) и Thermal Management Catalog 2024-07-30.',
+      '• capCorrPctPerC соответствует таблице derating condensers KHNRC25/35/50/65 (X25 ≈ −1.7%/°C, X65 ≈ −1.2%/°C).',
+      '• Габариты indoor + outdoor units, EC fan расход воздуха, max ток, refrigerant — все занесены в notes.',
+      'Файлы: <code>cooling/datasheets/index.js</code> (+19 entries → 31 итого, 8 vendors включая Kehua).',
+    ] },
     { version: '0.60.64', date: '2026-05-03', items: [
       '🐛 <b>Cooling: 2 bug-фикса по отчёту Пользователя 2026-05-03</b>.',
       '<b>Bug 1: «то фрикулинг есть, то его уже нет»</b> — comparison-таблица показывала FC часов = 0 даже если energy-tab корректно показывал 5271 ч / 60.1%. Причина: <code>comparison.js</code> использовал несуществующее <code>pSpec.freeCoolingThresholdC</code>. Fix: переход на <code>buildBinData(hourly, pSpec)</code> + <code>Σ fcFraction × hours</code> (та же логика что в fc-summary).',
