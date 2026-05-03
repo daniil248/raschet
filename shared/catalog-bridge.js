@@ -115,16 +115,17 @@ async function _loadDguDatasheets() {
     const m = await import('../dgu-config/datasheets/index.js');
     if (!m.DGU_DATASHEETS) return [];
     return m.DGU_DATASHEETS.map(d => {
-      // v0.60.72: парсинг series/variant из model. По запросу Пользователя
-      // «crac это не серия а тип оборудования». series = product-line код
-      // (C18 / C32 / 3516 / QSL9 / TAD941GE / P200H), variant = специфика
-      // (DE220 GC, 220kW, и т.п.).
+      // v0.60.72: series = product-line (C18/C32/3516/QSL9/TAD941GE/P200H).
+      // v0.60.74 (запрос «вариант — С АВР или без, таких немного»): variant =
+      // bucket по nameplate kW (~4 значения), а не SKU/трим-код.
       const modelClean = String(d.model || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
-      const inParens = (d.model || '').match(/\(([^)]+)\)/)?.[1] || '';
       const sp = modelClean.indexOf(' ');
       const seriesParsed = sp > 0 ? modelClean.slice(0, sp) : modelClean;
-      const variantParsed = (inParens || (sp > 0 ? modelClean.slice(sp + 1).trim() : '')) +
-        ` · ${d.nameplateKw} kW`;
+      const kw = Number(d.nameplateKw) || 0;
+      const variantBucket = kw < 250 ? 'до 250 кВт'
+        : kw < 500 ? '250–500 кВт'
+        : kw < 1000 ? '500–1000 кВт'
+        : '> 1000 кВт';
       return {
         id: `dgu-${d.vendor}-${d.model}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
         kind: 'dgu',
@@ -132,7 +133,7 @@ async function _loadDguDatasheets() {
         label: `${d.vendor} ${d.model}`,
         manufacturer: d.vendor,
         series: seriesParsed,        // C18, C32, 3516, QSL9-G7, TAD941GE и т.п.
-        variant: variantParsed.trim(),
+        variant: variantBucket,      // до 250 / 250-500 / 500-1000 / >1000 кВт
         powerKw: d.nameplateKw,
         notes: d.notes || '',
         tags: ['dgu', d.fuelType, d.engineModel].filter(Boolean),

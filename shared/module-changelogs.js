@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.74', date: '2026-05-03', items: [
+      '🐛 <b>Catalog: «Вариант» — это не SKU/артикул, а конфигурация (~5-7 значений)</b>. По запросу Пользователя 2026-05-03: «вариант — это про С АВР или без, таких немного. Сортировать по SKU вообще не вариант».',
+      '• <b>UPS:</b> новый <code>_upsVariant(p)</code> в <code>shared/element-schemas.js</code>: variant = «Модульный» / «Модульный (с АВР)» / «Интегрированный (с АВР)» / «Интегрированный (без АВР)» / «Моноблок» / «All-in-One». Логика: hasIntegratedAts || inputs≥2 → «с АВР».',
+      '• <b>Cooling:</b> variant = systemType-label (~7 значений: «Чиллер» / «DX (воздушный)» / «DX с FC-насосом» / «CRAC» / «CRAC (chilled water)» / «CRAC + FC-loop» / «In-Row»). Capacity и SKU остаются в <code>label</code>.',
+      '• <b>DGU:</b> variant = bucket по nameplate kW (~4 значения: «до 250 кВт» / «250–500 кВт» / «500–1000 кВт» / «&gt; 1000 кВт»).',
+      '• Раньше для UPS variant=model_string (например «150 kW (Integrated, single-input MCCB)»), для cooling=capacity, для DGU=trim-suffix. Это давало 50+ уникальных значений и delают column-фильтр бесполезным.',
+      'Файлы: <code>shared/element-schemas.js</code>, <code>cooling/datasheets/index.js</code>, <code>shared/catalog-bridge.js</code>.',
+    ] },
     { version: '0.60.73', date: '2026-05-03', items: [
       '⚡ <b>Phase 30.3 cont.: dgu-config интеграция в платформу</b>.',
       '• <code>tech-workspace</code> tab «🔌 Ввод (ТП и ДГУ)» — рядом с «📦 Привязать модель ДГУ» появилась кнопка «⚙ Подобрать ДГУ →» (показывается только если feed.dgu.needed). URL ../dgu-config/?capacityKw/mode/redundancy/autonomy — wizard запускается с pre-filled параметрами.',

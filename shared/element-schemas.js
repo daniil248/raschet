@@ -24,6 +24,58 @@ function _parseSeriesFromModel(modelStr) {
   return { series: s.slice(0, sp), variant: s.slice(sp + 1).trim() };
 }
 
+// v0.60.74: helper для variant ИБП. По запросу Пользователя 2026-05-03
+// «вариант — это про С АВР или без, таких немного». Variant = осмысленная
+// конфигурация (~5 значений across всех UPS), а не SKU/артикул.
+//   Модульный (без АВР) — modular UPS, 1 ввод
+//   Модульный (с АВР) — modular UPS с 2 вводами + ATS
+//   Интегрированный без АВР — kind=ups-integrated, inputs=1
+//   Интегрированный с АВР — kind=ups-integrated, hasIntegratedAts=true
+//   Моноблок — upsType=monoblock
+//   All-in-One — upsType=aio / kind=ups-aio
+// Капасити (90/150/200 кВт) и SKU (MR33150-B) НЕ в variant — они в label и
+// в electrical.capacityKw для сортировки.
+function _upsVariant(p) {
+  if (!p) return '';
+  const hasAvr = !!p.hasIntegratedAts || (Number(p.inputs) || 1) >= 2;
+  const upsType = String(p.upsType || '').toLowerCase();
+  const kind = String(p.kind || '').toLowerCase();
+  if (kind === 'ups-aio' || upsType === 'aio') return 'All-in-One';
+  if (kind === 'ups-integrated' || upsType === 'integrated') {
+    return hasAvr ? 'Интегрированный (с АВР)' : 'Интегрированный (без АВР)';
+  }
+  if (upsType === 'modular') {
+    return hasAvr ? 'Модульный (с АВР)' : 'Модульный';
+  }
+  if (upsType === 'monoblock') {
+    return hasAvr ? 'Моноблок (с АВР)' : 'Моноблок';
+  }
+  return upsType ? upsType[0].toUpperCase() + upsType.slice(1) : '';
+}
+
+// v0.60.74: variant климатического оборудования = systemType (~6-7 значений).
+const _COOLING_VARIANT_MAP = {
+  'chiller':              'Чиллер',
+  'dx-air':               'DX (воздушный)',
+  'dx-pumped-fc':         'DX с FC-насосом',
+  'crac':                 'CRAC',
+  'crac-water':           'CRAC (chilled water)',
+  'crac-water+fc-loop':   'CRAC + FC-loop',
+  'inrow':                'In-Row',
+};
+function _coolingVariant(systemType) {
+  return _COOLING_VARIANT_MAP[systemType] || systemType || 'Прочее';
+}
+
+// v0.60.74: variant ДГУ — bucket по nameplate kW (~4 значения).
+function _dguVariant(nameplateKw) {
+  const kw = Number(nameplateKw) || 0;
+  if (kw < 250) return 'до 250 кВт';
+  if (kw < 500) return '250–500 кВт';
+  if (kw < 1000) return '500–1000 кВт';
+  return '> 1000 кВт';
+}
+
 function slug(s) {
   return String(s || '')
     .toLowerCase()
@@ -84,7 +136,10 @@ export function createPanelElement(patch = {}) {
 /** ups (источник бесперебойного питания) */
 export function createUpsElement(patch = {}) {
   const p = patch || {};
-  // v0.60.72: если series не указан — парсим из model (первое слово = series).
+  // v0.60.72: series парсится из model (первое слово = series).
+  // v0.60.74: variant теперь конфигурация (Модульный / Интегрированный с АВР /
+  // Моноблок / All-in-One), а НЕ модель/SKU. По запросу Пользователя
+  // «вариант — это про С АВР или без».
   const _parsed = _parseSeriesFromModel(p.model || '');
   return {
     id: p.id || makeElementId('ups', [p.manufacturer, p.model]),
@@ -94,7 +149,7 @@ export function createUpsElement(patch = {}) {
     description: p.description || '',
     manufacturer: p.manufacturer || p.supplier || '',
     series: p.series || _parsed.series || '',
-    variant: p.variant || _parsed.variant || p.model || '',
+    variant: p.variant || _upsVariant(p) || '',
     electrical: {
       voltageCategory: 'lv',
       capacityKw: Number(p.capacityKw || 0),
@@ -846,3 +901,7 @@ export function toCableTypeRecord(el) {
     builtin: !!el.builtin,
   };
 }
+
+
+// v0.60.74: re-exports для использования в catalog-bridge / cooling / dgu loaders.
+export { _upsVariant, _coolingVariant, _dguVariant };

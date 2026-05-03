@@ -590,6 +590,20 @@ export function listVendors() {
 // как builtin-элементы. Catalog-bridge.js загружает их при синхронизации.
 // =============================================================================
 
+// v0.60.74: variant-map для catalog (~7 значений, осмысленная классификация
+// по запросу Пользователя «вариант — это С АВР или без, таких немного»).
+// Определён локально (не импортируем из shared/element-schemas чтобы избежать
+// циклической зависимости при первом старте).
+const _COOLING_VARIANT_MAP = {
+  'chiller':              'Чиллер',
+  'dx-air':               'DX (воздушный)',
+  'dx-pumped-fc':         'DX с FC-насосом',
+  'crac':                 'CRAC',
+  'crac-water':           'CRAC (chilled water)',
+  'crac-water+fc-loop':   'CRAC + FC-loop',
+  'inrow':                'In-Row',
+};
+
 /**
  * Конвертирует cooling-datasheet в формат element-library.
  * kind='climate' — единый kind для каталога (UI label «Климатическое оборудование»).
@@ -607,19 +621,18 @@ function _datasheetToElement(d, idx) {
   const id = `cooling-ds-${slug}`;
   const ph = d.physical || {};
 
-  // v0.60.72: парсинг series/variant из model. Логика:
-  //   1. Уберём parens-описание в конце: "(air-cooled scroll)" → ""
-  //   2. Возьмём всё до первого пробела как series.
-  //   3. Остаток — variant (с capacity/опциями).
-  // Примеры:
-  //   "EWAQ-G 200 (air-cooled scroll)" → series="EWAQ-G", variant="200"
-  //   "KHJA-P30AU 30 kW (in-room fixed-freq, R410A)" → series="KHJA-P30AU", variant="30 kW"
-  //   "KHNA-X25 25 kW (inter-row air-cooled, R410A)" → series="KHNA-X25", variant="25 kW"
-  //   "MR33 120 (30K module)" → series="MR33", variant="120"
+  // v0.60.72: series парсится из model (первое слово до пробела).
+  //   "EWAQ-G 200 (air-cooled scroll)" → series="EWAQ-G"
+  //   "KHJA-P30AU 30 kW (in-room fixed-freq, R410A)" → series="KHJA-P30AU"
+  //   "KHNA-X25 25 kW (inter-row air-cooled, R410A)" → series="KHNA-X25"
+  // v0.60.74 (запрос Пользователя «вариант — это С АВР или без, таких немного»):
+  //   variant теперь = systemType (~6-7 значений: Чиллер / DX / CRAC / In-row),
+  //   а не capacity+SKU. Capacity остаётся в label.
   const modelClean = String(d.model || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
   const sp = modelClean.indexOf(' ');
   const seriesParsed = sp > 0 ? modelClean.slice(0, sp) : modelClean;
-  const variantParsed = sp > 0 ? modelClean.slice(sp + 1).trim() : '';
+  // v0.60.74: variant из systemType (small set, удобно для column-фильтра).
+  const variantFromType = _COOLING_VARIANT_MAP[d.systemType] || d.systemType || 'Прочее';
 
   return {
     id,
@@ -628,7 +641,7 @@ function _datasheetToElement(d, idx) {
     label: `${d.vendor} ${d.model}`,
     manufacturer: d.vendor,
     series: seriesParsed,         // EWAQ-G / KHJA-P30AU / MR33 / RTAF и т.п.
-    variant: variantParsed,       // capacity + опции (без parens-описания)
+    variant: variantFromType,     // Чиллер / DX (воздушный) / CRAC / In-row
     powerKw: d.ratedCapKw,        // numeric для сортировки в catalog
     notes: d.notes || '',
     // d.kind/d.systemType сохранены в tags для filter-поиска по типу оборудования.
