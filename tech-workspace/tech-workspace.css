@@ -432,6 +432,34 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 8px;
 }
+
+/* v0.60.90: auto-suggest badges для ТП/ДГУ */
+.tw-auto-badge {
+  display: inline-block;
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: #92400e;
+  background: #fef3c7;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+  cursor: help;
+}
+.tw-auto-apply {
+  display: inline-block;
+  margin-left: 4px;
+  margin-top: 3px;
+  padding: 1px 8px;
+  font-size: 10.5px;
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #16a34a;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.tw-auto-apply:hover { background: #bbf7d0; }
+.tw-auto-apply:disabled { opacity: 0.5; cursor: not-allowed; }
 .tw-grid label {
   display: flex;
   flex-direction: column;

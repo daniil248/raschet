@@ -4,6 +4,30 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.90', date: '2026-05-03', items: [
+      '🪄 <b>TW: авто-подбор ТП и ДГУ по нагрузке</b>. По запросу Пользователя 2026-05-03 «для ТП и ДГУ сделать авто подбор по параметрам нагрузки. Как и для всех остальных систем».',
+      '• <code>_suggestTpKva(c)</code>: kVA = (Σ принятая) / cos φ × 1.25 (запас) / округлено до 100 кВА.',
+      '• <code>_suggestDguKw(c, mode)</code>: kW = (UPS_IT × 1.05 + Cooling) × 1.15 / load_factor (PRP=70%, ESP=100%) / округлено до 50 кВт.',
+      '• Под input полями ТП/ДГУ — оранжевый бэйдж 🪄 «Авто: N кВА/кВт» с зелёной кнопкой ✓ для применения. Tooltip объясняет формулу.',
+      '• Кнопка ✓ показывается только если поле пустое или отличается от auto-расчёта.',
+      '',
+      '🏢 <b>TW: тип ЦОД (dcType) и условный показ блока МЦОД</b>. По запросу Пользователя 2026-05-03 «блок не может быть всегда, может сделать выбор в настройках варианта».',
+      '• Поле <code>projectData.dcType</code>: «🏢 Стационарный (своё здание)», «📦 Модульный (МЦОД)», «🚛 Мобильный (контейнер)», «🏠 В помещении (overlay)», «🛡 Капсула (гермозона, офис)».',
+      '• Default = stationary. Выбор в блоке «🏷 Объект».',
+      '• Блок «🏢 МЦОД» в layout показывается ТОЛЬКО если dcType === \'modular\'.',
+      '',
+      '💬 <b>KPI bar: tooltips на каждом параметре</b>. По запросу Пользователя 2026-05-03 «для всех параметров подсказку по тому что это и из чего получено».',
+      '• Стоек / IT-нагрузка / ИБП IT / Холод / Σ Принятая / PUE / Площадь — каждый теперь имеет полную title с формулой расчёта и источником данных.',
+      '',
+      '🔧 <b>Fix: η<sub>UPS</sub> / η<sub>TP</sub> переносились на новую строку</b> в «⚙ Тонкая настройка КПД». Обёрнул в <code>&lt;span style=white-space:nowrap&gt;</code>.',
+      '',
+      '🔍 <b>Project pickers — фильтр по релевантности</b>. По запросу Пользователя 2026-05-03 «опять 25, зачем подсовывать проекты, в которых не может быть использован этот конфигуратор» (применяет правило <code>feedback_module_scope_pickers.md</code>).',
+      '• <b>dgu-config:</b> sketch-проекты только если ownerModule = \'dgu-config\' или \'tech-workspace\'. Full-проекты всегда.',
+      '• <b>tech-workspace:</b> sketch-проекты только если ownerModule = \'tech-workspace\'. Full-проекты всегда.',
+      '• Опции получили иконки 📁 (full) / 🪛 (TW-sketch) / 🛠 (own sketch).',
+      '',
+      'Файлы: <code>tech-workspace/tech-workspace.js</code>, <code>tech-workspace/tech-workspace.css</code>, <code>dgu-config/dgu-config.js</code>.',
+    ] },
     { version: '0.60.89', date: '2026-05-03', items: [
       '🔄 <b>Phase 30.2 PULL: ups-config → TW round-trip завершён</b>.',
       '• <code>ups-config/ups-config.js::_saveWizardConfiguration</code> — после save через <code>saveConfig</code> теперь дополнительно пишет в <code>raschet.project.&lt;pid&gt;.ups-config.selected.v1</code> с supplier/model/capacityKw/cosPhi/autonomyMin/redundancy.',

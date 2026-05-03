@@ -173,6 +173,15 @@ function newVariant(name) {
         address: '',
         lat: null, lon: null,
         stage: 'concept',          // concept|sketch|working|asbuilt
+        // v0.60.90 (Пользователь 2026-05-03): тип ЦОД определяет какие
+        // блоки доступны в концепции. Default 'stationary' — стационарный
+        // ЦОД в собственном здании (МЦОД-блок скрыт).
+        //   'stationary' — Стационарный (своё здание)
+        //   'modular'    — Модульный (МЦОД GDM-600 и аналоги — блок «🏢 МЦОД»)
+        //   'mobile'     — Мобильный (контейнерный, на колёсах)
+        //   'indoor'     — В помещении (room-based, в существующем здании)
+        //   'capsule'    — Капсула (гермозона, мини-ЦОД в офисе)
+        dcType: 'stationary',
         designer: '',
         dateOfDesign: '',
         notes: '',
@@ -591,11 +600,58 @@ function renderCoolCard(cu, isReadOnly) {
 }
 
 // ─── Render: feed (TP/DGU)
-function renderFeedSection(feed, isReadOnly) {
+// v0.60.90 (Пользователь 2026-05-03 «для ТП и ДГУ сделать авто подбор по
+// параметрам нагрузки»): рассчитываем рекомендуемые значения и показываем
+// рядом с input полем + кнопка «🪄 Авто» для применения.
+function _suggestTpKva(c) {
+  // ТП кормит весь объект: IT + ИБП-loss + cooling + aux. Используем
+  // calcFeedTotal() который уже учитывает 30% общую коррекцию.
+  // cos φ ≈ 0.9 для типичной нагрузки → kVA = kW / cos.
+  const kw = calcFeedTotal(c);
+  const cos = 0.9;
+  const kva = kw / cos;
+  // С запасом 25% и округлением вверх до 100 кВА.
+  return Math.ceil(kva * 1.25 / 100) * 100;
+}
+function _suggestDguKw(c, mode = 'esp') {
+  // ДГУ кормит критическую нагрузку: IT (через ИБП) + cooling. Aux/hum
+  // обычно не на ДГУ.
+  const itKw = calcITTotal(c);
+  const coolKw = calcCoolTotal(c);
+  const upsByPurpose = calcUpsByPurpose(c);
+  // ИБП-кВт for IT + 25% efficiency loss
+  const upsItKw = (upsByPurpose.it + upsByPurpose.mixed) * 1.05;
+  // Базовая нагрузка на ДГУ:
+  const baseLoadKw = upsItKw + coolKw;
+  // Mode-derate (ISO 8528-1 PRP allows 70% nameplate sustained):
+  const modeFactor = mode === 'prp' ? 0.70 : 1.0;
+  // С запасом 15%
+  const requiredKw = baseLoadKw * 1.15 / modeFactor;
+  // Округление вверх до 50 кВт
+  return Math.ceil(requiredKw / 50) * 50;
+}
+
+function renderFeedSection(feed, isReadOnly, concept) {
   const ro = isReadOnly ? 'disabled' : '';
+  // v0.60.90: расчёт рекомендуемых.
+  const suggestTp = concept ? _suggestTpKva(concept) : 0;
+  const suggestDgu = concept ? _suggestDguKw(concept, feed.dgu.mode || 'esp') : 0;
+  const tpHasManual = Number(feed.tp.kva) > 0 && Number(feed.tp.kva) !== suggestTp;
+  const dguHasManual = Number(feed.dgu.kw) > 0 && Number(feed.dgu.kw) !== suggestDgu;
+  const tpAutoBadge = suggestTp > 0
+    ? `<span class="tw-auto-badge" title="Авто-подбор по нагрузке концепции (Σ принятая кВт / cos φ × 1.25 запас, округление до 100 кВА).">🪄 Авто: ${suggestTp} кВА</span>
+       ${(Number(feed.tp.kva) === 0 || tpHasManual) ? `<button type="button" class="tw-auto-apply" data-tw-action="apply-tp-auto" ${ro} title="Применить авто-расчёт ${suggestTp} кВА">✓</button>` : ''}`
+    : '';
+  const dguAutoBadge = suggestDgu > 0
+    ? `<span class="tw-auto-badge" title="Авто-подбор по нагрузке концепции: ИБП IT (с 5% потерями) + Холод, режим ${(feed.dgu.mode || 'esp').toUpperCase()} (load factor ${feed.dgu.mode === 'prp' ? '70%' : '100%'}), запас 15%, округление до 50 кВт.">🪄 Авто: ${suggestDgu} кВт</span>
+       ${(Number(feed.dgu.kw) === 0 || dguHasManual) ? `<button type="button" class="tw-auto-apply" data-tw-action="apply-dgu-auto" ${ro} title="Применить авто-расчёт ${suggestDgu} кВт">✓</button>` : ''}`
+    : '';
   return `<div class="tw-grid">
     <label class="tw-checkbox"><input type="checkbox" data-field="tp.needed"${feed.tp.needed ? ' checked' : ''} ${ro}> ТП требуется</label>
-    <label>Мощность ТП, кВА:<input type="number" data-field="tp.kva" min="0" step="100" value="${feed.tp.kva}" ${ro}></label>
+    <label>Мощность ТП, кВА:
+      <input type="number" data-field="tp.kva" min="0" step="100" value="${feed.tp.kva}" ${ro}>
+      ${tpAutoBadge}
+    </label>
     <label>Резервирование ТП:
       <select data-field="tp.redundancy" ${ro}>
         <option value="1"${feed.tp.redundancy === '1' ? ' selected' : ''}>1 ввод</option>
@@ -604,7 +660,10 @@ function renderFeedSection(feed, isReadOnly) {
       </select>
     </label>
     <label class="tw-checkbox"><input type="checkbox" data-field="dgu.needed"${feed.dgu.needed ? ' checked' : ''} ${ro}> ДГУ требуется</label>
-    <label>Мощность ДГУ, кВт:<input type="number" data-field="dgu.kw" min="0" step="100" value="${feed.dgu.kw}" ${ro}></label>
+    <label>Мощность ДГУ, кВт:
+      <input type="number" data-field="dgu.kw" min="0" step="100" value="${feed.dgu.kw}" ${ro}>
+      ${dguAutoBadge}
+    </label>
     <label>Режим ДГУ:
       <select data-field="dgu.mode" ${ro}>
         <option value="esp"${feed.dgu.mode === 'esp' ? ' selected' : ''}>ESP (резерв)</option>
@@ -1128,7 +1187,7 @@ function renderListRail(c, ro) {
       <div class="tw-rail-foot">Σ ${coolKw.toFixed(1)} кВт холода ${coolMissing}</div>
     </div>
 
-    <div class="tw-rail-section">
+    ${(c.projectData?.dcType || 'stationary') === 'modular' ? `<div class="tw-rail-section">
       <div class="tw-rail-head">
         <span class="tw-rail-title">🏢 МЦОД <span class="muted">·${(c.mdcBuildings || []).length}</span></span>
         <a class="tw-rail-cfg" href="${escAttr(_buildConfigLink('mdc-config'))}" target="_blank"
@@ -1243,9 +1302,18 @@ function renderDetails(c, ro) {
       <div class="tw-details-body">
         <div class="tw-card" data-card-kind="project" data-card-id="-">
           <div class="tw-grid">
-            <label>Обозначение проекта:<input type="text" data-field="projectData.designation" value="${escAttr(pd.designation || '')}" placeholder="напр. 25013-GEP-ENG-ELC" ${ro ? 'disabled' : ''}></label>
-            <label>Заказчик:<input type="text" data-field="projectData.customer" value="${escAttr(pd.customer || '')}" placeholder="ТОО «...»" ${ro ? 'disabled' : ''}></label>
-            <label>Стадия:
+            <label title="Шифр проекта (короткий код по системе ГИП). Шапка чертежей. Авто-заполняется из метаданных проекта.">Обозначение проекта:<input type="text" data-field="projectData.designation" value="${escAttr(pd.designation || '')}" placeholder="напр. 25013-GEP-ENG-ELC" ${ro ? 'disabled' : ''}></label>
+            <label title="Заказчик / клиент (юр. или физ. лицо). Авто-заполняется из реквизитов проекта.">Заказчик:<input type="text" data-field="projectData.customer" value="${escAttr(pd.customer || '')}" placeholder="ТОО «...»" ${ro ? 'disabled' : ''}></label>
+            <label title="Тип ЦОД определяет какие блоки доступны:&#10;• Стационарный — своё здание, классические машзалы.&#10;• Модульный — блок «🏢 МЦОД» доступен (GDM-600, контейнерные блоки).&#10;• Мобильный — на колёсах / в перевозимом контейнере.&#10;• В помещении — в существующем здании (overlay).&#10;• Капсула (гермозона) — мини-ЦОД в офисе, изолированный.">Тип ЦОД:
+              <select data-field="projectData.dcType" ${ro ? 'disabled' : ''}>
+                <option value="stationary"${(pd.dcType || 'stationary') === 'stationary' ? ' selected' : ''}>🏢 Стационарный (своё здание)</option>
+                <option value="modular"${pd.dcType === 'modular' ? ' selected' : ''}>📦 Модульный (МЦОД, GDM-600)</option>
+                <option value="mobile"${pd.dcType === 'mobile' ? ' selected' : ''}>🚛 Мобильный (контейнер, колёса)</option>
+                <option value="indoor"${pd.dcType === 'indoor' ? ' selected' : ''}>🏠 В помещении (overlay)</option>
+                <option value="capsule"${pd.dcType === 'capsule' ? ' selected' : ''}>🛡 Капсула (гермозона, офис)</option>
+              </select>
+            </label>
+            <label title="Стадия проектирования: концепция / эскиз (П) / рабочая (РД) / исполнительная (As-built).">Стадия:
               <select data-field="projectData.stage" ${ro ? 'disabled' : ''}>
                 <option value="concept"${pd.stage === 'concept' ? ' selected' : ''}>Концепция</option>
                 <option value="sketch"${pd.stage === 'sketch' ? ' selected' : ''}>Эскиз (П)</option>
@@ -1424,7 +1492,7 @@ function renderDetails(c, ro) {
         <h3>🔌 Ввод: ТП и ДГУ</h3>
         <span class="muted tw-details-sub">Σ принятая мощность: ${feedKw.toFixed(1)} кВт</span>
       </div>
-      <div class="tw-details-body">${renderFeedSection(c.feed, ro)}</div>`;
+      <div class="tw-details-body">${renderFeedSection(c.feed, ro, c)}</div>`;
   }
   if (sel.kind === 'pue') {
     const meteoSum = _readMeteoSummary();
@@ -1498,11 +1566,11 @@ function renderDetails(c, ro) {
             <details style="margin-top:8px">
               <summary style="cursor:pointer;font-size:12px;color:#475569" title="Раскройте для тонкой настройки defaults">⚙ Тонкая настройка КПД (override)</summary>
               <div class="tw-grid" style="margin-top:8px">
-                <label title="КПД ИБП. Online double-conversion modular: 95-97%. Bypass-режим: ~99%. Default 96%.">η<sub>UPS</sub>:
+                <label title="КПД ИБП. Online double-conversion modular: 95-97%. Bypass-режим: ~99%. Default 96%."><span style="white-space:nowrap">η<sub>UPS</sub>:</span>
                   <input type="number" step="0.01" min="0.85" max="1.0" data-field="pue.upsEfficiency" value="${bd.etaUps}" ${ro ? 'disabled' : ''} placeholder="0.96"></label>
-                <label title="КПД понижающего трансформатора. Масляный 1000 кВА: 98–99%. Сухой: 97–98%. Default 99%.">η<sub>TP</sub>:
+                <label title="КПД понижающего трансформатора. Масляный 1000 кВА: 98–99%. Сухой: 97–98%. Default 99%."><span style="white-space:nowrap">η<sub>TP</sub>:</span>
                   <input type="number" step="0.01" min="0.90" max="1.0" data-field="pue.tpEfficiency" value="${bd.etaTp}" ${ro ? 'disabled' : ''} placeholder="0.99"></label>
-                <label title="Доля aux от IT (освещение, ОПС, СКУД-CCTV, серверы мониторинга). Default 2%.">Aux %:
+                <label title="Доля aux от IT (освещение, ОПС, СКУД-CCTV, серверы мониторинга). Default 2%."><span style="white-space:nowrap">Aux %:</span>
                   <input type="number" step="0.001" min="0" max="0.10" data-field="pue.auxFraction" value="${bd.auxFraction}" ${ro ? 'disabled' : ''} placeholder="0.02"></label>
               </div>
             </details>
@@ -1723,7 +1791,7 @@ function renderAllCardsLayout(c, ro) {
     </section>
     <section class="tw-cards-section">
       <div class="tw-section-head"><h3>🔌 Ввод</h3></div>
-      ${renderFeedSection(c.feed, ro)}
+      ${renderFeedSection(c.feed, ro, c)}
     </section>
   </div>`;
 }
@@ -1835,14 +1903,38 @@ function renderActiveVariant() {
     }, { racks: 0, kw: 0, buildings: 0 });
     const meteoSum = _readMeteoSummary();
     const pueVal = calcPue(c, meteoSum);
+    // v0.60.90: tooltips на каждом KPI с пояснением что это и из чего получено.
+    // По требованию Пользователя 2026-05-03 «для всех параметров подсказку по
+    // тому что это и из чего получено».
     const summaryBar = `<div class="tw-summary-bar">
-      <div class="tw-kpi"><span class="tw-kpi-lbl">Стоек</span><span class="tw-kpi-val">${totalRacks}${mdcStats.racks > 0 ? `<small>+${mdcStats.racks}МЦОД</small>` : ''}</span></div>
-      <div class="tw-kpi"><span class="tw-kpi-lbl">IT-нагрузка</span><span class="tw-kpi-val">${(itKw + mdcStats.kw).toFixed(1)} <small>кВт</small></span></div>
-      <div class="tw-kpi ${itKw > 0 ? (upsItOk ? 'ok' : 'bad') : ''}"><span class="tw-kpi-lbl">⚡ ИБП IT</span><span class="tw-kpi-val">${upsItKw.toFixed(1)} <small>кВт</small></span></div>
-      <div class="tw-kpi ${itKw > 0 ? (coolOk ? 'ok' : 'bad') : ''}"><span class="tw-kpi-lbl">❄ Холод</span><span class="tw-kpi-val">${coolKw.toFixed(1)} <small>кВт</small></span></div>
-      <div class="tw-kpi"><span class="tw-kpi-lbl">Σ Принятая</span><span class="tw-kpi-val">${feedKw.toFixed(1)} <small>кВт</small></span></div>
-      <div class="tw-kpi"><span class="tw-kpi-lbl">📊 PUE</span><span class="tw-kpi-val">${pueVal.toFixed(2)}</span></div>
-      <div class="tw-kpi"><span class="tw-kpi-lbl">Площадь</span><span class="tw-kpi-val">${sumM2} <small>м²</small></span></div>
+      <div class="tw-kpi" title="Общее количество серверных стоек = Σ rackGroups.count + Σ mdcBuildings (rackов в МЦОД-блоках). Заполняется в блоке «🗄 Стойки» и «🏢 МЦОД».">
+        <span class="tw-kpi-lbl">Стоек</span>
+        <span class="tw-kpi-val">${totalRacks}${mdcStats.racks > 0 ? `<small>+${mdcStats.racks}МЦОД</small>` : ''}</span>
+      </div>
+      <div class="tw-kpi" title="Полезная IT-нагрузка = Σ rackGroups (count × kwPerRack) + Σ MDC IT-нагрузка. Это электрическая нагрузка серверов (без климата и потерь). Используется как P_IT в PUE-формуле.">
+        <span class="tw-kpi-lbl">IT-нагрузка</span>
+        <span class="tw-kpi-val">${(itKw + mdcStats.kw).toFixed(1)} <small>кВт</small></span>
+      </div>
+      <div class="tw-kpi ${itKw > 0 ? (upsItOk ? 'ok' : 'bad') : ''}" title="Доступная мощность ИБП для IT-нагрузки = Σ upsSystems.{count × ratedKva × cosPhi × loadFactor} × redundancy_factor. Зелёный если ≥ IT-нагрузка, красный если меньше. Резервирование: N+1 / 2N учитывается.">
+        <span class="tw-kpi-lbl">⚡ ИБП IT</span>
+        <span class="tw-kpi-val">${upsItKw.toFixed(1)} <small>кВт</small></span>
+      </div>
+      <div class="tw-kpi ${itKw > 0 ? (coolOk ? 'ok' : 'bad') : ''}" title="Холодопроизводительность = Σ coolingUnits.{count × kwPerUnit × redundancy_factor}. Должна покрывать IT-нагрузку с запасом ~5-10%. Зелёный если хватает, красный если меньше IT.">
+        <span class="tw-kpi-lbl">❄ Холод</span>
+        <span class="tw-kpi-val">${coolKw.toFixed(1)} <small>кВт</small></span>
+      </div>
+      <div class="tw-kpi" title="Общая принятая электрическая мощность объекта = (IT + Cooling + UPS_loss + Aux) с коэффициентом одновременности ~0.7. Используется для расчёта мощности ТП/ДГУ. Это значение служит для авто-подбора в блоке «🔌 Ввод».">
+        <span class="tw-kpi-lbl">Σ Принятая</span>
+        <span class="tw-kpi-val">${feedKw.toFixed(1)} <small>кВт</small></span>
+      </div>
+      <div class="tw-kpi" title="Power Usage Effectiveness = P_total / P_IT. Меньше = эффективнее (1.0 — идеал, 1.4 — типичный современный ЦОД). Расчёт: см. «📊 Расчёт PUE» — режим auto/cooling-module/manual. P_total = IT + Cooling + UPS_loss + TP_loss + Aux.">
+        <span class="tw-kpi-lbl">📊 PUE</span>
+        <span class="tw-kpi-val">${pueVal.toFixed(2)}</span>
+      </div>
+      <div class="tw-kpi" title="Σ площадей всех помещений (машзал, ИБП-зал, климат-зал, АКБ-зал, ДГУ, ТП, диспетчерская). Расчёт по ТКП 308-2011 / TIA-942 с коэффициентами на тип помещения. Заполняется автоматически из количества стоек/ИБП/климата.">
+        <span class="tw-kpi-lbl">Площадь</span>
+        <span class="tw-kpi-val">${sumM2} <small>м²</small></span>
+      </div>
     </div>`;
 
     // v0.59.901: layout-mode picker над summary
@@ -2204,6 +2296,34 @@ function bindListEvents() {
       } else {
         twToast('Все поля уже заполнены либо в проекте нет данных.', 'info');
       }
+      return;
+    }
+
+    // v0.60.90: «🪄 Авто» — применить рекомендуемое ТП/ДГУ.
+    const applyTpAuto = e.target.closest('[data-tw-action="apply-tp-auto"]');
+    if (applyTpAuto) {
+      const c = cur.concept;
+      const auto = _suggestTpKva(c);
+      if (!c.feed) c.feed = { tp: { needed: false }, dgu: { needed: false } };
+      if (!c.feed.tp) c.feed.tp = { needed: false };
+      c.feed.tp.kva = auto;
+      c.feed.tp.needed = true;
+      persistVariants();
+      renderActiveVariant();
+      twToast(`✓ ТП = ${auto} кВА (авто-подбор по нагрузке)`, 'ok');
+      return;
+    }
+    const applyDguAuto = e.target.closest('[data-tw-action="apply-dgu-auto"]');
+    if (applyDguAuto) {
+      const c = cur.concept;
+      if (!c.feed) c.feed = { tp: { needed: false }, dgu: { needed: false } };
+      if (!c.feed.dgu) c.feed.dgu = { needed: false, mode: 'esp' };
+      const auto = _suggestDguKw(c, c.feed.dgu.mode || 'esp');
+      c.feed.dgu.kw = auto;
+      c.feed.dgu.needed = true;
+      persistVariants();
+      renderActiveVariant();
+      twToast(`✓ ДГУ = ${auto} кВт (авто-подбор для режима ${(c.feed.dgu.mode || 'esp').toUpperCase()})`, 'ok');
       return;
     }
 
@@ -3488,9 +3608,18 @@ function renderProjectContext() {
   let projects = [];
   try { projects = listProjects() || []; } catch {}
   const currentVal = _pid || '';
-  const opts = projects.map(p => {
+  // v0.60.90 (правило feedback_module_scope_pickers.md): TW работает с
+  // концепциями ЦОД — sketch-проекты других модулей (СКС, cooling-only)
+  // тут не нужны. Показываем только full + tech-workspace sketches.
+  const relevant = projects.filter(p => {
+    if (p.kind === 'full' || !p.kind) return true;
+    if (p.kind === 'sketch') return p.ownerModule === 'tech-workspace';
+    return false;
+  });
+  const opts = relevant.map(p => {
     const labelText = p.name || p.designation || p.id;
-    return `<option value="${escAttr(p.id)}"${p.id === currentVal ? ' selected' : ''}>${escHtml(labelText)}</option>`;
+    const icon = p.kind === 'sketch' ? '🪛' : '📁';
+    return `<option value="${escAttr(p.id)}"${p.id === currentVal ? ' selected' : ''} title="${escAttr(p.kind === 'sketch' ? 'sketch-проект варианта' : 'основной проект')}">${icon} ${escHtml(labelText)}</option>`;
   }).join('');
   el.innerHTML = `
     <label style="display:block;font-size:11px;font-weight:600;color:#475569;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.4px"
