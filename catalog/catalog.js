@@ -148,7 +148,37 @@ function openModal(title, formHtml, onSave) {
 const elFilters = { kind: '', source: '', search: '',
   // v0.60.71: column-level filters (Excel-style, cross-зависимые)
   // v0.60.77: добавлен subKind (подтип) — для UPS Модульный/Моноблок/etc.
+  // v0.60.83: subKind перенесён в top-toolbar (рядом с kind), но фильтр-поле остаётся в elFilters.
   manufacturer: '', series: '', variant: '', subKind: '' };
+
+// v0.60.83: видимость колонок таблицы (per-user через LS).
+// По требованию Пользователя 2026-05-03 «Добавь управление видимостью полей».
+const COL_VIS_KEY = 'raschet.catalog.colVisibility.v1';
+const COL_DEFS = [
+  { id: 'kind',         label: 'Тип',           defaultVisible: false },  // v0.60.83: спрятан по умолчанию (фильтр в toolbar)
+  { id: 'subKind',      label: 'Подтип',        defaultVisible: false },  // v0.60.83: спрятан (фильтр в toolbar)
+  { id: 'label',        label: 'Название',      defaultVisible: true,  required: true },
+  { id: 'manufacturer', label: 'Производитель', defaultVisible: true },
+  { id: 'series',       label: 'Серия',         defaultVisible: true },
+  { id: 'variant',      label: 'Вариант',       defaultVisible: true },
+  { id: 'lastPrice',    label: 'Последняя цена',defaultVisible: true },
+  { id: 'minMax',       label: 'Мин / Макс',    defaultVisible: true },
+  { id: 'sparkline',    label: 'Динамика',      defaultVisible: true },
+  { id: 'count',        label: 'Предложений',   defaultVisible: true },
+];
+function loadColVisibility() {
+  try {
+    const raw = localStorage.getItem(COL_VIS_KEY);
+    if (!raw) return Object.fromEntries(COL_DEFS.map(c => [c.id, c.defaultVisible]));
+    return { ...Object.fromEntries(COL_DEFS.map(c => [c.id, c.defaultVisible])), ...JSON.parse(raw) };
+  } catch {
+    return Object.fromEntries(COL_DEFS.map(c => [c.id, c.defaultVisible]));
+  }
+}
+function saveColVisibility(vis) {
+  try { localStorage.setItem(COL_VIS_KEY, JSON.stringify(vis)); } catch {}
+}
+let _colVis = loadColVisibility();
 
 // v0.59.109: предустановка фильтров по URL (?filterKind=…&filterSearch=…
 // &nodeId=…). Используется при открытии каталога из инспектора узла —
@@ -187,6 +217,51 @@ const elFilters = { kind: '', source: '', search: '',
     if (search) elFilters.search = search;
   } catch {}
 })();
+
+// v0.60.83: column-visibility модалка
+function openColVisibilityModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'cat-modal-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;justify-content:center;align-items:center';
+  const rows = COL_DEFS.map(c => {
+    const isReq = !!c.required;
+    return `<label style="display:flex;gap:8px;align-items:center;padding:6px 8px;cursor:${isReq ? 'not-allowed' : 'pointer'};${isReq ? 'opacity:0.6' : ''}">
+      <input type="checkbox" data-col-id="${esc(c.id)}" ${_colVis[c.id] ? 'checked' : ''} ${isReq ? 'disabled' : ''}>
+      <span>${esc(c.label)}${isReq ? ' <span class="muted" style="font-size:10.5px">(обязательно)</span>' : ''}</span>
+    </label>`;
+  }).join('');
+  overlay.innerHTML = `<div style="background:#fff;border-radius:6px;max-width:380px;width:90vw;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25)">
+    <div style="padding:12px 16px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+      <h3 style="margin:0;font-size:15px">👁 Видимость колонок</h3>
+      <button id="cv-close" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">×</button>
+    </div>
+    <div style="padding:8px 12px;display:flex;flex-direction:column;gap:2px;font-size:13px">${rows}</div>
+    <div style="padding:10px 16px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;gap:8px">
+      <button id="cv-defaults" style="padding:5px 10px;font-size:12px;border:1px solid #cbd5e1;background:#f8fafc;border-radius:3px;cursor:pointer">↺ По умолчанию</button>
+      <button id="cv-ok" class="primary" style="padding:5px 14px">OK</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector('#cv-close').onclick = close;
+  overlay.querySelector('#cv-ok').onclick = close;
+  overlay.onclick = e => { if (e.target === overlay) close(); };
+  overlay.querySelector('#cv-defaults').onclick = () => {
+    _colVis = Object.fromEntries(COL_DEFS.map(c => [c.id, c.defaultVisible]));
+    saveColVisibility(_colVis);
+    close();
+    renderElementsTab();
+  };
+  overlay.querySelectorAll('input[data-col-id]').forEach(cb => {
+    cb.addEventListener('change', e => {
+      const id = e.target.dataset.colId;
+      _colVis[id] = e.target.checked;
+      saveColVisibility(_colVis);
+      renderElementsTab();
+      // re-open snapshot не нужен — реагируем на checkbox в текущей модалке
+    });
+  });
+}
 
 function renderElementsTab() {
   const container = document.getElementById('tab-elements');
@@ -275,9 +350,24 @@ function renderElementsTab() {
     ? `<span class="badge" style="background:#b54708;color:#fff">admin: ${esc(getCurrentRole())}</span>`
     : `<span class="badge">роль: ${esc(getCurrentRole())}</span>`;
 
+  // v0.60.83: subKind переведён в toolbar (рядом с kind). Disabled если kind пустой.
+  // Опции subKind зависят от выбранного kind (cross-dependent).
+  const subKindDisabled = !elFilters.kind;
+  const subKindToolbarSelect = subKindDisabled
+    ? `<select id="el-filter-subkind" disabled title="Сначала выберите тип элемента — тогда станут доступны подтипы.">
+         <option value="">Все подтипы (выберите тип)</option>
+       </select>`
+    : `<select id="el-filter-subkind" title="Подтип элемента в рамках выбранного типа. Для UPS: Модульный / Моноблок / Интегрированный / All-in-One. Для PDU: basic / metered / switched / hybrid. v0.60.83: фильтр перенесён сюда (был в шапке таблицы).">
+         <option value="">Все подтипы (${subKindOpts.length})</option>
+         ${subKindOpts.map(v => `<option value="${esc(v)}"${elFilters.subKind === v ? ' selected' : ''}>${esc(v)}</option>`).join('')}
+       </select>`;
+
   const html = [`
     <div class="toolbar">
-      <select id="el-filter-kind"><option value="">Все типы</option>${kindOpts}</select>
+      <select id="el-filter-kind" title="Тип элемента (UPS / climate / PDU / battery / breaker / ...). Подтип становится доступен после выбора типа.">
+        <option value="">Все типы</option>${kindOpts}
+      </select>
+      ${subKindToolbarSelect}
       <select id="el-filter-source">
         <option value="">Все источники</option>
         <option value="builtin">Встроенные</option>
@@ -285,6 +375,7 @@ function renderElementsTab() {
       </select>
       <input type="search" id="el-filter-search" placeholder="Поиск…" style="flex:1" value="${esc(elFilters.search)}">
       <div class="spacer"></div>
+      <button id="el-col-vis" type="button" title="Показать / скрыть колонки таблицы. v0.60.83.">👁 Колонки</button>
       <button id="el-add" class="primary">+ Добавить элемент</button>
       <button id="el-export">Экспорт JSON</button>
       <button id="el-export-edits" title="Выгрузить локальные правки (overrides + user) для передачи в исходники проекта">📤 Экспорт правок</button>
@@ -299,29 +390,29 @@ function renderElementsTab() {
       <table class="data-table cat-data-table">
         <thead>
           <tr>
-            <th>Тип</th>
-            <th title="Подтип / конструктив. Для UPS: Модульный / Моноблок / Интегрированный / All-in-One. Для cooling: chiller / dx / crac / inrow. v0.60.77.">Подтип</th>
+            ${_colVis.kind         ? '<th>Тип</th>' : ''}
+            ${_colVis.subKind      ? '<th title="Подтип / конструктив">Подтип</th>' : ''}
             <th>Название</th>
-            <th>Производитель</th>
-            <th title="Серия / продуктовая линейка. Для UPS: MR33 / S³ / KR / Myria. Для cooling: KHJA / KHNA / KHCA / EWAQ.">Серия</th>
-            <th title="Вариант. Для UPS: «С АВР» / «Без АВР». Для cooling: capacity bucket. Small set, не SKU.">Вариант</th>
-            <th>Последняя цена</th>
-            <th title="Минимум / максимум среди цен в одной валюте">Мин / Макс</th>
-            <th title="Динамика цены во времени (последние предложения, слева старое → справа новое)">Динамика</th>
-            <th>Предложений</th>
+            ${_colVis.manufacturer ? '<th>Производитель</th>' : ''}
+            ${_colVis.series       ? '<th title="Серия / продуктовая линейка. Для UPS: MR33 / S³ / KR. Для cooling: KHJA / KHNA / EWAQ.">Серия</th>' : ''}
+            ${_colVis.variant      ? '<th title="Вариант. UPS: С АВР / Без АВР. Cooling: capacity bucket.">Вариант</th>' : ''}
+            ${_colVis.lastPrice    ? '<th>Последняя цена</th>' : ''}
+            ${_colVis.minMax       ? '<th title="Минимум / максимум среди цен в одной валюте">Мин / Макс</th>' : ''}
+            ${_colVis.sparkline    ? '<th title="Динамика цены во времени">Динамика</th>' : ''}
+            ${_colVis.count        ? '<th>Предложений</th>' : ''}
             <th></th>
           </tr>
           <tr class="cat-col-filters">
+            ${_colVis.kind         ? '<th></th>' : ''}
+            ${_colVis.subKind      ? '<th></th>' : ''}
             <th></th>
-            <th>${colFilterSelect('subKind', subKindOpts, elFilters.subKind, 'Подтип')}</th>
-            <th></th>
-            <th>${colFilterSelect('manufacturer', manufacturerOpts, elFilters.manufacturer, 'Производитель')}</th>
-            <th>${colFilterSelect('series', seriesOpts, elFilters.series, 'Серия')}</th>
-            <th>${colFilterSelect('variant', variantOpts, elFilters.variant, 'Вариант')}</th>
-            <th></th>
-            <th></th>
-            <th></th>
-            <th></th>
+            ${_colVis.manufacturer ? `<th>${colFilterSelect('manufacturer', manufacturerOpts, elFilters.manufacturer, 'Производитель')}</th>` : ''}
+            ${_colVis.series       ? `<th>${colFilterSelect('series', seriesOpts, elFilters.series, 'Серия')}</th>` : ''}
+            ${_colVis.variant      ? `<th>${colFilterSelect('variant', variantOpts, elFilters.variant, 'Вариант')}</th>` : ''}
+            ${_colVis.lastPrice    ? '<th></th>' : ''}
+            ${_colVis.minMax       ? '<th></th>' : ''}
+            ${_colVis.sparkline    ? '<th></th>' : ''}
+            ${_colVis.count        ? '<th></th>' : ''}
             <th></th>
           </tr>
         </thead>
@@ -347,18 +438,19 @@ function renderElementsTab() {
     const srcBadge = el.builtin ? '<span class="badge builtin">builtin</span>'
       : el.source === 'imported' ? '<span class="badge imported">import</span>'
       : '<span class="badge user">user</span>';
+    // v0.60.83: Название теперь начинается со srcBadge (раньше Тип/Подтип были отдельной колонкой).
     html.push(`
       <tr data-id="${esc(el.id)}">
-        <td>${srcBadge} <span class="muted" style="font-size:11px">${esc(el.kind)}</span></td>
-        <td>${esc(el.subKind || '—')}</td>
-        <td><b>${esc(el.label || el.id)}</b><br><span class="muted" style="font-size:10px;font-family:monospace">${esc(el.id)}</span></td>
-        <td>${esc(el.manufacturer || '—')}</td>
-        <td>${esc(el.series || '—')}</td>
-        <td>${esc(el.variant || '—')}</td>
-        <td class="num">${lastPrice}</td>
-        <td class="num">${minMaxCell}</td>
-        <td>${sparkCell}</td>
-        <td class="num">${priceInfo.count || '—'}</td>
+        ${_colVis.kind         ? `<td>${srcBadge} <span class="muted" style="font-size:11px">${esc(el.kind)}</span></td>` : ''}
+        ${_colVis.subKind      ? `<td>${esc(el.subKind || '—')}</td>` : ''}
+        <td>${_colVis.kind ? '' : srcBadge + ' '}<b>${esc(el.label || el.id)}</b>${_colVis.subKind || _colVis.kind ? '' : ` <span class="muted" style="font-size:10.5px">${esc(el.subKind || el.kind || '')}</span>`}<br><span class="muted" style="font-size:10px;font-family:monospace">${esc(el.id)}</span></td>
+        ${_colVis.manufacturer ? `<td>${esc(el.manufacturer || '—')}</td>` : ''}
+        ${_colVis.series       ? `<td>${esc(el.series || '—')}</td>` : ''}
+        ${_colVis.variant      ? `<td>${esc(el.variant || '—')}</td>` : ''}
+        ${_colVis.lastPrice    ? `<td class="num">${lastPrice}</td>` : ''}
+        ${_colVis.minMax       ? `<td class="num">${minMaxCell}</td>` : ''}
+        ${_colVis.sparkline    ? `<td>${sparkCell}</td>` : ''}
+        ${_colVis.count        ? `<td class="num">${priceInfo.count || '—'}</td>` : ''}
         <td class="actions">
           <button data-act="view" title="Просмотр свойств элемента${el.kind === 'breaker' ? ' + TCC-график' : ''}">👁 Просмотр</button>
           ${isPricableKind(el.kind)
@@ -378,7 +470,9 @@ function renderElementsTab() {
       </tr>`);
   }
   if (!filtered.length) {
-    html.push('<tr><td colspan="11" class="empty">Ничего не найдено</td></tr>');
+    // v0.60.83: colspan = 1 (Название) + actions + visible-counted колонки.
+    const visibleCount = COL_DEFS.filter(c => c.id === 'label' || _colVis[c.id]).length + 1; // +1 за actions
+    html.push(`<tr><td colspan="${visibleCount}" class="empty">Ничего не найдено</td></tr>`);
   }
   html.push('</tbody></table></div>');
   container.innerHTML = html.join('');
@@ -386,11 +480,20 @@ function renderElementsTab() {
   // Wire filters
   document.getElementById('el-filter-kind').onchange = e => {
     elFilters.kind = e.target.value;
-    // v0.60.71: при смене kind сбрасываем cross-зависимые фильтры (manufacturer/series/variant)
-    // т.к. старые значения могут быть нерелевантны для новой kind.
+    // v0.60.71: при смене kind сбрасываем cross-зависимые фильтры
     elFilters.manufacturer = ''; elFilters.series = ''; elFilters.variant = ''; elFilters.subKind = '';
     renderElementsTab();
   };
+  // v0.60.83: subKind в toolbar
+  const subKindEl = document.getElementById('el-filter-subkind');
+  if (subKindEl) subKindEl.onchange = e => {
+    elFilters.subKind = e.target.value;
+    elFilters.manufacturer = ''; elFilters.series = ''; elFilters.variant = '';  // reset cross-dep
+    renderElementsTab();
+  };
+  // v0.60.83: column visibility manager
+  const colVisBtn = document.getElementById('el-col-vis');
+  if (colVisBtn) colVisBtn.onclick = () => openColVisibilityModal();
   document.getElementById('el-filter-source').onchange = e => { elFilters.source = e.target.value; renderElementsTab(); };
   document.getElementById('el-filter-search').oninput = e => { elFilters.search = e.target.value; renderElementsTab(); };
   // v0.60.71: column-filter handlers (Excel-style)
