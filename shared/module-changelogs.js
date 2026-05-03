@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.78', date: '2026-05-03', items: [
+      '🐛 <b>DGU climate derate был 0% — bug-fix</b>. Репорт Пользователя 2026-05-03 «где дирейтинги???».',
+      '• Причина: <code>calcDguRequired(input)</code> ожидал climate как nested object <code>input.climate.{altitudeM, ambientTC, humidityPct}</code>, но UI передаёт ПЛОСКИЕ поля <code>input.altitudeM / ambientTC / humidityPct</code>. Это давало <code>climate={}</code> в калькуляторе → derate всегда 0%.',
+      '• Fix: поддержка обоих вариантов — если <code>input.climate</code> nested object, используем его; иначе собираем climate из плоских полей.',
+      '• Теперь правильно: 800 м + 34°C + 90% RH → derate ≈ 12.7% (было 0%). Multiplier 0.873 = 87.3% от nameplate.',
+      '• Формулы (ISO 3046-1): altitude −1% за 100м &gt; 100м; T −2.5% за 5°C &gt; 25°C; RH −1% за 25% &gt; 60%.',
+      'Файлы: <code>dgu-config/calc/dgu-calc.js</code>.',
+    ] },
     { version: '0.60.77', date: '2026-05-03', items: [
       '🏗 <b>Catalog: правильное subKind / series / variant разделение</b>. По фидбэку Пользователя 2026-05-03: «модульный/моноблок это подтип, S3 это серия, разберись нормально».',
       '• <b>Новая колонка «Подтип» в catalog</b> между «Тип» и «Название», с Excel-style фильтром (cross-зависимым).',

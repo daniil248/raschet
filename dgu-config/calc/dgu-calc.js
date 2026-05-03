@@ -92,7 +92,14 @@ export function calcDguRequired(input) {
   const modeMeta = DGU_MODES[mode] || DGU_MODES.ESP;
   const margin = Number(input.safetyMarginPct) || 15;
   const redundancy = input.redundancy || 'N';
-  const derate = calcClimateDerate(input.climate || {});
+  // v0.60.78 fix (Пользователь 2026-05-03 «где дирейтинги???»): climate
+  // приходил как nested object input.climate, но UI передаёт ПЛОСКИЕ поля
+  // input.altitudeM/ambientTC/humidityPct. Поддерживаем оба варианта:
+  // если nested — используем как раньше, иначе собираем из плоских.
+  const climateArg = input.climate
+    ? input.climate
+    : { altitudeM: input.altitudeM, ambientTC: input.ambientTC, humidityPct: input.humidityPct };
+  const derate = calcClimateDerate(climateArg);
 
   // Базовая требуемая = loadKw × (1 + margin) / loadFactor / derateMultiplier
   const baseRequired = loadKw * (1 + margin / 100) / modeMeta.maxLoadFactor / derate.multiplier;
