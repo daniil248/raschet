@@ -1541,6 +1541,27 @@ async function init() {
   }
   if (!_activeSelectionId && _selections.length) _activeSelectionId = _selections[0].id;
 
+  // Phase 30.1 (v0.60.66): обработка prefill-payload от tech-workspace.
+  // Если в LS есть свежий (< 60 сек) raschet.cooling.prefill.v1 для текущего
+  // pid — создаём новый подбор с requiredCoolingKw из концепции и удаляем
+  // payload (одноразовое применение).
+  try {
+    const prefillRaw = localStorage.getItem('raschet.cooling.prefill.v1');
+    if (prefillRaw) {
+      const prefill = JSON.parse(prefillRaw);
+      const isRecent = (Date.now() - (prefill.ts || 0)) < 60000;
+      if (isRecent && prefill.projectId === _pid?.id && Number(prefill.requiredCoolingKw) > 0) {
+        const sel = makeNewSelection(`Подбор для концепции${prefill.locationName ? ` (${prefill.locationName})` : ''}`);
+        sel.general.requiredCoolingKw = Number(prefill.requiredCoolingKw);
+        sel.general.safetyMarginPct = 20;
+        _selections.unshift(sel);
+        _activeSelectionId = sel.id;
+        try { localStorage.removeItem('raschet.cooling.prefill.v1'); } catch {}
+        util.toast(`📥 Создан подбор для концепции: req = ${sel.general.requiredCoolingKw} кВт. Добавьте варианты оборудования через «+ Вариант».`, 'ok');
+      }
+    }
+  } catch (e) { console.warn('[cooling] prefill apply failed:', e); }
+
   // v0.60.7 (Phase 22.10.1): миграция option → equipment[] + topology per option.
   migrateSelectionsToComplex();
 

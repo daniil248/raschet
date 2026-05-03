@@ -1216,6 +1216,15 @@ function renderDetails(c, ro) {
             <label>Capacity correction, %/°C:<input type="number" step="0.1" data-field="coolingSystem.chillerSpec.capCorrPctPerC" value="${cs.chillerSpec?.capCorrPctPerC || -1.5}" ${ro ? 'disabled' : ''}></label>
           </div>
           <p class="muted tw-details-note">📊 Эти параметры используются в расчёте PUE (см. блок «📊 PUE») и в годовой энергии чиллера в /meteo/. Rated COP — типовая эффективность при rated ambient.</p>
+          <h5 class="tw-section-h5">🔗 Связь с модулем «Подбор холодильных систем»</h5>
+          <p class="muted tw-details-note">Создайте подбор оборудования (чиллеры/CRAC/DX) для этой концепции — с pre-filled требуемой холодопроизводительностью и условиями объекта. После «✓ Применить и вернуться» в /cooling/ — концепция автоматически использует данные подбора в PUE-расчёте (mode=cooling-module).</p>
+          <div class="tw-pue-actions">
+            <button type="button" class="tw-bind-btn" data-tw-action="open-cooling-prefill" ${ro ? 'disabled' : ''}
+                    title="Открыть модуль «Подбор холодильных систем» и автоматически создать новый подбор с requiredCoolingKw = Σ rackGroups × pue_target. После «✓ Применить и вернуться» — концепция получит ссылку на подбор и пересчитает PUE из реальной топологии.">
+              📤 Подобрать холод для этой концепции →
+            </button>
+            <a class="tw-pue-link" href="../cooling/" target="_blank" title="Открыть cooling в новой вкладке без pre-fill (для просмотра существующих подборов).">↗ Открыть cooling</a>
+          </div>
         </div>
       </div>`;
   }
@@ -2041,6 +2050,48 @@ function bindListEvents() {
       } catch (e) {
         console.error('[fetch-meteo]', e);
         twToast(`Ошибка загрузки: ${e.message || e}`, 'warn');
+      }
+      return;
+    }
+
+    // Phase 30.1 (v0.60.66): «📤 Подобрать холод для этой концепции»
+    // Открывает /cooling/ в embed-режиме с pre-filled requiredCoolingKw
+    // и locationName, после возврата concept получает ссылку на подбор.
+    const openCoolingPrefill = e.target.closest('[data-tw-action="open-cooling-prefill"]');
+    if (openCoolingPrefill) {
+      try {
+        const itKw = calcITTotal(cur.concept);
+        if (itKw <= 0) {
+          twToast('Нет IT-нагрузки в концепции (rackGroups). Добавьте стойки сначала.', 'warn');
+          return;
+        }
+        // Расчётная требуемая холодопроизводительность:
+        //   reqCoolKw = itKw × pue_target − itKw (доля cooling в общем потреблении)
+        // Используем 1.4 как target по умолчанию, либо текущий pue.value/manualPue.
+        const pueTarget = (cur.concept.pue?.mode === 'manual')
+          ? (Number(cur.concept.pue.manualPue) || 1.4)
+          : 1.4;
+        const reqCoolKw = Math.ceil(itKw * (pueTarget - 1));
+        // Pre-fill payload в LS-bridge (cooling.js считывает на init).
+        const prefillKey = `raschet.cooling.prefill.v1`;
+        const payload = {
+          ts: Date.now(),
+          projectId: _pid,
+          requiredCoolingKw: reqCoolKw,
+          itKw: Math.round(itKw),
+          locationName: cur.concept.projectData?.city || cur.concept.projectData?.designation || '',
+          variantId: _activeId,
+          source: 'tech-workspace',
+        };
+        try { localStorage.setItem(prefillKey, JSON.stringify(payload)); } catch {}
+        twToast(`📤 Открываю /cooling/ с req = ${reqCoolKw} кВт (PUE target ${pueTarget.toFixed(2)})…`, 'info');
+        // Открываем в embed через openEmbed-like (но cooling использует
+        // module-nav).
+        const { openEmbed } = await import('../shared/module-nav.js');
+        openEmbed(location.pathname + location.search, '../cooling/', 'Технолог ЦОД');
+      } catch (err) {
+        console.error('[open-cooling-prefill]', err);
+        twToast(`Ошибка: ${err.message || err}`, 'warn');
       }
       return;
     }

@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.66', date: '2026-05-03', items: [
+      '🔄 <b>Phase 30.1: PUSH из Технолога ЦОД в Cooling</b>. По roadmap «📤 Подобрать холод для этой концепции».',
+      '• tech-workspace tab «⚙ Топология охлаждения» получил кнопку «📤 Подобрать холод для этой концепции →».',
+      '• Click → расчёт <code>requiredCoolingKw = itKw × (PUE_target − 1)</code>, где PUE_target = manualPue или 1.4.',
+      '• Запись в LS-bridge <code>raschet.cooling.prefill.v1</code> с {requiredCoolingKw, locationName, projectId, ts}.',
+      '• Открытие /cooling/ в embed-режиме (через openEmbed shared/module-nav).',
+      '• Cooling.init() читает prefill (свежий <60 сек, тот же pid) → создаёт новый подбор с pre-filled <code>general.requiredCoolingKw</code> и удаляет LS-payload (одноразовое применение).',
+      '• Toast: «📥 Создан подбор для концепции: req = N кВт. Добавьте варианты через + Вариант».',
+      '• После «✓ Применить и вернуться» в /cooling/ — концепция автоматически использует подбор в PUE-расчёте через mode=cooling-module.',
+      'Файлы: <code>tech-workspace/tech-workspace.js</code>, <code>cooling/cooling.js</code>.',
+    ] },
     { version: '0.60.65', date: '2026-05-03', items: [
       '🇨🇳 <b>Kehua: 19 даташитов в каталог cooling/datasheets/</b>. По запросу Пользователя 2026-05-03 «даташиты должны входить в каталог оборудования».',
       '• <b>KHJA series</b> (in-room precision AC, R410A): 7.5 / 12.5 / 20 / 30 / 40 / 60 / 80 / 100 кВт. Fixed-frequency + dual-system 60/80/100 kW.',
