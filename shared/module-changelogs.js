@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.86', date: '2026-05-03', items: [
+      '🔍 <b>Phase 36.4: cross-module panel — per-variant module visibility</b>.',
+      '• <code>renderCrossModulePanel()</code> теперь читает данные из <b>sketch-project активного variant</b> (если linked), иначе — из parent-project.',
+      '• Header показывает контекст: «📁 sketch-проект «Variant 1»» (зелёный) или «📁 основной проект (нет sketch-проекта)» (серый).',
+      '• Счётчики ❄ Cooling / 🛠 Service / ⚡ Schematic / 🌐 СКС / 🏗 МЦОД / 🌤 Meteo / 🔥 АГПТ / 🗄 Шкафы / 🔋 ИБП / ⚡ ДГУ обновляются при смене variant.',
+      '• Click на модуль → переход в нужный модуль с pid контекстом (sketch-project если есть).',
+      '• Auto-refresh при: смена variant (click row), создание sketch-project (➕).',
+      '• Реализует требование Пользователя: «в TW-варианте видно schematic ✅ N узлов / cooling ✅ N подборов».',
+      'Файлы: <code>tech-workspace/tech-workspace.js</code>.',
+    ] },
     { version: '0.60.85', date: '2026-05-03', items: [
       '🔗 <b>Phase 36.1 START: TW-варианты ↔ sketch-проекты</b>. Каждый вариант концепции может иметь связанный sub-project для разработки схем (schematic / scs-design / cooling.selections / service.orders).',
       '• Variant model: новые поля <code>linkedSketchProjectId</code> (id sub-project) и <code>approvedAt</code> (ts утверждения). Backward-compat миграция в migrateVariant.',

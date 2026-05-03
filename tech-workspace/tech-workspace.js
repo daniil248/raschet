@@ -3225,6 +3225,9 @@ function init() {
       persistActive();
       renderVariantsList();
       renderActiveVariant();
+      // v0.60.86 (Phase 36.4): cross-module panel зависит от sketch-project
+      // активного варианта — перерисовываем при смене variant.
+      renderCrossModulePanel().catch(e => console.warn('[tech-workspace] cross-module re-render failed:', e));
     }
   });
   $('tw-variant-add').addEventListener('click', addVariant);
@@ -3257,6 +3260,11 @@ async function createSketchForVariant(vid) {
     v.linkedSketchProjectId = sub.id;
     persistVariants();
     renderVariantsList();
+    // v0.60.86: cross-module panel должна обновиться (теперь у активного
+    // variant есть sketch-project — переключаем контекст).
+    if (v.id === _activeId) {
+      renderCrossModulePanel().catch(err => console.warn('[tw] cm refresh failed:', err));
+    }
     twToast(`✓ Создан sketch-проект «${sub.name}». Откройте /projects/ → ${sub.name} для разработки схем.`, 'ok');
   } catch (err) {
     console.error('[tech-workspace] createSketch failed:', err);
@@ -3389,14 +3397,24 @@ const TW_MODULES = [
     href: '../dgu-config/', hint: 'Расчёт ДГУ по ISO 8528-1 + climate derate + подбор Caterpillar/Cummins/Volvo/FG Wilson.' },
 ];
 
+// v0.60.86 (Phase 36.4): cross-module panel читает данные из ACTIVE variant's
+// sketch-project (если он есть), иначе — из parent-проекта. Это даёт
+// per-variant видимость модулей, как требовал Пользователь:
+//   «в TW-варианте видно schematic ✅ N узлов / cooling ✅ N подборов».
 async function renderCrossModulePanel() {
   const root = $('tw-cross-modules');
   if (!root) return;
-  const pid = (typeof _pid === 'string') ? _pid : (_pid?.id || null);
-  if (!pid) {
+  const parentPid = (typeof _pid === 'string') ? _pid : (_pid?.id || null);
+  if (!parentPid) {
     root.innerHTML = `<div class="muted" style="font-size:11px;padding:6px 0">Нет активного проекта.</div>`;
     return;
   }
+
+  // Активный вариант — может иметь свой linkedSketchProjectId.
+  const activeVariant = _variants.find(x => x.id === _activeId);
+  const sketchPid = activeVariant?.linkedSketchProjectId || null;
+  const pid = sketchPid || parentPid;
+  const isSketch = !!sketchPid;
 
   const items = [];
   for (const mod of TW_MODULES) {
@@ -3437,7 +3455,12 @@ async function renderCrossModulePanel() {
   // Сортировка: модули с данными вверху.
   items.sort((a, b) => Number(b.hasData) - Number(a.hasData));
 
-  root.innerHTML = items.map(m => {
+  // v0.60.86: header указывает контекст (sketch-проект варианта vs parent).
+  const headerHint = isSketch
+    ? `<div class="muted" style="font-size:10.5px;padding:2px 0 6px;color:#15803d" title="Данные читаются из sketch-проекта варианта «${escAttr(activeVariant?.name || '')}». При смене активного варианта счётчики обновятся.">📁 Контекст: sketch-проект «${escHtml(activeVariant?.name || '')}»</div>`
+    : `<div class="muted" style="font-size:10.5px;padding:2px 0 6px" title="Данные читаются из родительского проекта. Создайте sketch-проект для активного варианта чтобы видеть его независимые схемы.">📁 Контекст: основной проект (нет sketch-проекта у варианта)</div>`;
+
+  root.innerHTML = headerHint + items.map(m => {
     const href = buildModuleHref(m.href, { projectId: pid, fromModule: 'tech-workspace' });
     const countLabel = m.hasData
       ? `<span class="tw-cm-count" title="Количество элементов">${m.count}</span>`
