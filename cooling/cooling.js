@@ -1364,7 +1364,24 @@ function renderActiveTab() {
       });
     }
     // Per-equipment results через новый simulateOptionTopology
-    const metrics = simulateOptionTopology(opt, hourly, requiredCoolingKwOf(sel));
+    let metrics = simulateOptionTopology(opt, hourly, requiredCoolingKwOf(sel));
+    // v0.60.64: нормализация на 1 год для multiyear-датасетов.
+    // simulateOptionTopology суммирует по hourly без учёта длины периода;
+    // для отчётов лучше показывать annual-значения, а не period-totals.
+    const totalH = (metrics.bins || []).reduce((s, b) => s + (b.hours || 0), 0) || (hourly?.length || 8760);
+    const yrs = totalH > 0 ? totalH / 8760 : 1;
+    if (yrs > 1.01 && metrics.perEquipment) {
+      metrics = {
+        ...metrics,
+        totalEnergyKwh: (metrics.totalEnergyKwh || 0) / yrs,
+        perEquipment: metrics.perEquipment.map(e => ({
+          ...e,
+          energyKwh: (e.energyKwh || 0) / yrs,
+          // peakKw — это пик мгновенной мощности, не зависит от длины периода
+        })),
+        yearsInPeriod: yrs,
+      };
+    }
     const rwrap = $('cl-topo-results');
     if (rwrap) rwrap.innerHTML = renderTopologyResults(metrics, _currency, tariffInDisplayCurrency());
   } else if (_activeTab === 'compare') {

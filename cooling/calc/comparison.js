@@ -14,6 +14,7 @@
 // NO DOM. Pure JS.
 
 import { simulateOptionTopology } from './topology.js';
+import { buildBinData } from './chiller-bin-calc.js';
 import { computeTco, discountedPaybackYears, convertEcoToCurrency } from './capex-tco.js';
 
 /**
@@ -76,29 +77,29 @@ export function compareOptions(options, hourly, tariffPerKwh, displayCurrency = 
     // Системное энергопотребление через simulateOptionTopology — учитывает
     // qty × per-unit-energy + (cold-резерв = 0; hot-резерв делит нагрузку).
     const tMetrics = simulateOptionTopology(opt, hourly, requiredCoolingKw);
-    const annualEnergyKwh = tMetrics.totalEnergyKwh || 0;
+    // v0.60.64: simulateOptionTopology суммирует по hourly без нормализации
+    // → multiyear-датасет даёт N×annual. Делим на yearsInPeriod для аннолизации.
+    const totalHoursInBins = (tMetrics.bins || []).reduce((s, b) => s + (b.hours || 0), 0)
+                          || (hourly?.length || 8760);
+    const yearsInPeriod = totalHoursInBins > 0 ? totalHoursInBins / 8760 : 1;
+    const periodEnergyKwh = tMetrics.totalEnergyKwh || 0;
+    const annualEnergyKwh = yearsInPeriod > 0 ? periodEnergyKwh / yearsInPeriod : periodEnergyKwh;
 
-    // Часы в FC-режиме считаем по primary spec (только chiller-plant): берём
-    // bin-rows для одной единицы, fcFraction × hours по всем bins. Это аппрок,
-    // но достаточная для сравнения «доли года в FC».
+    // v0.60.64 fix (bug-репорт Пользователя 2026-05-03 «то фрикулинг есть, то
+    // его уже нет»): comparison-таблица показывала FC часов = 0, потому что
+    // обращалась к несуществующему <code>pSpec.freeCoolingThresholdC</code>.
+    // Правильный путь — тот же что в fc-summary.js: buildBinData(hourly, pSpec)
+    // → строки имеют fcFraction (учитывает chwsTemp/approach/wet-mode), и
+    // fcHours = Σ fcFraction × hours.
     const pSpec = (equipment.find(eq => eq.spec) || {}).spec || opt.spec || null;
     let fcHours = 0, fcPct = 0;
-    if (pSpec && tMetrics.bins && tMetrics.bins.length) {
-      const totalHours = tMetrics.bins.reduce((s, b) => s + (b.hours || 0), 0);
-      // bins from simulateOptionTopology — chillerLoadByBin (до распределения).
-      // Достаём fcFraction через быструю реконструкцию на pSpec.
-      // Чтобы не дублировать импорт buildBinData, помечаем fcHours/fcPct только
-      // если pSpec поддерживает FC и bin-данные имеют power-info. Более точные
-      // числа доступны во вкладке energy через computeFcSummary.
-      // Простой proxy: если ratedCop > 0 и есть bins с T < freeCoolingThresholdC,
-      // считаем что эти часы — FC-режим.
-      const fcThr = Number(pSpec.freeCoolingThresholdC);
-      if (Number.isFinite(fcThr)) {
-        for (const b of tMetrics.bins) {
-          if (b.tBin < fcThr) fcHours += (b.hours || 0);
-        }
-        fcPct = totalHours > 0 ? (fcHours / totalHours) * 100 : 0;
-      }
+    if (pSpec && hourly && hourly.length) {
+      const fcRows = buildBinData(hourly, pSpec);
+      const totalHours = fcRows.reduce((s, r) => s + (r.hours || 0), 0);
+      const periodFcHours = fcRows.reduce((s, r) => s + (r.fcFraction || 0) * (r.hours || 0), 0);
+      // v0.60.64: нормализация на 1 год для multiyear-датасетов.
+      fcHours = yearsInPeriod > 0 ? periodFcHours / yearsInPeriod : periodFcHours;
+      fcPct = totalHours > 0 ? (periodFcHours / totalHours) * 100 : 0;
     }
 
     const annualCost = annualEnergyKwh * (tariffPerKwh || 0);

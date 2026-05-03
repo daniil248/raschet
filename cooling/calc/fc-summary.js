@@ -52,9 +52,25 @@ export function computeFcSummary(rows, spec, tariffRubKwh, hourly) {
   const fcActive = (spec.systemType === 'chiller' && spec.freeCoolingMode !== 'none')
                 || spec.systemType === 'dx-pumped-fc';
 
+  // v0.60.64 fix (bug-репорт Пользователя 2026-05-03 «58.28 МВт·ч это за год
+   // или за расчетный период??»): добавляем annualized-метрики, считая
+   // factor = (totalHours / 8760). При filter='год 2023' totalHours=8760 →
+   // factor=1 → annual===период. При filter='все годы' с 10-летним датасетом
+   // → factor≈10 → annual = period/10.
+  const yearsInPeriod = totalHours > 0 ? totalHours / 8760 : 1;
+  const annualEnergyKwh = yearsInPeriod > 0 ? energyKwh / yearsInPeriod : energyKwh;
+  const annualCostRub = annualEnergyKwh * tariff;
+  const annualFcHours = yearsInPeriod > 0 ? fcHours / yearsInPeriod : fcHours;
+  const annualSavedKwh = yearsInPeriod > 0 ? savedKwh / yearsInPeriod : savedKwh;
+  const annualSavedRub = annualSavedKwh * tariff;
+
   return {
+    // Period-totals (то что считалось до v0.60.64)
     fcHours, fcPct, energyKwh, costRub,
     baselineEnergyKwh, savedKwh, savedPct, savedRub,
+    // Per-year (нормализовано для удобства отображения)
+    annualEnergyKwh, annualCostRub, annualFcHours, annualSavedKwh, annualSavedRub,
+    yearsInPeriod,
     tariff, fcActive, sysLabel,
     totalHours, ratedCapKw: spec.ratedCapKw,
   };

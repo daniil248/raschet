@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.64', date: '2026-05-03', items: [
+      '🐛 <b>Cooling: 2 bug-фикса по отчёту Пользователя 2026-05-03</b>.',
+      '<b>Bug 1: «то фрикулинг есть, то его уже нет»</b> — comparison-таблица показывала FC часов = 0 даже если energy-tab корректно показывал 5271 ч / 60.1%. Причина: <code>comparison.js</code> использовал несуществующее <code>pSpec.freeCoolingThresholdC</code>. Fix: переход на <code>buildBinData(hourly, pSpec)</code> + <code>Σ fcFraction × hours</code> (та же логика что в fc-summary).',
+      '<b>Bug 2: «58.28 МВт·ч это за год или за расчётный период??»</b> — лейблы «Эл. потребление» / «FC часов/год» / «OPEX за год» показывали period-totals (Σ по hourly), а не annual. При filter=\'все годы\' с 10-летним датасетом → значения были 10x больше реальных годовых.',
+      '• Fix: <code>computeFcSummary</code> возвращает annualEnergyKwh / annualCostRub / annualFcHours / annualSavedKwh = period-value / yearsInPeriod (где yearsInPeriod = totalHours/8760).',
+      '• <code>fc-summary-view</code> и <code>comparison-view</code> теперь показывают annual-значения. При multi-year фильтре в title-строке появляется badge «датасет N лет».',
+      '• <code>topology-view</code> через cooling.js callsite получает нормализованные metrics (energyKwh / yearsInPeriod).',
+      '• TCO/payback теперь корректны для multi-year датасетов (раньше TCO был 10x завышен, теперь — annual × lifetime с дисконтированием).',
+      'Файлы: <code>cooling/calc/fc-summary.js</code>, <code>cooling/calc/comparison.js</code>, <code>cooling/cooling.js</code>, <code>cooling/ui/fc-summary-view.js</code>, <code>cooling/ui/comparison-view.js</code>.',
+    ] },
     { version: '0.60.63', date: '2026-05-03', items: [
       '📊 <b>Phase 30.4: comprehensive PUE breakdown</b>. Раньше отчёт показывал PUE одним числом + общий «losses ≈ 10%». Теперь — per-component breakdown по физике.',
       '• Новый <code>calcPueAutoBreakdown(c, meteoSummary)</code> возвращает {pue, breakdown:{itKw, coolKwAvg, upsLossKw, tpLossKw, auxKw, totalNonItKw, etaUps, etaTp, auxFraction}}.',
