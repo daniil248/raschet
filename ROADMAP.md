@@ -3239,17 +3239,10 @@ standalone-приложение в отдельном. Чтобы использ
 
 ### План работ
 
-- [ ] **30.1** Cooling ↔ Tech-workspace (двусторонний bridge):
-  - **PUSH (tech → cooling):** в концепции tech-workspace кнопка «📤 Подобрать
-    холод для этой концепции» — открывает cooling в embed с pre-filled
-    `selection.general.requiredCoolingKw = Σ_rackGroups (powerKw × pue_target)`
-    и locationName из проекта. После «✓ Применить и вернуться» —
-    подбор сохраняется в проект, в tech-workspace показывается link
-    на новый подбор.
-  - **PULL (cooling → tech):** при изменении cooling.selections автоматически
-    пересчитывается PUE концепции (через onCoolingSelectionsChange listener).
-  - **Visual:** в концепции под cooling-блоком показать «Связанный подбор:
-    [имя] — Σ установлено N кВт, годовой COP X.X, PUE-cooling Y.YY».
+- [~] **30.1** Cooling ↔ Tech-workspace (двусторонний bridge):
+  - [x] **PUSH** (tech → cooling, v0.60.66): кнопка «📤 Подобрать холод для этой концепции →» в tab «⚙ Топология охлаждения». Расчёт <code>requiredCoolingKw = itKw × (PUE_target − 1)</code>, запись в LS-bridge <code>raschet.cooling.prefill.v1</code>, открытие /cooling/ в embed-режиме, cooling.init читает prefill и создаёт подбор автоматически.
+  - [x] **PULL** (cooling → tech, v0.60.3): через PUE mode=cooling-module — concept автоматически использует данные из подбора при пересчёте.
+  - [ ] **Visual:** в концепции под cooling-блоком показать «Связанный подбор: [имя] — Σ установлено N кВт, годовой COP X.X, PUE-cooling Y.YY».
 
 - [ ] **30.2** UPS-config ↔ Tech-workspace:
   - **shared/ups-bridge.js** — API для cross-module create/load.
