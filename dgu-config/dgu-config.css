@@ -1,0 +1,178 @@
+/* dgu-config/dgu-config.css — стили для модуля ДГУ */
+
+.dg-main {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 12px;
+  padding: 12px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.dg-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.dg-section h3 {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #475569;
+}
+
+.dg-section-h4 {
+  margin: 12px 0 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #334155;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 8px;
+}
+
+.dg-lbl {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 6px;
+  color: #374151;
+}
+
+.dg-lbl > span {
+  font-size: 11.5px;
+  color: #475569;
+}
+
+.dg-lbl input,
+.dg-lbl select {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+  font: inherit;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.dg-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dg-content-header {
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+}
+
+.dg-content-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.dg-content-meta {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.dg-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.dg-kpi {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+
+.dg-kpi-lbl {
+  display: block;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  color: #64748b;
+  letter-spacing: 0.3px;
+}
+
+.dg-kpi-val {
+  display: block;
+  font-size: 18px;
+  font-weight: 600;
+  color: #0f172a;
+  margin-top: 2px;
+}
+
+.dg-kpi-sub {
+  font-size: 10.5px;
+  color: #64748b;
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.dg-derate-table,
+.dg-suggest-table,
+.dg-fuel-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.dg-derate-table th,
+.dg-derate-table td,
+.dg-suggest-table th,
+.dg-suggest-table td,
+.dg-fuel-table th,
+.dg-fuel-table td {
+  border-bottom: 1px solid #f1f5f9;
+  padding: 5px 8px;
+  text-align: left;
+}
+
+.dg-derate-table th,
+.dg-suggest-table th,
+.dg-fuel-table th {
+  background: #f8fafc;
+  font-weight: 600;
+  font-size: 11px;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.dg-suggest-table tr.dg-suggest-best {
+  background: #dcfce7;
+  font-weight: 500;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.dg-warn {
+  background: #fef3c7;
+  border: 1px solid #fbbf24;
+  color: #78350f;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.dg-success {
+  background: #dcfce7;
+  border: 1px solid #16a34a;
+  color: #15803d;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  margin-top: 8px;
+}

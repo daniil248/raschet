@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.70', date: '2026-05-03', items: [
+      '⚡ <b>Phase 30.3 START: модуль dgu-config (ДГУ)</b>. Новый standalone-модуль для расчёта дизель-генераторных установок.',
+      '• <code>dgu-config/calc/dgu-calc.js</code> — pure-функции по ISO 8528-1 (modes ESP/PRP/COP) + ISO 3046-1 (climate derate: высота / T / влажность) + расчёт топлива (SFC интерполяция 25/50/75/100% load).',
+      '• <code>dgu-config/datasheets/index.js</code> — каталог 14 моделей: Caterpillar (C18 220/400, C32 800, 3516 1500), Cummins (C220/400/825/1675), Volvo Penta (TAD941/1342, TWD1683), FG Wilson (P200/400/800).',
+      '• <code>dgu-config/index.html + dgu-config.js</code> — UI sidebar (нагрузка, режим, резервирование, climate, автономия) + content (расчёт мощности с derate breakdown / подбор из каталога / топливо+бак).',
+      '• Standalone-режим. URL params для PUSH из tech-workspace: ?capacityKw / mode / redundancy / altitude / tamb / autonomy / vendor.',
+      '• Стандарты в tooltip каждого поля + objet derate breakdown с цветными % (красный — derate, зелёный — без).',
+      '⏳ TODO: интеграция с tech-workspace (кнопка «📤 Подобрать ДГУ»), shared/dgu-bridge.js, карточка в /modules/, /projects/.',
+      'Файлы: <code>dgu-config/index.html</code> (новый), <code>dgu-config/dgu-config.js</code> (~190 строк), <code>dgu-config/dgu-config.css</code>, <code>dgu-config/calc/dgu-calc.js</code> (~150 строк), <code>dgu-config/datasheets/index.js</code> (14 моделей).',
+    ] },
     { version: '0.60.69', date: '2026-05-03', items: [
       '🔄 <b>Phase 30.2: TW → ups-config PUSH</b>. По roadmap «📤 Подобрать ИБП».',
       '• tech-workspace UPS-карточка получила кнопку «⚙ Подобрать в ups-config →» рядом с «📦 Привязать модель».',
