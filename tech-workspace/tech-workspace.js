@@ -29,7 +29,7 @@
 //   }
 // =========================================================================
 
-import { ensureDefaultProject, projectKey, listSubProjects, createSubProject, listProjects } from '../shared/project-storage.js';
+import { ensureDefaultProject, projectKey, listSubProjects, createSubProject, listProjects, getProject, setActiveProjectId, createProject } from '../shared/project-storage.js';
 import { buildModuleHref } from '../shared/project-context.js';
 import { idbGet, idbAvailable } from '../shared/idb-store.js';
 import { pricesForElement } from '../shared/price-records.js';
@@ -2273,6 +2273,38 @@ function twConfirm(msg, title = 'Подтверждение') {
   });
 }
 
+// v0.60.76: prompt с inline-input (для создания проекта).
+function twPrompt(label, defaultValue = '', title = 'Ввод значения') {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'tw-modal-overlay';
+    overlay.innerHTML = `<div class="tw-modal" role="dialog" aria-modal="true">
+      <div class="tw-modal-head"><h3>${escHtml(title)}</h3></div>
+      <div class="tw-modal-body">
+        <label style="display:block;margin-bottom:8px;font-size:12.5px;color:#374151">${escHtml(label)}</label>
+        <input type="text" id="tw-prompt-input" value="${escAttr(defaultValue)}" autofocus
+               style="width:100%;padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;font:inherit;font-size:13px">
+      </div>
+      <div class="tw-modal-actions">
+        <button type="button" class="tw-modal-btn tw-modal-cancel">Отмена</button>
+        <button type="button" class="tw-modal-btn tw-modal-ok">OK</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('#tw-prompt-input');
+    const close = (val) => { overlay.remove(); document.removeEventListener('keydown', onKey); resolve(val); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') close(null);
+      else if (e.key === 'Enter') close(input.value || null);
+    };
+    overlay.querySelector('.tw-modal-cancel').addEventListener('click', () => close(null));
+    overlay.querySelector('.tw-modal-ok').addEventListener('click', () => close(input.value || null));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+    document.addEventListener('keydown', onKey);
+    requestAnimationFrame(() => { input.focus(); input.select(); });
+  });
+}
+
 // v0.59.893: пикер из списка опций (id+label). Returns picked id or null.
 function twPickFromList(items, title = 'Выбор') {
   return new Promise(resolve => {
@@ -3050,7 +3082,26 @@ function bindHandoff() {
 
 // ─── Main
 function init() {
-  _pid = ensureDefaultProject();
+  // v0.60.76: уважать ?project=<id> / ?pid=<id> из URL (как в cooling/service).
+  // По требованию Пользователя 2026-05-03 «модуль Технолог ЦОД так же должен
+  // иметь привязку к проекту».
+  const params = new URLSearchParams(location.search);
+  const urlPid = params.get('project') || params.get('pid');
+  if (urlPid) {
+    const proj = getProject(urlPid);
+    if (proj) {
+      setActiveProjectId(urlPid);
+      _pid = urlPid;
+    } else {
+      console.warn('[tech-workspace] ?project=' + urlPid + ' не найден — fallback на default');
+      _pid = ensureDefaultProject();
+    }
+  } else {
+    _pid = ensureDefaultProject();
+  }
+  // _pid должен быть string id (для совместимости с projectKey/storage)
+  if (typeof _pid === 'object' && _pid?.id) _pid = _pid.id;
+
   _variants = (loadJson(KEY_VARIANTS, []) || []).map(migrateVariant);
   _activeId = loadJson(KEY_ACTIVE, null);
   _layoutMode = loadJson(KEY_LAYOUT, 'split');
@@ -3094,6 +3145,56 @@ function init() {
   // Phase 30.6 (v0.60.62): кросс-модульная панель — async load (meteo
   // читается из IDB) с graceful fallback. Не блокирует init.
   renderCrossModulePanel().catch(e => console.warn('[tech-workspace] cross-module panel failed:', e));
+  // v0.60.76: project context picker.
+  renderProjectContext();
+}
+
+// v0.60.76 (по требованию Пользователя 2026-05-03 «модуль Технолог ЦОД должен
+// иметь привязку к проекту»): UI picker контекста проекта в sidebar.
+function renderProjectContext() {
+  const el = $('tw-project-context');
+  if (!el) return;
+  let projects = [];
+  try { projects = listProjects() || []; } catch {}
+  const currentVal = _pid || '';
+  const opts = projects.map(p => {
+    const labelText = p.name || p.designation || p.id;
+    return `<option value="${escAttr(p.id)}"${p.id === currentVal ? ' selected' : ''}>${escHtml(labelText)}</option>`;
+  }).join('');
+  el.innerHTML = `
+    <label style="display:block;font-size:11px;font-weight:600;color:#475569;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.4px"
+           title="Проект, к которому привязана текущая концепция. Все варианты, связанные модули (cooling/service/ups-config/dgu-config) — хранятся per-project.">📁 Контекст проекта</label>
+    <select id="tw-project-sel" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px;font:inherit;font-size:12.5px;background:#fff;cursor:pointer">
+      ${opts || '<option value="">— нет проектов —</option>'}
+      <option value="__create__">➕ Создать новый проект…</option>
+    </select>
+  `;
+  const sel = el.querySelector('#tw-project-sel');
+  if (!sel) return;
+  sel.addEventListener('change', async (e) => {
+    const v = e.target.value;
+    if (v === '__create__') {
+      const name = await twPrompt('Название нового проекта:', `Концепция ${new Date().toLocaleDateString('ru-RU')}`);
+      if (!name) { sel.value = currentVal; return; }
+      try {
+        const p = createProject({ name: name.trim(), description: 'Создан из Технолога ЦОД', kind: 'full' });
+        setActiveProjectId(p.id);
+        const url = new URL(location.href);
+        url.searchParams.set('project', p.id);
+        location.href = url.toString();
+      } catch (err) {
+        twToast('Ошибка создания: ' + (err.message || err), 'warn');
+        sel.value = currentVal;
+      }
+      return;
+    }
+    if (!v || v === currentVal) return;
+    // Переключение проекта = редирект с ?project=v чтобы корректно
+    // перезагрузить _variants для нового проекта.
+    const url = new URL(location.href);
+    url.searchParams.set('project', v);
+    location.href = url.toString();
+  });
 }
 
 // =============================================================================

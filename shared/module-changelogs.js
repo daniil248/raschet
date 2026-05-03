@@ -4,6 +4,21 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.76', date: '2026-05-03', items: [
+      '📁 <b>Технолог ЦОД: project-context picker + ?project= URL</b>. По требованию Пользователя 2026-05-03 «модуль Технолог ЦОД так же должен иметь привязку к проекту».',
+      '• tech-workspace::init() теперь читает <code>?project=&lt;id&gt;</code> / <code>?pid=&lt;id&gt;</code> из URL (как cooling/service). Fallback на <code>ensureDefaultProject()</code> если не указано.',
+      '• <code>_pid</code> теперь string id (раньше был объект project — projectKey генерировал битые ключи <code>raschet.project.[object Object].*</code>).',
+      '• Sidebar получил блок «📁 Контекст проекта» — select со списком проектов + опция «➕ Создать новый проект…».',
+      '• Смена проекта = редирект на <code>?project=&lt;new&gt;</code> чтобы корректно перезагрузить варианты концепции для нового проекта.',
+      '• Новый helper <code>twPrompt(label, default, title)</code> — inline-prompt модалка (избегаем <code>window.prompt</code> по правилу memory).',
+      '• 🔧 + UPS variant: добавлено распознавание <code>kind=\'ups-all-in-one\'</code> (Kehua S³ AIO) → variant=«All-in-One».',
+      'Файлы: <code>tech-workspace/tech-workspace.js</code>, <code>tech-workspace/index.html</code>, <code>tech-workspace/tech-workspace.css</code>, <code>shared/element-schemas.js</code>.',
+    ] },
+    { version: '0.60.75', date: '2026-05-03', items: [
+      '🔧 <b>UPS variant: поддержка kind=\'ups-all-in-one\' (Kehua S³ AIO)</b>. <code>_upsVariant()</code> теперь распознаёт ALL варианты kind: <code>ups-aio</code>, <code>ups-all-in-one</code>, <code>upsType=\'aio\'</code> → variant=«All-in-One».',
+      '• Раньше Kehua S³C040-1106 / S³C050-3320 / S³C100-3320 (kind=\'ups-all-in-one\', upsType=\'monoblock\') попадали в variant=«Моноблок» — некорректно.',
+      'Файлы: <code>shared/element-schemas.js</code>.',
+    ] },
     { version: '0.60.74', date: '2026-05-03', items: [
       '🐛 <b>Catalog: «Вариант» — это не SKU/артикул, а конфигурация (~5-7 значений)</b>. По запросу Пользователя 2026-05-03: «вариант — это про С АВР или без, таких немного. Сортировать по SKU вообще не вариант».',
       '• <b>UPS:</b> новый <code>_upsVariant(p)</code> в <code>shared/element-schemas.js</code>: variant = «Модульный» / «Модульный (с АВР)» / «Интегрированный (с АВР)» / «Интегрированный (без АВР)» / «Моноблок» / «All-in-One». Логика: hasIntegratedAts || inputs≥2 → «с АВР».',

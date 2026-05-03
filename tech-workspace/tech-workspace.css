@@ -123,6 +123,16 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
   border-radius: 3px;
 }
 .tw-variant-actions button:hover { background: rgba(0,0,0,0.05); }
+/* v0.60.76: project context picker в sidebar (по требованию Пользователя
+   «модуль Технолог ЦОД должен иметь привязку к проекту»). */
+.tw-project-context {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 5px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+
 /* Phase 30.6 (v0.60.62): кросс-модульная панель «Связанные модули проекта» */
 .tw-cross-modules {
   margin-top: 14px;

@@ -12,16 +12,52 @@
 
 // ——— Хелперы ———
 
-// v0.60.72: парсер series из строки model. По требованию Пользователя
-// 2026-05-03 «crac это не серия а тип оборудования, MR33 как раз серия».
-// Из «MR33 120 (30K module)» → series='MR33', variant='120 (30K module)'.
-// Если в model нет пробела — series=весь model (single token).
+// v0.60.72: парсер series из model. v0.60.76: умный парсер (по запросу
+// Пользователя «серия — это KHNA или KHCA, без суффикса»). Стратегия:
+//   1. «KHJA-P30AU 30 kW» → letters до «-» = «KHJA»
+//   2. «MR33 120» → letters + 2-3 digits перед separator = «MR33»
+//   3. «MR33150-B» → letters + 2 digits = «MR33» (первые 2 цифры из long-run)
+//   4. «EWAQ-G 200» → «EWAQ» (letters до «-»)
+//   5. «YVAA 0500» → «YVAA»
+//   6. «30RB AquaForce» → «30RB» (digits-leading)
+//   7. «S³C040-1106» → «S³C040» (letters + 3 digits до «-»)
 function _parseSeriesFromModel(modelStr) {
   const s = String(modelStr || '').trim();
   if (!s) return { series: '', variant: '' };
-  const sp = s.indexOf(' ');
-  if (sp < 0) return { series: s, variant: '' };
-  return { series: s.slice(0, sp), variant: s.slice(sp + 1).trim() };
+
+  // Starts with digits — exception (rare: Carrier 30RB AquaForce, Cat 3516)
+  const digitFirst = s.match(/^(\d+[A-Z³]*)([-\s_(]|$)/i);
+  if (digitFirst) return { series: digitFirst[1], variant: '' };
+
+  // Standard: letters at start
+  const lettersMatch = s.match(/^([A-Z³]+)/i);
+  if (!lettersMatch) {
+    const sp = s.indexOf(' ');
+    return { series: sp > 0 ? s.slice(0, sp) : s, variant: '' };
+  }
+  const letters = lettersMatch[1];
+  const after = s.slice(letters.length);
+
+  // Letters end at separator → just letters (KHJA-..., EWAQ-..., RTAF, PCW)
+  if (after === '' || /^[\s\-_(]/.test(after)) return { series: letters, variant: '' };
+
+  // Letters followed by digits — check structure
+  // Case A: letters + digits + separator: letters+digits = series (MR33 120, S³C040-1106)
+  const seqDigitsMatch = after.match(/^(\d+)([\s\-_(])/);
+  if (seqDigitsMatch) {
+    const digits = seqDigitsMatch[1];
+    if (digits.length <= 3) return { series: letters + digits, variant: '' };
+    // >3 digits = capacity, series = letters only
+    return { series: letters, variant: '' };
+  }
+
+  // Case B: letters + digits + non-separator (MR33150-B / YLAA0250HE):
+  // Take first 2 digits as part of series (typical Kehua MR33 case).
+  // YLAA0250HE будет «YLAA02» — несовершенно, но 1 случай из ~30.
+  const firstDigits = after.match(/^(\d{1,2})/);
+  if (firstDigits) return { series: letters + firstDigits[1], variant: '' };
+
+  return { series: letters, variant: '' };
 }
 
 // v0.60.74: helper для variant ИБП. По запросу Пользователя 2026-05-03
@@ -40,7 +76,9 @@ function _upsVariant(p) {
   const hasAvr = !!p.hasIntegratedAts || (Number(p.inputs) || 1) >= 2;
   const upsType = String(p.upsType || '').toLowerCase();
   const kind = String(p.kind || '').toLowerCase();
-  if (kind === 'ups-aio' || upsType === 'aio') return 'All-in-One';
+  // v0.60.75: kind 'ups-all-in-one' (Kehua S³ AIO) — отдельная категория.
+  // upsType у них может быть 'monoblock' но фактически это AIO с встроенными АКБ.
+  if (kind === 'ups-aio' || kind === 'ups-all-in-one' || upsType === 'aio') return 'All-in-One';
   if (kind === 'ups-integrated' || upsType === 'integrated') {
     return hasAvr ? 'Интегрированный (с АВР)' : 'Интегрированный (без АВР)';
   }

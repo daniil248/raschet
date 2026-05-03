@@ -58,7 +58,13 @@
 
   <main class="tw-main">
     <!-- Левая панель: варианты + переключатель режима -->
-    <aside class="tw-sidebar">
+    <aside class="tw-sidebar rs-sidebar">
+      <!-- v0.60.76: project context picker — концепция привязана к проекту,
+           переключение через select. По требованию Пользователя 2026-05-03
+           «модуль Технолог ЦОД так же должен иметь привязку к проекту». -->
+      <div id="tw-project-context" class="tw-project-context"
+           title="Контекст проекта. Концепция, варианты, связанные модули — всё хранится per-project."></div>
+
       <div class="tw-mode-toggle">
         <button type="button" class="tw-mode-btn active" data-mode="list" title="Заполнение параметров по разделам">📋 Список</button>
         <button type="button" class="tw-mode-btn" data-mode="plan" title="План зала с drag-drop">🗺 План</button>
