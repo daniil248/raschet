@@ -25,6 +25,7 @@ import { CURRENCIES, currencyToIso } from '../cooling/calc/fc-summary.js';
 import { openKpTemplateEditor } from './report/kp-editor.js';
 import { DEFAULT_ORDER, ORDER_TYPES, defaultPosition, formatOrderNumber, DEFAULT_NUMBER_PATTERNS } from './calc/order-model.js';
 import { renderOrderForm } from './ui/order-form.js';
+import { historyAppend } from '../shared/history-log.js';
 import { openWorkCatalogModal } from './ui/work-catalog.js';
 import { openMaterialsCatalogModal } from './ui/materials-catalog.js';
 import {
@@ -311,6 +312,18 @@ function quickCreateFromCooling(selId, optId, type) {
   _activeOrderId = newOrd.id;
   persist();
   renderActive();
+  // Phase 35: history-event импорта наряда из cooling.
+  if (_pid?.id) {
+    historyAppend(_pid.id, {
+      module: 'service',
+      action: 'import',
+      itemKind: 'order',
+      itemId: newOrd.id,
+      itemName: newOrd.name,
+      source: 'cooling',
+      payload: { triggeredFrom: 'cooling-bridge', positionsCount: positions.length },
+    });
+  }
   util.toast(`Наряд «${newOrd.name}» создан с ${positions.length} позициями`, 'ok');
 }
 
@@ -515,6 +528,18 @@ async function init() {
     _activeOrderId = newOrd.id;
     persist();
     renderActive();
+    // Phase 35: history-event создания наряда вручную.
+    if (_pid?.id) {
+      historyAppend(_pid.id, {
+        module: 'service',
+        action: 'import',
+        itemKind: 'order',
+        itemId: newOrd.id,
+        itemName: newOrd.name,
+        source: 'manual',
+        payload: { number: newOrd.number },
+      });
+    }
     util.toast(`Наряд № «${newOrd.number}» «${newOrd.name}» создан${newOrd.customer?.name ? ` (заказчик: ${newOrd.customer.name})` : ''}`, 'ok');
   });
 
@@ -526,13 +551,25 @@ async function init() {
       const id = delBtn.dataset.orderId;
       const o = _orders.find(x => x.id === id);
       if (!o) return;
-      const ok = await svConfirm(`Удалить наряд «${o.name}»?`);
+      const ok = await svConfirm(`Удалить наряд «${o.name}»? Запись попадёт в Корзину — можно восстановить.`);
       if (!ok) return;
+      // Phase 35: soft-delete с snapshot в payload.
+      if (_pid?.id) {
+        historyAppend(_pid.id, {
+          module: 'service',
+          action: 'delete',
+          itemKind: 'order',
+          itemId: o.id,
+          itemName: o.name,
+          source: 'manual',
+          payload: { order: o },
+        });
+      }
       _orders = _orders.filter(x => x.id !== id);
       if (_activeOrderId === id) _activeOrderId = _orders[0]?.id || null;
       persist();
       renderActive();
-      util.toast('Наряд удалён', 'info');
+      util.toast(`«${o.name}» в Корзине. Восстановить → 📜 История.`, 'info');
       return;
     }
     const row = e.target.closest('.sv-order-row');

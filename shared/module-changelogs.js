@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.59', date: '2026-05-03', items: [
+      '📜 <b>Phase 35 cont.: история+корзина в service</b> (наряды).',
+      '• Создание наряда вручную → history event \'import\' (source=\'manual\').',
+      '• Создание наряда из cooling → \'import\' (source=\'cooling\', triggeredFrom=\'cooling-bridge\').',
+      '• Удаление наряда → soft-delete с полным snapshot в payload (можно восстановить из Корзины).',
+      '• Toast при удалении: «"X" в Корзине. Восстановить → 📜 История.»',
+      '• События service видны в cooling\'s «📜 Журнал» и meteo\'s «📜 Журнал» — кросс-модульный аудит.',
+      'Файлы: <code>service/service.js</code> — historyAppend в createOrder/deleteOrder.',
+    ] },
     { version: '0.60.58', date: '2026-05-03', items: [
       '📜 <b>Phase 35 cont.: история+корзина в cooling + tag triggeredFrom</b>.',
       '• <code>shared/meteo-fetch.js</code>: каждая 1-кликовая загрузка пишется в history-log с itemKind=\'meteo-dataset\' и payload={dataset, triggeredFrom}.',
