@@ -30,6 +30,8 @@
 // =========================================================================
 
 import { ensureDefaultProject, projectKey, listSubProjects, createSubProject, listProjects } from '../shared/project-storage.js';
+import { buildModuleHref } from '../shared/project-context.js';
+import { idbGet, idbAvailable } from '../shared/idb-store.js';
 import { pricesForElement } from '../shared/price-records.js';
 
 const $ = (id) => document.getElementById(id);
@@ -2760,6 +2762,104 @@ function init() {
   document.querySelectorAll('.tw-mode-btn').forEach(b => {
     b.addEventListener('click', () => setMode(b.dataset.mode));
   });
+  // Phase 30.6 (v0.60.62): кросс-модульная панель — async load (meteo
+  // читается из IDB) с graceful fallback. Не блокирует init.
+  renderCrossModulePanel().catch(e => console.warn('[tech-workspace] cross-module panel failed:', e));
+}
+
+// =============================================================================
+// Phase 30.6 (v0.60.62): кросс-модульная панель «🔗 Связанные модули проекта»
+// =============================================================================
+// Сканирует LS-keys и IDB на наличие данных модулей в namespace проекта.
+// Показывает счётчики и ссылки. Один клик → переход в модуль с pid контекстом.
+const TW_MODULES = [
+  // [moduleId, icon, label, lsSuffix, idbKey?, href, hint]
+  { id: 'cooling',          icon: '❄', label: 'Подбор холодильных систем',
+    lsSuffix: 'cooling.selections.v1', countInArr: true,
+    href: '../cooling/', hint: 'Подборы оборудования (чиллеры, DX, CRAC) с CAPEX/TCO/free-cooling.' },
+  { id: 'service',          icon: '🛠', label: 'Сервис: монтаж и ТО',
+    lsSuffix: 'service.orders.v1', countInArr: true,
+    href: '../service/', hint: 'Наряды на монтаж и ТО с КП/АВР.' },
+  { id: 'schematic',        icon: '⚡', label: 'Схема электроснабжения',
+    lsSuffix: 'schematic.scheme.v1', countInArr: false,
+    href: '../', hint: 'Принципиальная электрическая схема проекта.' },
+  { id: 'scs-design',       icon: '🌐', label: 'СКС: проектирование',
+    lsSuffix: 'scs-design.scs.v1', countInArr: false,
+    href: '../scs-design/', hint: 'СКС-связи между шкафами + план зала.' },
+  { id: 'mdc-config',       icon: '🏗', label: 'Конфигуратор МЦОД',
+    lsSuffix: 'mdc-config.concept.v1', countInArr: false,
+    href: '../mdc-config/', hint: 'Модульный ЦОД GDM-600 с авто-составом.' },
+  { id: 'meteo',            icon: '🌤', label: 'Метеоданные',
+    lsSuffix: 'meteo.datasets.v1',
+    idbKey: (pid) => `meteo.datasets.${pid}`, countInArr: true,
+    href: '../meteo/', hint: 'Climate datasets (Open-Meteo / ASHRAE / rp5).' },
+  { id: 'suppression-config', icon: '🔥', label: 'АГПТ: газовое пожаротушение',
+    lsSuffix: 'suppression-config.installations.v1', countInArr: true,
+    href: '../suppression-config/', hint: 'Расчёт ГОТВ по СП 485 / NFPA 2001.' },
+  { id: 'rack-config',      icon: '🗄', label: 'Шкафы',
+    lsSuffix: 'rack-config.bom.v1', countInArr: false,
+    href: '../rack-config/', hint: 'BOM шкафов: корпус, монтажка, PDU, заглушки.' },
+];
+
+async function renderCrossModulePanel() {
+  const root = $('tw-cross-modules');
+  if (!root) return;
+  const pid = (typeof _pid === 'string') ? _pid : (_pid?.id || null);
+  if (!pid) {
+    root.innerHTML = `<div class="muted" style="font-size:11px;padding:6px 0">Нет активного проекта.</div>`;
+    return;
+  }
+
+  const items = [];
+  for (const mod of TW_MODULES) {
+    let count = 0;
+    let hasData = false;
+
+    // 1. IDB (если modul использует IDB — meteo с v0.60.54)
+    if (mod.idbKey && idbAvailable()) {
+      try {
+        const data = await idbGet(mod.idbKey(pid), null);
+        if (Array.isArray(data) && data.length) {
+          count = data.length;
+          hasData = true;
+        }
+      } catch {}
+    }
+
+    // 2. LS fallback (или если нет IDB у модуля)
+    if (!hasData) {
+      try {
+        const raw = localStorage.getItem(projectKey(pid, ...mod.lsSuffix.split('.')));
+        if (raw && raw !== 'null') {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            count = parsed.length;
+            hasData = parsed.length > 0;
+          } else if (parsed && typeof parsed === 'object') {
+            count = 1;
+            hasData = true;
+          }
+        }
+      } catch {}
+    }
+
+    items.push({ ...mod, count, hasData });
+  }
+
+  // Сортировка: модули с данными вверху.
+  items.sort((a, b) => Number(b.hasData) - Number(a.hasData));
+
+  root.innerHTML = items.map(m => {
+    const href = buildModuleHref(m.href, { projectId: pid, fromModule: 'tech-workspace' });
+    const countLabel = m.hasData
+      ? `<span class="tw-cm-count" title="Количество элементов">${m.count}</span>`
+      : `<span class="tw-cm-count empty" title="Нет данных по этому модулю в проекте">—</span>`;
+    return `<a href="${escAttr(href)}" class="tw-cm-row${m.hasData ? '' : ' empty'}" title="${escAttr(m.hint)} (одним кликом перейти в модуль)" data-mod="${escAttr(m.id)}">
+      <span class="tw-cm-icon">${m.icon}</span>
+      <span class="tw-cm-label">${escHtml(m.label)}</span>
+      ${countLabel}
+    </a>`;
+  }).join('');
 }
 
 // ─── Utils

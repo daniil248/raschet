@@ -3288,14 +3288,11 @@ standalone-приложение в отдельном. Чтобы использ
   - При создании концепции — auto-suggest «📤 Создать ТО-наряды для этого
     оборудования».
 
-- [ ] **30.6** Cross-module reference panel в tech-workspace:
-  - Sidebar секция «🔗 Связанные модули проекта»:
-    - ❄ Cooling: N подборов (link)
-    - 🛠 Service: N нарядов (link)
-    - ⚡ Schematic: N схем (link)
-    - 🔋 UPS-config: M моделей (link)
-    - ⚙ DGU: K ДГУ (link)
-  - Один клик → переход в модуль с pid контекстом.
+- [x] **30.6** Cross-module reference panel в tech-workspace (v0.60.62):
+  - Sidebar секция «🔗 Связанные модули проекта» — 8 модулей со счётчиками.
+  - Async load: meteo через IDB, остальные через LS.
+  - Сортировка: с данными вверху, пустые внизу.
+  - Один клик → переход через <code>buildModuleHref</code> с pid в URL.
 
 - [ ] **30.7** Сводный концептуальный отчёт (через `service/report/` шаблоны):
   - Title page: проект, климат, локация

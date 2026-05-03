@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.62', date: '2026-05-03', items: [
+      '🔗 <b>Phase 30.6: кросс-модульная панель в Технолог ЦОД</b>. Sidebar получил секцию «🔗 Связанные модули проекта» — список 8 модулей со счётчиками связанных элементов проекта.',
+      '• Модули: ❄ Cooling, 🛠 Service, ⚡ Schematic, 🌐 СКС-design, 🏗 МЦОД-config, 🌤 Meteo, 🔥 АГПТ, 🗄 Шкафы.',
+      '• Счётчик связанных позиций (🟢 если есть данные, тусклый — если пусто).',
+      '• Один клик → переход в модуль с pid в URL (через <code>buildModuleHref</code> от <code>shared/project-context.js</code>).',
+      '• Async-загрузка: meteo читается из IDB (Phase 34), остальные — из LS. Не блокирует init.',
+      '• Сортировка: модули с данными сверху, пустые — внизу.',
+      '• Хорошо для навигации: вместо постоянного хождения через /modules/ → переход прямо к связанным расчётам проекта.',
+      'Файлы: <code>tech-workspace/index.html</code>, <code>tech-workspace/tech-workspace.js</code> (~80 строк), <code>tech-workspace/tech-workspace.css</code>.',
+    ] },
     { version: '0.60.61', date: '2026-05-03', items: [
       '📜 <b>Phase 35.5: глобальная история проектов</b>. Toolbar /projects/ получил кнопку «📜 История проектов» — модалка со ВСЕМИ событиями всех проектов.',
       '• Cross-project аудит-trail: meteo-импорты, cooling-загрузки, service-наряды, удаления — всё в одной таблице.',

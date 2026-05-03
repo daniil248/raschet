@@ -69,6 +69,16 @@
         <button type="button" id="tw-variant-add" title="Добавить новый вариант">➕</button>
       </div>
       <div id="tw-variants-list" class="tw-variants-list"></div>
+
+      <!-- Phase 30.6 (v0.60.62): кросс-модульная панель — связи проекта с
+           другими calc-модулями (cooling, service, schematic, ups-config).
+           Один клик → переход в модуль с pid контекстом. Содержимое
+           рендерится в tech-workspace.js::renderCrossModulePanel(). -->
+      <div class="tw-cross-modules" id="tw-cross-modules-wrap">
+        <h3 title="Модули проекта, связанные с этой концепцией. Один клик — переход в модуль с подгрузкой контекста этого проекта.">🔗 Связанные модули проекта</h3>
+        <div id="tw-cross-modules" class="tw-cross-modules-list"></div>
+      </div>
+
       <div class="tw-actions">
         <button type="button" id="tw-report" title="Открыть пояснительную записку в новой вкладке (можно сохранить как PDF через Ctrl+P → «Сохранить как PDF»)">📄 Пояснительная записка</button>
         <button type="button" id="tw-handoff" disabled title="Передать в детальное проектирование (заполняет schematic/scs-design/mdc-config из concept.*)">📤 Передать в проектирование</button>
