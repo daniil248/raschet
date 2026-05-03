@@ -16,6 +16,15 @@
   font-size: 12px;
 }
 
+/* v0.60.81: project context picker */
+.dg-project-context {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 5px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+}
+
 .dg-section h3 {
   margin: 0 0 8px;
   font-size: 12.5px;

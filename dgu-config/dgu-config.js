@@ -12,8 +12,17 @@
 
 import { calcDgu, DGU_MODES } from './calc/dgu-calc.js';
 import { listDgus, listDguVendors, suggestDgu } from './datasheets/index.js';
+import { ensureDefaultProject, projectKey, listProjects, getProject, setActiveProjectId } from '../shared/project-storage.js';
 
 const $ = (id) => document.getElementById(id);
+
+// v0.60.81: per-project persistence. Сохраняем последнее состояние input-ов
+// и выбранную модель в LS под projectKey. Восстанавливается при следующем
+// открытии dgu-config с тем же ?project= в URL.
+const KEY_STATE = ['dgu-config', 'state.v1'];
+const KEY_SELECTED = ['dgu-config', 'selected.v1'];
+
+let _pid = null;
 
 function escHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
@@ -34,6 +43,57 @@ let _state = {
   autonomyHours: 24,
   vendor: '',
 };
+
+// v0.60.81: project context resolution + per-project state persistence.
+function resolvePid() {
+  const params = new URLSearchParams(location.search);
+  const urlPid = params.get('project') || params.get('pid');
+  if (urlPid) {
+    const proj = getProject(urlPid);
+    if (proj) {
+      setActiveProjectId(urlPid);
+      return urlPid;
+    }
+    console.warn('[dgu-config] ?project=' + urlPid + ' not found, fallback to default');
+  }
+  const dp = ensureDefaultProject();
+  return typeof dp === 'string' ? dp : (dp?.id || null);
+}
+
+function loadProjectState() {
+  if (!_pid) return;
+  try {
+    const raw = localStorage.getItem(projectKey(_pid, ...KEY_STATE));
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (saved && typeof saved === 'object') {
+      _state = { ..._state, ...saved };
+    }
+  } catch (e) { console.warn('[dgu-config] loadState failed:', e); }
+}
+
+function saveProjectState() {
+  if (!_pid) return;
+  try {
+    localStorage.setItem(projectKey(_pid, ...KEY_STATE), JSON.stringify(_state));
+  } catch (e) { console.warn('[dgu-config] saveState failed:', e); }
+}
+
+function saveSelectedDgu(dguEntry) {
+  if (!_pid || !dguEntry) return;
+  try {
+    const payload = {
+      vendor: dguEntry.vendor,
+      model: dguEntry.model,
+      nameplateKw: dguEntry.nameplateKw,
+      espKw: dguEntry.espKw, prpKw: dguEntry.prpKw, copKw: dguEntry.copKw,
+      engineModel: dguEntry.engineModel,
+      sfcLkWh: dguEntry.sfcLkWh,
+      ts: Date.now(),
+    };
+    localStorage.setItem(projectKey(_pid, ...KEY_SELECTED), JSON.stringify(payload));
+  } catch (e) { console.warn('[dgu-config] saveSelected failed:', e); }
+}
 
 function readUrlParams() {
   const qp = new URLSearchParams(location.search);
@@ -215,10 +275,45 @@ function recalcAndRender() {
   const sorted = allDgus.slice().sort((a, b) => a[fieldByMode[_state.mode]] - b[fieldByMode[_state.mode]]);
   const best = sorted.find(d => d[fieldByMode[_state.mode]] >= res.spec.nameplateKw);
   $('dg-fuel-result').innerHTML = renderFuelResult(res, best);
+
+  // v0.60.81: persist state per-project + auto-save best as selected
+  saveProjectState();
+  if (best) saveSelectedDgu(best);
+}
+
+function renderProjectContext() {
+  const el = $('dg-project-context');
+  if (!el) return;
+  let projects = [];
+  try { projects = listProjects() || []; } catch {}
+  const opts = projects.map(p => {
+    const labelText = p.name || p.designation || p.id;
+    return `<option value="${escAttr(p.id)}"${p.id === _pid ? ' selected' : ''}>${escHtml(labelText)}</option>`;
+  }).join('');
+  el.innerHTML = `
+    <label style="display:block;font-size:11px;font-weight:600;color:#475569;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.4px"
+           title="Проект, к которому привязан ДГУ-расчёт. Параметры и выбранная модель сохраняются автоматически.">📁 Контекст проекта</label>
+    <select id="dg-project-sel" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px;font:inherit;font-size:12.5px;background:#fff;cursor:pointer">
+      ${opts || '<option value="">— нет проектов —</option>'}
+    </select>
+  `;
+  const sel = el.querySelector('#dg-project-sel');
+  if (!sel) return;
+  sel.addEventListener('change', (e) => {
+    const v = e.target.value;
+    if (!v || v === _pid) return;
+    const url = new URL(location.href);
+    url.searchParams.set('project', v);
+    location.href = url.toString();
+  });
 }
 
 function init() {
+  // v0.60.81: project-context first, then load saved state, then URL params override.
+  _pid = resolvePid();
+  loadProjectState();
   readUrlParams();
+  renderProjectContext();
   // Заполняем vendor select
   const vendors = listDguVendors();
   const vendorSel = $('dg-vendor');

@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.81', date: '2026-05-03', items: [
+      '⚡ <b>dgu-config: per-project state + project-picker</b>.',
+      '• Все параметры расчёта (loadKw / mode / redundancy / climate / autonomy / vendor) сохраняются под <code>raschet.project.&lt;pid&gt;.dgu-config.state.v1</code> при каждом изменении.',
+      '• Selected DGU модель (best match по requiredKw) сохраняется в <code>dgu-config.selected.v1</code> с timestamp — для будущей PULL-интеграции с tech-workspace.',
+      '• Sidebar получил блок «📁 Контекст проекта» — select со списком проектов. Смена = redirect на <code>?project=&lt;new&gt;</code>.',
+      '• Init flow: <code>resolvePid → loadProjectState → readUrlParams</code> (URL override saved state).',
+      '• Раньше состояние пропадало при reload, теперь сохраняется per-project.',
+      'Файлы: <code>dgu-config/dgu-config.js</code>, <code>dgu-config/index.html</code>, <code>dgu-config/dgu-config.css</code>.',
+    ] },
     { version: '0.60.80', date: '2026-05-03', items: [
       '🔋 <b>Battery catalog: правильное subKind / series / variant</b>. Раньше в столбце «Вариант» появлялись S3-Combiner-2000, S3M040-6C-240-X и др. SKU — мусор. Теперь:',
       '• <b>subKind:</b> «VRLA» / «Li-Ion» / «NiCd» + system role: «(модуль)» / «(шкаф)» / «(аксессуар)». Например «Li-Ion (шкаф)» для S³C040, «Li-Ion (аксессуар)» для S3-Combiner.',
