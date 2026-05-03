@@ -583,3 +583,62 @@ export function listDatasheets(filter = {}) {
 export function listVendors() {
   return [...new Set(VENDOR_DATASHEETS.map(d => d.vendor))];
 }
+
+// =============================================================================
+// v0.60.71 (по запросу Пользователя 2026-05-03 «в каком каталоге у нас
+// кондиционеры??»): bridge для регистрации datasheets в shared/element-library
+// как builtin-элементы. Catalog-bridge.js загружает их при синхронизации.
+// =============================================================================
+
+/**
+ * Конвертирует cooling-datasheet в формат element-library.
+ * kind='climate' — единый kind для каталога (UI label «Климатическое оборудование»).
+ * subKind = systemType (chiller / dx-air / crac / dx-pumped-fc и т.п.) сохраняется
+ * для cooling-специфичных фильтров. Все cooling-параметры (ratedCop,
+ * capCorrPctPerC, freeCoolingMode, и т.д.) сохраняются в `cooling` под-объекте.
+ */
+function _datasheetToElement(d, idx) {
+  // Стабильный id, чтобы не дублировался при повторных регистрациях.
+  const slug = `${d.vendor}-${d.model}`.toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const id = `cooling-ds-${slug}`;
+  const ph = d.physical || {};
+  return {
+    id,
+    kind: 'climate',
+    category: 'equipment',
+    label: `${d.vendor} ${d.model}`,
+    manufacturer: d.vendor,
+    series: d.kind,           // chiller / crac / dx — отдельная серия для catalog UI
+    variant: d.systemType,    // systemType (dx-air / dx-pumped-fc / chiller / crac-water)
+    powerKw: d.ratedCapKw,    // numeric для сортировки в catalog
+    notes: d.notes || '',
+    tags: ['cooling', d.kind, d.systemType, d.refrigerant].filter(Boolean),
+    physical: ph,
+    // Cooling-специфичные параметры (обращение через element.cooling.*)
+    cooling: {
+      systemType: d.systemType,
+      ratedCapKw: d.ratedCapKw,
+      ratedCop: d.ratedCop,
+      ambientRated: d.ambientRated,
+      capCorrPctPerC: d.capCorrPctPerC,
+      partLoadCurve: d.partLoadCurve,
+      freeCoolingMode: d.freeCoolingMode,
+      chwsTemp: d.chwsTemp,
+      freeCoolingApproach: d.freeCoolingApproach,
+      freeCoolingAuxPctOfRated: d.freeCoolingAuxPctOfRated,
+      dxPumpedThresholdDb: d.dxPumpedThresholdDb,
+      dxPumpedAuxPctOfRated: d.dxPumpedAuxPctOfRated,
+      refrigerant: d.refrigerant,
+      compressorType: d.compressorType,
+    },
+  };
+}
+
+/**
+ * Список cooling datasheets как builtin элементы для element-library.
+ * Используется shared/catalog-bridge.js при синхронизации.
+ */
+export function listBuiltinCoolingElements() {
+  return VENDOR_DATASHEETS.map(_datasheetToElement);
+}

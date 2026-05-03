@@ -98,13 +98,51 @@ async function _loadCableTypes() {
   } catch (e) { console.warn('[catalog-bridge] cable-types', e.message); return []; }
 }
 
+// v0.60.71 (Phase 25.6): cooling datasheets как builtin-элементы.
+// По требованию Пользователя 2026-05-03 «в каком каталоге у нас кондиционеры?».
+// Все datasheets из cooling/datasheets/index.js (Daikin/York/Carrier/Trane/Stulz/
+// Vertiv/Generic/Kehua) регистрируются в element-library с kind='climate'.
+async function _loadCoolingDatasheets() {
+  try {
+    const m = await import('../cooling/datasheets/index.js');
+    return m.listBuiltinCoolingElements ? m.listBuiltinCoolingElements() : [];
+  } catch (e) { console.warn('[catalog-bridge] cooling-datasheets', e.message); return []; }
+}
+
+// v0.60.71 (Phase 30.3 cont.): DGU datasheets как builtin (ДГУ — kind='dgu').
+async function _loadDguDatasheets() {
+  try {
+    const m = await import('../dgu-config/datasheets/index.js');
+    if (!m.DGU_DATASHEETS) return [];
+    return m.DGU_DATASHEETS.map(d => ({
+      id: `dgu-${d.vendor}-${d.model}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
+      kind: 'dgu',
+      category: 'equipment',
+      label: `${d.vendor} ${d.model}`,
+      manufacturer: d.vendor,
+      series: d.engineModel,
+      variant: `${d.nameplateKw} kW (${d.cylinders}cyl ${d.displacement}L)`,
+      powerKw: d.nameplateKw,
+      notes: d.notes || '',
+      tags: ['dgu', d.fuelType, d.engineModel].filter(Boolean),
+      physical: d.physical || {},
+      dgu: {
+        nameplateKw: d.nameplateKw, espKw: d.espKw, prpKw: d.prpKw, copKw: d.copKw,
+        voltage: d.voltage, phase: d.phase, freq: d.freq, rpm: d.rpm,
+        engineModel: d.engineModel, cylinders: d.cylinders, displacement: d.displacement,
+        fuelType: d.fuelType, sfcLkWh: d.sfcLkWh,
+      },
+    }));
+  } catch (e) { console.warn('[catalog-bridge] dgu-datasheets', e.message); return []; }
+}
+
 /**
  * Синхронизирует все legacy-каталоги в element-library как builtins.
  * Вызывается при старте приложения (в engine/index.js и в подпрограммах).
  * Возвращает Promise<{ panels, ups, batteries, transformers, cableTypes, total }>
  */
 export async function syncLegacyToLibrary() {
-  const [panels, upses, batteries, transformers, cableTypes, breakers, mvSw, rackData] = await Promise.all([
+  const [panels, upses, batteries, transformers, cableTypes, breakers, mvSw, rackData, coolingDs, dguDs] = await Promise.all([
     _loadPanels(),
     _loadUpses(),
     _loadBatteries(),
@@ -113,12 +151,14 @@ export async function syncLegacyToLibrary() {
     _loadBreakers(),
     _loadMvSwitchgear(),
     _loadRackCatalogData(),
+    _loadCoolingDatasheets(),
+    _loadDguDatasheets(),
   ]);
 
   // Очистим предыдущие builtin (перерегистрируем актуальные)
   clearBuiltins();
 
-  const all = [...panels, ...upses, ...batteries, ...transformers, ...cableTypes, ...breakers, ...mvSw, ...rackData];
+  const all = [...panels, ...upses, ...batteries, ...transformers, ...cableTypes, ...breakers, ...mvSw, ...rackData, ...coolingDs, ...dguDs];
   registerBuiltins(all);
 
   const racks = rackData.filter(e => e.kind === 'rack').length;
@@ -134,6 +174,8 @@ export async function syncLegacyToLibrary() {
     breakers: breakers.length,
     mvSwitchgear: mvSw.length,
     racks, pdus, rackAccessories: rackAcc,
+    cooling: coolingDs.length,    // v0.60.71
+    dgu: dguDs.length,            // v0.60.71
     total: all.length,
   };
 }

@@ -145,7 +145,9 @@ function openModal(title, formHtml, onSave) {
 }
 
 // ====================== TAB: ЭЛЕМЕНТЫ ======================
-const elFilters = { kind: '', source: '', search: '' };
+const elFilters = { kind: '', source: '', search: '',
+  // v0.60.71: column-level filters (Excel-style, cross-зависимые)
+  manufacturer: '', series: '', variant: '' };
 
 // v0.59.109: предустановка фильтров по URL (?filterKind=…&filterSearch=…
 // &nodeId=…). Используется при открытии каталога из инспектора узла —
@@ -208,6 +210,10 @@ function renderElementsTab() {
         .filter(Boolean).join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
+    // v0.60.71: column-level filters (Excel-style).
+    if (elFilters.manufacturer && el.manufacturer !== elFilters.manufacturer) return false;
+    if (elFilters.series && el.series !== elFilters.series) return false;
+    if (elFilters.variant && el.variant !== elFilters.variant) return false;
     return true;
   });
   try {
@@ -217,6 +223,43 @@ function renderElementsTab() {
 
   const kindOpts = Object.entries(ELEMENT_KINDS).map(([k, d]) =>
     `<option value="${k}"${elFilters.kind === k ? ' selected' : ''}>${esc(d.label)}</option>`).join('');
+
+  // v0.60.71 (по правилам feedback_column_filters.md «Excel-style filters прямо
+  // над заголовком столбца» + feedback_cross_filter.md «комбинированные фильтры
+  // должны быть кросс-зависимыми»): уникальные значения per-column, с учётом
+  // ВСЕХ остальных активных фильтров.
+  function _uniqueForColumn(field) {
+    const arr = all.filter(el => {
+      // те же базовые фильтры что в filtered (kind/source/search), но ИСКЛЮЧАЯ
+      // целевую колонку — чтобы юзер видел все возможные значения для неё.
+      if (elFilters.kind && el.kind !== elFilters.kind) return false;
+      if (elFilters.source === 'builtin' && !el.builtin) return false;
+      if (elFilters.source === 'user' && el.builtin) return false;
+      if (elFilters.search) {
+        const q = String(elFilters.search).toLowerCase();
+        const hay = [el.label, el.manufacturer, el.series, el.variant, el.id]
+          .filter(Boolean).join(' ').toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      // cross-зависимость: остальные column-фильтры (кроме field) применяются
+      if (field !== 'manufacturer' && elFilters.manufacturer && el.manufacturer !== elFilters.manufacturer) return false;
+      if (field !== 'series' && elFilters.series && el.series !== elFilters.series) return false;
+      if (field !== 'variant' && elFilters.variant && el.variant !== elFilters.variant) return false;
+      return true;
+    });
+    return [...new Set(arr.map(e => e[field]).filter(Boolean))].sort();
+  }
+  const manufacturerOpts = _uniqueForColumn('manufacturer');
+  const seriesOpts = _uniqueForColumn('series');
+  const variantOpts = _uniqueForColumn('variant');
+
+  // v0.60.71: build column-filter <select> markup
+  function colFilterSelect(field, options, currentVal, label) {
+    return `<select class="cat-col-filter" data-col-field="${field}" title="Фильтр по «${esc(label)}». Опции зависят от значений других фильтров (cross-зависимые).">
+      <option value="">Все ${esc(label.toLowerCase())} (${options.length})</option>
+      ${options.map(v => `<option value="${esc(v)}"${currentVal === v ? ' selected' : ''}>${esc(v)}</option>`).join('')}
+    </select>`;
+  }
 
   // v0.58.73: role-gate снят — правка builtin доступна всем через override
   // (ограничение вернётся в Фазе 5 auth вместе с ролью catalog-admin).
@@ -248,16 +291,30 @@ function renderElementsTab() {
       ${overrideCount ? `· <b>${overrideCount}</b> правок встроенных <a href="#" id="el-show-overrides" style="color:#b54708">(показать)</a>` : ''}
     </div>
     <div style="max-height:60vh;overflow:auto">
-      <table class="data-table">
+      <table class="data-table cat-data-table">
         <thead>
           <tr>
             <th>Тип</th>
             <th>Название</th>
-            <th>Производитель / Серия</th>
+            <th>Производитель</th>
+            <th title="Серия / семейство моделей. Для cooling: chiller / crac / dx. Для DGU: модель двигателя.">Серия</th>
+            <th title="Вариант / подтип. Для cooling: systemType (dx-air / chiller / dx-pumped-fc). Для DGU: nameplate kW + cylinders.">Вариант</th>
             <th>Последняя цена</th>
             <th title="Минимум / максимум среди цен в одной валюте">Мин / Макс</th>
             <th title="Динамика цены во времени (последние предложения, слева старое → справа новое)">Динамика</th>
             <th>Предложений</th>
+            <th></th>
+          </tr>
+          <tr class="cat-col-filters">
+            <th></th>
+            <th></th>
+            <th>${colFilterSelect('manufacturer', manufacturerOpts, elFilters.manufacturer, 'Производитель')}</th>
+            <th>${colFilterSelect('series', seriesOpts, elFilters.series, 'Серия')}</th>
+            <th>${colFilterSelect('variant', variantOpts, elFilters.variant, 'Вариант')}</th>
+            <th></th>
+            <th></th>
+            <th></th>
+            <th></th>
             <th></th>
           </tr>
         </thead>
@@ -287,7 +344,9 @@ function renderElementsTab() {
       <tr data-id="${esc(el.id)}">
         <td>${srcBadge} <span class="muted" style="font-size:11px">${esc(el.kind)}</span></td>
         <td><b>${esc(el.label || el.id)}</b><br><span class="muted" style="font-size:10px;font-family:monospace">${esc(el.id)}</span></td>
-        <td>${esc([el.manufacturer, el.series, el.variant].filter(Boolean).join(' · ') || '—')}</td>
+        <td>${esc(el.manufacturer || '—')}</td>
+        <td>${esc(el.series || '—')}</td>
+        <td>${esc(el.variant || '—')}</td>
         <td class="num">${lastPrice}</td>
         <td class="num">${minMaxCell}</td>
         <td>${sparkCell}</td>
@@ -311,15 +370,30 @@ function renderElementsTab() {
       </tr>`);
   }
   if (!filtered.length) {
-    html.push('<tr><td colspan="8" class="empty">Ничего не найдено</td></tr>');
+    html.push('<tr><td colspan="10" class="empty">Ничего не найдено</td></tr>');
   }
   html.push('</tbody></table></div>');
   container.innerHTML = html.join('');
 
   // Wire filters
-  document.getElementById('el-filter-kind').onchange = e => { elFilters.kind = e.target.value; renderElementsTab(); };
+  document.getElementById('el-filter-kind').onchange = e => {
+    elFilters.kind = e.target.value;
+    // v0.60.71: при смене kind сбрасываем cross-зависимые фильтры (manufacturer/series/variant)
+    // т.к. старые значения могут быть нерелевантны для новой kind.
+    elFilters.manufacturer = ''; elFilters.series = ''; elFilters.variant = '';
+    renderElementsTab();
+  };
   document.getElementById('el-filter-source').onchange = e => { elFilters.source = e.target.value; renderElementsTab(); };
   document.getElementById('el-filter-search').oninput = e => { elFilters.search = e.target.value; renderElementsTab(); };
+  // v0.60.71: column-filter handlers (Excel-style)
+  document.querySelectorAll('.cat-col-filter').forEach(sel => {
+    sel.addEventListener('change', e => {
+      const field = e.target.dataset.colField;
+      if (!field) return;
+      elFilters[field] = e.target.value;
+      renderElementsTab();
+    });
+  });
   document.getElementById('el-add').onclick = () => openAddElementModal();
   document.getElementById('el-export').onclick = () => downloadJSON(exportLibraryJSON(), 'element-library.json');
   const exEditsBtn = document.getElementById('el-export-edits');

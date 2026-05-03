@@ -101,6 +101,35 @@ table.data-table {
 .data-table .actions { text-align: right; white-space: nowrap; }
 .data-table .actions button { padding: 3px 8px; font-size: 11px; margin-left: 2px; }
 
+/* v0.60.71: Excel-style column filters над заголовками таблицы. */
+.cat-col-filters th {
+  background: #fafbfc;
+  padding: 4px 6px;
+  border-bottom: 2px solid #e1e4e8;
+  position: sticky;
+  top: 30px;        /* под основным th (sticky:0) */
+  z-index: 1;
+}
+.cat-col-filter {
+  width: 100%;
+  padding: 3px 6px;
+  border: 1px solid #d0d7de;
+  border-radius: 3px;
+  background: #fff;
+  font-size: 11.5px;
+  color: #1f2328;
+  cursor: pointer;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.cat-col-filter:hover { border-color: #0969da; }
+.cat-col-filter:focus { outline: 2px solid #0969da; outline-offset: -1px; }
+/* Подсветка активного фильтра (не «Все ...») */
+.cat-col-filter:not(:invalid):not([data-empty="true"])[value]:not([value=""]) {
+  background: #ddf4ff;
+  border-color: #0969da;
+}
+
 /* ========== Badges ========== */
 .badge {
   display: inline-block;

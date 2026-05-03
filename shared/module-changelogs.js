@@ -4,6 +4,24 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.71', date: '2026-05-03', items: [
+      '🐛 <b>Bug-fix Пользователя 2026-05-03 «в каком каталоге у нас кондиционеры??»</b>: cooling-датшиты НЕ были зарегистрированы в /catalog/ — фильтр «Климатическое оборудование» давал 0 элементов.',
+      '• <code>cooling/datasheets/index.js::listBuiltinCoolingElements()</code> — конвертер VENDOR_DATASHEETS → element-library: kind=\'climate\', series=systemType_kind, variant=systemType, cooling.* под-объект с ratedCop/capCorr/freeCool параметрами.',
+      '• <code>shared/catalog-bridge.js</code> — новые loaders <code>_loadCoolingDatasheets</code> + <code>_loadDguDatasheets</code> (DGU тоже добавлен с kind=\'dgu\'). syncLegacyToLibrary возвращает {cooling, dgu, total}.',
+      '• <code>shared/element-library.js::ELEMENT_KINDS</code> — добавлен kind <code>dgu</code> + расширен note для <code>climate</code>.',
+      '• Результат: catalog показывает 26 cooling-моделей (8 vendors включая Kehua) + 14 DGU моделей (Caterpillar/Cummins/Volvo/FG Wilson).',
+      '',
+      '🪛 <b>Catalog: разделены колонки «Производитель» / «Серия» / «Вариант»</b> по запросу 2026-05-03 «Поле производитель отдели от поля серия».',
+      '• Раньше одна колонка «Производитель / Серия» с конкатенацией. Теперь 3 отдельных столбца.',
+      '• Серия и Вариант имеют tooltip с расшифровкой для cooling/DGU (chiller/crac/dx, systemType, nameplate kW).',
+      '',
+      '📊 <b>Catalog: Excel-style фильтры над каждой колонкой</b> по правилам <code>feedback_column_filters.md</code> + <code>feedback_cross_filter.md</code>.',
+      '• Под основным <code>thead</code> добавлен <code>tr.cat-col-filters</code> с <code>&lt;select&gt;</code> над «Производитель», «Серия», «Вариант».',
+      '• Опции <b>cross-зависимые</b>: <code>_uniqueForColumn(field)</code> вычисляет уникальные значения с учётом ВСЕХ остальных активных фильтров (kind/source/search + др. колонок). Если выбрана Kehua — в «Серия» только chiller/crac/dx у Kehua, и т.д.',
+      '• При смене kind — column-фильтры автоматически сбрасываются (старые значения нерелевантны).',
+      '• Стили <code>.cat-col-filters th</code> sticky под header (top:30px), активный фильтр с подсветкой.',
+      'Файлы: <code>cooling/datasheets/index.js</code>, <code>shared/catalog-bridge.js</code>, <code>shared/element-library.js</code>, <code>catalog/catalog.js</code>, <code>catalog/catalog.css</code>.',
+    ] },
     { version: '0.60.70', date: '2026-05-03', items: [
       '⚡ <b>Phase 30.3 START: модуль dgu-config (ДГУ)</b>. Новый standalone-модуль для расчёта дизель-генераторных установок.',
       '• <code>dgu-config/calc/dgu-calc.js</code> — pure-функции по ISO 8528-1 (modes ESP/PRP/COP) + ISO 3046-1 (climate derate: высота / T / влажность) + расчёт топлива (SFC интерполяция 25/50/75/100% load).',
