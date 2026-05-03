@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.73', date: '2026-05-03', items: [
+      '⚡ <b>Phase 30.3 cont.: dgu-config интеграция в платформу</b>.',
+      '• <code>tech-workspace</code> tab «🔌 Ввод (ТП и ДГУ)» — рядом с «📦 Привязать модель ДГУ» появилась кнопка «⚙ Подобрать ДГУ →» (показывается только если feed.dgu.needed). URL ../dgu-config/?capacityKw/mode/redundancy/autonomy — wizard запускается с pre-filled параметрами.',
+      '• <code>modules/index.html</code> — карточка «Конфигуратор ДГУ» в секции «🔧 Электротехника» + строка в «📚 Все модули платформы» (по правилу <code>feedback_modules_index.md</code>).',
+      '• <code>tech-workspace::TW_MODULES</code> расширен — кросс-модульная панель показывает теперь 10 модулей (добавлены ⚡ ДГУ и 🔋 Конфигуратор ИБП).',
+      'Файлы: <code>tech-workspace/tech-workspace.js</code>, <code>modules/index.html</code>.',
+    ] },
     { version: '0.60.72', date: '2026-05-03', items: [
       '🐛 <b>Catalog: правильное разделение Производитель / Серия</b>. По репорту Пользователя 2026-05-03: «APC это производитель, а NetShelter это серия» + «crac это не серия а тип оборудования, а MR33 как раз серия».',
       '• <code>shared/catalogs/racks.js</code>: <code>manufacturer: \'APC NetShelter SX\'</code> → <code>manufacturer: \'APC\', series: \'NetShelter SX\'</code>. То же для Rittal/Hyperline/ЦМО/Kehua. <code>listBuiltinRacks</code> теперь читает <code>p.series</code>.',

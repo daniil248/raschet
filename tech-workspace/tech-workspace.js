@@ -571,6 +571,14 @@ function renderFeedSection(feed, isReadOnly) {
   <div class="tw-summary">
     <button type="button" class="tw-bind-btn ${feed.tp.modelRef ? 'tw-bind-btn-bound' : ''}" data-bind-domain="tp" data-ref-id="feed-tp">📦 ${feed.tp.modelRef ? escHtml((feed.tp.modelRef.manufacturer || '') + ' ' + (feed.tp.modelRef.model || '')) + ' ✏' : 'Привязать модель ТП'}</button>
     <button type="button" class="tw-bind-btn ${feed.dgu.modelRef ? 'tw-bind-btn-bound' : ''}" data-bind-domain="dgu" data-ref-id="feed-dgu">📦 ${feed.dgu.modelRef ? escHtml((feed.dgu.modelRef.manufacturer || '') + ' ' + (feed.dgu.modelRef.model || '')) + ' ✏' : 'Привязать модель ДГУ'}</button>
+    ${feed.dgu.needed ? `
+      <a class="tw-bind-btn" style="text-decoration:none"
+         href="../dgu-config/?project=${escAttr(_pid || '')}&capacityKw=${Math.round(Number(feed.dgu.kw) || 0)}&mode=${escAttr((feed.dgu.mode || 'prp').toUpperCase())}&redundancy=${escAttr(feed.dgu.redundancy === 'none' ? 'N' : feed.dgu.redundancy)}&autonomy=${feed.dgu.autonomyHours || 24}"
+         target="_blank"
+         title="Открыть ДГУ-конфигуратор с pre-filled параметрами концепции (мощность ${Math.round(Number(feed.dgu.kw) || 0)} кВт, режим ${(feed.dgu.mode || 'prp').toUpperCase()}, ${feed.dgu.redundancy}). Расчёт по ISO 8528-1 + climate derate + подбор из каталога Caterpillar/Cummins/Volvo/FG Wilson.">
+        ⚙ Подобрать ДГУ →
+      </a>
+    ` : ''}
   </div>`;
 }
 
@@ -3120,6 +3128,12 @@ const TW_MODULES = [
   { id: 'rack-config',      icon: '🗄', label: 'Шкафы',
     lsSuffix: 'rack-config.bom.v1', countInArr: false,
     href: '../rack-config/', hint: 'BOM шкафов: корпус, монтажка, PDU, заглушки.' },
+  { id: 'ups-config',       icon: '🔋', label: 'Конфигуратор ИБП',
+    lsSuffix: 'upsConfig.draft.v1', countInArr: false,
+    href: '../ups-config/', hint: 'Wizard-подбор ИБП и АКБ. Pre-fill через capacityKw.' },
+  { id: 'dgu-config',       icon: '⚡', label: 'Конфигуратор ДГУ',
+    lsSuffix: 'dguConfig.last.v1', countInArr: false,
+    href: '../dgu-config/', hint: 'Расчёт ДГУ по ISO 8528-1 + climate derate + подбор Caterpillar/Cummins/Volvo/FG Wilson.' },
 ];
 
 async function renderCrossModulePanel() {
