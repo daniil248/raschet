@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.84', date: '2026-05-03', items: [
+      '🔧 <b>Series parser: поддержка многословных серий</b>. По запросу Пользователя 2026-05-03: «Galaxy VL это серия».',
+      '• Strategy: убираем «(...)» в конце, берём токены до первого all-digit (capacity).',
+      '• Примеры: «Galaxy VS 10 kVA» → «Galaxy VS», «Galaxy VL 200 kVA» → «Galaxy VL», «NetShelter SX 42U» → «NetShelter SX», «30RB AquaForce 300» → «30RB AquaForce», «CyberCool CW 80» → «CyberCool CW».',
+      '• Special-case digit-first: «30RB AquaForce» — первый токен начинается с цифры но содержит буквы → series = оба токена до first-pure-digit.',
+      '• Совместимо с предыдущими: MR33 120 → MR33, MR33150-B → MR33, S³C040-1106 → S³C040 (single-token логика не изменилась).',
+      'Файлы: <code>shared/element-schemas.js</code> — _parseSeriesFromModel расширен.',
+    ] },
     { version: '0.60.83', date: '2026-05-03', items: [
       '🪛 <b>Catalog: subKind перенесён в top-toolbar + column visibility</b>. По запросу Пользователя 2026-05-03: «подтип вынеси наверх к типу, и запрети выбирать если не выбран тип. В таблице не стоит выводить Тип и Подтип, начинаем с артикула. Добавь управление видимостью полей».',
       '• <b>subKind в top-toolbar:</b> select «Все подтипы» рядом с «Все типы». Disabled пока не выбран kind (cross-dependent).',

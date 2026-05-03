@@ -25,6 +25,31 @@ function _parseSeriesFromModel(modelStr) {
   const s = String(modelStr || '').trim();
   if (!s) return { series: '', variant: '' };
 
+  // v0.60.84 (Пользователь 2026-05-03 «Galaxy VL это серия»):
+  // Многословные серии — Galaxy VL / Galaxy VS / NetShelter SX / 30RB
+  // AquaForce / CyberCool CW. Стратегия: убираем «(...)» в конце, берём
+  // токены до первого all-digit токена (capacity).
+  const noParens = s.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  const tokens = noParens.split(/\s+/).filter(Boolean);
+  if (tokens.length >= 2) {
+    // Find first all-digit token (capacity) или числовой с unit-suffix («10kVA»)
+    const firstNumIdx = tokens.findIndex(t => /^\d/.test(t));
+    if (firstNumIdx > 0) {
+      // Series = tokens[0..firstNumIdx-1], join by space
+      return { series: tokens.slice(0, firstNumIdx).join(' '), variant: '' };
+    }
+    // Если первый токен сам начинается с цифр (e.g. «30RB AquaForce 300»)
+    // — берём ОБА «non-pure-digit» токенов
+    const allTextTokens = tokens.filter(t => !/^\d+$/.test(t));
+    if (allTextTokens.length >= 2 && /\d/.test(allTextTokens[0])) {
+      // 30RB AquaForce — оба содержат буквы → series = «30RB AquaForce»
+      const lastTextIdx = tokens.findIndex(t => /^\d+$/.test(t));
+      if (lastTextIdx > 1) {
+        return { series: tokens.slice(0, lastTextIdx).join(' '), variant: '' };
+      }
+    }
+  }
+
   // Starts with digits — exception (rare: Carrier 30RB AquaForce, Cat 3516)
   const digitFirst = s.match(/^(\d+[A-Z³]*)([-\s_(]|$)/i);
   if (digitFirst) return { series: digitFirst[1], variant: '' };
