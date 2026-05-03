@@ -3250,15 +3250,16 @@ standalone-приложение в отдельном. Чтобы использ
   - [ ] **Не сделано:** PULL — ups-config возвращается с modelRef → автообновление concept.upsSystems[i].modelRef. Сейчас юзер вручную нажимает «📦 Привязать модель».
   - [ ] **Не сделано:** shared/ups-bridge.js generic API — TW использует URL params напрямую.
 
-- [ ] **30.3** Новый модуль `dgu-config/` (вынести из tech-workspace.feed.dgu):
-  - Ввод: P_total (IT + Cooling + UPS_loss + Aux), время автономности (часы).
-  - Расчёт: P_required по mode (ESP/PRP/COP), climate-derate (Δ −5% per
-    1000м над уровнем моря), резервирование (N+1, 2N), топливо (литр/кВт·ч),
-    бак.
-  - Каталог типовых ДГУ (Caterpillar, Cummins, Volvo Penta, FG Wilson) — JSON
-    в `dgu-config/datasheets/`.
-  - Bridge `shared/dgu-bridge.js` для cross-module (как cooling/service-bridge).
-  - Карточка в /modules/, /projects/.
+- [x] **30.3** Новый модуль `dgu-config/` (v0.60.70 + v0.60.73):
+  - [x] calc/dgu-calc.js — ISO 8528-1 (modes ESP/PRP/COP), ISO 3046-1 (climate derate altitude/T/RH), fuel SFC интерполяция, объём бака.
+  - [x] datasheets/index.js — 14 моделей: Caterpillar (C18 220/400, C32 800, 3516 1500), Cummins (C220/400/825/1675), Volvo Penta (TAD941/1342, TWD1683), FG Wilson (P200/400/800).
+  - [x] index.html + dgu-config.js — UI sidebar (нагрузка, режим, резервирование, climate, автономия) + content (расчёт мощности с derate breakdown / подбор / топливо+бак).
+  - [x] PUSH из tech-workspace через URL params (?capacityKw/mode/redundancy/autonomy).
+  - [x] Карточка в /modules/index.html + строка в техническом реестре.
+  - [x] Регистрация в catalog через catalog-bridge (kind='dgu', 14 моделей видны в catalog).
+  - [x] Cross-module panel в tech-workspace показывает «⚡ ДГУ».
+  - [ ] **Не сделано:** shared/dgu-bridge.js generic API (как service-bridge) — пока используется URL-params.
+  - [ ] **Не сделано:** PULL — ДГУ-конфигуратор после подбора возвращает modelRef в concept.feed.dgu.modelRef.
 
 - [x] **30.4** Comprehensive PUE расчёт (v0.60.63 — частично):
   - PUE = 1 + (P<sub>cool</sub> + P<sub>ups-loss</sub> + P<sub>tp-loss</sub> + P<sub>aux</sub>) / P<sub>IT</sub>.
