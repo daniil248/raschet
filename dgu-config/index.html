@@ -31,12 +31,21 @@
           <input type="number" id="dg-loadKw" min="0" step="10" value="500">
         </label>
 
-        <label class="dg-lbl" title="Режим работы ДГУ по ISO 8528-1:&#10;• ESP — Emergency Standby Power: до 100% nameplate, ≤200 ч/год, без перегрузки.&#10;• PRP — Prime Power: основной с переменной нагрузкой, средняя ≤70%.&#10;• COP — Continuous Operating Power: 24/7 при постоянной нагрузке, до 70-80%.">
+        <label class="dg-lbl" title="Режимы по ISO 8528 (части 1 и 13). Подробное описание в tooltip каждой опции. Расчёт required_kW = load_kW / maxLoadFactor.">
           <span>Режим (ISO 8528):</span>
           <select id="dg-mode">
-            <option value="ESP">ESP — аварийный</option>
-            <option value="PRP" selected>PRP — основной</option>
-            <option value="COP">COP — постоянный 24/7</option>
+            <optgroup label="Общие (ISO 8528-1)">
+              <option value="ESP" title="Emergency Standby Power. До 200 ч/год, ≤25 ч непрерывно. Без перегрузки.">ESP — аварийный</option>
+              <option value="PRP" selected title="Prime Power. Постоянный режим. Средняя нагрузка ≤70% nameplate. 10% перегрузка 1ч из 12.">PRP — основной</option>
+              <option value="LTP" title="Limited-Time Prime. До 500 ч/год при 100% нагрузке. Без перегрузки.">LTP — ограниченный по времени</option>
+              <option value="COP" title="Continuous Operating Power. 24/7 при 100% постоянной нагрузке. Часто единственный источник на удалённых объектах.">COP — непрерывный 24/7</option>
+            </optgroup>
+            <optgroup label="ЦОД (ISO 8528-13)">
+              <option value="DCC" title="Data Centre Continuous Power. 24/7 для критической IT-нагрузки. Допуск 10% переменной + запуск ≤10 сек.">DCC — ЦОД непрерывный</option>
+              <option value="DCP" title="Data Centre Prime Power. Средняя нагрузка ≤85% (PRP-аналог для ЦОД).">DCP — ЦОД основной</option>
+              <option value="DCS" title="Data Centre Standby Power. Резерв ЦОД с запуском ≤10 сек (критично для UPS bypass).">DCS — ЦОД резервный</option>
+              <option value="MCSP" title="Mission Critical Standby Power. Tier IV ЦОД и критические объекты. Синхронная параллельная работа с UPS.">MCSP — критический резерв</option>
+            </optgroup>
           </select>
         </label>
 

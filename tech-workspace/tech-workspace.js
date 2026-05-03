@@ -664,10 +664,20 @@ function renderFeedSection(feed, isReadOnly, concept) {
       <input type="number" data-field="dgu.kw" min="0" step="100" value="${feed.dgu.kw}" ${ro}>
       ${dguAutoBadge}
     </label>
-    <label>Режим ДГУ:
+    <label title="Режимы по ISO 8528-1 (общие) + ISO 8528-13 (ЦОД). От режима зависит max load factor для расчёта мощности и допустимое время работы. Полный список см. в dgu-config модуле.">Режим ДГУ:
       <select data-field="dgu.mode" ${ro}>
-        <option value="esp"${feed.dgu.mode === 'esp' ? ' selected' : ''}>ESP (резерв)</option>
-        <option value="prp"${feed.dgu.mode === 'prp' ? ' selected' : ''}>PRP (постоянное)</option>
+        <optgroup label="Общие (ISO 8528-1)">
+          <option value="esp"${(feed.dgu.mode || 'esp').toLowerCase() === 'esp' ? ' selected' : ''} title="Emergency Standby. ≤200 ч/год, без перегрузки.">ESP — аварийный</option>
+          <option value="prp"${(feed.dgu.mode || '').toLowerCase() === 'prp' ? ' selected' : ''} title="Prime Power. Средняя ≤70% nameplate, без лимита часов.">PRP — основной</option>
+          <option value="ltp"${(feed.dgu.mode || '').toLowerCase() === 'ltp' ? ' selected' : ''} title="Limited-Time Prime. До 500 ч/год при 100% нагрузке.">LTP — ограниченный</option>
+          <option value="cop"${(feed.dgu.mode || '').toLowerCase() === 'cop' ? ' selected' : ''} title="Continuous Operating. 24/7 при 100%.">COP — непрерывный</option>
+        </optgroup>
+        <optgroup label="ЦОД (ISO 8528-13)">
+          <option value="dcc"${(feed.dgu.mode || '').toLowerCase() === 'dcc' ? ' selected' : ''} title="Data Centre Continuous. 24/7 для IT, запуск ≤10 сек.">DCC — ЦОД непрерывный</option>
+          <option value="dcp"${(feed.dgu.mode || '').toLowerCase() === 'dcp' ? ' selected' : ''} title="Data Centre Prime. Средняя ≤85% nameplate.">DCP — ЦОД основной</option>
+          <option value="dcs"${(feed.dgu.mode || '').toLowerCase() === 'dcs' ? ' selected' : ''} title="Data Centre Standby. Резерв ЦОД с запуском ≤10 сек.">DCS — ЦОД резервный</option>
+          <option value="mcsp"${(feed.dgu.mode || '').toLowerCase() === 'mcsp' ? ' selected' : ''} title="Mission Critical Standby. Tier IV / критические объекты.">MCSP — критический резерв</option>
+        </optgroup>
       </select>
     </label>
     <label>Резервирование ДГУ:

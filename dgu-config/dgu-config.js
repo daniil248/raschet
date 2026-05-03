@@ -95,6 +95,80 @@ function saveSelectedDgu(dguEntry) {
   } catch (e) { console.warn('[dgu-config] saveSelected failed:', e); }
 }
 
+// v0.60.91 (Пользователь 2026-05-03 «мощность должна передаваться из проекта,
+// так же все параметры проекта, включая место расположения, климат»):
+// auto-fill параметров из выбранного проекта.
+// Источники:
+//   1. TW concept (variant.concept) — Σ принятая мощность для loadKw
+//   2. project.location — lat/lon/city (для подсказки)
+//   3. meteo dataset (IDB или LS) — T design (99%), altitude если есть
+async function loadFromProject() {
+  if (!_pid) return;
+  let appliedHints = [];
+
+  // 1. Power from TW concept (если есть варианты концепции)
+  try {
+    const variantsRaw = localStorage.getItem(projectKey(_pid, 'tech-workspace', 'variants.v1'));
+    if (variantsRaw) {
+      const variants = JSON.parse(variantsRaw);
+      const primary = variants.find(v => v.primary) || variants[0];
+      if (primary?.concept) {
+        const c = primary.concept;
+        // Σ rackGroups(count × kwPerRack) — IT kW
+        const itKw = (c.rackGroups || []).reduce(
+          (s, rg) => s + (Number(rg.count) || 0) * (Number(rg.kwPerRack) || 0), 0);
+        // Cooling kW (Σ coolingUnits)
+        const coolKw = (c.coolingUnits || []).reduce(
+          (s, cu) => s + (Number(cu.count) || 0) * (Number(cu.kwPerUnit) || 0), 0);
+        // Σ принятая ≈ IT + UPS-loss(5%) + Cooling
+        const totalKw = itKw + (itKw * 0.05) + coolKw;
+        if (totalKw > 0 && _state.loadKw === 500 /* default */) {
+          _state.loadKw = Math.round(totalKw);
+          appliedHints.push(`нагрузка ${_state.loadKw} кВт (из TW концепции)`);
+        }
+      }
+    }
+  } catch (e) { console.warn('[dgu-config] TW load failed:', e); }
+
+  // 2. Location (altitude) from project.location
+  try {
+    const proj = getProject(_pid);
+    const loc = proj?.location || {};
+    if (loc.altitudeM != null && _state.altitudeM === 0) {
+      _state.altitudeM = Number(loc.altitudeM);
+      appliedHints.push(`высота ${_state.altitudeM} м (из локации проекта)`);
+    }
+  } catch (e) { console.warn('[dgu-config] location read failed:', e); }
+
+  // 3. Climate (T design) from meteo dataset (IDB or LS)
+  try {
+    const { idbGet, idbAvailable } = await import('../shared/idb-store.js');
+    let datasets = null;
+    if (idbAvailable()) {
+      datasets = await idbGet(`meteo.datasets.${_pid}`, null);
+    }
+    if (!Array.isArray(datasets) || !datasets.length) {
+      const raw = localStorage.getItem(projectKey(_pid, 'meteo', 'datasets.v1'));
+      if (raw) datasets = JSON.parse(raw);
+    }
+    if (Array.isArray(datasets) && datasets.length) {
+      const active = datasets.find(d => d.activeForProject) || datasets[0];
+      // ASHRAE Design 0.4% (extremes for cooling) или fallback на t_max
+      const tDesign = active.ashrae?.cooling04?.tDb
+                   || active.stats?.t99
+                   || active.stats?.tmax;
+      if (tDesign != null && _state.ambientTC === 25) {
+        _state.ambientTC = Math.round(tDesign);
+        appliedHints.push(`T расч. ${_state.ambientTC}°C (ASHRAE 0.4% / t99 из meteo)`);
+      }
+    }
+  } catch (e) { console.warn('[dgu-config] meteo read failed:', e); }
+
+  if (appliedHints.length) {
+    console.info('[dgu-config v0.60.91] auto-fill из проекта:', appliedHints.join(' · '));
+  }
+}
+
 function readUrlParams() {
   const qp = new URLSearchParams(location.search);
   if (qp.get('capacityKw')) _state.loadKw = Number(qp.get('capacityKw')) || _state.loadKw;
@@ -321,10 +395,13 @@ function renderProjectContext() {
   });
 }
 
-function init() {
+async function init() {
   // v0.60.81: project-context first, then load saved state, then URL params override.
   _pid = resolvePid();
   loadProjectState();
+  // v0.60.91: ПЕРЕД URL-params (URL имеет приоритет) тянем данные из проекта
+  // (мощность из TW concept, T из meteo, высота из location).
+  await loadFromProject();
   readUrlParams();
   renderProjectContext();
   // Заполняем vendor select

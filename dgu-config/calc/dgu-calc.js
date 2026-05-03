@@ -13,23 +13,72 @@
 //   - Объём топливного бака (часы автономности × расход)
 
 /**
- * Допустимая загрузка генератора по режиму ISO 8528-1.
+ * Полный набор режимов мощности генератора по ISO 8528 (части 1, 13).
+ * v0.60.91 (Пользователь 2026-05-03 «тип мощности ДГУ так же должен быть
+ * связан во всех модулях проекта и расширен всеми типами из справочника
+ * согласно ISO»).
  *
- * - ESP (Emergency Standby Power): аварийный — до 100% nameplate в течение
- *   ограниченного времени (типично ≤ 200 ч/год, ≤ 25 ч непрерывно).
- *   Без перегрузки. Default load factor для расчёта = 1.0.
+ * ISO 8528-1:2018 — общие режимы для генераторов:
+ *   ESP — Emergency Standby Power (аварийный)
+ *   PRP — Prime Power (основной с переменной нагрузкой)
+ *   LTP — Limited-Time Prime Power (основной с ограничением по времени)
+ *   COP — Continuous Operating Power (непрерывная при постоянной нагрузке)
  *
- * - PRP (Prime Power): постоянный с переменной нагрузкой. До 100% peak,
- *   средняя нагрузка ≤ 70% от nameplate. Default load factor = 0.70.
+ * ISO 8528-13:2016 — специфика для дата-центров:
+ *   DCC — Data Centre Continuous Power (для критических 24/7 нагрузок ЦОД)
+ *   DCP — Data Centre Prime Power (PRP-аналог для ЦОД)
+ *   DCS — Data Centre Standby Power (резервный для ЦОД)
+ *   MCSP — Mission Critical Standby Power (резерв критических объектов)
  *
- * - COP (Continuous Operating Power): постоянный 24/7 при постоянной
- *   нагрузке. До 70-80% nameplate. Default load factor = 0.70.
+ * Каждый режим имеет:
+ *   maxLoadFactor — допустимая средняя нагрузка / nameplate (для расчёта
+ *     требуемого размера ДГУ: required_kW = load_kW / maxLoadFactor)
+ *   maxOverloadPct — допустимая перегрузка в %
+ *   maxHoursPerYear — лимит часов в год (null = без лимита)
+ *   notes — пояснение для tooltip'а.
  */
 export const DGU_MODES = {
-  ESP: { label: 'ESP — аварийный standby', maxLoadFactor: 1.0,  isoStandard: 'ISO 8528-1', notes: 'До 200 ч/год, до 25 ч непрерывно. Без перегрузки.' },
-  PRP: { label: 'PRP — основной (с переменной нагрузкой)', maxLoadFactor: 0.70, isoStandard: 'ISO 8528-1', notes: 'Постоянный режим. Средняя нагрузка ≤ 70% от nameplate.' },
-  COP: { label: 'COP — постоянный 24/7', maxLoadFactor: 0.70, isoStandard: 'ISO 8528-1', notes: 'Базовая мощность. До 70-80% nameplate continuous.' },
+  // Стандартные ISO 8528-1
+  ESP:  { label: 'ESP — аварийный standby',
+          maxLoadFactor: 1.0, maxOverloadPct: 0, maxHoursPerYear: 200,
+          isoStandard: 'ISO 8528-1', category: 'general',
+          notes: 'Emergency Standby Power. До 200 ч/год, ≤ 25 ч непрерывно. Без перегрузки. Запуск в случае аварии основного питания.' },
+  PRP:  { label: 'PRP — основной (переменная нагрузка)',
+          maxLoadFactor: 0.70, maxOverloadPct: 10, maxHoursPerYear: null,
+          isoStandard: 'ISO 8528-1', category: 'general',
+          notes: 'Prime Power. Постоянный режим. Средняя нагрузка ≤ 70% nameplate. 10% перегрузка допустима 1ч из 12. Без лимита времени работы.' },
+  LTP:  { label: 'LTP — ограниченный по времени',
+          maxLoadFactor: 1.0, maxOverloadPct: 0, maxHoursPerYear: 500,
+          isoStandard: 'ISO 8528-1', category: 'general',
+          notes: 'Limited-Time Prime. До 500 ч/год при 100% нагрузке. Без перегрузки. Для систем где основная сеть существует но нестабильна.' },
+  COP:  { label: 'COP — непрерывный 24/7',
+          maxLoadFactor: 1.0, maxOverloadPct: 0, maxHoursPerYear: null,
+          isoStandard: 'ISO 8528-1', category: 'general',
+          notes: 'Continuous Operating Power. 24/7 при постоянной 100% нагрузке (без переменной составляющей). Часто — единственный источник питания на удалённых объектах.' },
+  // Специальные для ЦОД (ISO 8528-13)
+  DCC:  { label: 'DCC — ЦОД непрерывный',
+          maxLoadFactor: 1.0, maxOverloadPct: 10, maxHoursPerYear: null,
+          isoStandard: 'ISO 8528-13', category: 'datacentre',
+          notes: 'Data Centre Continuous Power. 24/7 для критической IT-нагрузки. Аналог COP но с допуском 10% переменной нагрузки и расширенными требованиями к запуску в течение 10 секунд.' },
+  DCP:  { label: 'DCP — ЦОД основной',
+          maxLoadFactor: 0.85, maxOverloadPct: 10, maxHoursPerYear: null,
+          isoStandard: 'ISO 8528-13', category: 'datacentre',
+          notes: 'Data Centre Prime Power. Аналог PRP но для ЦОД: средняя нагрузка ≤ 85% (вместо 70% в обычном PRP). Без лимита времени.' },
+  DCS:  { label: 'DCS — ЦОД резервный',
+          maxLoadFactor: 1.0, maxOverloadPct: 0, maxHoursPerYear: 200,
+          isoStandard: 'ISO 8528-13', category: 'datacentre',
+          notes: 'Data Centre Standby Power. Резерв для ЦОД с допуском работы при отказе основного питания. Запуск в течение 10 секунд (критичен для UPS bypass).' },
+  MCSP: { label: 'MCSP — критический резерв',
+          maxLoadFactor: 1.0, maxOverloadPct: 0, maxHoursPerYear: null,
+          isoStandard: 'ISO 8528-13 (Tier IV)', category: 'datacentre',
+          notes: 'Mission Critical Standby Power. Для Tier IV ЦОД и аналогичных критических объектов. Без лимита часов, синхронная параллельная работа с UPS bypass.' },
 };
+
+/** Список режимов сгруппированный по категории (для UI selector). */
+export const DGU_MODE_GROUPS = [
+  { label: 'Общие (ISO 8528-1)', modes: ['ESP', 'PRP', 'LTP', 'COP'] },
+  { label: 'Дата-центры (ISO 8528-13)', modes: ['DCC', 'DCP', 'DCS', 'MCSP'] },
+];
 
 /**
  * Climate derate по ISO 3046-1.

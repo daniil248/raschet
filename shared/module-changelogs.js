@@ -4,6 +4,25 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.91', date: '2026-05-03', items: [
+      '🔄 <b>dgu-config: auto-fill параметров из выбранного проекта</b>. По запросу Пользователя 2026-05-03 «мощность должна передаваться из проекта, так же все параметры проекта, включая место расположение, климат».',
+      '• <code>loadFromProject()</code> async — читает 3 источника:',
+      '  1. <b>Power</b>: TW concept primary variant → Σ принятая (IT + UPS_loss 5% + Cooling) → loadKw',
+      '  2. <b>Location</b>: project.location.altitudeM → altitude',
+      '  3. <b>Climate</b>: meteo dataset (IDB или LS) → ASHRAE design 0.4% (или t99 / tmax) → ambientTC',
+      '• Применяется ТОЛЬКО к default-полям (loadKw=500, altitude=0, ambient=25). URL params имеют приоритет.',
+      '• Console.info лог: «auto-fill из проекта: нагрузка X кВт · высота Y м · T расч. Z°C».',
+      '',
+      '🔌 <b>Расширение режимов ДГУ до полного списка ISO 8528</b>. По запросу Пользователя 2026-05-03 «тип мощности ДГУ так же должен быть связан во всех модулях проекта и расширен всеми типами из справочника согласно ISO».',
+      '• <b>ISO 8528-1 (общие):</b> ESP / PRP / LTP / COP. Раньше было только ESP/PRP/COP, добавлен LTP.',
+      '• <b>ISO 8528-13 (ЦОД, новый):</b> DCC (24/7 IT) / DCP (≤85% nameplate) / DCS (запуск ≤10 сек) / MCSP (Tier IV).',
+      '• Каждый режим имеет: maxLoadFactor, maxOverloadPct, maxHoursPerYear, isoStandard, category, notes.',
+      '• <code>DGU_MODE_GROUPS</code> для UI optgroup рендера.',
+      '• <b>tech-workspace:</b> select «Режим ДГУ» в feed-section теперь содержит все 8 режимов (optgroup общие/ЦОД), tooltip с описанием каждого.',
+      '• <b>dgu-config:</b> select «Режим (ISO 8528)» аналогично расширен до 8 режимов.',
+      '',
+      'Файлы: <code>dgu-config/dgu-config.js</code>, <code>dgu-config/calc/dgu-calc.js</code>, <code>dgu-config/index.html</code>, <code>tech-workspace/tech-workspace.js</code>.',
+    ] },
     { version: '0.60.90', date: '2026-05-03', items: [
       '🪄 <b>TW: авто-подбор ТП и ДГУ по нагрузке</b>. По запросу Пользователя 2026-05-03 «для ТП и ДГУ сделать авто подбор по параметрам нагрузки. Как и для всех остальных систем».',
       '• <code>_suggestTpKva(c)</code>: kVA = (Σ принятая) / cos φ × 1.25 (запас) / округлено до 100 кВА.',
