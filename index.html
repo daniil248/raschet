@@ -729,6 +729,27 @@
           </div>
         </div>
 
+        <!-- v0.60.206 (по репорту Пользователя 2026-05-04 «я имел в виду
+             параметры расчета конструктора схем»): выбор режима напряжения
+             для расчётов токов на карточках узлов. -->
+        <h3>Напряжение для расчётов токов</h3>
+        <div style="display:flex;flex-direction:column;gap:6px;padding:8px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;margin-bottom:10px">
+          <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer">
+            <input type="radio" name="set-calcVoltageMode" value="real" style="margin-top:3px">
+            <div>
+              <div style="font-weight:500;font-size:13px">Реальное напряжение на зажимах <span class="muted" style="font-size:11px">(по умолчанию)</span></div>
+              <div class="muted" style="font-size:12px">Для каждого узла — фактическое U с учётом ΔU от источника. Точно отражает физику. Идентичные щиты в активном/резервном плече дают <b>разные</b> числа Макс — это нормально (в активной линии ΔU больше → меньше U → больше I).</div>
+            </div>
+          </label>
+          <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer">
+            <input type="radio" name="set-calcVoltageMode" value="nominal" style="margin-top:3px">
+            <div>
+              <div style="font-weight:500;font-size:13px">Условное номинальное напряжение</div>
+              <div class="muted" style="font-size:12px">Все расчёты при U<sub>ном</sub> уровня (400/230 В) без учёта ΔU. Идентичные щиты дают <b>идентичные</b> числа Макс. Удобно для сравнения и проверки.</div>
+            </div>
+          </label>
+        </div>
+
         <h3>Интерфейс</h3>
         <div class="field check">
           <input type="checkbox" id="set-showHelp">

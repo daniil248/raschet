@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.206', date: '2026-05-04', items: [
+      '🧮 <b>Setting calcVoltageMode перенесён в модалку «Параметры расчёта» Конструктора схем</b>. По репорту Пользователя 2026-05-04 «я имел в виду параметры расчета конструктора схем».',
+      '• Из <code>shared/global-settings.js</code> (open settings/⚙ в хедере) — удалено.',
+      '• В <code>index.html #modal-settings</code> (кнопка «⚙ Параметры расчёта» в сайдбаре главной схемы) — добавлен новый раздел «Напряжение для расчётов токов» с двумя радиокнопками (real/nominal), tooltip-объяснениями.',
+      '• Сохранение через <code>saveSettingsModal</code> в <code>js/main.js</code> (читает <code>input[name=set-calcVoltageMode]:checked</code>).',
+      '• <b>TODO</b> (deeper recalc fix): пока setting лежит в LS, но в pipeline (recalc.js / electrical.js) ещё не применяется. В следующих версиях будет влиять на nodeCalcVoltage и cable VD.',
+      'Файлы: <code>index.html</code> (modal HTML), <code>js/main.js</code> (open/save), <code>shared/global-settings.js</code> (cleanup).',
+    ] },
     { version: '0.60.205', date: '2026-05-04', items: [
       '⚙ <b>Параметры расчёта в глобальных настройках</b>: «реальное напряжение на зажимах» vs «условное номинальное». По репорту Пользователя 2026-05-04 «поясни почему разные значения на двух идентичных щитах … добавь в настройки параметры расчета: использовать реальное напряжение или условное номинальное».',
       '• <b>DEFAULTS.calcVoltageMode</b>: \'real\' (default) | \'nominal\'.',

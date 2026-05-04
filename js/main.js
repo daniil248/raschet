@@ -1866,6 +1866,12 @@ function openSettingsModal() {
   // v0.59.723: тумблер подсветки проблем на схеме
   const issueHlEl = document.getElementById('set-showIssueHighlights');
   if (issueHlEl) issueHlEl.checked = G.showIssueHighlights !== false;
+  // v0.60.206 (по репорту Пользователя 2026-05-04 «я имел в виду параметры
+  // расчета конструктора схем»): радиокнопки calcVoltageMode (real/nominal).
+  const calcVMode = G.calcVoltageMode === 'nominal' ? 'nominal' : 'real';
+  document.querySelectorAll('input[name="set-calcVoltageMode"]').forEach(r => {
+    r.checked = (r.value === calcVMode);
+  });
   openModal('modal-settings');
 }
 
@@ -1885,6 +1891,11 @@ function saveSettingsModal() {
     allowReducedNeutral:  !!document.getElementById('set-allowReducedNeutral')?.checked,
     autoCenterOnSelect:   !!document.getElementById('set-autoCenterOnSelect')?.checked,
     showIssueHighlights:  !!document.getElementById('set-showIssueHighlights')?.checked,
+    // v0.60.206: режим напряжения для расчётов токов (real/nominal).
+    calcVoltageMode:      (() => {
+      const r = document.querySelector('input[name="set-calcVoltageMode"]:checked');
+      return r && r.value === 'nominal' ? 'nominal' : 'real';
+    })(),
   };
   if (window.Raschet && typeof window.Raschet.setGlobal === 'function') {
     window.Raschet.setGlobal(patch);
