@@ -2409,14 +2409,13 @@ export function renderNodes() {
         // Visual-сигнал «idle/reserve» уже даёт класс <code>off</code> (faded
         // стиль карточки) + AVR-индикация на портах. Для truly-orphan узлов
         // оставляем «Без питания».
-        if (_hasUpstreamSource(n)) {
-          // standby — без надписи; faded-вид уже сигнализирует «idle».
-          statusLine = '';
-          loadCls += ' off';
-        } else {
-          statusLine = 'Без питания';
-          loadCls += ' off';
-        }
+        // v0.60.191 (по репорту Пользователя 2026-05-04 «если питания нет
+        // (нет ни одной цепочки до источника электричества, а то может
+        // потребитель подключен, но в данный момент не включен, например
+        // вентилятор дымоудаления, работает только если пожар), просто
+        // серая карточка»): без status-надписи, только серая (off-class).
+        statusLine = '';
+        loadCls += ' off';
       }
       // v0.59.654: «номин» для щита = СУММА P_ном downstream-нагрузок (а не
       // capacityA × U × cos φ — это физический лимит шин/автомата щита).
@@ -2458,14 +2457,13 @@ export function renderNodes() {
         // Visual-сигнал «idle/reserve» уже даёт класс <code>off</code> (faded
         // стиль карточки) + AVR-индикация на портах. Для truly-orphan узлов
         // оставляем «Без питания».
-        if (_hasUpstreamSource(n)) {
-          // standby — без надписи; faded-вид уже сигнализирует «idle».
-          statusLine = '';
-          loadCls += ' off';
-        } else {
-          statusLine = 'Без питания';
-          loadCls += ' off';
-        }
+        // v0.60.191 (по репорту Пользователя 2026-05-04 «если питания нет
+        // (нет ни одной цепочки до источника электричества, а то может
+        // потребитель подключен, но в данный момент не включен, например
+        // вентилятор дымоудаления, работает только если пожар), просто
+        // серая карточка»): без status-надписи, только серая (off-class).
+        statusLine = '';
+        loadCls += ' off';
       }
       else if (n._onStaticBypass) statusLine = 'БАЙПАС';
       else if (n._onBattery) {
@@ -2521,7 +2519,8 @@ export function renderNodes() {
       if (!n._powered) {
         // v0.60.165: distinguish orphan vs idle (источник в standby).
         // v0.60.176: «В резерве» убрана (см. panel/ups branches).
-        statusLine = _hasUpstreamSource(n) ? '' : 'нет питания';
+        // v0.60.191: «нет питания»/«В резерве» убраны — просто серая карточка.
+        statusLine = '';
         loadCls += ' off';
       }
       // v0.59.678: Превышение по фиксированному автомату или кабелю.
