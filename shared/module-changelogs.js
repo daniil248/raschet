@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.108', date: '2026-05-04', items: [
+      '⚡ <b>Fix: дочерние потребители группы и linked-aliases теперь корректно «запитаны»</b>. По повторному (2-й раз) репорту Пользователя 2026-05-04: «потребители включенные в группу отображаться как потребители без питания и не размещенные потребители или как потребители ссылки, они должны быть нормально размещенные, я об этом уже писал ранее». 🔥 HIGH-приоритет (см. <code>memory/feedback_priority_mentions.md</code>).',
+      '• <b>Корень бага</b>: в <code>recalc.js</code> строка 1441 присваивает <code>_powered</code> только если у consumer-узла есть собственные active inputs. Дочерние потребители контейнера и linked-alias копии физически не имеют своих connections (они «висят» через container/master) — поэтому им присваивалось <code>_powered=false</code> и <code>_loadKw=0</code>.',
+      '• <b>Эффект</b>: inspector показывал бейдж «БЕЗ ПИТАНИЯ», номера в полях P/Q/S/I были нулевые, в реестре они выглядели «брошенными» — даже когда родитель запитан и работает.',
+      '• <b>Fix</b>: добавлен post-pass propagation после основного recalc-цикла:',
+      '  • Если <code>n.containerId</code> указывает на запитанный consumer-container → n._powered=true, n._loadKw = n.demandKw × n.kUse × effectiveLoadFactor (per-unit, не агрегировано).',
+      '  • Если <code>n.linkedAlias</code> указывает на запитанный master-узел → n._powered=true, spec подтягивается с master если у alias пусто.',
+      '• Что НЕ задеваем: <code>n._loadKw</code> для контейнера остаётся агрегированным (Σ slots × kUse × factor); walkUp работает как и раньше; master узел сам считает свой _loadKw через свои inputs.',
+      'Файлы: <code>js/engine/recalc.js</code> (~30 строк после consumer-loop, ~line 1460).',
+    ] },
     { version: '0.60.107', date: '2026-05-04', items: [
       '🐛 <b>Hotfix: TW SyntaxError на строке 1288</b>. По репорту Пользователя «не работает» (Chrome console: «Uncaught SyntaxError: Unexpected token \';\'» в tech-workspace.js:1288).',
       '• <b>Корень бага</b>: в renderListRail модульная ternary <code>${... === \'modular\' ? \\`&lt;div...\\`</code> (введена в v0.60.90 для условного показа блока «🏢 МЦОД» только при dcType=modular) ОТКРЫВАЛА inner-template, но НЕ закрывала его — отсутствовал `\\` : \'\'}` после закрывающего <code>&lt;/div&gt;</code>. Парсер V8 продолжал поглощать всё следующее как раw template content до самого конца return-templа, и закрывающий <code>\\`;</code> оказывался внутри expression-context (откуда «;» = unexpected).',

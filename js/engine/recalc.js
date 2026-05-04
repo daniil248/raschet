@@ -1458,6 +1458,46 @@ function recalc() {
     walkUp(n.id, total);
   }
 
+  // v0.60.108: propagate _powered + per-unit load to contained consumers
+  // and linked aliases. Иначе они показываются как «БЕЗ ПИТАНИЯ» в inspector
+  // и в реестре, хотя физически запитаны через контейнер / master-узел.
+  // По репорту Пользователя 2026-05-04 (повторное упоминание): «потребители
+  // включенные в группу отображаться как потребители без питания и не
+  // размещенные потребители или как потребители ссылки, они должны быть
+  // нормально размещенные, я об этом уже писал ранее».
+  //
+  // Принцип: _powered наследуется от родителя (контейнер или master alias);
+  // _loadKw для дочернего = его собственный demandKw × kUse × loadFactor
+  // (per-unit, не агрегированный); aliases подтягивают spec у master если
+  // у самих пусто.
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'consumer') continue;
+    if (n._powered) continue; // уже запитан через свои подключения
+    // Дочерний потребитель в consumer-container
+    if (n.containerId) {
+      const c = state.nodes.get(n.containerId);
+      if (c && c.type === 'consumer-container' && c._powered) {
+        n._powered = true;
+        const kUse = Number(n.kUse) || 1;
+        const factor = effectiveLoadFactor(n) || 1;
+        n._loadKw = (Number(n.demandKw) || 0) * kUse * factor;
+      }
+    }
+    // Linked alias — копия master-узла (legacy 1.28.x mechanism)
+    if (!n._powered && n.linkedAlias) {
+      const m = state.nodes.get(n.linkedAlias);
+      if (m && m._powered) {
+        n._powered = true;
+        // alias обычно делит spec с master; если у alias не задано —
+        // подтягиваем у master. Per-unit (не суммируем с другими aliases).
+        const kUse = Number(n.kUse ?? m.kUse) || 1;
+        const factor = effectiveLoadFactor(n) || effectiveLoadFactor(m) || 1;
+        const dKw = Number(n.demandKw) || Number(m.demandKw) || 0;
+        n._loadKw = dKw * kUse * factor;
+      }
+    }
+  }
+
   // Собственные нужды генераторов (auxInput)
   for (const n of state.nodes.values()) {
     if (n.type !== 'generator' || !n.auxInput) continue;
