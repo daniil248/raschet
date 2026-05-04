@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.212', date: '2026-05-04', items: [
+      '🔌 <b>Конфигуратор ДГУ — реальная нагрузка + meteo принудительно</b>. По репорту Пользователя 2026-05-04 «модуль ДГУ не использует модуль метео. Максимальная нагрузка 72.7 кВт, а в конфигуратор передается 160 кВт».',
+      '• <b>Inspector → DGU</b>: <code>capacityKw = max(_maxLoadKw, _maxDownstreamUncapped, capacityKw)</code>. Раньше брал просто <code>_maxLoadKw</code>, который для генератора с triggerGroups сценариями равен max-сценарию (например 72.7), а пользователь хочет ДГУ под полную возможную нагрузку (160).',
+      '• <b>DGU loadFromProject в force-mode</b>: если URL содержит <code>nodeId</code> (запуск из инспектора схемы) — все context-данные применяются ПРИНУДИТЕЛЬНО (override saved state). Раньше применялось только если состояние = default (TW concept skip\'нулась если loadKw≠500, climate skip\'нулась если ambientTC≠25). Теперь при click из инспектора climate из meteo, altitude из location и нагрузка из TW всегда обновляются.',
+      '• <b>RH из meteo</b>: добавлен fallback <code>active.ashrae?.cooling04?.rh || stats?.rh99 || stats?.rhMax</code> — humidityPct тоже подтягивается из metoo dataset. Раньше только T.',
+      'Файлы: <code>js/engine/inspector.js</code> (max-of-three), <code>dgu-config/dgu-config.js</code> (_force flag).',
+    ] },
     { version: '0.60.211', date: '2026-05-04', items: [
       '⚠ <b>Индикатор перегруза в строке «Свободно»</b>. Раньше при перегрузе панели/ИБП/источника карточка молча показывала «Свободно: 0 kW / 0 A» — Пользователь не видел масштаба превышения. Теперь: «Свободно: 0 kW / 0 A · Запас 9.2% · Перегруз 4.2 kW / 11.0 A».',
       '• <b>recalc.js</b>: добавлены поля <code>n._overloadA</code> и <code>n._overloadKw</code> = max(0, Iused − Imax) на основе того же подсчёта что и Свободно.',

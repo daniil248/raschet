@@ -2719,9 +2719,20 @@ export function renderGeneralPanel(n) {
         const pid = _activeProjectId();
         if (pid) qp.set('project', pid);
       } catch {}
-      // Реальная максимальная мощность, которую должен покрыть ДГУ —
-      // _maxLoadKw (downstream worst-case). Fallback: capacityKw (paper-rating).
-      const reqKw = Number(n._maxLoadKw) || Number(n.capacityKw) || 0;
+      // v0.60.212 (по репорту Пользователя 2026-05-04 «максимальная нагрузка
+      // 72.7 кВт, а в конфигуратор передается 160 кВт»):
+      // _maxLoadKw для генератора с triggerGroups сценариями = max-scenario
+      // (что покрывает гарантированно при выборочном запуске нагрузок).
+      // Но пользователь обычно хочет, чтобы ДГУ был размером со ВСЮ
+      // возможную нагрузку, а не только выбранного сценария. Берём MAX
+      // из (_maxLoadKw, capacityKw, _maxDownstreamUncapped) — учитываем
+      // все три источника. capacityKw = paper rating (что пользователь
+      // выставил), _maxDownstreamUncapped = uncapped raw demand (если есть).
+      const reqKw = Math.max(
+        Number(n._maxLoadKw) || 0,
+        Number(n._maxDownstreamUncapped) || 0,
+        Number(n.capacityKw) || 0,
+      );
       if (reqKw > 0) qp.set('capacityKw', String(Math.ceil(reqKw)));
       // Климат: из активного проекта project.location.{altitudeM, ambientTC,
       // humidityPct}.

@@ -105,6 +105,14 @@ function saveSelectedDgu(dguEntry) {
 async function loadFromProject() {
   if (!_pid) return;
   let appliedHints = [];
+  // v0.60.212 (по репорту Пользователя 2026-05-04 «модуль ДГУ не использует
+  // модуль метео»): если запуск из инспектора схемы (URL содержит nodeId)
+  // — context-данные применяются ПРИНУДИТЕЛЬНО (override saved state).
+  // Inspector явно говорит «нагрузка/климат из этой схемы и проекта».
+  // В standalone (без nodeId) сохраняется старая логика: применить только
+  // если состояние = default (не перетирать ручные правки пользователя).
+  const _qp = new URLSearchParams(location.search);
+  const _force = _qp.has('nodeId');
 
   // 1. Power from TW concept (если есть варианты концепции)
   try {
@@ -114,15 +122,12 @@ async function loadFromProject() {
       const primary = variants.find(v => v.primary) || variants[0];
       if (primary?.concept) {
         const c = primary.concept;
-        // Σ rackGroups(count × kwPerRack) — IT kW
         const itKw = (c.rackGroups || []).reduce(
           (s, rg) => s + (Number(rg.count) || 0) * (Number(rg.kwPerRack) || 0), 0);
-        // Cooling kW (Σ coolingUnits)
         const coolKw = (c.coolingUnits || []).reduce(
           (s, cu) => s + (Number(cu.count) || 0) * (Number(cu.kwPerUnit) || 0), 0);
-        // Σ принятая ≈ IT + UPS-loss(5%) + Cooling
         const totalKw = itKw + (itKw * 0.05) + coolKw;
-        if (totalKw > 0 && _state.loadKw === 500 /* default */) {
+        if (totalKw > 0 && (_force || _state.loadKw === 500)) {
           _state.loadKw = Math.round(totalKw);
           appliedHints.push(`нагрузка ${_state.loadKw} кВт (из TW концепции)`);
         }
@@ -134,13 +139,13 @@ async function loadFromProject() {
   try {
     const proj = getProject(_pid);
     const loc = proj?.location || {};
-    if (loc.altitudeM != null && _state.altitudeM === 0) {
+    if (loc.altitudeM != null && (_force || _state.altitudeM === 0)) {
       _state.altitudeM = Number(loc.altitudeM);
       appliedHints.push(`высота ${_state.altitudeM} м (из локации проекта)`);
     }
   } catch (e) { console.warn('[dgu-config] location read failed:', e); }
 
-  // 3. Climate (T design) from meteo dataset (IDB or LS)
+  // 3. Climate (T design + RH) from meteo dataset (IDB or LS)
   try {
     const { idbGet, idbAvailable } = await import('../shared/idb-store.js');
     let datasets = null;
@@ -153,19 +158,26 @@ async function loadFromProject() {
     }
     if (Array.isArray(datasets) && datasets.length) {
       const active = datasets.find(d => d.activeForProject) || datasets[0];
-      // ASHRAE Design 0.4% (extremes for cooling) или fallback на t_max
       const tDesign = active.ashrae?.cooling04?.tDb
                    || active.stats?.t99
                    || active.stats?.tmax;
-      if (tDesign != null && _state.ambientTC === 25) {
+      if (tDesign != null && (_force || _state.ambientTC === 25)) {
         _state.ambientTC = Math.round(tDesign);
         appliedHints.push(`T расч. ${_state.ambientTC}°C (ASHRAE 0.4% / t99 из meteo)`);
+      }
+      // v0.60.212: также RH из meteo (если есть в stats).
+      const rhDesign = active.ashrae?.cooling04?.rh
+                    || active.stats?.rh99
+                    || active.stats?.rhMax;
+      if (rhDesign != null && (_force || _state.humidityPct === 60)) {
+        _state.humidityPct = Math.round(rhDesign);
+        appliedHints.push(`RH расч. ${_state.humidityPct}% (из meteo)`);
       }
     }
   } catch (e) { console.warn('[dgu-config] meteo read failed:', e); }
 
   if (appliedHints.length) {
-    console.info('[dgu-config v0.60.91] auto-fill из проекта:', appliedHints.join(' · '));
+    console.info(`[dgu-config v0.60.212] auto-fill из проекта (${_force ? 'force' : 'soft'}):`, appliedHints.join(' · '));
   }
 }
 
