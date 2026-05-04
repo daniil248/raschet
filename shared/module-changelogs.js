@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.155', date: '2026-05-04', items: [
+      '🔌 <b>Группа потребителей: dependent consumers больше не считаются orphan</b>. По повторному репорту Пользователя 2026-05-04 «мы же уже обсуждали, что все что в группе и группа подключена, нельзя сказать что не подключено... тоже самое и с реестром, если размещено в группе, считаем что размещено как обычный потребитель».',
+      '• <b>Контекст</b>: container Z1.SR01 запитан, его 8 дочерних потребителей SR01..SR08 наследуют питание через recalc-loop (v0.60.108). НО Project Checks panel («⚠ Проверки проекта») всё ещё перечисляла их в «🔌 Несвязанные узлы (нет входящего питания)» — orphan-check НЕ учитывал containerId/linkedAlias.',
+      '• <b>js/main.js</b> — fix в ОБОИХ orphan-check местах:',
+      '  • <b>~line 4877</b> (rows-list для CSV/таблицы): добавлен check parent-container запитан (через S.conns или _powered=true) И linked-alias master запитан → consumer не считается orphan.',
+      '  • <b>~line 5510</b> (orphans-modal): тот же check.',
+      '• <b>js/engine/render.js::renderProjectRegistry</b>: убрана opacity:0.7 + cursor:not-allowed для container-children — теперь они выглядят как обычные размещённые потребители (без visual «потускнения»). × delete-кнопка скрывается — удаление контейнерируемого происходит через контейнер, не индивидуально. Tooltip обновлён: «Размещён как часть группы «X». Удаление / перенос — через свойства группы.»',
+      '• <b>Memory rule</b> <code>feedback_group_consumers_placement.md</code> обновлён — добавлен раздел v0.60.155 с детальным описанием fix\'а.',
+      '• <b>Симметрия с linked-alias</b>: тот же check применяется и для legacy linkedAlias mechanism — alias запитан если master запитан.',
+      'Файлы: <code>js/main.js</code> (2 места orphan-check + containerId/linkedAlias inheritance), <code>js/engine/render.js</code> (renderProjectRegistry visual cleanup), <code>memory/feedback_group_consumers_placement.md</code>.',
+    ] },
     { version: '0.60.154', date: '2026-05-04', items: [
       '⚡ <b>Конструктор схем: оставлены только электрические виды страниц</b>. По репорту Пользователя 2026-05-04 «давай в кондукторе схем, оставим только электрику (может быть только планировку для трассировки кабелей, если не будет отдельный модуль), другие типы страниц удалим».',
       '• <b>PAGE_KINDS_META</b> сокращена с 7 до 2 видов:',

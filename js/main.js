@@ -4875,8 +4875,24 @@ function exportProjectIssuesCsv() {
       }
     }
     if ((n.type === 'consumer' || (n.type === 'panel' && !n.parentSectionedId && !n.isSection))) {
-      let hasInput = false;
-      for (const c of S.conns.values()) if (c.to?.nodeId === n.id) { hasInput = true; break; }
+      // v0.60.155: учитываем containerId / linkedAlias — если parent
+      // запитан, дочерний consumer тоже считается подключённым.
+      const _parent = (n.containerId && S.nodes.get) ? S.nodes.get(n.containerId) : null;
+      const _master = (n.linkedAlias && S.nodes.get) ? S.nodes.get(n.linkedAlias) : null;
+      const _parentPowered = _parent && _parent.type === 'consumer-container' && (() => {
+        if (_parent._powered === true) return true;
+        for (const c of S.conns.values()) if (c.to?.nodeId === _parent.id) return true;
+        return false;
+      })();
+      const _masterPowered = _master && (() => {
+        if (_master._powered === true) return true;
+        for (const c of S.conns.values()) if (c.to?.nodeId === _master.id) return true;
+        return false;
+      })();
+      let hasInput = _parentPowered || _masterPowered;
+      if (!hasInput) {
+        for (const c of S.conns.values()) if (c.to?.nodeId === n.id) { hasInput = true; break; }
+      }
       // Phase 1.20.46: для многосекционного щита достаточно питания ≥1 секции
       if (!hasInput && n.type === 'panel' && n.switchMode === 'sectioned' && Array.isArray(n.sectionIds) && n.sectionIds.length) {
         for (const sid of n.sectionIds) {
@@ -5514,9 +5530,38 @@ function renderProjectIssues() {
     // 'sectioned' + sectionIds) питание подаётся на секции, а не на
     // контейнер. Достаточно хотя бы одной запитанной секции.
     if (n.type === 'consumer' || (n.type === 'panel' && !n.parentSectionedId)) {
-      let hasInput = false;
-      for (const c of S.conns.values()) {
-        if (c.to?.nodeId === n.id) { hasInput = true; break; }
+      // v0.60.155 (по повторному репорту Пользователя 2026-05-04 «мы же
+      // уже обсуждали, что все что в группе и группа подключена, нельзя
+      // сказать что не подключено...»): дочерние потребители consumer-
+      // container'а наследуют питание от контейнера. Если container
+      // запитан или сам имеет входящие connections — orphan-flag
+      // снимается.
+      // Аналогично linked-alias (legacy mechanism): если master-узел
+      // запитан, alias тоже считается запитанным.
+      const _parentContainer = (n.containerId && S.nodes.get) ? S.nodes.get(n.containerId) : null;
+      const _isContainedInPoweredContainer = _parentContainer
+        && _parentContainer.type === 'consumer-container'
+        && (() => {
+          // Контейнер считается «запитанным» если у него есть входящие conn'ы
+          // или его _powered=true (после recalc). Используем connections check
+          // т.к. Orphan-проверка может вызываться до полного recalc-цикла.
+          for (const c of S.conns.values()) {
+            if (c.to?.nodeId === _parentContainer.id) return true;
+          }
+          return _parentContainer._powered === true;
+        })();
+      const _aliasMaster = (n.linkedAlias && S.nodes.get) ? S.nodes.get(n.linkedAlias) : null;
+      const _isAliasOfPoweredMaster = _aliasMaster && (() => {
+        for (const c of S.conns.values()) {
+          if (c.to?.nodeId === _aliasMaster.id) return true;
+        }
+        return _aliasMaster._powered === true;
+      })();
+      let hasInput = _isContainedInPoweredContainer || _isAliasOfPoweredMaster;
+      if (!hasInput) {
+        for (const c of S.conns.values()) {
+          if (c.to?.nodeId === n.id) { hasInput = true; break; }
+        }
       }
       if (!hasInput && n.type === 'panel' && n.switchMode === 'sectioned' && Array.isArray(n.sectionIds) && n.sectionIds.length) {
         for (const sid of n.sectionIds) {

@@ -684,12 +684,24 @@ export function renderProjectRegistry() {
       // экземпляр перетащить еще раз, так не пойдет». Перетаскивание
       // блокируется и в render-разметке (draggable=false) и в interaction.js
       // dragstart (preventDefault) — двойной guard.
+      // v0.60.155 (по повторному репорту Пользователя 2026-05-04 «тоже
+      // самое и с реестром, если размещено в группе, считаем что
+      // размещено как обычный потребитель»): убрана opacity:0.7 +
+      // cursor:not-allowed для container-children — они теперь выглядят
+      // как обычные размещённые потребители. Drag всё ещё disabled
+      // (для целостности группы), но визуально нет «потускнения».
+      // × delete-кнопка тоже скрывается для contained — удаление
+      // происходит через контейнер, не индивидуально.
       const _isAliased = !!_parent;
-      return `<div class="pal-reg-item" draggable="${_isAliased ? 'false' : 'true'}" data-reg-id="${esc(n.id)}" ${_isAliased ? 'data-linked-alias="1"' : ''} title="${_isAliased ? 'Связан с группой — снимите связь чтобы перетащить' : 'Клик — открыть свойства, Ctrl+клик — центрировать на схеме, drag — разместить на текущей странице'}" style="${_isAliased ? 'opacity:0.7;cursor:not-allowed' : ''}">
+      const _delBtnFinal = _isAliased ? '' : delBtn;
+      const _itemTitle = _isAliased
+        ? `Размещён как часть группы «${escAttr(_parentTag)}». Удаление / перенос — через свойства группы.`
+        : 'Клик — открыть свойства, Ctrl+клик — центрировать на схеме, drag — разместить на текущей странице';
+      return `<div class="pal-reg-item" draggable="${_isAliased ? 'false' : 'true'}" data-reg-id="${esc(n.id)}" ${_isAliased ? 'data-linked-alias="1"' : ''} title="${_itemTitle}">
         <span class="pal-unplaced-icon">${_unplacedTypeIcon(n)}</span>
         <span class="pal-unplaced-tag">${esc(tag)}</span>
         <span class="pal-unplaced-name">${esc(name)}</span>
-        ${_systemDotsHtml(n)}${placement}${membersBadge}${connBadge}${placeBtn}${delBtn}
+        ${_systemDotsHtml(n)}${placement}${membersBadge}${connBadge}${placeBtn}${_delBtnFinal}
       </div>`;
     }).join('');
     chunks.push(`<div class="pal-reg-group"><h4 class="pal-reg-group-head">${esc(label)} <span class="muted">(${arr.length})</span></h4>${items}</div>`);
