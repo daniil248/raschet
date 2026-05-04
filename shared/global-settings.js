@@ -33,8 +33,11 @@ import {
   resolveDefaultCurrencyWithSource, resolveDefaultVatWithSource,
 } from './currency-defaults.js';
 // v0.60.132 (Phase 44.3): подписки.
+// v0.60.135: + ROLES, isInternalUser, currentRole, setRole, setInternalUser
+// для секции «🏢 Внутрикорпоративный доступ» и «👤 Роль в организации».
 import {
   PLANS, getSubscription, saveSubscription, activateTrial, planBadge,
+  ROLES, isInternalUser, setInternalUser, currentRole, setRole,
 } from './subscriptions.js';
 
 const STORAGE_KEY = 'raschet.global.v1';
@@ -595,6 +598,100 @@ function _renderSubscriptionSection(host) {
   });
 }
 
+/* v0.60.135 (Phase 44.3 расширение): рендер секции «Внутрикорпоративный
+   доступ + роль». По двум требованиям Пользователя 2026-05-04:
+     • «часть модулей будут доступны только внутри организации»
+     • «В модуле Проекты только менеджер проектов или ГИП могут
+        создавать проекты»
+   Тумблер «Я сотрудник организации (internal-user)» открывает доступ к
+   internalOnly-модулям (reports, logistics, projects). Селектор роли
+   определяет permissions (canCreateProjects и др.). */
+function _renderInternalRoleSection(host) {
+  const escAttr = (s) => String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const escHtml = escAttr;
+  const internal = isInternalUser();
+  const role = currentRole();
+
+  const internalToggle = `
+    <label style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:${internal ? '#dcfce7' : '#f3f4f6'};border:1px solid ${internal ? '#86efac' : '#e2e8f0'};border-radius:5px;cursor:pointer;font-size:12.5px">
+      <input type="checkbox" id="rs-gs-internal-toggle" ${internal ? 'checked' : ''}>
+      <span><b>${internal ? '🏢 Внутрикорпоративный режим включён' : '🌐 Внешний клиент'}</b></span>
+      <span class="muted" style="font-size:11px;margin-left:auto">${internal ? 'доступны internal-модули (reports, logistics, projects)' : 'только модули из подписки'}</span>
+    </label>
+  `;
+
+  // Селектор роли — только если internal=true
+  const roleRows = internal
+    ? Object.entries(ROLES).map(([rid, def]) => {
+        const isCur = rid === role;
+        const perms = def.permissions || {};
+        const permTags = [];
+        if (perms.canCreateProjects) permTags.push('создание');
+        if (perms.canDeleteProjects) permTags.push('удаление');
+        if (perms.canEditEconomics) permTags.push('экономика');
+        if (perms.canApproveVariants) permTags.push('утверждение');
+        if (perms.canPromoteOrgItems) permTags.push('publish→org');
+        const permsHtml = permTags.length
+          ? permTags.map(t => `<span style="background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:3px;font-size:10.5px;margin-right:3px">${escHtml(t)}</span>`).join('')
+          : '<span class="muted" style="font-size:11px">read-only</span>';
+        return `<button type="button" class="rs-gs-role-row" data-role="${escAttr(rid)}" style="display:flex;align-items:center;gap:10px;width:100%;padding:8px 12px;margin:3px 0;background:${isCur ? '#dbeafe' : '#fff'};border:1px solid ${isCur ? '#93c5fd' : '#e2e8f0'};border-radius:5px;cursor:pointer;font:inherit;font-size:12.5px;text-align:left">
+          <span style="font-weight:600;color:${isCur ? '#1e40af' : '#0f172a'};min-width:170px">${escHtml(def.label)}${isCur ? ' ✓' : ''}</span>
+          <span style="flex:1">${permsHtml}</span>
+        </button>`;
+      }).join('')
+    : '';
+
+  host.innerHTML = `
+    <p class="muted" style="font-size:11.5px;margin:0 0 8px">
+      Внутрикорпоративный режим открывает internal-модули, не входящие в коммерческие подписки (📋 Реестр проектов, 📊 Шаблоны отчётов, 🚚 Логистика). Роль внутри организации определяет permissions (создание / удаление / утверждение / экономика).
+    </p>
+    ${internalToggle}
+    ${internal ? `
+      <div style="margin-top:12px">
+        <h5 style="margin:0 0 6px;font-size:12px;color:#075985;text-transform:uppercase;letter-spacing:0.4px">👤 Ваша роль в организации</h5>
+        ${roleRows}
+        <p class="muted" style="font-size:11px;margin:8px 0 0">
+          🚧 В реальной мульти-Пользовательской системе роль будет назначаться администратором организации (Phase 41.5+). Сейчас — локальный self-select для тестирования и однопользовательских установок.
+        </p>
+      </div>
+    ` : `
+      <p class="muted" style="font-size:11px;margin:8px 0 0">
+        💡 Включите тумблер если вы сотрудник организации, разворачивающей Raschet on-premise. Внешним клиентам internal-модули недоступны (даже на Enterprise-плане), их функция — внутрикорпоративный аудит/менеджмент проектов.
+      </p>
+    `}
+  `;
+
+  // Wire toggle
+  const toggle = host.querySelector('#rs-gs-internal-toggle');
+  if (toggle) {
+    toggle.addEventListener('change', () => {
+      try {
+        setInternalUser(toggle.checked);
+        // Re-render всю секцию (показать/скрыть селектор роли)
+        _renderInternalRoleSection(host);
+        rsToast(toggle.checked ? '✓ Internal-режим включён. Доступны internal-модули.' : 'Internal-режим выключен.', 'success');
+      } catch (e) {
+        rsToast('Ошибка: ' + (e.message || e), 'error');
+      }
+    });
+  }
+
+  // Wire role selector
+  host.querySelectorAll('.rs-gs-role-row').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const rid = btn.dataset.role;
+      if (!rid || !ROLES[rid]) return;
+      try {
+        setRole(rid);
+        _renderInternalRoleSection(host);
+        rsToast(`✓ Роль изменена: ${ROLES[rid].label}`, 'success');
+      } catch (e) {
+        rsToast('Ошибка: ' + (e.message || e), 'error');
+      }
+    });
+  });
+}
+
 /* v0.60.115 (Phase 41 START): рендер секции «Организация».
    Группа людей с общими настройками (валюта/налоги по умолчанию,
    общий каталог шаблонов, brand). Полный multi-user — Phase 40 Cloud Sync. */
@@ -657,6 +754,10 @@ export function openSettingsModal() {
         <div class="muted" style="margin-bottom:8px" title="Текущий план подписки и доступные модули. Soft-enforcement (бизнес-стимул); calc-libs включены автоматически.">Управление подпиской на модули. Phase 44 v0.60.131+.</div>
         <div id="rs-gs-subscription-section" style="margin-bottom:18px"></div>
 
+        <h4>🏢 Внутрикорпоративный доступ + роль</h4>
+        <div class="muted" style="margin-bottom:8px" title="Internal-режим открывает доступ к internalOnly-модулям (📋 Реестр проектов, 📊 Шаблоны отчётов, 🚚 Логистика), не входящим в коммерческие подписки. Роль внутри организации определяет permissions (canCreateProjects и др.).">Внутрикорпоративные модули + роль внутри организации. Phase 44 v0.60.133+.</div>
+        <div id="rs-gs-internal-section" style="margin-bottom:18px"></div>
+
         <h4>🏢 Реквизиты компании-исполнителя</h4>
         <div class="muted" style="margin-bottom:8px" title="Реквизиты компании-исполнителя для шапки КП клиенту, договоров и отчётов. Сохраняются глобально для всех проектов; per-project override настраивается в свойствах проекта.">Реквизиты для шапки КП и договоров. Используются модулем «🛠 Сервис: монтаж и ТО» при экспорте КП клиенту. v0.60.115: добавлены default-валюта и default-НДС для каскада в калькуляторах.</div>
         <div id="rs-gs-company-section" style="margin-bottom:18px"></div>
@@ -698,6 +799,10 @@ export function openSettingsModal() {
   // v0.60.132 (Phase 44.3): секция «Подписка».
   const subHost = overlay.querySelector('#rs-gs-subscription-section');
   if (subHost) _renderSubscriptionSection(subHost);
+
+  // v0.60.135 (Phase 44.3 расширение): секция «Внутрикорпоративный доступ + роль».
+  const internalHost = overlay.querySelector('#rs-gs-internal-section');
+  if (internalHost) _renderInternalRoleSection(internalHost);
 
   const close = () => overlay.remove();
   overlay.querySelector('.rs-gs-close').addEventListener('click', close);

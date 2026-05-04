@@ -4,6 +4,24 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.135', date: '2026-05-04', items: [
+      '👥 <b>Phase 44.3 follow-up: ролевая модель в /projects/ + UI настройки роли + memory rules</b>. По требованию Пользователя 2026-05-04 «В модуле Проекты только менеджер проектов или ГИП могут создавать проекты».',
+      '• <b>projects/projects.js</b> guard\'ы permissions:',
+      '  • Кнопка «＋ Новый проект» — <code>hasPermission(\'canCreateProjects\')</code>. Disabled+tooltip объясняет ограничение, если permission нет.',
+      '  • Кнопка «Удалить» (per-project) — <code>hasPermission(\'canDeleteProjects\')</code>.',
+      '  • Bulk «🧹 Удалить N пустых» — рендерится только при canDeleteProjects.',
+      '  • Role-banner над списком — показывает текущую роль и её ограничения (только internal-Пользователям).',
+      '• <b>shared/global-settings.js</b> новая секция «🏢 Внутрикорпоративный доступ + роль»:',
+      '  • Тумблер «Я сотрудник организации» (isInternalUser ↔ setInternalUser).',
+      '  • Селектор роли (4 row\'а: manager / gip / engineer / viewer) с permissions-тегами рядом с каждой ролью (создание / удаление / экономика / утверждение / publish→org).',
+      '  • Self-select для одиночных установок; в мульти-Пользовательской системе будет назначаться администратором (Phase 41.5+).',
+      '• <b>Memory rules новые</b>:',
+      '  • <code>feedback_internal_modules.md</code> — список internal-only модулей + чек-лист добавления.',
+      '  • <code>feedback_role_based_access.md</code> — таблица permissions × roles + текущий список guard\'ов + TODO для расширения.',
+      '  • <code>feedback_unified_project_picker.md</code> — правило не дублировать picker в sidebar (header chip — единая точка).',
+      '• <b>ROADMAP Phase 44.3</b> отмечена ✅ с пояснением что роли + internal — это follow-up к подписке. Phase 44.4 (платёжная интеграция) и 44.6 (custom-планы) остаются TODO.',
+      'Файлы: <code>projects/projects.js</code> (+import hasPermission/ROLES; guard на pr-new + delete + bulk-delete; _renderRoleBanner ~40 строк), <code>projects/index.html</code> (+pr-role-banner mount), <code>shared/global-settings.js</code> (+_renderInternalRoleSection ~85 строк, секция в модалке), <code>ROADMAP.md</code> (Phase 44.3 ✅).',
+    ] },
     { version: '0.60.134', date: '2026-05-04', items: [
       '🔁 <b>Project picker: единая точка вместо двух</b>. По репорту Пользователя 2026-05-04 «как то объедини выбор и отображение проекта в одном месте».',
       '• <b>Header chip (rs-proj-badge)</b> теперь во ВСЕХ режимах (linked / standalone / empty) открывает единое меню (раньше linked-mode уходил на /projects/project.html).',

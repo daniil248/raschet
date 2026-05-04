@@ -13,6 +13,12 @@ import { migrateOrphanSchemes } from '../shared/scheme-orphan-migration.js';
 import { downloadBackup, readBackupFile, restoreFromJson, getLastBackupInfo, getAutoBackupSettings } from '../shared/backup.js';
 import { APP_VERSION } from '../js/engine/constants.js';
 import { historyList, historyTrash, historyStats } from '../shared/history-log.js';
+// v0.60.135 (по требованию Пользователя 2026-05-04 «В модуле Проекты только
+// менеджер проектов или ГИП могут создавать проекты»): role-based access.
+// hasPermission проверяет ROLES[currentRole].permissions[perm]. Если
+// Пользователь не internal — currentRole === null → false для всех permissions.
+// canCreateProjects/canDeleteProjects = true только для manager / gip.
+import { hasPermission, isInternalUser, currentRole, ROLES } from '../shared/subscriptions.js';
 
 // v0.59.507: автоматическая миграция orphan-схем при первом заходе на
 // /projects/. Schemes без projectId → привязываем к контейнеру с тем же
@@ -293,6 +299,47 @@ function _renderBackupNudge() {
   });
 }
 
+// v0.60.135: role-banner — показывает текущую роль и её ограничения над
+// списком проектов. Видим только internal-Пользователям. По требованию
+// Пользователя 2026-05-04 «В модуле Проекты только менеджер проектов или
+// ГИП могут создавать проекты» — Пользователю должно быть понятно, какая
+// у него роль и что она разрешает / запрещает.
+function _renderRoleBanner() {
+  const host = document.getElementById('pr-role-banner');
+  if (!host) return;
+  if (!isInternalUser()) {
+    host.innerHTML = '';
+    return;
+  }
+  const role = currentRole();
+  const def = role ? ROLES[role] : null;
+  if (!def) { host.innerHTML = ''; return; }
+  const canCreate = !!def.permissions?.canCreateProjects;
+  const canDelete = !!def.permissions?.canDeleteProjects;
+  const limitations = [];
+  if (!canCreate) limitations.push('создание новых проектов');
+  if (!canDelete) limitations.push('удаление проектов');
+  const limTxt = limitations.length
+    ? `<span style="color:#92400e">Запрещено: ${limitations.join(', ')}.</span>`
+    : `<span style="color:#15803d">Полный доступ к управлению проектами.</span>`;
+  const bg = limitations.length ? '#fffbeb' : '#f0fdf4';
+  const borderColor = limitations.length ? '#fbbf24' : '#86efac';
+  host.innerHTML = `
+    <div style="margin:8px 0 14px;padding:8px 14px;background:${bg};border:1px solid ${borderColor};border-radius:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px">
+      <span style="font-size:16px">${def.label.split(' ')[0] || '👤'}</span>
+      <div style="flex:1;min-width:200px">
+        <b>Ваша роль:</b> ${escapeHtml(def.label)} · ${limTxt}
+      </div>
+      <button type="button" id="pr-role-change" style="padding:4px 10px;background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:4px;cursor:pointer;font-size:11.5px" title="Сменить роль (открыть глобальные настройки → раздел «Роль»).">⚙ Сменить роль</button>
+    </div>
+  `;
+  document.getElementById('pr-role-change')?.addEventListener('click', () => {
+    try {
+      import('../shared/global-settings.js').then(m => m.openSettingsModal());
+    } catch (e) { console.warn('open settings failed', e); }
+  });
+}
+
 function render() {
   const host = document.getElementById('pr-list');
   if (!host) return;
@@ -320,6 +367,12 @@ function render() {
   // авто-бэкап не настроен, показываем баннер с напоминанием.
   // Принцип: «не хочу чтобы пользователь мог потерять свои данные».
   _renderBackupNudge();
+
+  // v0.60.135: role-banner — показываем текущую роль и её ограничения
+  // если есть. Только для internal-Пользователей (для внешних — модуль
+  // /projects/ доступен только если есть подписка enterprise, и роли
+  // не используются — модуль закрыт).
+  _renderRoleBanner();
 
   // v0.59.797 (ROADMAP 1.27.5): multi-status фильтр chip-bar вместо
   // одиночного «show archived». Pre-фильтрация (всего по статусу) +
@@ -360,7 +413,7 @@ function render() {
         <span style="border-left:1px solid #e2e8f0;height:18px;margin:0 4px"></span>
         ${_archGroup.map(chipHtml).join('')}
         <button type="button" id="pr-status-all" style="padding:3px 9px;border:1px solid #cbd5e1;background:#f9fafb;color:#475569;border-radius:14px;cursor:pointer;font-size:11.5px" title="Показать все статусы">Все</button>
-        ${emptyFullProjects.length ? `
+        ${emptyFullProjects.length && hasPermission('canDeleteProjects') ? `
         <span style="border-left:1px solid #e2e8f0;height:18px;margin:0 4px"></span>
         <button type="button" id="pr-delete-empty-full" style="background:#fbbf24;color:#78350f;border:1px solid #f59e0b;padding:3px 9px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:500" title="Удалить ВСЕ полные проекты без данных (схема/стойки/связи/реестры). Полезно для очистки тестовых записей.">🧹 Удалить ${emptyFullProjects.length} пустых</button>` : ''}
       </div>`;
@@ -423,7 +476,9 @@ function render() {
           <button type="button" class="pr-btn-sel" data-act="rename">Переименовать</button>
           <button type="button" class="pr-btn-sel" data-act="export">Экспорт JSON</button>
           <button type="button" class="pr-btn-sel" data-act="copy" title="Создать копию проекта: метаданные + все scoped-данные (стойки, связи, инвентарь). Новые id для экземпляров стоек.">📄 Копировать</button>
-          <button type="button" class="pr-btn-danger" data-act="delete">Удалить</button>
+          ${hasPermission('canDeleteProjects')
+            ? '<button type="button" class="pr-btn-danger" data-act="delete">Удалить</button>'
+            : `<button type="button" class="pr-btn-danger" data-act="delete" disabled style="opacity:0.4;cursor:not-allowed" title="Удаление запрещено для текущей роли. Только 👑 Менеджер проектов или 🛠 ГИП могут удалять проекты из реестра.">Удалить 🔒</button>`}
         </div>
       </div>
       ${p.description ? `<div class="pr-project-desc">${escapeHtml(p.description)}</div>` : ''}
@@ -931,15 +986,37 @@ function _initAfterDom() {
     }
   });
 
-  document.getElementById('pr-new')?.addEventListener('click', async () => {
-    const name = await prPrompt('Новый проект', 'Название проекта', '', 'напр. «ЦОД Альфа-1, Тверь»');
-    if (!name) return;
-    const desc = await prPrompt('Описание', 'Клиент / адрес / контакты (можно оставить пустым)', '');
-    const p = createProject({ name, description: desc || '' });
-    setActiveProjectId(p.id);
-    prToast('✔ Проект создан и сделан активным');
-    render();
-  });
+  // v0.60.135: guard «＋ Новый проект» — только manager / gip / без internal.
+  // По требованию Пользователя 2026-05-04 «В модуле Проекты только менеджер
+  // проектов или ГИП могут создавать проекты». Permissions из ROLES в
+  // shared/subscriptions.js. Если permission нет — кнопка disabled с
+  // tooltip-объяснением; если internal-режим выключен (Пользователь —
+  // внешний клиент) — модуль доступен только если он есть в подписке,
+  // и hasPermission всегда вернёт false (нет роли).
+  const newBtn = document.getElementById('pr-new');
+  if (newBtn) {
+    const allowed = hasPermission('canCreateProjects');
+    if (!allowed) {
+      newBtn.disabled = true;
+      newBtn.style.opacity = '0.55';
+      newBtn.style.cursor = 'not-allowed';
+      const role = currentRole();
+      const roleLabel = role ? (ROLES[role]?.label || role) : 'не задана';
+      newBtn.title = `Создание проектов запрещено для роли «${roleLabel}». ` +
+        `Только 👑 Менеджер проектов или 🛠 ГИП могут создавать проекты в реестре. ` +
+        `Локальные проекты в подпрограммах остаются доступными всем (через chip в шапке).`;
+    } else {
+      newBtn.addEventListener('click', async () => {
+        const name = await prPrompt('Новый проект', 'Название проекта', '', 'напр. «ЦОД Альфа-1, Тверь»');
+        if (!name) return;
+        const desc = await prPrompt('Описание', 'Клиент / адрес / контакты (можно оставить пустым)', '');
+        const p = createProject({ name, description: desc || '' });
+        setActiveProjectId(p.id);
+        prToast('✔ Проект создан и сделан активным');
+        render();
+      });
+    }
+  }
 }
 
 // =============================================================================

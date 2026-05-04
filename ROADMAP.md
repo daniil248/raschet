@@ -3951,25 +3951,38 @@ v0.60.105 (`shared/currency-defaults.js::resolveDefaultCurrency`).
   kind='ui'; calc-libs (cooling/calc/, dgu-config/calc/, shared/calc-modules/)
   свободно импортируются.
 
-### 44.2 — Soft-enforcement в UI
+### 44.2 — Soft-enforcement в UI [v0.60.132 ✅]
 
-- [ ] <code>/modules/index.html</code>: для locked модулей — иконка 🔒,
+- [x] <code>/modules/index.html</code>: для locked модулей — иконка 🔒,
   затемнение карточки, click → showLockedModal с upsell.
+- [x] Plan-badge под H1 в /modules/ — кликабельный chip «🎫 ⭐ Pro · триал 13 дн.».
 - [ ] <code>hub.html</code>: те же визуальные локи.
 - [ ] Каждый <code>&lt;module&gt;/index.html</code> в начале вызывает
   <code>requireModuleAccess(moduleId)</code> — defence-in-depth для
   прямых URL.
-- [ ] В шапке (app-header.js) badge с текущим планом
-  («⭐ Pro · триал 13 дн.») — кликабельно к плану-выбору.
 
-### 44.3 — Plan management UI
+### 44.3 — Plan management + Internal/RBAC UI [v0.60.132–135 ✅]
 
-- [ ] В <code>⚙ Глобальные настройки</code> — новый раздел «🎫 Подписка»:
-  - Текущий план + срок действия / триал-таймер.
-  - Кнопка «🎁 Активировать триал Pro 14 дней» (одноразово).
-  - Кнопка «💳 Купить план» — открытие платёжной страницы.
-  - Список доступных модулей по плану с галочками.
-  - Для custom — checkbox per-module + total price calc.
+- [x] В <code>⚙ Глобальные настройки</code> — раздел «🎫 Подписка»:
+  - Текущий план + триал-таймер.
+  - Список 4 планов с описанием/ценой, подсветка current.
+  - Кнопка «🎁 Триал 14 дн.» per-plan.
+- [x] **v0.60.133** — internal-only модули (Phase 44.3 follow-up):
+  - Поле <code>internalOnly: true</code> у <code>projects</code>, <code>reports</code>, <code>logistics</code>.
+  - <code>hasModuleAccess(id, manifest)</code> уважает <code>manifest.internalOnly</code>.
+  - <code>showLockedModal</code> для internal — «🏢 Корпоративный модуль» (без upsell).
+  - <code>isInternalUser()</code> / <code>setInternalUser(bool)</code> в shared/subscriptions.js.
+- [x] **v0.60.135** — ролевая модель (Phase 44.3 follow-up):
+  - <code>ROLES</code>: manager / gip / engineer / viewer + permissions
+    (canCreateProjects / canDeleteProjects / canEditEconomics / canApproveVariants / canPromoteOrgItems).
+  - <code>currentRole()</code> / <code>setRole(roleId)</code> / <code>hasPermission(perm)</code>.
+  - В global-settings — секция «🏢 Внутрикорпоративный доступ + роль» (тумблер internal + селектор роли).
+  - В <code>/projects/</code> — guard на «＋ Новый проект» / «Удалить» через <code>hasPermission</code>; role-banner над списком.
+- [ ] Расширить guard'ы permissions:
+  - service/tw — <code>canApproveVariants</code> на «✓ Утвердить».
+  - service order-form — <code>canEditEconomics</code> для полей экономики.
+  - catalog/work-templates/wizards — <code>canPromoteOrgItems</code> для кнопок «↑ В организацию».
+- [ ] В шапке (app-header.js) badge с текущим планом — Phase 44.2 TODO.
 
 ### 44.4 — Платёжная интеграция
 
