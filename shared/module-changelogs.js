@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.140', date: '2026-05-04', items: [
+      '🏢 <b>Internal-Пользователь = full access ко всем модулям</b>. Hotfix по репорту Пользователя 2026-05-04: «как мне самому теперь использовать все модули???»',
+      '• <b>Проблема</b>: после v0.60.131-137 модули заблокированы 🔒 для free-плана. Тумблер «Internal» в настройках открывал только internalOnly-модули (reports/logistics/projects), но не снимал subscription-локи на остальные модули. Разработчик платформы (= internal-Пользователь) не мог пользоваться своими же модулями без активации триала Enterprise.',
+      '• <b>Логика исправлена в shared/subscriptions.js::hasModuleAccess</b>: если <code>isInternalUser()</code> → возвращаем <code>true</code> для ВСЕХ модулей (включая внешние UI-модули вне подписки). InternalOnly-проверка остаётся первой — открывает их только для internal.',
+      '• <b>Plan-badge в шапке</b> для internal теперь показывает <code>🏢 Internal · Full access</code> с tooltip «Полный доступ ко ВСЕМ модулям платформы (включая internalOnly)».',
+      '• <b>Global-settings секция</b> «🏢 Внутрикорпоративный доступ + роль» обновлена — подпись справа от тумблера: «✓ полный доступ ко всем модулям (включая internalOnly)».',
+      '• <b>Принцип</b>: internal-Пользователь — сотрудник компании-разработчика платформы. Имеет любые роли (разработка / тестирование / поддержка / customer-success), поэтому full-access — естественный default. Subscription-tiers применяются только к внешним клиентам.',
+      '• <b>Как использовать (для разработчика)</b>: ⚙ Настройки → секция «🏢 Внутрикорпоративный доступ + роль» → ✓ тумблер «Я сотрудник организации» → роль «👑 Менеджер проектов» (для всех permissions). После — все 🔒 в /modules/ и /hub/ снимутся.',
+      'Файлы: <code>shared/subscriptions.js</code> (hasModuleAccess +isInternalUser early-return), <code>shared/app-header.js</code> (plan-badge label), <code>shared/global-settings.js</code> (internal-toggle подпись).',
+    ] },
     { version: '0.60.139', date: '2026-05-04', items: [
       '🚫 <b>Sweep: замена browser dialogs (alert/confirm/prompt) на in-page UI</b>. Реализация правила <code>feedback_style.md</code> «No browser dialogs» — раньше встречались в нескольких файлах.',
       '• <b>projects/projects.js</b> (5 мест): «Бэкап» / «Восстановить» / «Восстановить связи» — confirm() и alert() заменены на prConfirm/prToast. Стратегия восстановления (REPLACE / MERGE) теперь через двойной prConfirm с описанием в HTML-формате.',

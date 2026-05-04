@@ -616,7 +616,7 @@ function _renderInternalRoleSection(host) {
     <label style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:${internal ? '#dcfce7' : '#f3f4f6'};border:1px solid ${internal ? '#86efac' : '#e2e8f0'};border-radius:5px;cursor:pointer;font-size:12.5px">
       <input type="checkbox" id="rs-gs-internal-toggle" ${internal ? 'checked' : ''}>
       <span><b>${internal ? '🏢 Внутрикорпоративный режим включён' : '🌐 Внешний клиент'}</b></span>
-      <span class="muted" style="font-size:11px;margin-left:auto">${internal ? 'доступны internal-модули (reports, logistics, projects)' : 'только модули из подписки'}</span>
+      <span class="muted" style="font-size:11px;margin-left:auto">${internal ? '✓ полный доступ ко всем модулям (включая internalOnly)' : 'только модули из подписки'}</span>
     </label>
   `;
 

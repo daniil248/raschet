@@ -156,7 +156,8 @@ export function mountHeader(opts = {}) {
   if (!isHub && moduleId !== 'projects' && moduleId !== 'modules') {
     try {
       if (isInternalUser()) {
-        planBadgeHtml = `<button type="button" class="rs-plan-badge rs-plan-internal" title="Внутрикорпоративный режим. Доступны internal-only модули. Кликните для управления ролью и подпиской.">🏢 Internal</button>`;
+        // v0.60.140: internal = full access ко всем модулям (см. subscriptions.js).
+        planBadgeHtml = `<button type="button" class="rs-plan-badge rs-plan-internal" title="🏢 Внутрикорпоративный режим. Полный доступ ко ВСЕМ модулям платформы (включая internalOnly). Кликните для управления ролью и подпиской.">🏢 Internal · Full access</button>`;
       } else {
         const sub = getSubscription();
         const label = planBadge();

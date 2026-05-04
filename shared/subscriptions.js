@@ -280,6 +280,13 @@ export function hasModuleAccess(moduleId, moduleManifest) {
   if (moduleManifest && moduleManifest.internalOnly) {
     return isInternalUser();
   }
+  // v0.60.140: internal-Пользователь = сотрудник компании-разработчика =>
+  // полный доступ ко ВСЕМ модулям, в том числе вне его подписки. По репорту
+  // Пользователя 2026-05-04: «как мне самому теперь использовать все
+  // модули???». Раньше тумблер «Internal» открывал только internalOnly,
+  // что было непоследовательно — внутренний Пользователь имеет любые роли
+  // в системе (разработка, тестирование, поддержка), ему нужен full-access.
+  if (isInternalUser()) return true;
   const sub = getSubscription();
   const plan = PLANS[sub.plan] || PLANS.free;
   // 1) Проверка по plan.modules
