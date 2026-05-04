@@ -2608,31 +2608,32 @@ export function renderNodes() {
         // Icalc per-piece: пересчитываем из per-piece Pcalc.
         const Icalc = (Pcalc > 0 && Ucalc) ? computeCurrentA(Pcalc, Ucalc, cos, isThreePhase(n)) : 0;
         const _vdrop = Number(n._deltaUPct) || 0;
-        // v0.60.185 (по репорту Пользователя 2026-05-04 «в группе должно
-        // быть только расчетные параметры мощности и количество
-        // потребителей»): для consumer-container в body — ТОЛЬКО Расчёт
-        // (Pcalc/Icalc) + count (×: N шт.). Всё остальное скрыто:
-        // Номинал/Свободно/Макс/cos/U/ΔU/Фаза. Подробности — в footer
-        // снаружи карточки («8 × 8.2 kW = 65.6 kW (Pрасч 56 kW)») и
-        // в инспекторе модалки «Состав контейнера».
+        // v0.60.187 (по репорту Пользователя 2026-05-04 «простой потребитель,
+        // групповой потребитель и группа потребителей должны выглядеть
+        // абсолютно идентично по параметрам одного потребителя; для группы
+        // и для группового потребителя дополнительно должно быть количество
+        // в группе»):
+        // Per-unit поля идентичны single consumer: Номинал + Расчёт + Свободно
+        // + cos + U. Для группы — дополнительно count. Σ группы — в footer.
+        // Все значения через единый pipeline: nodeCalcVoltage → computeCurrentA.
         const Icalc_cont = (Pcalc > 0 && Ucalc) ? computeCurrentA(Pcalc, Ucalc, cos, isThreePhase(n)) : 0;
         valueMap = {
-          demandKw:   { v: fmtDigits(Pcalc) },           // Расчёт P
-          currentA:   { v: fmtDigits(Icalc_cont) },      // Расчёт I
-          nominalKw:  { v: null },                        // скрыт в группе
-          capacityA:  { v: null },
-          kvAOrVA:    { v: null },
-          maxKw:      { v: null },
+          demandKw:   { v: fmtDigits(Pcalc) },           // Расчёт P (per-unit)
+          currentA:   { v: fmtDigits(Icalc_cont) },      // Расчёт I (per-unit)
+          nominalKw:  { v: fmtDigits(Pnom)  },           // Номинал P (per-unit)
+          capacityA:  { v: fmtDigits(Inom)  },           // Номинал I (per-unit)
+          kvAOrVA:    { v: fmtDigits(Snom)  },
+          maxKw:      { v: null },                        // только для щитов
           maxA:       { v: null },
-          freeKw:     { v: null },
-          freeA:      { v: null },
-          cosPhi:     { v: null },                        // скрыт в группе
-          voltage:    { v: null },                        // скрыт в группе
-          phase:      { v: null },
+          freeKw:     { v: fmtDigits(n._freeKw) },       // Свободно P (per-line)
+          freeA:      { v: fmtDigits(n._freeA)  },       // Свободно I (per-line)
+          cosPhi:     { v: cos.toFixed(2) },
+          voltage:    { v: Ucalc ? fmt(Ucalc) : null },  // факультативно
+          phase:      { v: null },                        // скрыта
           breakerIn:  { v: null },
-          cableSpec:  { v: null },
+          cableSpec:  { v: n._cableSpec || null },
           deltaUPct:  { v: null },
-          count:      { v: cnt > 1 ? String(cnt) : null }, // Количество потребителей
+          count:      { v: cnt > 1 ? String(cnt) : null }, // Количество (только в группе)
         };
         labelMap = null;
       } else if (n.type === 'consumer') {
