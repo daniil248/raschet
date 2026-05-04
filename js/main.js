@@ -1829,9 +1829,10 @@ function openSettingsModal() {
       const cc = detectCountryCode(country);
       const recommended = resolveAutoNormForActiveProject('cable');
       // recommended = 'iec-60364' / 'pue-7' / 'nec'
+      // v0.60.123: NEC теперь отдельная методика (был alias к iec).
       const recMethodId = recommended === 'pue-7' ? 'pue'
                         : recommended === 'iec-60364' ? 'iec'
-                        : recommended === 'nec' ? 'iec'  // NEC ближе к IEC по подходу к ампасити чем ПУЭ
+                        : recommended === 'nec' ? 'nec'
                         : null;
       if (!recMethodId) return;
       const sel = document.getElementById('set-calcMethod');

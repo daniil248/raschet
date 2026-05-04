@@ -34,12 +34,17 @@
 // ======================================================================
 
 const LEGACY_KEY = 'raschet.priceRecords.v1';
+// v0.60.123 (Phase 41.2): org-level прайс-лист — общий каталог цен
+// для всех членов команды. Sync через Phase 40 Cloud Sync (TODO).
+// Сейчас локально, но изолированно от user-уровня.
+const LEGACY_KEY_ORG = 'raschet.priceRecords.org.v1';
 
 function currentUserId() {
   try { return localStorage.getItem('raschet.currentUserId') || 'anonymous'; }
   catch { return 'anonymous'; }
 }
 function storageKey() { return LEGACY_KEY + '.' + currentUserId(); }
+function storageKeyOrg() { return LEGACY_KEY_ORG; }
 
 export const PRICE_TYPES = {
   purchase:  { label: 'Закупочная',   icon: '💰', description: 'Цена закупки у поставщика' },
@@ -66,6 +71,23 @@ function _read() {
 function _write(list) {
   try { localStorage.setItem(storageKey(), JSON.stringify(list || [])); }
   catch (e) { console.error('[price-records] write failed', e); }
+  _notify();
+}
+
+// v0.60.123: org-уровень read/write.
+function _readOrg() {
+  try {
+    const raw = localStorage.getItem(storageKeyOrg());
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return arr;
+    }
+    return [];
+  } catch { return []; }
+}
+function _writeOrg(list) {
+  try { localStorage.setItem(storageKeyOrg(), JSON.stringify(list || [])); }
+  catch (e) { console.error('[price-records] org write failed', e); }
   _notify();
 }
 

@@ -4,6 +4,19 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.123', date: '2026-05-04', items: [
+      '🇺🇸 <b>Добавлена методика NEC (NFPA 70) для проектов в США/Канаде</b>. По указанию Пользователя 2026-05-04: «ну так добавь NEC».',
+      '• <b>Опция «NEC (NFPA 70)»</b> добавлена в select <code>set-calcMethod</code> (⚙ Параметры расчёта → Методика расчёта). Помимо IEC 60364-5-52 / ПУЭ 7 / РТМ 36.18.32.4-92.',
+      '• <b>Новый файл <code>js/methods/nec.js</code></b> — обёртка над iec с переопределёнными id/label/terms/insulations:',
+      '  • <code>id: \'nec\'</code>, <code>label: \'NEC (NFPA 70)\'</code>.',
+      '  • <code>TERMS_NEC</code>: NEC-специфичные термины — DF (demand factor, NEC 220.42), M_dem, LRA (locked rotor / inrush, NEC 430), PF (NEC 220.61). Aliases на IEC/ПУЭ.',
+      '  • Изоляции: PVC → THWN/THWN-2, XLPE → XHHW-2 (NEC mapping).',
+      '  • Cable types: Multi-conductor (THWN/NM), Single-conductor (THWN), Solid.',
+      '• <b>NEC vs IEC внутри</b>: ампасити-таблицы NEC 310.16 концептуально близки к IEC (ампасити × фактор T × фактор группы). MVP-реализация использует IEC-таблицы внутри (даёт корректный порядок величины и консервативный результат). Полная NEC требует AWG-сечений + NEC Annex C для кондуитов + специфичных bundling factors NEC 310.15(B) — TODO Phase NEC.full.',
+      '• <b>Auto-norm hint</b> теперь корректно мапит recommended=\'nec\' → set-calcMethod=\'nec\' (раньше падал на iec). Для проектов в США/Канаде — рекомендуется NEC.',
+      '• <b>Inspector cable</b> labels: «NEC (NFPA 70)» при <code>GLOBAL.calcMethod === \'nec\'</code>.',
+      'Файлы: <code>index.html</code> (+опция nec в set-calcMethod), <code>js/methods/nec.js</code> (новый ~50 строк, обёртка над iec), <code>js/methods/index.js</code> (+импорт nec в METHODS), <code>js/main.js</code> (recMethodId nec → \'nec\'), <code>js/engine/inspector/conn.js</code> (+ label NEC).',
+    ] },
     { version: '0.60.122', date: '2026-05-04', items: [
       '📋 <b>Cable methodology hint по стране проекта в Параметрах расчёта</b>. Шаг 2 «по порядку». В модалке «⚙ Параметры расчёта» под селектом «Методика расчёта» теперь показывается hint о рекомендуемой методике для country активного проекта.',
       '• <b>Совпадение</b>: зелёная плашка «✓ 🇰🇿 Казахстан — ваш выбор совпадает с рекомендуемым (IEC 60364-5-52)».',

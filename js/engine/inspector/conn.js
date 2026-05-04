@@ -238,11 +238,14 @@ export function renderInspectorConn(c) {
       // используется ПУЭ (см. js/methods/index.js → getMethod). Раньше
       // 'rtm' обрабатывался как 'iec' (default fallback в этом тернарнике),
       // что показывало неверный лейбл.
+      // v0.60.123: добавлен NEC — отдельная методика (NFPA 70 для США/Канады).
       const methodLabel = GLOBAL.calcMethod === 'pue'
         ? 'ПУЭ'
         : GLOBAL.calcMethod === 'rtm'
           ? 'ПУЭ (РТМ → ПУЭ для кабеля)'
-          : 'IEC 60364';
+          : GLOBAL.calcMethod === 'nec'
+            ? 'NEC (NFPA 70)'
+            : 'IEC 60364';
       // v0.59.663/674: для ГРУППОВОГО потребителя (isGroupBreakers — у каждой
       // линии свой автомат и своя нагрузка) терминология «параллельных жил»
       // и суммарного тока неуместна. Юзер: «для кабелей групповых
