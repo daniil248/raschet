@@ -1697,8 +1697,12 @@ export function renderNodes() {
     const tag = effectiveTag(n) || n.tag || 'UPS';
     const cap = (n.supplier ? n.supplier + ' ' : '') + (n.model || '');
     g.appendChild(text(8, 12, `📦 ${tag}${cap ? ' · ' + cap : ''} (Integrated)`, 'node-tag'));
-    // Кладём оболочку В САМЫЙ НИЗ, чтобы не перекрывать дочерние элементы.
-    layerNodes.insertBefore(g, layerNodes.firstChild);
+    // v0.60.185 (по репорту Пользователя 2026-05-04 «и линии должны быть
+    // поверх зон или оболочек ИБП»): помещаем оболочку в layerZones (под
+    // layerConns), чтобы линии связей рисовались ПОВЕРХ полупрозрачной
+    // заливки шкафа. Раньше layerNodes.insertBefore → оболочка была ПОД
+    // children-узлами в том же слое, но ВЫШЕ layerConns → линии тонились.
+    (zoneParent || layerNodes).appendChild(g);
   }
 
   // Многосекционные щиты — обёртка-контейнер (рисуется как зона)
@@ -1755,7 +1759,9 @@ export function renderNodes() {
     // Хэндл для перетаскивания (полоса сверху)
     g.appendChild(el('rect', { x: 0, y: 0, width: ww, height: 20,
       fill: 'transparent', style: 'cursor:move', class: 'zone-drag-handle' }));
-    layerNodes.appendChild(g);
+    // v0.60.185: sectioned-обёртка тоже в layerZones (под layerConns), чтобы
+    // линии связей рисовались поверх полупрозрачной фиолетовой заливки.
+    (zoneParent || layerNodes).appendChild(g);
   }
 
   // Каналы в режиме трассы (trayMode) — рисуем как повёрнутые прямоугольники
@@ -1948,7 +1954,24 @@ export function renderNodes() {
       selected ? 'selected' : '',
       state.selection.has(n.id) ? 'multi-selected' : '',
       _hasNodeIssue ? 'overload' : '',
-      (!n._powered && (n.type === 'panel' || n.type === 'consumer' || n.type === 'consumer-container' || n.type === 'ups')) ? 'unpowered' : '',
+      // v0.60.185 (по репорту Пользователя 2026-05-04 «и цвет группы почему-то
+      // поменялся»): для consumer-container НЕ применяем класс 'unpowered'
+      // (faded gray). _powered контейнера ненадёжен при parallel-priorities
+      // [1,1] на nested consumer'е (см. open issue activeInputs). Если хотя
+      // бы один linked-member запитан — считаем контейнер запитанным.
+      (() => {
+        if (n._powered) return '';
+        if (n.type !== 'panel' && n.type !== 'consumer' && n.type !== 'consumer-container' && n.type !== 'ups') return '';
+        if (n.type === 'consumer-container' && Array.isArray(n.slots)) {
+          for (const s of n.slots) {
+            if (s && s.kind === 'linked' && s.nodeId) {
+              const a = state.nodes.get(s.nodeId);
+              if (a && a._powered) return ''; // member powered → container coloured normally
+            }
+          }
+        }
+        return 'unpowered';
+      })(),
       (n.type === 'ups' && n._onBattery) ? 'onbattery' : '',
       (n.type === 'ups' && n._onStaticBypass) ? 'onbypass' : '',
       (n.type === 'panel' && n.switchMode === 'manual') ? 'manual' : '',
@@ -2585,31 +2608,31 @@ export function renderNodes() {
         // Icalc per-piece: пересчитываем из per-piece Pcalc.
         const Icalc = (Pcalc > 0 && Ucalc) ? computeCurrentA(Pcalc, Ucalc, cos, isThreePhase(n)) : 0;
         const _vdrop = Number(n._deltaUPct) || 0;
-        // v0.60.184 (по репорту Пользователя 2026-05-04 «в режиме Электрик
-        // для потребителя нужно: Номинал P/I + Расчётный P/I + Свободно P/I
-        // + cos φ. Факультативно U. Фаза не нужна»):
-        // demandKw/currentA = расчётная (Pcalc/Icalc),
-        // nominalKw/capacityA = номинальная (Pnom/Inom),
-        // freeKw/freeA = доступная мощность/ток на линии,
-        // phase = скрыт, maxKw/maxA = скрыт (только щиты), ΔU = скрыт.
+        // v0.60.185 (по репорту Пользователя 2026-05-04 «в группе должно
+        // быть только расчетные параметры мощности и количество
+        // потребителей»): для consumer-container в body — ТОЛЬКО Расчёт
+        // (Pcalc/Icalc) + count (×: N шт.). Всё остальное скрыто:
+        // Номинал/Свободно/Макс/cos/U/ΔU/Фаза. Подробности — в footer
+        // снаружи карточки («8 × 8.2 kW = 65.6 kW (Pрасч 56 kW)») и
+        // в инспекторе модалки «Состав контейнера».
         const Icalc_cont = (Pcalc > 0 && Ucalc) ? computeCurrentA(Pcalc, Ucalc, cos, isThreePhase(n)) : 0;
         valueMap = {
           demandKw:   { v: fmtDigits(Pcalc) },           // Расчёт P
           currentA:   { v: fmtDigits(Icalc_cont) },      // Расчёт I
-          nominalKw:  { v: fmtDigits(Pnom)  },           // Номинал P
-          capacityA:  { v: fmtDigits(Inom)  },           // Номинал I
-          kvAOrVA:    { v: fmtDigits(Snom)  },
-          maxKw:      { v: null },                        // Макс — только для щитов
+          nominalKw:  { v: null },                        // скрыт в группе
+          capacityA:  { v: null },
+          kvAOrVA:    { v: null },
+          maxKw:      { v: null },
           maxA:       { v: null },
-          freeKw:     { v: fmtDigits(n._freeKw) },       // Свободно P
-          freeA:      { v: fmtDigits(n._freeA)  },       // Свободно I
-          cosPhi:     { v: cos.toFixed(2) },
-          voltage:    { v: Ucalc ? fmt(Ucalc) : null },  // Факультативно
-          phase:      { v: null },                        // Фаза — скрыта
+          freeKw:     { v: null },
+          freeA:      { v: null },
+          cosPhi:     { v: null },                        // скрыт в группе
+          voltage:    { v: null },                        // скрыт в группе
+          phase:      { v: null },
           breakerIn:  { v: null },
-          cableSpec:  { v: n._cableSpec || null },
-          deltaUPct:  { v: null },                        // ΔU — скрыт
-          count:      { v: null },                        // count в footer
+          cableSpec:  { v: null },
+          deltaUPct:  { v: null },
+          count:      { v: cnt > 1 ? String(cnt) : null }, // Количество потребителей
         };
         labelMap = null;
       } else if (n.type === 'consumer') {
@@ -2985,7 +3008,11 @@ export function renderNodes() {
       if (c.to.nodeId === n.id) portConns.set(c.to.port, c);
     }
     const gs = 40; // GLOBAL.gridStep
-    const isSideInput = (n.type === 'consumer' && n.inputSide && n.inputSide !== 'top')
+    // v0.60.185 (по репорту Пользователя 2026-05-04 «для группы не работает
+    // расположение входов??? Чини»): consumer-container тоже учитывает
+    // n.inputSide (left/right/split). Раньше проверка была ограничена
+    // n.type === 'consumer' → группа всегда показывала входы сверху.
+    const isSideInput = ((n.type === 'consumer' || n.type === 'consumer-container') && n.inputSide && n.inputSide !== 'top')
                       || (n.type === 'generator' && n.auxInput);
     for (let i = 0; i < inCount; i++) {
       let cx, cy;
@@ -3026,7 +3053,7 @@ export function renderNodes() {
       // ни порт, ни приходящую к нему линию/стрелку.
       // Важно: .port-label в CSS имеет text-anchor:middle, поэтому переопределяем
       // через inline style (attribute setAttribute тут CSS перекрывает).
-      if (n.type === 'panel' || (n.type === 'consumer' && inCount > 1)) {
+      if (n.type === 'panel' || ((n.type === 'consumer' || n.type === 'consumer-container') && inCount > 1)) {
         const prio = (n.priorities && n.priorities[i]) ?? (i + 1);
         if (isSideInput) {
           // Боковой вход: подпись левее/правее порта на его высоте
@@ -3553,7 +3580,8 @@ export function renderConns() {
     //   - generator с auxInput (порт СН) на auxInputSide left/right
     const aDir = { x: 0, y: 1 };
     let bDir = { x: 0, y: -1 };
-    if (toN.type === 'consumer' && toN.inputSide && toN.inputSide !== 'top') {
+    // v0.60.185: consumer-container тоже учитывает inputSide.
+    if ((toN.type === 'consumer' || toN.type === 'consumer-container') && toN.inputSide && toN.inputSide !== 'top') {
       const side = toN.inputSide;
       if (side === 'left') bDir = { x: -1, y: 0 };
       else if (side === 'right') bDir = { x: 1, y: 0 };

@@ -28,16 +28,22 @@ const COMMON_REQUIRED = [
 const SCHEMATIC_FIELDS = {
   consumer: [
     ...COMMON_REQUIRED,
-    // v0.59.879: подписи полей сделаны ОДНОЗНАЧНЫМИ. Раньше «Ток (А)» / «Макс.»
-    // / «Номинал» — было непонятно к чему относятся. Теперь label явно
-    // указывает что это: установочное / расчётное / номинальное.
+    // v0.59.879: подписи полей сделаны ОДНОЗНАЧНЫМИ.
+    // v0.60.185 (по репорту Пользователя 2026-05-04 «нужно выводить
+    // номинальную мощность/ток и расчетную мощность/ток. это же актуально
+    // и для группы потребителей»): добавлено capacityA для consumer
+    // (раньше было только в panel). Это нужно чтобы PAIR «Номинал»
+    // (nominalKw + capacityA → «Номинал: 8.2 кВт / 21.35 А») работал
+    // на consumer-карточке. Семантика: capacityA = номинальный ток
+    // потребителя Iном.
     { id: 'subtitle',     label: 'Подзаголовок (тип / вход)',  shortLabel: 'Тип',         group: 'identification' },
-    { id: 'demandKw',     label: 'Установл. мощность (кВт)',   shortLabel: 'Pуст',        unit: 'кВт', group: 'electrical' },
+    { id: 'demandKw',     label: 'Расчётная мощность (кВт)',   shortLabel: 'Pрасч',       unit: 'кВт', group: 'electrical' },
     { id: 'kvAOrVA',      label: 'Полная мощность (кВА)',      shortLabel: 'S',           unit: 'кВА', group: 'electrical' },
-    { id: 'currentA',     label: 'Установл. ток (А)',          shortLabel: 'Iуст',        unit: 'А',   group: 'electrical' },
-    { id: 'maxKw',        label: 'Расчётная мощность (кВт, с Ки)', shortLabel: 'Pрасч',   unit: 'кВт', group: 'electrical' },
-    { id: 'maxA',         label: 'Расчётный ток (А, с Ки)',    shortLabel: 'Iрасч',       unit: 'А',   group: 'electrical' },
+    { id: 'currentA',     label: 'Расчётный ток (А)',          shortLabel: 'Iрасч',       unit: 'А',   group: 'electrical' },
+    { id: 'maxKw',        label: 'Макс. мощность (кВт)',       shortLabel: 'Pмакс',       unit: 'кВт', group: 'electrical' },
+    { id: 'maxA',         label: 'Макс. ток (А)',              shortLabel: 'Iмакс',       unit: 'А',   group: 'electrical' },
     { id: 'nominalKw',    label: 'Номинальная мощность (кВт)', shortLabel: 'Pном',        unit: 'кВт', group: 'electrical' },
+    { id: 'capacityA',    label: 'Номинальный ток (А)',        shortLabel: 'Iном',        unit: 'А',   group: 'electrical' },
     { id: 'cosPhi',       label: 'cos φ',                      shortLabel: 'cos φ',                    group: 'electrical' },
     { id: 'phase',        label: 'Фаза',                       shortLabel: 'Фаза',                     group: 'electrical' },
     { id: 'voltage',      label: 'Напряжение (В)',             shortLabel: 'U',           unit: 'В',   group: 'electrical' },

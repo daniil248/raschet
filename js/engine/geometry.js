@@ -119,7 +119,8 @@ export function nodeWidth(n) {
   // Многосекционный контейнер — размер по секциям
   if (n.type === 'panel' && n.switchMode === 'sectioned') return Number(n._wrapW) || 400;
   const gs = GLOBAL.gridStep || 40;
-  const inTop = (n.type !== 'consumer' || !n.inputSide || n.inputSide === 'top');
+  // v0.60.185: consumer-container тоже учитывает inputSide.
+  const inTop = ((n.type !== 'consumer' && n.type !== 'consumer-container') || !n.inputSide || n.inputSide === 'top');
   const inPorts = inTop ? nodeInputCount(n) : 0;
   const maxPorts = Math.max(inPorts, nodeOutputCount(n), 1);
   const rawW = (maxPorts + 1) * gs;
@@ -144,8 +145,8 @@ export function portPos(n, kind, idx) {
     else return { x: n.x + w, y: n.y + h / 2 };
   }
 
-  // Consumer inputSide: входы сбоку
-  if (n.type === 'consumer' && kind === 'in' && n.inputSide && n.inputSide !== 'top') {
+  // Consumer / consumer-container inputSide: входы сбоку (v0.60.185)
+  if ((n.type === 'consumer' || n.type === 'consumer-container') && kind === 'in' && n.inputSide && n.inputSide !== 'top') {
     const side = n.inputSide;
     const inCount = nodeInputCount(n);
     if (side === 'left') {

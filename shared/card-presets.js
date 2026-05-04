@@ -83,14 +83,21 @@ export const SYSTEM_PRESETS = [
     id: 'electrician',
     name: 'Электрик',
     system: true,
-    description: 'Электрические параметры: kW/A/автомат/кабель/ΔU/Свободно.',
+    description: 'Электрические параметры: Номинал/Расчёт/Свободно/cos φ.',
     perMode: _buildPresetFields((kind, type) => {
       if (kind !== 'schematic') return null;
+      // v0.60.185 (по репорту Пользователя 2026-05-04 «нужно выводить
+      // номинальную мощность/ток и расчетную мощность/ток. это же
+      // актуально и для группы потребителей»):
+      // + nominalKw добавлено (давало пару Номинал P/I с capacityA в render).
+      // Расчёт/Макс/Свободно/cos/U/кабель/автомат/ΔU остаются. Phase
+      // остаётся в preset для других типов узлов (ups/source) — но для
+      // consumer/consumer-container hidden в valueMap (render.js v0.60.184).
       const elFields = ['demandKw', 'currentA', 'maxKw', 'maxA',
                         'freeKw', 'freeA',
                         'breakerIn', 'cableSpec', 'deltaUPct',
                         'voltage', 'phase', 'cosPhi', 'count',
-                        'capacityA', 'marginPct',
+                        'nominalKw', 'capacityA', 'marginPct',
                         'snomKva', 'sscMva', 'ukPct',
                         'kva', 'kw', 'autonomyMin', 'redundancy',
                         'sourceSubtype', 'switchMode',

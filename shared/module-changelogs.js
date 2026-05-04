@@ -4,6 +4,19 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.185', date: '2026-05-04', items: [
+      '↔ <b>Расположение входов работает для группы (consumer-container)</b>. По репорту Пользователя 2026-05-04 «для группы не работает расположение входов??? Чини». Раньше все проверки <code>inputSide</code> (left/right/split) были ограничены <code>n.type === \'consumer\'</code> — группа всегда показывала входы сверху, кнопки «Слева/Справа/По бокам» в инспекторе не имели эффекта на холсте.',
+      '• Фикс: расширены проверки на <code>consumer-container</code> в render.js (isSideInput, priority labels, conn-endpoint dir) и geometry.js (nodeWidth.inTop, portPos).',
+      '🔌 <b>Линии связей поверх UPS-shell и sectioned-обёрток</b>. По репорту Пользователя «и линии должны быть поверх зон или оболочек ИБП». Раньше integrated-ups-shell и sectioned-wrapper рендерились в layerNodes (выше layerConns) с полупрозрачной заливкой → линии тонились внутри корпуса.',
+      '• Фикс: оба элемента переехали в layerZones (под layerConns).',
+      '🎴 <b>Карточки потребителя/группы — финальная развёрстка</b>. По нескольким репортам Пользователя 2026-05-04: «в режиме Электрик нужно Номинал + Расчёт + Свободно + cos φ. это же актуально и для группы потребителей. в группе должно быть только расчетные параметры мощности и количество потребителей. цвет группы поменялся».',
+      '• <b>Single consumer</b>: Номинал (P/I) + Расчёт (P/I) + Свободно (P/I) + cos φ + U (опц.). Скрыто: Макс, Фаза, ΔU.',
+      '• <b>Consumer-container (группа)</b>: ТОЛЬКО Расчёт (P/I) + count (×: N шт.) в body. Подробности — в footer-метке снаружи («8 × 8.2 kW = 65.6 kW (Pрасч 56 kW)») и в модалке состава.',
+      '• <b>Registry</b>: для consumer добавлено поле <code>capacityA</code> (Номинальный ток I_ном, А) — чтобы PAIR «Номинал: Pном кВт / Iном А» работал. Раньше capacityA было только для panel.',
+      '• <b>Электрик preset</b>: добавлен <code>nominalKw</code> (был не включён → пара Номинал не строилась).',
+      '• <b>Цвет группы</b>: класс <code>unpowered</code> (faded gray) больше не применяется к consumer-container если хотя бы один linked-member запитан. Раньше container._powered был ненадёжен при parallel-priorities на nested-consumer\'е → группа выглядела «обесточенной» хотя члены были запитаны.',
+      'Файлы: <code>js/engine/render.js</code> (valueMap для consumer + consumer-container, unpowered-class fallback), <code>shared/card-fields-registry.js</code> (+capacityA для consumer), <code>shared/card-presets.js</code> (+nominalKw в Электрик preset).',
+    ] },
     { version: '0.60.184', date: '2026-05-04', items: [
       '🎴 <b>Карточка потребителя — Электрик preset (final)</b>. По репорту Пользователя 2026-05-04 «в режиме Электрик нужно: Номинал P/I + Расчётный P/I + Свободно P/I + cos φ. Факультативно U. Фаза не нужна — и так понятно».',
       '• <b>Видимо</b> на consumer/consumer-container: Номинал (Pnom/Inom), Расчёт (Pcalc/Icalc), Свободно (P/I), cos φ, U (опционально), кабель.',
