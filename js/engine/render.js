@@ -3000,16 +3000,26 @@ export function renderNodes() {
         // не молчаливый 0, а конкретное превышение.
         const overA = Number(n._overloadA) || 0;
         const overKw = Number(n._overloadKw) || 0;
+        // v0.60.231 (по репорту Пользователя 2026-05-05 «откуда перегруз
+        // 7.5 кВт если запас 16.9%»): «Перегруз» относится к ПИТАЮЩЕМУ
+        // контуру (входной кабель / автомат), «Запас» — к самому щиту
+        // (capacityA). Эти метрики разные. Чтобы не путать, добавляем
+        // суффикс «(кабель)» / «(автомат)» к «Перегруз» — n._freeLimit
+        // хранит какое из двух уже узкое место.
+        const _limitLbl = n._freeLimit === 'cable' ? ' кабель'
+                        : n._freeLimit === 'breaker' ? ' автомат'
+                        : '';
+        const _overSuffix = _limitLbl ? ` (${_limitLbl.trim()})` : '';
         // Свободно + Запас → одна строка.
         const freeIdx = _findRowIdxP(_bodyArr, 'Свободно:');
         const margIdx = _findRowIdxP(_bodyArr, 'Запас:');
         if (freeIdx >= 0 && margIdx >= 0) {
           let merged = `${_bodyArr[freeIdx]} · ${_bodyArr[margIdx]}`;
           if (overA > 0) {
-            // «Перегруз X.X kW / Y.Y A» (kW если есть Pover, иначе только A)
+            // «Перегруз X.X kW / Y.Y A (кабель/автомат)»
             const overTxt = overKw > 0
-              ? `Перегруз ${overKw.toFixed(1)} kW / ${overA.toFixed(1)} A`
-              : `Перегруз ${overA.toFixed(1)} A`;
+              ? `Перегруз${_overSuffix} ${overKw.toFixed(1)} kW / ${overA.toFixed(1)} A`
+              : `Перегруз${_overSuffix} ${overA.toFixed(1)} A`;
             merged += ` · ${overTxt}`;
           }
           const idxs = [freeIdx, margIdx].sort((a, b) => b - a);
@@ -3018,8 +3028,8 @@ export function renderNodes() {
         } else if (freeIdx >= 0 && overA > 0) {
           // Только Свободно (без Запас) — добавляем перегруз.
           const overTxt = overKw > 0
-            ? `Перегруз ${overKw.toFixed(1)} kW / ${overA.toFixed(1)} A`
-            : `Перегруз ${overA.toFixed(1)} A`;
+            ? `Перегруз${_overSuffix} ${overKw.toFixed(1)} kW / ${overA.toFixed(1)} A`
+            : `Перегруз${_overSuffix} ${overA.toFixed(1)} A`;
           _bodyArr[freeIdx] = `${_bodyArr[freeIdx]} · ${overTxt}`;
         }
         // Sном (kVA) + Pном (kW) → одна строка «Номинал».
