@@ -3476,21 +3476,22 @@ function recalc() {
     }
   }
 
-  // v0.60.229 (по репорту Пользователя 2026-05-05 «панель UPS1.IT1 и UPS1.IT2
-  // питают одну и туже нагрузку с двух сторон, почему параметр Макс у них
-  // разный, текущий да может быть разный, но макс должен быть одинаковый»):
-  // выравнивание _maxLoadKw для parallel-sibling панелей (PDM-щиты одного
-  // ИБП, или просто два щита питающие общий пул потребителей).
+  // v0.60.236 (по репорту Пользователя 2026-05-05 «у тебя раньше все
+  // нормально считалось, теперь ты мне опять мозг выносишь» / «нагрузка
+  // собирается только в верх и попадать опять вниз не может ни как»):
+  // полностью ОТКЛЮЧЁН sibling-clamp v0.60.229. Он создавал регрессии
+  // (PDM-AC ошибочно «видел» нагрузку всего UPS1 = 133.8 кВт вместо своих
+  // ~7-8 кВт). Каждая panel снова считает свой _maxLoadKw независимо
+  // через maxDownstreamLoad → _bfsDownstreamWithActiveTies.
   //
-  // Алгоритм:
-  //   1. Для каждой panel'и собираем set достижимых consumer-id (downstream).
-  //   2. Группируем panel'и с пересекающимися sets как parallel-siblings.
-  //      Критерий: ≥1 общий consumer ИЛИ оба integratedChildIds одного UPS.
-  //   3. Для каждой группы пересчитываем «union max» — сумма demand всех
-  //      consumer-ов из объединения sets.
-  //   4. Все siblings получают одинаковый _maxLoadKw = union max
-  //      (если он больше их собственного).
-  {
+  // Если впоследствии нужна реальная корректировка для случая «IT1 и IT2
+  // питают одно и то же» — это надо делать через явный markup в схеме
+  // (parallelGroup, integratedSiblings) а не эвристикой по пересечению
+  // downstream-сетов. Эвристика создаёт false positives при cross-feeds.
+  //
+  // Сохранён ниже (с if (false)) — для возможного включения в будущем
+  // через настройку, если найдём более точный критерий.
+  if (false) {
     const panelDownstream = new Map(); // panelId → Set<consumerId>
     const _walkConsumers = (startId) => {
       const reachable = new Set();
@@ -3501,6 +3502,12 @@ function recalc() {
         for (const c of state.conns.values()) {
           if (c.from.nodeId !== cur) continue;
           if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+          // v0.60.236 (по репорту Пользователя 2026-05-05 «АГПТ Z1.L8 запитан
+          // только от AC, где ты там увидал IT?????»): пропускаем internal
+          // integrated conns (фабричные шины внутри ИБП Kehua MR33 между
+          // PDM-IT/PDM-AC/UPS-core). Иначе walk от PDM-AC проходит обратно
+          // в UPS-parent и оттуда в PDM-IT → ошибочно «видит» IT-нагрузку.
+          if (c._isInternalIntegrated) continue;
           const to = state.nodes.get(c.to.nodeId);
           if (!to) continue;
           if (to.type === 'consumer' || to.type === 'consumer-container') {
