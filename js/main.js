@@ -7754,6 +7754,18 @@ async function init() {
         n.appliedConfig = n.appliedConfig || {};
         n.appliedConfig.dgu = JSON.parse(JSON.stringify({ selected: sel, spec: sp, ts: msg.ts || Date.now() }));
         if (window.Raschet.rerender) window.Raschet.rerender();
+        // v0.60.226 (по репорту Пользователя 2026-05-04 «еще не сбросилось»):
+        // если модалка «Параметры источника (IEC 60909)» открыта для этого
+        // же узла — перерисовываем её (иначе stale: значения kW/kVA/cosPhi
+        // не обновляются после apply).
+        try {
+          const _mImp = document.getElementById('modal-impedance');
+          if (_mImp && !_mImp.classList.contains('hidden') && _mImp.dataset?.nodeId === String(n.id)) {
+            if (window.Raschet?.openImpedanceModal) {
+              window.Raschet.openImpedanceModal(n);
+            }
+          }
+        } catch {}
         const lbl = `${sel.vendor || ''} ${sel.model || ''}`.trim() || 'ДГУ';
         rsToast(`ДГУ «${lbl}» (${n.capacityKw} кВт / ${n.snomKva} кВА) применена к узлу «${n.tag || n.name || n.id}».`, 'ok');
       } catch (e) { console.warn('dgu.apply error', e); }

@@ -373,7 +373,14 @@ export function openImpedanceModal(n) {
     flash('Параметры источника обновлены');
   };
 
-  document.getElementById('modal-impedance').classList.remove('hidden');
+  // v0.60.226: запоминаем nodeId на модалке — main.js apply-handler по этому
+  // атрибуту понимает что модалка открыта для этого узла и нужно её
+  // перерисовать (иначе stale-данные после применения dgu-config).
+  const _mImp = document.getElementById('modal-impedance');
+  if (_mImp) {
+    _mImp.dataset.nodeId = n && n.id ? String(n.id) : '';
+    _mImp.classList.remove('hidden');
+  }
 }
 
 // ================= Модалка «Режим работы и номиналы (ISO 8528)» =================

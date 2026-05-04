@@ -592,17 +592,29 @@ function _renderApplyBar(spec) {
     else card.prepend(bar);
   }
   const best = _lastBest;
+  // v0.60.226 (по репорту Пользователя 2026-05-04 «опять кнопки возврата
+  // в модуль нет» / «кнопка прячется»): rs-cfg-btn-primary имеет светлую
+  // заливку и сливается с зелёным фоном баннера — текст почти не виден,
+  // только при hover становится синим. Заменили на явный inline-стиль с
+  // синей заливкой и белым текстом, видимыми всегда.
+  // v0.60.226: показываем мощность по ВЫБРАННОМУ режиму (не всегда ESP).
+  const _activeMp = best ? getDguModePowerKw(best, _state.mode) : null;
+  const _kwTxt = (_activeMp && Number.isFinite(_activeMp.kw)) ? fmt(_activeMp.kw) : '—';
   const lbl = best
-    ? `<b>${escHtml(best.vendor)} ${escHtml(best.model)}</b> — ESP ${fmt(best.espKw)} кВт`
+    ? `<b>${escHtml(best.vendor)} ${escHtml(best.model)}</b> — ${escHtml(_state.mode)} ${_kwTxt} кВт`
     : `<span class="muted">Подбор не найден</span>`;
+  const _btnStyle = best
+    ? 'background:#1d4ed8;color:#fff;border:1px solid #1e40af;padding:9px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.15);white-space:nowrap'
+    : 'background:#cbd5e1;color:#64748b;border:1px solid #94a3b8;padding:9px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:not-allowed;white-space:nowrap';
   bar.innerHTML = `
-    <div style="font-size:13px">
+    <div style="font-size:13px;flex:1 1 auto;min-width:0">
       🔗 Возврат в Конструктор схем · узел <code>${escHtml(_nodeId)}</code><br>
       ${lbl}
     </div>
-    <button type="button" id="dg-apply-btn" class="rs-cfg-btn-primary"
+    <button type="button" id="dg-apply-btn"
       ${best ? '' : 'disabled'}
-      title="Записать выбранную модель ДГУ в узел Конструктора схем (manufacturer, model, capacityKw, fuelSfcLkWh).">
+      title="Записать выбранную модель ДГУ в узел Конструктора схем (manufacturer, model, capacityKw, snomKva, genRatings, fuelSfcLkWh)."
+      style="${_btnStyle}">
       ↩ Применить к узлу схемы
     </button>
   `;
