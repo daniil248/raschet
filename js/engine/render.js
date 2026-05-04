@@ -2023,28 +2023,37 @@ export function renderNodes() {
       // Пользователь: «любое рассогласование параметров нагрузок входящих
       // в группу, должно формировать предупреждение». Tooltip с deталями
       // через title-атрибут добавляется отдельно ниже.
+      // v0.60.188 (по репорту Пользователя 2026-05-04 «нет 8х7 = 56 кВт»):
+      // footer-метка теперь показывает РАСЧЁТНУЮ мощность (Pcalc per-unit
+      // × N = Σ Pcalc), а не установленную (Pnom × N). Раньше «8 × 8.2 kW
+      // = 65.6 kW (Pрасч 56 kW)» — показывал и Pуст и Pрасч в скобках.
+      // Теперь только Pрасч: «8 × 7 kW = 56 kW».
       const _calcKwTotal = _isContainer ? consumerCalcDemandKw(n) : 0;
-      const _hasKi = _isContainer && Math.abs(_calcKwTotal - totalKw) > 0.01 && _calcKwTotal > 0;
+      const _calcKwPerUnit = (_homo && _homo.homogeneous && _homo.common && _homo.common.demandKw > 0)
+        ? _homo.common.demandKw * (_homo.common.kUse || 1)
+        : (_homo && _homo.count > 0 ? _calcKwTotal / _homo.count : 0);
       const _mismatchSuffix = _isMixed ? ' ⚠' : '';
       let gLabel = '';
       if (_showKw && _showCount) {
         if (_isContainer) {
-          if (_homo && _homo.homogeneous && _homo.count > 1 && _homo.common && _homo.common.demandKw > 0) {
-            gLabel = `${_homo.count} × ${fmtPower(_homo.common.demandKw)} = ${fmtPower(totalKw)}`;
-            if (_hasKi) gLabel += ` (Pрасч ${fmtPower(_calcKwTotal)})`;
+          if (_homo && _homo.homogeneous && _homo.count > 1 && _calcKwPerUnit > 0) {
+            // «8 × 7 kW = 56 kW» — Pрасч на единицу × count = Σ Pрасч.
+            gLabel = `${_homo.count} × ${fmtPower(_calcKwPerUnit)} = ${fmtPower(_calcKwTotal)}`;
           } else {
-            gLabel = `Σ ${fmtPower(totalKw)} (${cntEff} шт.)`;
-            if (_hasKi) gLabel += ` · Pрасч ${fmtPower(_calcKwTotal)}`;
+            gLabel = `Σ ${fmtPower(_calcKwTotal || totalKw)} (${cntEff} шт.)`;
             gLabel += _mismatchSuffix;
           }
         } else {
+          // Простой консьюмер с count > 1 (групповой потребитель): Pрасч × count.
+          const _pCalcPerUnit = (Number(n.demandKw) || 0) * (Number(n.kUse) || 1);
+          const _pCalcTotal = (Number(n._loadKw) || (_pCalcPerUnit * (n.count || 1)));
           gLabel = (n.groupMode === 'individual' && Array.isArray(n.items))
-            ? `Σ ${fmtPower(totalKw)} (${cntEff} шт.)`
-            : `${n.count || 1} × ${fmtPower(n.demandKw)} = ${fmtPower(totalKw)}`;
+            ? `Σ ${fmtPower(_pCalcTotal)} (${cntEff} шт.)`
+            : `${n.count || 1} × ${fmtPower(_pCalcPerUnit)} = ${fmtPower(_pCalcTotal)}`;
         }
       } else if (_showKw) {
-        gLabel = `Σ ${fmtPower(totalKw)}`;
-        if (_hasKi) gLabel += ` (Pрасч ${fmtPower(_calcKwTotal)})`;
+        const _showVal = _isContainer ? (_calcKwTotal || totalKw) : (Number(n._loadKw) || totalKw);
+        gLabel = `Σ ${fmtPower(_showVal)}`;
         gLabel += _mismatchSuffix;
       } else if (_showCount) {
         gLabel = `${cntEff} шт.${_mismatchSuffix}`;
@@ -2646,7 +2655,12 @@ export function renderNodes() {
         const Snom = Pnom > 0 ? Pnom / cosC : 0;
         const PcalcTotal = Number(n._loadKw) || 0;
         const Pcalc = _isUniformGroup ? (PcalcTotal / cnt) : PcalcTotal;
-        const Icalc = _isUniformGroup ? ((Number(n._loadA) || 0) / cnt) : (Number(n._loadA) || 0);
+        // v0.60.188 (по репорту Пользователя 2026-05-04 «да почему они у тебя
+        // опять разные???»): Icalc для consumer теперь вычисляется ИЗ Pcalc
+        // через computeCurrentA — как для consumer-container. Раньше
+        // использовался n._loadA, который для consumer-узлов recalc не
+        // выставляет (consumer — leaf), → давало 0 А на карточке.
+        const Icalc = (Pcalc > 0 && Ucalc) ? computeCurrentA(Pcalc, Ucalc, cosC, isThreePhase(n)) : 0;
         const _vdrop = Number(n._deltaUPct) || 0;
         // v0.60.184 (по репорту Пользователя): для consumer на карточке
         // показываем Номинал (Pnom/Inom) + Расчёт (Pcalc/Icalc) + Свободно

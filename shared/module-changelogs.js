@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.188', date: '2026-05-04', items: [
+      '🔢 <b>Icalc для consumer теперь из Pcalc (как у container)</b>. По репорту Пользователя 2026-05-04 «да почему они у тебя опять разные???». Single consumer показывал «Расчёт: 3.5 кВт / 0 A» — нулевой ток.',
+      '• <b>Корень bug</b>: для single consumer Icalc читался из <code>n._loadA</code>. Но recalc.js не выставляет _loadA на consumer-узле (consumer = leaf, ток вычисляется только на upstream-узлах после walkUp). → Icalc=0.',
+      '• <b>Фикс</b>: Icalc для consumer теперь = <code>computeCurrentA(Pcalc, Ucalc, cos, threePhase)</code> — как для consumer-container. Тот же pipeline, идентичные числа.',
+      '🏷 <b>Footer-метка группы: Pрасч × N = Σ Pрасч</b> (без Pном). По репорту «нет 8х7 = 56 кВт». Раньше «8 × 8.2 kW = 65.6 kW (Pрасч 56 kW)» — Pном × N в начале, Pрасч в скобках. Теперь «8 × 7 kW = 56 kW» — только расчётная.',
+      'Файл: <code>js/engine/render.js</code> (consumer Icalc через computeCurrentA, footer formula через Pcalc).',
+    ] },
     { version: '0.60.187', date: '2026-05-04', items: [
       '🎴 <b>Карточки simple/group/container — идентичная развёрстка per-unit</b>. По репорту Пользователя 2026-05-04 «простой потребитель, групповой потребитель и группа потребителей должны выглядеть абсолютно идентично по параметрам одного потребителя; для группы и для группового потребителя дополнительно должно быть количество в группе».',
       '• <b>Все 3 типа карточек</b>: Номинал (Pnom/Inom per-unit) + Расчёт (Pcalc/Icalc per-unit) + Свободно (P/I per-line) + cos φ + U (опц.).',
