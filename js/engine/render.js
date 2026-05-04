@@ -2585,21 +2585,22 @@ export function renderNodes() {
         // Icalc per-piece: пересчитываем из per-piece Pcalc.
         const Icalc = (Pcalc > 0 && Ucalc) ? computeCurrentA(Pcalc, Ucalc, cos, isThreePhase(n)) : 0;
         const _vdrop = Number(n._deltaUPct) || 0;
-        // v0.60.177 (по репорту Пользователя 2026-05-04 «расчетная мощность
-        // на карточке и в свойствах не совпадают»): demandKw/currentA теперь
-        // отображают РАСЧЁТНУЮ мощность/ток (P_ном × Ki × множитель), как
-        // в инспекторе. Раньше demandKw=Pnom давало карточку «Расчёт: 8.2 кВт»
-        // когда модал показывал «Расчётная: 3.5 кВт». nominalKw/capacityA —
-        // установленная мощность (P_ном) / номинальный ток (I_ном).
-        const Icalc_cont = (Pcalc > 0 && Ucalc) ? computeCurrentA(Pcalc, Ucalc, cos, isThreePhase(n)) : 0;
+        // v0.60.182 (по репорту Пользователя 2026-05-04 «падение напряжения
+        // на карточке потребителя не нужно. А вот номинальную мощность / ток,
+        // лучше вывести. Расчетный и максимальный наверное тоже не нужен.
+        // Максимальный ток / мощность актуально только для щитов»):
+        // для consumer-container на карточке показываем ТОЛЬКО номинальную
+        // мощность/ток (Pnom/Inom). Скрываем: расчётный (demandKw/currentA),
+        // максимальный (maxKw/maxA), ΔU (deltaUPct). Pрасч уже в footer-метке
+        // снаружи карточки («8 × 8.2 kW = 65.6 kW (Pрасч 56 kW)»).
         valueMap = {
-          demandKw:   { v: fmtDigits(Pcalc) },           // Расчётная P
-          currentA:   { v: fmtDigits(Icalc_cont) },      // Расчётный I
-          nominalKw:  { v: fmtDigits(Pnom)  },           // Установленная P
-          capacityA:  { v: fmtDigits(Inom)  },           // Номинальный I
+          demandKw:   { v: null },                        // Расчёт — скрыт (есть в footer)
+          currentA:   { v: null },
+          nominalKw:  { v: fmtDigits(Pnom)  },           // Номинал P
+          capacityA:  { v: fmtDigits(Inom)  },           // Номинал I
           kvAOrVA:    { v: fmtDigits(Snom)  },
-          maxKw:      { v: fmtDigits(Pcalc) },
-          maxA:       { v: fmtDigits(Icalc_cont) },
+          maxKw:      { v: null },                        // Макс — только для щитов
+          maxA:       { v: null },
           freeKw:     { v: fmtDigits(n._freeKw) },
           freeA:      { v: fmtDigits(n._freeA)  },
           cosPhi:     { v: cos.toFixed(2) },
@@ -2607,13 +2608,8 @@ export function renderNodes() {
           phase:      { v: isThreePhase(n) ? '3ph' : '1ph' },
           breakerIn:  { v: null },
           cableSpec:  { v: n._cableSpec || null },
-          deltaUPct:  { v: Number.isFinite(_vdrop) ? _vdrop.toFixed(1) : null },
-          // v0.60.181 (по репорту Пользователя 2026-05-04 «в основных данных
-          // группы не должно быть х8, так как это есть в нижнем поле группы»):
-          // count для consumer-container скрыт в body — он уже показан
-          // в footer-метке «8 × 8.2 kW = 65.6 kW (Pрасч 56 kW)» снаружи
-          // карточки. Дублирование «×: 8 шт.» в body избыточно.
-          count:      { v: null },
+          deltaUPct:  { v: null },                        // ΔU — скрыт по репорту
+          count:      { v: null },                        // count в footer
         };
         labelMap = null;
       } else if (n.type === 'consumer') {
@@ -2628,18 +2624,17 @@ export function renderNodes() {
         const Pcalc = _isUniformGroup ? (PcalcTotal / cnt) : PcalcTotal;
         const Icalc = _isUniformGroup ? ((Number(n._loadA) || 0) / cnt) : (Number(n._loadA) || 0);
         const _vdrop = Number(n._deltaUPct) || 0;
-        // v0.60.177 (по репорту Пользователя «расчетная мощность на карточке
-        // и в свойствах не совпадают»): demandKw/currentA = расчётная;
-        // nominalKw/capacityA = установленная (как в модале «Параметры
-        // потребителя»). Раньше demandKw=Pnom давало неверный label «Расчёт».
+        // v0.60.182 (по репорту Пользователя): для consumer на карточке
+        // показываем только Номинал (Pnom/Inom). Скрываем: Расчёт, Макс,
+        // ΔU — они в инспекторе и в footer-метке группы.
         valueMap = {
-          demandKw:   { v: fmtDigits(Pcalc) },           // Расчётная P (= P_ном × Ki × множитель)
-          currentA:   { v: fmtDigits(Icalc) },           // Расчётный I
-          nominalKw:  { v: fmtDigits(Pnom)  },           // Установленная P
-          capacityA:  { v: fmtDigits(Inom)  },           // Номинальный I
+          demandKw:   { v: null },                        // Расчёт — скрыт
+          currentA:   { v: null },
+          nominalKw:  { v: fmtDigits(Pnom)  },           // Номинал P
+          capacityA:  { v: fmtDigits(Inom)  },           // Номинал I
           kvAOrVA:    { v: fmtDigits(Snom)  },
-          maxKw:      { v: fmtDigits(Pcalc) },
-          maxA:       { v: fmtDigits(Icalc) },
+          maxKw:      { v: null },                        // Макс — только для щитов
+          maxA:       { v: null },
           freeKw:     { v: fmtDigits(n._freeKw) },
           freeA:      { v: fmtDigits(n._freeA)  },
           cosPhi:     { v: cosC.toFixed(2) },
@@ -2647,7 +2642,7 @@ export function renderNodes() {
           phase:      { v: n.phase || '' },
           breakerIn:  { v: Number.isFinite(Number(n.breakerIn)) && n.breakerIn ? String(n.breakerIn) : null },
           cableSpec:  { v: n._cableSpec || null },
-          deltaUPct:  { v: Number.isFinite(_vdrop) ? _vdrop.toFixed(1) : null },
+          deltaUPct:  { v: null },                        // ΔU — скрыт
           count:      { v: (Number(n.count) || 1) > 1 ? String(n.count) : null },
         };
         labelMap = null;
