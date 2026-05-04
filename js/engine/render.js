@@ -2920,48 +2920,68 @@ export function renderNodes() {
         else rowsByPos.body.push(txt);
       }
 
-      // v0.60.175 (по репорту Пользователя 2026-05-04 «для потребителей сделай
-      // так же нормальную настройку карточек, чтобы не перекрывать все
-      // пространство»): когда body-строк слишком много для NODE_H — сжимаем
-      // line-height + font-size + переносим хвост в topRight, чтобы карточка
-      // не перекрывала title/subtitle. Раньше при 8+ полях рамка доходила
-      // до самого верха и налезала на «Стойка»/«cos φ» строки.
+      // v0.60.190 (по репорту Пользователя 2026-05-04 «косинус и напряжение
+      // выведи в одну строку, сперва напряжение потом косинус фи. последовательность
+      // так же. Сперва напряжение и косинус фи, потом номинальная, потом
+      // расчетная, затем Свободно»):
+      // 1. Объединяем U и cos φ в одну строку «U: 230 В · cos φ: 0.96».
+      // 2. Сортируем body в фиксированной последовательности:
+      //    [U+cos, Номинал, Расчёт, Свободно, остальное].
+      if (n.type === 'consumer' || n.type === 'consumer-container') {
+        const _findRowIdx = (arr, prefix) => arr.findIndex(s => typeof s === 'string' && s.startsWith(prefix));
+        const _bodyArr = rowsByPos.body;
+        // Объединение U + cos в одну строку.
+        let uIdx = _findRowIdx(_bodyArr, 'U:');
+        let cosIdx = _findRowIdx(_bodyArr, 'cos φ:');
+        if (cosIdx < 0) cosIdx = _findRowIdx(_bodyArr, 'cos:');
+        if (uIdx >= 0 && cosIdx >= 0) {
+          const merged = `${_bodyArr[uIdx]} · ${_bodyArr[cosIdx]}`;
+          const idxs = [uIdx, cosIdx].sort((a, b) => b - a);
+          for (const i of idxs) _bodyArr.splice(i, 1);
+          _bodyArr.splice(Math.min(uIdx, cosIdx), 0, merged);
+        }
+        // Фиксированная последовательность по prefix-приоритету.
+        const _order = ['U:', 'Номинал:', 'Расчёт:', 'Свободно:'];
+        const _rank = (s) => {
+          for (let i = 0; i < _order.length; i++) {
+            if (typeof s === 'string' && s.startsWith(_order[i])) return i;
+          }
+          return _order.length; // прочее — в конец
+        };
+        rowsByPos.body = _bodyArr
+          .map((s, i) => ({ s, i, r: _rank(s) }))
+          .sort((a, b) => (a.r - b.r) || (a.i - b.i))
+          .map(o => o.s);
+      }
+      // v0.60.190 fit-loop: упростили auto-fit. Раньше при перегрузе body
+      // хвост падал в topRight — это давало РАЗНЫЕ layout у двух карточек
+      // с одним набором полей. Теперь:
+      // 1. Никаких overflow в topRight — все body-строки остаются в body.
+      // 2. lineH подбираем чтобы все строки поместились (ниже до 7 px).
+      // 3. font-size синхронно уменьшается с lineH.
+      // Гарантия: одинаковый набор body-полей → одинаковый layout, без
+      // зависимости от наличия footer / topRight elements.
       const baseY = NODE_H - 12;
       const statusOffset = statusLine ? 12 : 0;
       const _bodyRowsAll = rowsByPos.body;
       const footerRows = rowsByPos.footer;
       const footerH = footerRows.length ? 12 : 0;
-      // Свободное пространство для body — от низа карточки (с учётом
-      // status и footer) до низа header (subtitle на y≈58, оставляем
-      // запас 8px → bodyTopMin = 66).
-      const bodyTopMin = 66;
+      const bodyTopMin = 60;
       const bodyAvail = baseY - statusOffset - footerH - bodyTopMin;
-      // Сначала пробуем lineH=12. Если не помещается — пробуем 11, 10, 9, 8.
-      // Если и при lineH=8 хвост не помещается — выкидываем хвост в topRight.
+      // lineH подбираем «снизу вверх» — самый большой lh, при котором все
+      // строки помещаются. Минимум 7 px (читаемо, не разваливается).
       let lineH = 12;
-      let bodyRows = _bodyRowsAll;
-      let overflow = [];
-      const _candidateLh = [12, 11, 10, 9, 8];
-      for (const lh of _candidateLh) {
-        if (_bodyRowsAll.length * lh <= bodyAvail) { lineH = lh; bodyRows = _bodyRowsAll; overflow = []; break; }
-        lineH = lh;
-        const fits = Math.max(1, Math.floor(bodyAvail / lh));
-        if (fits >= _bodyRowsAll.length) { bodyRows = _bodyRowsAll; overflow = []; break; }
-        bodyRows = _bodyRowsAll.slice(0, fits);
-        overflow = _bodyRowsAll.slice(fits);
+      const bodyRows = _bodyRowsAll;
+      if (bodyRows.length > 0) {
+        const maxLh = Math.floor(bodyAvail / bodyRows.length);
+        lineH = Math.max(7, Math.min(12, maxLh));
       }
-      const _bodyFontSize = lineH <= 9 ? '9' : (lineH <= 10 ? '10' : (lineH <= 11 ? '10.5' : '11'));
+      const _bodyFontSize = lineH <= 8 ? '8' : (lineH <= 9 ? '9' : (lineH <= 10 ? '10' : (lineH <= 11 ? '10.5' : '11')));
       for (let i = 0; i < bodyRows.length; i++) {
         const y = baseY - statusOffset - footerH - (bodyRows.length - 1 - i) * lineH;
         const _t = text(12, y, bodyRows[i], loadCls + ' node-load-row');
         if (lineH < 12) _t.setAttribute('font-size', _bodyFontSize);
         g.appendChild(_t);
-      }
-      // Хвост body — в topRight (right-aligned, маленьким шрифтом). Прибавляем
-      // к существующим topRight-строкам после построения общего trY ниже.
-      if (overflow.length) {
-        // Перенос: добавим к rowsByPos.topRight в самый конец.
-        rowsByPos.topRight.push(...overflow);
       }
       if (statusLine) {
         g.appendChild(text(12, baseY - footerH, statusLine, loadCls + ' node-load-status'));
