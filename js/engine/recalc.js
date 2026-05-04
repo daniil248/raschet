@@ -1950,12 +1950,15 @@ function recalc() {
     // Кабель должен выдержать максимально возможную нагрузку через ДАННУЮ связь.
     let maxKwDownstream;
     if (toN.type === 'consumer' || toN.type === 'consumer-container') {
-      // v0.60.232: для линии к одному потребителю — Pном (consumerTotalDemandKw)
-      // правильно для подбора кабеля/автомата конкретного прибора.
-      // Для линии к группе/контейнеру — учитываем GLOBAL.panelMaxBasis.
-      maxKwDownstream = (toN.type === 'consumer-container')
-        ? consumerMaxDemandKw(toN)
-        : consumerTotalDemandKw(toN);
+      // v0.60.233 (по уточнению Пользователя 2026-05-05 «группа потребителей
+      // это всего лишь упрощенное представление, на самом деле это как
+      // отдельных 8 кабелей к 8 отдельным приборам... отдельно взятый прибор
+      // может работать на 100%»): кабель к одному прибору ИЛИ к контейнеру
+      // (упрощение N кабелей) подбирается по Σ Pном БЕЗ К_и. Каждый прибор
+      // может работать на 100% nameplate, и общий кабель должен это выдержать.
+      // GLOBAL.panelMaxBasis применяется только на уровне ЩИТА/PDM
+      // (агрегация многих линий через _bfsDownstreamWithActiveTies).
+      maxKwDownstream = consumerTotalDemandKw(toN);
     } else if (toN.type === 'ups') {
       // Для линии К ИБП: макс. нагрузка = min(номинал, share_downstream) / КПД + charge
       const capKw = Number(toN.capacityKw) || 0;
