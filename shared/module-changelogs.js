@@ -4,6 +4,26 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.126', date: '2026-05-04', items: [
+      '🔍 <b>Audit фокус-loss во ВСЕХ модулях по чек-листу из <code>feedback_input_event.md</code></b>. Прошёлся по 15+ модулям с input handlers — приложение в good shape, никаких регрессий не обнаружено.',
+      '• <b>Уже починены</b>: <code>service/ui/order-form.js</code> (v0.60.111 input→change) + <code>projects/project.js</code> (v0.60.110 focus-preserve в render).',
+      '• <b>Безопасные patterns</b> (не требуют изменений):',
+      '  • <code>tech-workspace.js</code> — change handler в bindListEvents.',
+      '  • <code>psychrometrics.js</code> — input → update() с <code>if (document.activeElement === inp) return;</code> в writeCardsFromState.',
+      '  • <code>mdc-config.js</code> — input → update() рендерит ОТДЕЛЬНЫЕ summary/plan div\'ы (не input fields).',
+      '  • <code>cooling/ui/capex-form.js</code> — input → repaintTotals() (отдельный totals box).',
+      '  • <code>ups-config.js</code> — input → _renderSuitableList (отдельный div, не filter inputs).',
+      '  • <code>mv/panel/transformer/rack-config</code> — input → bidirectional sync через <code>el.value = ...</code> (soft-assign в OTHER input).',
+      '  • <code>scs-config / dgu-config / catalog / global-settings / cable / battery</code> — все либо change-only, либо local recalc без table-replace.',
+      '• <b>Memory rule расширен</b>: добавлены аудит-результаты с матрицей модуль×pattern×status + 5 ключевых принципов для будущих фич:',
+      '  1. Input → change для table-rerender callbacks.',
+      '  2. Input → soft-assign безопасно.',
+      '  3. Input → render отдельного div безопасно.',
+      '  4. <code>document.activeElement === inp</code> guard в setters.',
+      '  5. Background re-render guard через <code>_captureActiveInput / _restoreActiveInput</code> pattern.',
+      '• Будущие модули должны выбрать ОДИН из этих паттернов при добавлении новых input handler\'ов.',
+      'Файлы: <code>memory/feedback_input_event.md</code> расширен (audit results + ключевые принципы). Никаких изменений в коде — все модули прошли проверку.',
+    ] },
     { version: '0.60.125', date: '2026-05-04', items: [
       '👥 <b>Catalog: UI promote/demote для общих прайс-листов организации</b>. Завершение Phase 41.2 — теперь Пользователь может управлять scope цен через интерфейс каталога (раньше только API в v0.60.124).',
       '• <b>Scope-фильтр</b> в toolbar Цен: «Все (N)» / «✏ Личные (M)» / «👥 Организация (K)» с per-scope счётчиками.',
