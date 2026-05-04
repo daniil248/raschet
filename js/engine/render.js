@@ -2174,19 +2174,25 @@ export function renderNodes() {
       const iconG = el('g', { transform: `translate(${w - 22},16)`, class: 'node-icon' });
       drawConsumerIconTo(iconG, _iconSubtype);
       g.appendChild(iconG);
-      // Serial-mode: нарисовать ряд мелких иконок по низу карточки
+      // Serial-mode: нарисовать ряд мелких иконок В ВЕРХНЕЙ ПОЛОСЕ карточки
+      // (между subtitle и body), не накладываясь на текст.
+      // v0.60.193 (по репорту Пользователя 2026-05-04 «при последовательном
+      // включении потребителей отображается графика которая накладывается
+      // на текст, исправь проблему»): cy перенесён с NODE_H-30 (=90, прямо
+      // в body) на y=66 — между subtitle (~58) и body (начинается с y~80
+      // если bodyTopMin учитывает serialMode). Body fit-loop тоже знает
+      // про serialMode и сдвигает bodyTopMin вниз.
       const count = Math.max(1, Number(n.count) || 1);
       if (n.serialMode && count > 1) {
         const maxShown = Math.min(count, 6);
-        const step = Math.min(22, (w - 24) / maxShown);
+        const step = Math.min(20, (w - 24) / maxShown);
         const startX = 12 + step / 2;
-        const cy = NODE_H - 30;
+        const cy = 66;  // Между subtitle и body
         for (let k = 0; k < maxShown; k++) {
           const cx = startX + k * step;
-          const sg = el('g', { transform: `translate(${cx},${cy}) scale(0.55)`, class: 'node-icon' });
+          const sg = el('g', { transform: `translate(${cx},${cy}) scale(0.5)`, class: 'node-icon' });
           drawConsumerIconTo(sg, n.consumerSubtype || 'custom', '#90a4ae');
           g.appendChild(sg);
-          // Соединительная линия между иконками
           if (k < maxShown - 1) {
             g.appendChild(el('line', {
               x1: cx + step * 0.3, y1: cy,
@@ -2971,7 +2977,12 @@ export function renderNodes() {
       const _bodyRowsAll = rowsByPos.body;
       const footerRows = rowsByPos.footer;
       const footerH = footerRows.length ? 12 : 0;
-      const bodyTopMin = 60;
+      // v0.60.193: serial-mode иконки занимают полосу y=58..76 → body
+      // начинается с y=78. Без serialMode body начинается с y=60.
+      const _serialIconsActive = (n.type === 'consumer' || n.type === 'consumer-container')
+        && n.serialMode && (Number(n.count) || 1) > 1
+        && _presetShowIcon && GLOBAL.showConsumerIcons !== false;
+      const bodyTopMin = _serialIconsActive ? 78 : 60;
       const bodyAvail = baseY - statusOffset - footerH - bodyTopMin;
       // lineH подбираем «снизу вверх» — самый большой lh, при котором все
       // строки помещаются. Минимум 7 px (читаемо, не разваливается).

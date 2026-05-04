@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.193', date: '2026-05-04', items: [
+      '🔧 <b>Serial-mode иконки больше не наезжают на текст</b>. По репорту Пользователя 2026-05-04 «при последовательном включении потребителей отображается графика которая накладывается на текст, исправь проблему».',
+      '• Иконки серии (5 розеток в ряду) перенесены с <code>y=NODE_H-30=90</code> (прямо в body) на <code>y=66</code> — выделенная полоса между subtitle и body.',
+      '• <code>bodyTopMin</code> для serial-mode карточек = 78 (вместо 60) — body стартует ниже, оставляет место для иконок.',
+      'Файл: <code>js/engine/render.js</code> (cy=66 + bodyTopMin условный).',
+    ] },
     { version: '0.60.192', date: '2026-05-04', items: [
       '🎨 <b>Integrated UPS — все секции одного цвета</b>. По репорту Пользователя 2026-05-04 «теперь поясни почему панели в интегрированном ИБП разного цвета?». Внутри shell\'а Z1.UPS1 (INTEGRATED) UPS-карточка была purple/pink (.node.ups), а PDM-IT/AC/Bypass — blue (.node.panel). Визуально неконсистентно — это всё секции одного шкафа MR33.',
       '• <b>Фикс</b>: для UPS с <code>kind=\'ups-integrated\'</code> добавлен class <code>ups-integrated</code> + CSS rule переопределяет fill/stroke под panel-style (fill:#eceff1, stroke:#607d8b). Standalone UPS остаётся purple.',
