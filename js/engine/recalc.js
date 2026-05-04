@@ -436,14 +436,26 @@ function _bfsDownstreamWithActiveTies(startId, activeTieKeys) {
         const kw = consumerMaxDemandKw(cur);
         if (throughUps) upsConsumerKw += kw; else directKw += kw;
       }
-      // v0.60.242 (по репорту Пользователя 2026-05-05 «ты может не правильно
-      // считаешь наружний блок кондиционера, он добавляется к каждому
-      // кондиционеру 8,6+0,6 кВт» / «так же и ток должен суммироваться»):
-      // НЕ останавливаемся на consumer — у него могут быть downstream
-      // sub-consumers (например, наружние блоки L10 за кондиционером L7).
-      // Каждый consumer считается один раз через visitedConsumers; downstream
-      // walks выполняется ниже стандартным циклом по outgoing conns.
-      // (Раньше был `continue` — L10 не учитывался.)
+      // v0.60.242: walk дальше — у consumer могут быть sub-consumers
+      // (наружние блоки L10 за кондиционером L7).
+      // v0.60.247 (regression fix по репорту Пользователя 2026-05-05
+      // «потребители на мощность 225 кВт дают на панели Макс 1777,4 кВт»):
+      // ОТ consumer идём ТОЛЬКО к другим consumer/container — НЕ к
+      // panel/ups/source, иначе BFS «выскакивает» из текущей подсистемы
+      // в соседние через accidental backward-feed conns (cross-feed
+      // в схемах с резервированием) и собирает 10×больше нагрузки.
+      for (const c of state.conns.values()) {
+        if (c.from.nodeId !== curId) continue;
+        if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+        const to = state.nodes.get(c.to.nodeId);
+        if (!to) continue;
+        if (to.type !== 'consumer' && to.type !== 'consumer-container') continue;
+        if (!visited.has(to.id)) {
+          visited.add(to.id);
+          queue.push({ id: to.id, throughUps });
+        }
+      }
+      continue;  // v0.60.247: не падаем в общий цикл (он бы прошёл к panel/ups).
     }
     if (cur.type === 'ups') {
       if (!visitedUps.has(curId)) {
@@ -3145,18 +3157,22 @@ function recalc() {
           const stack = [startId];
           while (stack.length) {
             const cur = stack.pop();
+            // v0.60.247: ОТ consumer — walk ТОЛЬКО к другим consumer/container.
+            // L7→L10 (consumer→consumer) — работает; consumer→panel/ups —
+            // блокируется (иначе BFS взрывался cross-feeds в S3-проекте).
+            const _curNode = state.nodes.get(cur);
+            const _curIsConsumer = _curNode && _curNode.type === 'consumer';
             for (const c2 of state.conns.values()) {
               if (c2.from.nodeId !== cur || c2.lineMode === 'damaged' || c2.lineMode === 'disabled') continue;
               const to = state.nodes.get(c2.to.nodeId);
               if (!to) continue;
+              // v0.60.247: restrict для consumer-исходящих.
+              if (_curIsConsumer && to.type !== 'consumer' && to.type !== 'consumer-container') continue;
               if (to.type === 'consumer' || to.type === 'consumer-container') {
                 if (visitedC.has(to.id)) continue;
                 visitedC.add(to.id);
                 kwName += consumerMaxDemandKw(to, 'nameplate');
                 kwCalc += consumerMaxDemandKw(to, 'calculated');
-                // v0.60.242: для consumer (не container) продолжаем walk —
-                // могут быть downstream sub-consumers (наружные блоки и т.п.).
-                // Container — leaf (его слоты внутренние), не идём дальше.
                 if (to.type === 'consumer') {
                   if (!visitedN.has(to.id)) { visitedN.add(to.id); stack.push(to.id); }
                 }
@@ -3514,31 +3530,33 @@ function recalc() {
       const stack = [startId];
       while (stack.length) {
         const cur = stack.pop();
+        // v0.60.247: ОТ consumer walk ТОЛЬКО к другим consumer/container
+        // (sub-consumer chains). НЕ к panel/ups, иначе BFS выскакивает
+        // через cross-feed conns и собирает чужую нагрузку.
+        const _curNode = state.nodes.get(cur);
+        const _curIsConsumer = _curNode && _curNode.type === 'consumer';
         for (const c of state.conns.values()) {
           if (c.from.nodeId !== cur) continue;
           if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
-          // v0.60.236 (по репорту Пользователя 2026-05-05 «АГПТ Z1.L8 запитан
-          // только от AC, где ты там увидал IT?????»): пропускаем internal
-          // integrated conns (фабричные шины внутри ИБП Kehua MR33 между
-          // PDM-IT/PDM-AC/UPS-core). Иначе walk от PDM-AC проходит обратно
-          // в UPS-parent и оттуда в PDM-IT → ошибочно «видит» IT-нагрузку.
+          // v0.60.236: пропускаем internal integrated conns (фабричные
+          // шины внутри ИБП Kehua MR33 между PDM-IT/PDM-AC/UPS-core).
           if (c._isInternalIntegrated) continue;
           const to = state.nodes.get(c.to.nodeId);
           if (!to) continue;
+          // v0.60.247: restrict для consumer-исходящих.
+          if (_curIsConsumer && to.type !== 'consumer' && to.type !== 'consumer-container') continue;
           if (to.type === 'consumer' || to.type === 'consumer-container') {
             reachable.add(to.id);
             // v0.60.242: для consumer (не container) walk идёт дальше —
-            // могут быть downstream sub-consumers (наружные блоки кондиционера
-            // и т.п.). Они тоже включаются в reachable своих PDM-родителей
-            // через свои conns. consumer-container — leaf (слоты внутренние).
+            // могут быть downstream sub-consumers (L10 outdoor за L7 cond).
             if (to.type === 'consumer') {
               if (!seen.has(to.id)) { seen.add(to.id); stack.push(to.id); }
             }
           } else if (to.type === 'ups') {
-            // Через ИБП — идём дальше: consumers за ИБП тоже reachable.
+            // Через ИБП — идём дальше (consumers за ИБП тоже reachable).
             if (!seen.has(to.id)) { seen.add(to.id); stack.push(to.id); }
           } else if (to.type === 'generator') {
-            // Через genератор — не идём (он сам генерирует свою выходную мощность).
+            // Через генератор — не идём.
           } else {
             if (!seen.has(to.id)) { seen.add(to.id); stack.push(to.id); }
           }

@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.247', date: '2026-05-05', items: [
+      '🩹 <b>Fix regression v0.60.242: BFS от consumer ТОЛЬКО к consumer/container</b>. По репорту Пользователя 2026-05-05 «потребители на мощность 225 кВт + 10 кВт дают на панели Макс 1777,4 кВт».',
+      '• Корень: v0.60.242 убирал <code>continue</code> на consumer-узле для поддержки downstream sub-consumers (L10 outdoor за L7 conditioner). Но walk от consumer проходил ВСЕ outgoing conns, включая случайные backward-feed к panel/ups — BFS «выскакивал» из подсистемы и собирал чужую нагрузку.',
+      '• Эффект: S3.PDC1 показывал Макс 1777 кВт при реальных downstream 235 кВт.',
+      '• Фикс v0.60.247: добавлен guard — ОТ consumer walk идёт ТОЛЬКО к другим consumer/container. К panel/ups conns от consumer игнорируются.',
+      '• <b>Сохранён фикс v0.60.242</b>: L7→L10 (cond→outdoor) — оба consumer, walk проходит. Поведение для других проектов (Темиртау с PDM-IT) не нарушено.',
+      'Файл: <code>js/engine/recalc.js</code> (3 walk-функции: _bfsDownstreamWithActiveTies, _walkBoth, _walkConsumers).',
+    ] },
     { version: '0.60.246', date: '2026-05-05', items: [
       '🔌 <b>Перечень: ВСЕ питающие щиты в одной ячейке (P1/P2/...)</b>. По запросу Пользователя 2026-05-05 «у этих нагрузок 2 питающих щита, вводи один над другим, но в одной строке».',
       '• Раньше показывался только ПЕРВЫЙ найденный parent. Для multi-input потребителей (АВР/parallel: P1 от IT1, P2 от IT2) видно было только один.',
