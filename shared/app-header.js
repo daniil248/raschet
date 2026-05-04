@@ -12,13 +12,13 @@
 // ======================================================================
 
 import { openSettingsModal } from './global-settings.js';
-import { rsToast, rsConfirm } from './dialog.js';
+import { rsToast, rsConfirm, rsPrompt } from './dialog.js';
 import { startAutoBackupTimer, attachOnCloseBackup } from './backup.js';
 import {
   getProjectContext, getPreviousStep, navigateBack, moduleLabel, pushNavStep,
   buildModuleHref,
 } from './project-context.js';
-import { getProject } from './project-storage.js';
+import { getProject, getActiveProjectId, setActiveProjectId, listProjects, createProject, ensureDefaultProject } from './project-storage.js';
 
 // Известные пути модулей — для авто-ребайнда ссылок (см. _wireModuleLinks).
 const MODULE_PATH_RX = /\/(schematic|cable|scs-design|scs-config|facility-inventory|rack-config|mv-config|ups-config|panel-config|pdu-config|transformer-config|mdc-config|suppression-config|projects|tech-workspace|meteo|help)\//;
@@ -125,9 +125,25 @@ export function mountHeader(opts = {}) {
   const backBtnHtml = effectivePrev
     ? `<button type="button" class="rs-back-btn" title="Вернуться: ${esc(moduleLabel(effectivePrev.moduleId))}" aria-label="Назад" data-from="${esc(effectivePrev.moduleId)}">←&nbsp;${esc(moduleLabel(effectivePrev.moduleId).replace(/^[^\s]+\s/,''))}</button>`
     : '';
+  // v0.60.103: бейдж проекта показывается ВО ВСЕХ режимах кроме hub /
+  // /projects/. По репорту Пользователя 2026-05-04: «при запуске стандалон
+  // приложения нет ни какого упоминания к какому проекту это относится» +
+  // «открылся какой то проект, я даже не знаю какой, и не могу создать
+  // локальный проект или переключится на другой». Раньше бейдж был только
+  // в project-mode (URL содержит ?project=). Теперь — в standalone тоже,
+  // с другим стилем (🔒) и кликом → модалка переключения/создания.
+  let standaloneProj = null;
+  if (!inProjectMode && !isHub && !isProjectsList) {
+    try {
+      const aid = getActiveProjectId();
+      if (aid) standaloneProj = getProject(aid);
+    } catch {}
+  }
   const projBadgeHtml = proj
-    ? `<span class="rs-proj-badge" title="Активный проект: ${esc(proj.name || proj.id)}\nКликните чтобы вернуться к проекту">📁&nbsp;${esc(proj.name || proj.id)}</span>`
-    : '';
+    ? `<button type="button" class="rs-proj-badge" data-proj-mode="linked" title="Активный проект (через ссылку из /projects/): ${esc(proj.name || proj.id)}\nКликните чтобы открыть меню переключения / создания.">📁&nbsp;${esc(proj.name || proj.id)}</button>`
+    : (standaloneProj
+        ? `<button type="button" class="rs-proj-badge rs-proj-badge-standalone" data-proj-mode="standalone" title="Standalone-режим. Все локальные данные пишутся в проект «${esc(standaloneProj.name || standaloneProj.id)}». Кликните чтобы переключить проект, создать новый или работать в режиме «без проекта».">🔒&nbsp;${esc(standaloneProj.name || standaloneProj.id)}</button>`
+        : `<button type="button" class="rs-proj-badge rs-proj-badge-empty" data-proj-mode="empty" title="Активный проект не выбран. Кликните чтобы выбрать или создать локальный проект.">📂&nbsp;Без проекта</button>`);
 
   const header = document.createElement('header');
   header.className = 'rs-header';
@@ -252,15 +268,22 @@ export function mountHeader(opts = {}) {
     try { navigateBack(fallback); } catch { history.back(); }
   });
 
-  // Project-badge — клик ведёт к карточке проекта /projects/project.html.
+  // Project-badge — клик:
+  //   linked-mode (project-mode из URL) → к карточке проекта /projects/project.html.
+  //   standalone / empty (v0.60.103) → меню переключения / создания.
   const projBadge = header.querySelector('.rs-proj-badge');
-  if (projBadge && ctx.projectId) {
+  if (projBadge) {
     projBadge.style.cursor = 'pointer';
-    projBadge.addEventListener('click', () => {
-      const inSub = !/^\/(?:index\.html)?$/.test(location.pathname) && location.pathname.split('/').filter(Boolean).length > 1;
-      const base = inSub ? '../projects/project.html' : './projects/project.html';
-      location.href = buildModuleHref(base, { projectId: ctx.projectId });
-    });
+    const mode = projBadge.dataset.projMode;
+    if (mode === 'linked') {
+      projBadge.addEventListener('click', () => {
+        const inSub = !/^\/(?:index\.html)?$/.test(location.pathname) && location.pathname.split('/').filter(Boolean).length > 1;
+        const base = inSub ? '../projects/project.html' : './projects/project.html';
+        location.href = buildModuleHref(base, { projectId: ctx.projectId });
+      });
+    } else {
+      projBadge.addEventListener('click', () => _openStandaloneProjectMenu(moduleId));
+    }
   }
 
   // Auth widget — привязываем к window.Auth если доступен
@@ -533,4 +556,118 @@ function _checkOrphanProjects() {
     // Auto-hide через 30 сек
     setTimeout(() => toast.remove(), 30000);
   } catch (e) { console.warn('[health-check] orphan scan failed:', e); }
+}
+
+// v0.60.103: меню переключения / создания локального проекта в standalone-
+// модулях. По репорту Пользователя 2026-05-04: «при запуске стандалон
+// приложения нет ни какого упоминания к какому проекту это относится» +
+// «открылся какой то проект, я даже не знаю какой, и не могу создать
+// локальный проект или переключится на другой».
+function _openStandaloneProjectMenu(currentModuleId) {
+  // Уже открытая модалка — закрыть
+  const existing = document.querySelector('.rs-proj-menu-overlay');
+  if (existing) { existing.remove(); return; }
+
+  let projects = [];
+  try { projects = listProjects() || []; } catch {}
+  const activeId = (() => { try { return getActiveProjectId(); } catch { return null; } })();
+  const activeName = (() => {
+    if (!activeId) return null;
+    const p = projects.find(x => x.id === activeId);
+    return p ? (p.name || p.id) : null;
+  })();
+
+  // Фильтр: показываем full-проекты + sketch-проекты ownerModule этого модуля
+  // (по правилу feedback_module_scope_pickers.md). Sketch других модулей —
+  // не релевантны в этом конфигураторе.
+  const isRelevant = (p) => {
+    if (!p) return false;
+    if (!p.kind || p.kind === 'full') return true;
+    if (p.kind === 'sketch' && (p.ownerModule === currentModuleId || p.ownerModule === 'tech-workspace')) return true;
+    return false;
+  };
+  const filtered = projects.filter(isRelevant);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'rs-proj-menu-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.45);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding-top:60px;font:13px/1.4 system-ui,sans-serif';
+  const rowsHtml = filtered.length
+    ? filtered.map(p => {
+        const isActive = p.id === activeId;
+        const tag = (p.kind === 'sketch') ? '<span style="font-size:10px;background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px;margin-left:6px">sketch</span>' : '';
+        const lock = isActive ? ' style="background:#dbeafe;border-color:#93c5fd"' : '';
+        const arrow = isActive ? '<span style="color:#1d4ed8;font-weight:700;margin-left:auto">✓ Активен</span>' : '<span style="color:#64748b;font-size:11px;margin-left:auto">→ переключиться</span>';
+        return `<button type="button" class="rs-proj-menu-row" data-pid="${esc(p.id)}"${lock} style="display:flex;align-items:center;width:100%;text-align:left;padding:8px 12px;border:1px solid #e2e8f0;background:#fff;border-radius:5px;margin:4px 0;cursor:pointer;font:inherit">
+          <span style="font-weight:600;color:#0f172a">${esc(p.name || p.id)}</span>${tag}${arrow}
+        </button>`;
+      }).join('')
+    : '<div class="muted" style="color:#64748b;padding:14px;text-align:center;font-style:italic">Нет локальных проектов</div>';
+
+  overlay.innerHTML = `
+    <div class="rs-proj-menu" style="background:#fff;border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,0.25);max-width:480px;width:92vw;max-height:80vh;display:flex;flex-direction:column;overflow:hidden">
+      <div style="padding:12px 16px;border-bottom:1px solid #e2e8f0;background:#f8fafc;display:flex;align-items:center;gap:10px">
+        <span style="font-size:18px">📁</span>
+        <div>
+          <div style="font-weight:700;font-size:14px;color:#0f172a">Активный проект</div>
+          <div style="font-size:11.5px;color:#64748b">Все локальные данные этого модуля сохраняются под выбранным проектом.</div>
+        </div>
+        <button type="button" class="rs-proj-menu-close" style="margin-left:auto;background:transparent;border:0;font-size:20px;cursor:pointer;color:#64748b" title="Закрыть">×</button>
+      </div>
+      <div style="padding:14px 16px;overflow-y:auto;flex:1">
+        <div style="font-size:11.5px;color:#475569;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.4px">Сейчас работаем в проекте:</div>
+        <div style="font-size:13px;font-weight:600;color:#0f172a;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;margin-bottom:14px">
+          ${activeName ? '🔒 ' + esc(activeName) : '<span style="color:#dc2626">Нет активного проекта</span>'}
+        </div>
+
+        <div style="font-size:11.5px;color:#475569;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.4px">Переключиться на другой:</div>
+        <div class="rs-proj-menu-list" style="margin-bottom:12px">${rowsHtml}</div>
+
+        <div style="display:flex;gap:8px;border-top:1px dashed #cbd5e1;padding-top:12px">
+          <button type="button" class="rs-proj-menu-create" style="flex:1;padding:8px 12px;background:#16a34a;color:#fff;border:0;border-radius:5px;cursor:pointer;font:inherit;font-weight:600;font-size:12px" title="Создать новый локальный проект и сделать его активным.">➕ Создать локальный проект</button>
+          <a href="../projects/" class="rs-proj-menu-open" style="padding:8px 12px;background:#3b82f6;color:#fff;border-radius:5px;text-decoration:none;font-weight:600;font-size:12px;display:inline-flex;align-items:center" title="Открыть полный список проектов в /projects/.">→ Все проекты</a>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('.rs-proj-menu-close')?.addEventListener('click', close);
+
+  overlay.querySelectorAll('.rs-proj-menu-row').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pid = btn.dataset.pid;
+      if (!pid) return;
+      try { setActiveProjectId(pid); } catch {}
+      close();
+      // Перезагружаем чтобы модуль перечитал данные с новым активным pid.
+      // Сохраняем текущий путь без ?project= (чтобы не залипнуть в URL-mode).
+      const url = new URL(location.href);
+      url.searchParams.delete('project');
+      url.searchParams.delete('from');
+      location.href = url.toString();
+    });
+  });
+
+  overlay.querySelector('.rs-proj-menu-create')?.addEventListener('click', async () => {
+    let name = null;
+    try {
+      name = await rsPrompt('Имя нового локального проекта:', `Проект ${new Date().toLocaleDateString('ru-RU')}`);
+    } catch {}
+    if (!name || !String(name).trim()) return;
+    try {
+      const p = createProject({ name: String(name).trim(), kind: 'full' });
+      if (p && p.id) {
+        setActiveProjectId(p.id);
+        close();
+        const url = new URL(location.href);
+        url.searchParams.delete('project');
+        url.searchParams.delete('from');
+        location.href = url.toString();
+      }
+    } catch (e) {
+      try { rsToast('Ошибка создания: ' + (e.message || e), 'error'); } catch {}
+    }
+  });
 }

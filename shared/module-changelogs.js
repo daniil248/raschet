@@ -4,6 +4,19 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.103', date: '2026-05-04', items: [
+      '📁 <b>Project-context badge во ВСЕХ standalone-модулях</b>. По репорту Пользователя 2026-05-04: «я запустил стандалон приложение компоновщик шкафа (стойки) у меня открылся какой то проект, я даже не знаю какой, и не могу создать локальный проект или переключится на другой» + «при запуске стандалон приложения нет ни какого упоминания к какому проекту это относится».',
+      '• Раньше бейдж проекта показывался только в URL-режиме (когда модуль открыт через ссылку из /projects/ с <code>?project=&lt;pid&gt;</code>). В standalone-запуске (с hub или закладки) бейджа не было — но модуль пишет данные в активный LS-проект (через <code>getActiveProjectId()</code>), и Пользователь не знал какой именно.',
+      '• Теперь во всех модулях (кроме hub и /projects/) бейдж показан всегда:',
+      '  • 📁 синий «ProjectName» — модуль открыт через ссылку из /projects/ (URL-режим).',
+      '  • 🔒 жёлтый «ProjectName» — standalone, активный проект из LS. Click → меню переключения.',
+      '  • 📂 красный «Без проекта» — нет активного проекта. Click → создать.',
+      '• <b>Меню при клике на бейдж в standalone</b>: список локальных проектов (с фильтром по релевантности — full + sketch ownerModule этого модуля + tech-workspace), кнопка «➕ Создать локальный проект» (через rsPrompt, не browser dialog), кнопка «→ Все проекты» (открыть /projects/).',
+      '• Переключение проекта: <code>setActiveProjectId(pid)</code> + reload с очисткой <code>?project=</code>/<code>?from=</code> из URL чтобы избежать конфликта URL-режима со standalone.',
+      '• Соблюдено правило feedback_module_scope_pickers — sketch других модулей не показываем в чужих pickers.',
+      '• Соблюдено правило No-browser-dialogs — используется <code>rsPrompt</code> из <code>shared/dialog.js</code>.',
+      'Файлы: <code>shared/app-header.js</code> (расширен projBadgeHtml для standalone/empty + новая функция <code>_openStandaloneProjectMenu</code>), <code>shared/app-header.css</code> (стили <code>.rs-proj-badge-standalone</code> / <code>.rs-proj-badge-empty</code> + button-cursor).',
+    ] },
     { version: '0.60.102', date: '2026-05-04', items: [
       '🚑 <b>Hotfix: TW не загружался (SyntaxError на строке 1446)</b>. Откат `tech-workspace/tech-workspace.js` к состоянию v0.60.100. Rooms-концепция (планировалась в v0.60.101) сломала template literal в renderListRail — где-то в районе модульной ternary `${... === "modular" ? \\`<div>...\\` : ""}` по причине нарушенного баланса backtick\'ов. Будет переоткрыта позже отдельным коммитом — с добавлением data-модели сначала и инкрементальным rendering-UI с проверкой парсера на каждом шаге.',
       'Файлы: <code>tech-workspace/tech-workspace.js</code> (revert до 8f7b281).',

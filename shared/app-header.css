@@ -166,6 +166,35 @@ body { margin: 0; padding-bottom: 32px; box-sizing: border-box; }
   background: #e0e7ff;
   border-color: #6366f1;
 }
+/* v0.60.103: standalone-режим (модуль запущен напрямую без ?project=).
+   Жёлтый, чтобы визуально отличить от привычного синего «через ссылку
+   из /projects/». При клике открывается меню переключения / создания. */
+.rs-proj-badge.rs-proj-badge-standalone {
+  background: #fef3c7;
+  border-color: #fcd34d;
+  color: #92400e;
+  cursor: pointer;
+}
+.rs-proj-badge.rs-proj-badge-standalone:hover {
+  background: #fde68a;
+  border-color: #f59e0b;
+}
+/* Нет активного проекта вообще (после очистки LS / первой загрузки). */
+.rs-proj-badge.rs-proj-badge-empty {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #991b1b;
+  cursor: pointer;
+}
+.rs-proj-badge.rs-proj-badge-empty:hover {
+  background: #fecaca;
+  border-color: #f87171;
+}
+/* button-стиль для бейджей. Раньше были <span>, теперь <button>. */
+button.rs-proj-badge {
+  font-family: inherit;
+  cursor: pointer;
+}
 
 /* v0.59.780: storage-mode badge & modal */
 .rs-storage-mode-btn {
