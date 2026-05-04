@@ -603,6 +603,20 @@ body.psy-dragging *::after {
   background: #f5f9ff; border: 1px solid #c5d9ef; border-radius: 6px;
   padding: 8px 10px; min-width: 180px; display: flex; flex-direction: column; gap: 4px;
   position: relative;
+  /* v0.60.148 (по репорту Пользователя 2026-05-04 «на холсте должно
+     быть запрещено выделять больше одного поля»): запрещаем text-selection
+     на самой карточке (заголовки/labels/computed). Selection текста
+     разрешено только внутри input — для копирования значений. Раньше
+     drag-select мог захватить текст из нескольких карточек, давая
+     визуальный артефакт «синего выделения везде». */
+  user-select: none;
+  -webkit-user-select: none;
+}
+.psy-point input,
+.psy-point textarea,
+.psy-point .pt-computed {
+  user-select: text;
+  -webkit-user-select: text;
 }
 .psy-point.invalid { background: #fff4f4; border-color: #e57373; }
 .psy-point-header {

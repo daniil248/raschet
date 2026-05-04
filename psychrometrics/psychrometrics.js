@@ -611,6 +611,54 @@ function renderCanvasLinks() {
     }
     out += `</g>`;  // close .psy-canvas-proc
   });
+  // v0.60.148 (по репорту Пользователя 2026-05-04 «символы процесса
+  // рекуперации связанные между собой, соедини отдельной пунктирной
+  // линией другого цвета»): post-pass — проходим все R-процессы и для
+  // парных (где R_a.recupWith указывает на точку из ребра R_b и обратно)
+  // рисуем фиолетовую пунктирную линию между центрами их boxes. Это
+  // визуально показывает что эти 2 R — единый теплообменник.
+  const _rBoxCenters = new Map();
+  S.procs.forEach((pr, i) => {
+    if (pr.type !== 'R') return;
+    const fromI = edgeFrom(pr, i), toI = edgeTo(pr, i);
+    const a = S.points[fromI], b = S.points[toI];
+    if (!a || !b || fromI === toI) return;
+    const p1 = centerBottom(a), p2 = centerTop(b);
+    const midY = (p1.y + p2.y) / 2;
+    const bx = (p1.x + p2.x) / 2, by = midY;
+    _rBoxCenters.set(i, { bx, by, fromI, toI, recupWith: parseInt(pr.recupWith, 10) });
+  });
+  // Группируем pair-relations: undirected key min(i,j)|max(i,j) чтобы не
+  // рисовать дважды.
+  const _drawnPairs = new Set();
+  for (const [i, ri] of _rBoxCenters) {
+    for (const [j, rj] of _rBoxCenters) {
+      if (i >= j) continue;
+      // Pair если R_i ссылается на one of R_j's points И R_j ссылается на
+      // one of R_i's points.
+      const iRefsJ = (ri.recupWith === rj.fromI) || (ri.recupWith === rj.toI);
+      const jRefsI = (rj.recupWith === ri.fromI) || (rj.recupWith === ri.toI);
+      if (!iRefsJ || !jRefsI) continue;
+      const key = `${i}|${j}`;
+      if (_drawnPairs.has(key)) continue;
+      _drawnPairs.add(key);
+      // Соединяем box-центры фиолетовой пунктирной (отличный от R-цвета).
+      // R-цвет в PROC_COLOR обычно зелёный/синий — берём контрастный.
+      const pairColor = '#9333ea';  // фиолетовый
+      out += `<g class="psy-canvas-recup-pair" data-pair="${i},${j}" pointer-events="none">`;
+      out += `<line x1="${ri.bx}" y1="${ri.by}" x2="${rj.bx}" y2="${rj.by}" `
+           + `stroke="${pairColor}" stroke-width="2" stroke-dasharray="6,4" opacity="0.85"/>`;
+      // Маленький badge посередине — «♻ pair» / «η-pair».
+      const mx = (ri.bx + rj.bx) / 2;
+      const my = (ri.by + rj.by) / 2;
+      out += `<g transform="translate(${mx},${my})">`
+           + `<rect x="-22" y="-8" width="44" height="16" rx="8" fill="#fff" stroke="${pairColor}" stroke-width="1"/>`
+           + `<text y="4" text-anchor="middle" font-size="10" font-weight="600" fill="${pairColor}">♻ pair</text>`
+           + `</g>`;
+      out += `<title>Парный рекуператор: процесс ${i+1} ↔ процесс ${j+1}. Один теплообменник, два R-процесса (приток/вытяжка).</title>`;
+      out += `</g>`;
+    }
+  }
   svg.innerHTML = out;
   // v0.59.944: клик по элементу процесса → открыть modal-редактор.
   // Wire один раз — у SVG-элемента, через event-делегацию на data-proc-idx.
@@ -1070,17 +1118,23 @@ function pointCard(p, i) {
     }
   }
   const _hasAnyLock = _locked.t || _locked.rh || _locked.x || _locked.h;
-  const lockHint = _hasAnyLock
-    ? `<div class="pt-locked-hint" style="font-size:10.5px;color:#92400e;background:#fef3c7;border-left:3px solid #d97706;padding:6px 8px;margin:4px 0;border-radius:3px" title="${escAttr(_lockReason)}">🔒 ${escAttr(_lockReason)}</div>`
-    : '';
+  // v0.60.148 (по репорту Пользователя 2026-05-04 «не стоит портянку
+  // с замком выводить прям в карточку, только символ замка и в описании
+  // (при наведении мышью) текст»): вместо большого жёлтого блока с
+  // полным текстом — компактный 🔒-индикатор в заголовке карточки.
+  // Текст полностью в title (hover tooltip).
+  const lockHint = '';  // больше не используется — заменён на _lockBadge в header
   const _attr = (field) => {
     if (!_locked[field]) return '';
     return ` readonly disabled style="background:#f1f5f9;color:#64748b;cursor:not-allowed" title="${escAttr(_lockReason)}"`;
   };
+  // v0.60.148: при locked точке — НЕ показываем нижний hint вовсе
+  // (информация уже в 🔒-tooltip заголовка). Для свободной точки —
+  // обычный hint про задание параметров.
   const hint = i === 0
     ? `<span class="pt-hint">Начало цикла: задайте любые 2 из {t, φ, d, h}.</span>`
     : (_hasAnyLock
-        ? `<span class="pt-hint">Заблокированные поля рассчитываются автоматически по входящему процессу.</span>`
+        ? ''
         : `<span class="pt-hint">Задайте любую из {t, φ, d, h} — остальное посчитается от процесса ${i}→${i+1}. Либо задайте Q или q<sub>w</sub> на стрелке выше.</span>`);
   // v0.59.970: title-tooltips для всех полей. По репорту:
   // «добавь подсказки при наведении ... показывать при наведении мыши на
@@ -1092,13 +1146,17 @@ function pointCard(p, i) {
     d:    'Влагосодержание d = 622·P_w/(P−P_w), г/кг сух. возд. Связано с φ через P_ws(t).',
     h:    'Энтальпия h = 1.006·t + d·(2501+1.86·t)/1000, кДж/кг сух. возд. Сумма sensible + latent.',
   };
+  // v0.60.148: компактный 🔒-индикатор в заголовке вместо большого блока
+  // под label «Имя». Текст полностью в title (hover tooltip).
+  const _lockBadge = _hasAnyLock
+    ? `<span class="pt-lock-badge" title="${escAttr(_lockReason)}" style="font-size:13px;color:#d97706;cursor:help;margin:0 6px">🔒</span>`
+    : '';
   el.innerHTML = `
     <div class="psy-point-header">
-      <span>Точка ${i+1}</span>
+      <span>Точка ${i+1}${_lockBadge}</span>
       <button type="button" class="pt-del" title="Удалить точку" data-act="del" data-i="${i}">✕</button>
     </div>
     <label title="${escAttr(TT.name)}">Имя<input type="text" data-col="name" data-i="${i}" data-user="${du('name')}" value="${escAttr(p.name || '')}" title="${escAttr(TT.name)}"></label>
-    ${lockHint}
     <label title="${escAttr(_locked.t ? _lockReason : TT.t)}">${L.t}<input type="number" data-col="t" data-i="${i}" data-user="${du('t')}" data-ts="${ts('t')}" value="${p.t ?? ''}" step="0.1" title="${escAttr(_locked.t ? _lockReason : TT.t)}"${_attr('t')}></label>
     <label title="${escAttr(_locked.rh ? _lockReason : TT.rh)}">${L.rh}<input type="number" data-col="rh" data-i="${i}" data-user="${du('rh')}" data-ts="${ts('rh')}" value="${p.rh ?? ''}" step="1" min="0" max="100" title="${escAttr(_locked.rh ? _lockReason : TT.rh)}"${_attr('rh')}></label>
     <label title="${escAttr(_locked.x ? _lockReason : TT.d)}">${L.d}<input type="number" data-col="x" data-i="${i}" data-user="${du('x')}" data-ts="${ts('x')}" value="${p.x ?? ''}" step="0.1" placeholder="авто" title="${escAttr(_locked.x ? _lockReason : TT.d)}"${_attr('x')}></label>
