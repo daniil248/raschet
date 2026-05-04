@@ -3,11 +3,49 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Raschet · Скетч / Whiteboard (drawio)</title>
+  <title>Raschet · Скетч (временно отключён)</title>
+  <!-- v0.60.179 (по репорту Пользователя 2026-05-04 «пока проблемы с
+       drawio отключи вообще модуль скетч»): прямой переход на /sketch/
+       выводит заглушку с пояснением и ссылкой на hub. Полная разметка
+       drawio закомментирована ниже на случай быстрого возврата. -->
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+           background: #f8fafc; color: #1f2937;
+           display: flex; align-items: center; justify-content: center;
+           min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+    .stub-card { max-width: 520px; padding: 32px 36px;
+                 background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+                 box-shadow: 0 4px 12px rgba(0,0,0,0.06); text-align: center; }
+    .stub-card h1 { font-size: 22px; margin: 0 0 12px; color: #1e40af; }
+    .stub-card p { font-size: 14px; line-height: 1.5; color: #475569; margin: 0 0 16px; }
+    .stub-card a { display: inline-block; padding: 10px 20px;
+                   background: #1e40af; color: #fff; border-radius: 6px;
+                   text-decoration: none; font-weight: 600; font-size: 13px; }
+    .stub-card a:hover { background: #1e3a8a; }
+    .stub-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.6; }
+    .stub-version { margin-top: 18px; font-size: 11px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="stub-card">
+    <div class="stub-icon">⏸</div>
+    <h1>Модуль «Скетч» временно отключён</h1>
+    <p>Идут работы по интеграции официального drawio (jgraph/drawio).
+       Vendor-скрипт пока не подтянул webapp полностью.
+       Модуль вернётся в следующих релизах.</p>
+    <a href="../hub.html">← К списку программ</a>
+    <div class="stub-version">v0.60.179 · disabled</div>
+  </div>
+</body>
+</html>
+<!--
+ОРИГИНАЛЬНАЯ РАЗМЕТКА (закомментирована для быстрого возврата). Чтобы
+включить обратно: раскомментируйте блок ниже, удалите stub выше, в
+modules.json верните "enabled": true, в hub.html раскомментируйте карточку.
+
   <link rel="stylesheet" href="../shared/styles/base.css">
   <link rel="stylesheet" href="../shared/app-header.css">
   <link rel="stylesheet" href="sketch.css">
-  <!-- Firebase Auth -->
   <script src="../firebase-config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
@@ -444,3 +482,5 @@
   <script type="module" src="sketch.js"></script>
 </body>
 </html>
+-->
+
