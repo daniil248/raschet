@@ -6433,13 +6433,38 @@ function renderConsumersTable() {
   };
 
   // Phase 1.20.24: parent-panel map (используется в фильтре + рендере)
+  // v0.60.244 (по репорту Пользователя 2026-05-05 «блин как нет питающего
+  // щита группа же подключена к конкретному щиту??»): если consumer —
+  // slot-член consumer-container, у него нет прямой conn от панели
+  // (conn идёт от панели к контейнеру). Fallback: ищем parent контейнера.
   const parentPanelById0 = new Map();
+  // Pre-build: containerByMemberId map
+  const _containerByMember = new Map();
+  for (const cn of S.nodes.values()) {
+    if (cn.type !== 'consumer-container' || !Array.isArray(cn.slots)) continue;
+    for (const s of cn.slots) {
+      if (s && s.kind === 'linked' && s.nodeId) _containerByMember.set(s.nodeId, cn);
+    }
+  }
   for (const n of consumers) {
     let parent = null;
+    // 1) Прямая conn от панели/ИБП к этому consumer.
     for (const c of S.conns.values()) {
       if (c.to?.nodeId === n.id) {
         const from = S.nodes.get(c.from?.nodeId);
         if (from && (from.type === 'panel' || from.type === 'ups')) { parent = from; break; }
+      }
+    }
+    // 2) Если consumer — член контейнера, берём parent контейнера.
+    if (!parent) {
+      const container = _containerByMember.get(n.id);
+      if (container) {
+        for (const c of S.conns.values()) {
+          if (c.to?.nodeId === container.id) {
+            const from = S.nodes.get(c.from?.nodeId);
+            if (from && (from.type === 'panel' || from.type === 'ups')) { parent = from; break; }
+          }
+        }
       }
     }
     parentPanelById0.set(n.id, parent);
