@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.213', date: '2026-05-04', items: [
+      '🏭 <b>AKSA в каталог ДГУ</b> + altitude уже передаётся из location. По репорту Пользователя 2026-05-04 «добавь в каталог ДГУ AKSA. или конфигуратор знает место проекта и сам забирает высоту установки и наихудшие параметры влияющие на дирейтинг из модуля метео».',
+      '• <b>AKSA добавлены 7 моделей</b> (33–1250 kVA): APD33C/Cummins, APD110A/Doosan, APD220A/Doosan, APD330C/Cummins, APD500P/Perkins, APD825BD/Baudouin, APD1250M/MTU. Параметры по datasheet AKSA.',
+      '• <b>Altitude уже передаётся</b>: <code>project.location.altitudeM</code> → URL <code>?altitude</code> → <code>_state.altitudeM</code>. После v0.60.212 force-mode применяется ВСЕГДА при click из инспектора (override saved state).',
+      '• <b>Climate derate</b>: ISO 3046-1 формулы (altitude > 100м: -1%/100м; T > 25°C: -2.5%/5°C; RH > 60%: -1%/25%) уже применяются автоматически в калькуляторе.',
+      'Файл: <code>shared/catalogs/dgu.js</code> (+7 AKSA моделей).',
+    ] },
     { version: '0.60.212', date: '2026-05-04', items: [
       '🔌 <b>Конфигуратор ДГУ — реальная нагрузка + meteo принудительно</b>. По репорту Пользователя 2026-05-04 «модуль ДГУ не использует модуль метео. Максимальная нагрузка 72.7 кВт, а в конфигуратор передается 160 кВт».',
       '• <b>Inspector → DGU</b>: <code>capacityKw = max(_maxLoadKw, _maxDownstreamUncapped, capacityKw)</code>. Раньше брал просто <code>_maxLoadKw</code>, который для генератора с triggerGroups сценариями равен max-сценарию (например 72.7), а пользователь хочет ДГУ под полную возможную нагрузку (160).',
