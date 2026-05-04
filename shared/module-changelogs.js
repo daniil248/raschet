@@ -4,6 +4,23 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.143', date: '2026-05-04', items: [
+      '🎨 <b>TW: эргономика sidebar (rail) — flex layout, без overflow</b>. По репорту Пользователя 2026-05-04 «строки залазят внутрь рамки. Перепиши эргономику модуля».',
+      '• Раньше: <code>display:grid</code> с двумя колонками + ellipsis на name → длинные шифры (25006-GEP-GEN-ELC-901_TBC Bank) обрезались до бессмыслицы, chip упирался в name.',
+      '• Теперь: <code>display:flex</code> + <code>flex-wrap:wrap</code> + <code>min-width:0</code> на text-зоне; chip <code>flex-shrink:0</code> с <code>max-width:50%</code>; padding 8×12 (было 7×10) для воздуха; row-gap 3px.',
+      '• <b>Name</b>: <code>-webkit-line-clamp:2</code> + <code>word-break:break-word</code> — длинные шифры разбиваются по дефисам в 2 строки вместо ellipsis-трункации.',
+      '• <b>Sub</b>: <code>overflow-wrap:anywhere</code> — переносится естественно, не убегает за рамку.',
+      '• <b>Chip</b>: <code>align-self:flex-start</code> + <code>margin-top:1px</code> для baseline-align с первой строкой name.',
+      '• Hover/active state — добавлен border highlight для visual feedback.',
+      '🌡 <b>Климатические требования = диапазон ASHRAE-класса (не больше, не меньше)</b>. По репорту Пользователя 2026-05-04 «требования должны ограничиваться выбранным классом, не больше, не меньше».',
+      '• <b>ASHRAE_CLASSES</b> const экспортирован из tech-workspace.js — карта 6 классов: A1 (15-32°C / 8-80% RH) / A2 (10-35 / 8-80) / A3 (5-40 / 8-85) / A4 (5-45 / 8-90) / N/A (офис, 18-27 / 20-80 по СП 60) / custom (свободный ввод).',
+      '• <b>Источник</b>: ASHRAE TC 9.9 «Thermal Guidelines for Data Processing Environments» (4-th ed., 2021), allowable envelope.',
+      '• <b>UI</b>: при выборе класса (не \'custom\') поля T мин/макс, RH мин/макс <b>авто-заполняются</b> по диапазону класса И блокируются (disabled + tooltip «🔒 Значение определено классом X»). Свободный ввод — только при class=\'custom\'.',
+      '• <b>Migration</b>: existing rooms с class=A1 и old defaults (18/27/20/80) автоматически синкают значения с allowable envelope (15/32/8/80) при первом открытии TW.',
+      '• <b>Default newRoom</b> теперь использует A1 allowable envelope.',
+      '• <b>applyAshraeClassToClimate()</b> helper экспортирован — может использоваться cooling/cu-config для расчёта free-cooling threshold по классу.',
+      'Файлы: <code>tech-workspace/tech-workspace.css</code> (rail-item rewrite ~70 строк), <code>tech-workspace/tech-workspace.js</code> (+ASHRAE_CLASSES const + applyAshraeClassToClimate; UI lock-aware fields; change-handler для climate.ashraeClass; migration в normalize-rooms; default newRoom updated).',
+    ] },
     { version: '0.60.142', date: '2026-05-04', items: [
       '📋 <b>«Действующие нормативы по стране» — info-widget в свойствах проекта</b>. Visible reference какие стандарты будут применены в расчётных модулях по location.country.',
       '• <b>projects/project.js</b> — под секцией «Местоположение объекта» новый блок с badge\'ами:',
