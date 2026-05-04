@@ -229,9 +229,30 @@ export function bomForNode(node) {
 
   // 3) Fallback: Placeholder по типу узла
   if (!items.length) {
+    // v0.60.221 (по логике v0.60.216 — Пользователь применил ДГУ из
+    // dgu-config через postMessage, и узел теперь содержит
+    // n.appliedConfig.dgu.selected с vendor/model/nameplateKw): для
+    // генератора с привязанной моделью показываем содержательный label
+    // с вендором/моделью, чтобы строка BOM была информативной.
+    let label = node.name || node.tag || node.type || 'node';
+    if (node.type === 'generator' && node.appliedConfig?.dgu?.selected) {
+      const sel = node.appliedConfig.dgu.selected;
+      const sp  = node.appliedConfig.dgu.spec || {};
+      const parts = [];
+      if (sel.vendor || sel.model) {
+        parts.push((sel.vendor ? sel.vendor + ' ' : '') + (sel.model || ''));
+      }
+      if (Number.isFinite(Number(sel.nameplateKw))) {
+        parts.push(Math.round(Number(sel.nameplateKw)) + ' кВт' + (sp.mode ? ' ' + sp.mode : ''));
+      }
+      const dguLabel = parts.join(' · ').trim();
+      if (dguLabel) {
+        label = (node.name || node.tag || 'ДГУ') + ' (' + dguLabel + ')';
+      }
+    }
     items.push({
       elementId: null,
-      label: node.name || node.tag || node.type || 'node',
+      label,
       kind: node.type,
       qty: count,
       role: null,

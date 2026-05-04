@@ -4,6 +4,10 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.221', date: '2026-05-04', items: [
+      '📋 <b>BOM: ДГУ показывается с моделью и мощностью</b>. По логике v0.60.216 (apply из dgu-config записывает <code>n.appliedConfig.dgu.selected</code>): теперь BOM использует эту инфо для содержательного label вместо generic «Генератор-1». Пример: вместо «G1» пишется «G1 (AJ Power DA3-AJ165-P1 · 132 кВт ESP)».',
+      'Файл: <code>shared/bom.js</code> (bomForNode fallback-ветка для type=generator).',
+    ] },
     { version: '0.60.220', date: '2026-05-04', items: [
       '🦶 <b>Метео: убрана дублирующая кнопка «Применить и вернуться»</b>. По репорту Пользователя 2026-05-04 «зачем две кнопки, оставь одну, которая работает». В embed-режиме рендерились две одинаковые apply-кнопки:',
       '• Шапка актива (через <code>renderModuleActions</code>): «✓ Применить и вернуться в «Свойства проекта…»» — generic-кнопка из shared/module-nav.',
