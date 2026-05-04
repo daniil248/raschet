@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.215', date: '2026-05-04', items: [
+      '🦶 <b>Каталог: убран двойной футер</b>. По репорту Пользователя 2026-05-04 «мой каталог имеет двойной футер, приведи к общему». В catalog/index.html было два разных footer-mount: <code>app-footer.js</code> (<code>.rs-footer</code>: «v0.60.210 © 2026 Raschet Platform») + <code>module-footer.js</code> (<code>.rs-mfoot</code>: «Raschet v0.60.210 · Журнал изменений Каталог»). Они не дедуплицировались (разные классы).',
+      '• <b>Решение</b>: оставлен только <code>module-footer</code> — он богаче (версия + ссылка на журнал изменений модуля).',
+      '• <b>Аналогичная двойная-футер проблема</b> существует в panel-config / ups-config / mv-config / etc. — там её Пользователь не репортил, оставлено как есть. При репорте — повторим этот же фикс.',
+      'Файл: <code>catalog/index.html</code>.',
+    ] },
     { version: '0.60.214', date: '2026-05-04', items: [
       '📁 <b>Каталоги: подпапка-per-type, файл-per-vendor</b>. По репорту Пользователя 2026-05-04 «давай не будем сваливать в одну папку, а для каждого типа оборудования или элемента сделаем отдельную подпапку, а в внутри уже по производителям будут файлы».',
       '• <code>shared/catalogs/dgu/</code> — caterpillar.js, cummins.js, volvo-penta.js, fg-wilson.js, mtu.js, aksa.js, <b>aj-power.js</b> + index.js (агрегатор, экспортирует <code>DGU_DATASHEETS</code>, <code>listDgus</code>, <code>listDguVendors</code>, <code>suggestDgu</code>).',

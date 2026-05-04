@@ -17,7 +17,10 @@
   <div id="rs-header-mount"></div>
   <script type="module">
     import { mountHeader } from '../shared/app-header.js';
-    import { mountFooter } from '../shared/app-footer.js';
+    // v0.60.215 (по репорту Пользователя 2026-05-04 «мой каталог имеет
+    // двойной футер, приведи к общему»): app-footer (.rs-footer)
+    // удалён — используем только module-footer (.rs-mfoot) ниже,
+    // который богаче (версия + ссылка на журнал изменений).
     import { mountHelp } from '../shared/help-panel.js';
     mountHeader({ title: 'Каталог и библиотека', home: '../hub.html', moduleId: 'catalog', moduleTitle: 'Каталог' });
     mountHelp({
@@ -94,7 +97,6 @@
     if (window.Auth && typeof window.Auth.init === 'function') {
       window.Auth.init().catch(e => console.warn('[catalog] auth init failed', e));
     }
-    window.addEventListener('DOMContentLoaded', () => mountFooter());
   </script>
 
   <div class="page-wrap">
