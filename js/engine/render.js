@@ -2608,7 +2608,12 @@ export function renderNodes() {
           breakerIn:  { v: null },
           cableSpec:  { v: n._cableSpec || null },
           deltaUPct:  { v: Number.isFinite(_vdrop) ? _vdrop.toFixed(1) : null },
-          count:      { v: cnt > 1 ? String(cnt) : null },
+          // v0.60.181 (по репорту Пользователя 2026-05-04 «в основных данных
+          // группы не должно быть х8, так как это есть в нижнем поле группы»):
+          // count для consumer-container скрыт в body — он уже показан
+          // в footer-метке «8 × 8.2 kW = 65.6 kW (Pрасч 56 kW)» снаружи
+          // карточки. Дублирование «×: 8 шт.» в body избыточно.
+          count:      { v: null },
         };
         labelMap = null;
       } else if (n.type === 'consumer') {
