@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.243', date: '2026-05-05', items: [
+      '⚡ <b>«Текущая X kW / Y A» на panel/source/generator/ups</b>. По запросу Пользователя 2026-05-05 «ты еще не добавил текущее мощность / ток для пресета Электрик».',
+      '• Раньше показывалось «Ток: 99.7 A» (только ампер). Теперь — «Текущая: 38.6 kW / 99.7 A» (kW + A через слэш, как Макс/Свободно).',
+      '• Новое поле <code>currentKw</code> в card-fields-registry для panel/source/generator/ups (label «Текущая мощность (кВт)», shortLabel «Текущая»).',
+      '• Новая cross-unit pair <code>{ primary: \'currentKw\', secondary: \'currentA\', label: \'Текущая\' }</code> в render.js PAIRS — приоритетно над «Ток» fallback.',
+      '• ValueMap для всех 4 типов содержит <code>currentKw: fmtDigits(n._powerP || n._loadKw)</code> — берёт активную мощность walkUp.',
+      '• Preset «Электрик» обновлён: добавлен <code>currentKw</code> в elFields. Order list расширен: «Номинал → Текущая → Макс → Свободно».',
+      'Файлы: <code>shared/card-fields-registry.js</code>, <code>shared/card-presets.js</code>, <code>js/engine/render.js</code>.',
+    ] },
     { version: '0.60.242', date: '2026-05-05', items: [
       '🌬 <b>BFS walk-through consumers (наружные блоки кондиционеров)</b>. По репорту Пользователя 2026-05-05 «ты может не правильно считаешь наружний блок кондиционера, он добавляется к каждому кондиционеру 8,6+0,6 кВт» / «так же и ток должен суммироваться, ток кондиционера + ток наружного блока».',
       '• Корень: <code>_bfsDownstreamWithActiveTies</code> (для maxDownstreamLoad), <code>_walkBoth</code> (для _maxLoadKwNameplate/_maxLoadKwCalculated), и <code>_walkConsumers</code> (для sibling-clamp) делали <code>continue</code> при попадании на consumer-узел. Это останавливало walk и пропускало downstream sub-consumers (например, Z1.L10 наружные блоки за Z1.L7 кондиционерами).',

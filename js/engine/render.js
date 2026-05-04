@@ -2113,7 +2113,7 @@ export function renderNodes() {
       // расположения полей».
       const _presetTypeKey = (n.type === 'consumer-container') ? 'consumer' : n.type;
       _presetVisible = getVisibleFieldIds(_presetActive, _presetKind, _presetTypeKey);
-      const _ELECTRICAL = ['demandKw', 'kvAOrVA', 'currentA', 'maxKw', 'maxA',
+      const _ELECTRICAL = ['demandKw', 'kvAOrVA', 'currentKw', 'currentA', 'maxKw', 'maxA',
         'nominalKw', 'cosPhi', 'phase', 'voltage', 'breakerIn', 'cableSpec',
         'deltaUPct', 'capacityA', 'snomKva', 'sscMva', 'ukPct', 'kva', 'kw',
         'autonomyMin', 'marginPct'];
@@ -2736,6 +2736,8 @@ export function renderNodes() {
         }
         valueMap = {
           capacityA:   { v: Number.isFinite(effectiveCapA) && effectiveCapA > 0 ? String(effectiveCapA) : null },
+          // v0.60.243: currentKw для пары «Текущая X kW / Y A».
+          currentKw:   { v: fmtDigits(n._powerP || n._loadKw) },
           currentA:    { v: fmtDigits(n._loadA) },
           maxKw:       { v: fmtDigits(n._maxLoadKw) },
           maxA:        { v: fmtDigits(n._maxLoadA)  },
@@ -2760,6 +2762,8 @@ export function renderNodes() {
           voltage:    { v: null },
           snomKva:    { v: fmtDigits(SnomNameplate) },
           capacityKw: { v: fmtDigits(n.capacityKw) },
+          // v0.60.243: currentKw для пары «Текущая X kW / Y A».
+          currentKw:  { v: fmtDigits(n._powerP || n._loadKw) },
           currentA:   { v: fmtDigits(n._loadA) },
           maxKw:      { v: fmtDigits(n._maxLoadKw) },
           maxA:       { v: fmtDigits(n._maxLoadA)  },
@@ -2778,6 +2782,8 @@ export function renderNodes() {
         valueMap = {
           capacityKw: { v: fmtDigits(n.capacityKw) },
           snomKva:    { v: fmtDigits(SnomNameplate) },
+          // v0.60.243: currentKw для пары «Текущая X kW / Y A».
+          currentKw:  { v: fmtDigits(n._powerP || n._loadKw) },
           currentA:   { v: fmtDigits(n._loadA) },
           maxKw:      { v: fmtDigits(n._maxLoadKw) },
           maxA:       { v: fmtDigits(n._maxLoadA)  },
@@ -2802,6 +2808,8 @@ export function renderNodes() {
           kva:        { v: fmtDigits(SnomNameplate) },
           kw:         { v: fmtDigits(n.capacityKw) },
           autonomyMin: { v: null },
+          // v0.60.243: currentKw для пары «Текущая X kW / Y A».
+          currentKw:  { v: fmtDigits(n._powerP || n._loadKw) },
           currentA:   { v: fmtDigits(n._loadA || capA) },
           maxKw:      { v: fmtDigits(n._maxLoadKw) },
           maxA:       { v: fmtDigits(n._maxLoadA)  },
@@ -2855,6 +2863,10 @@ export function renderNodes() {
         { primary: 'maxKw',     secondary: 'maxA',      label: 'Макс',     unit: '' },
         { primary: 'nominalKw', secondary: 'capacityA', label: 'Номинал',  unit: '' },
         { primary: 'demandKw',  secondary: 'currentA',  label: 'Расчёт',   unit: '' },
+        // v0.60.243 (по запросу Пользователя 2026-05-05 «ты еще не добавил
+        // текущее мощность / ток для пресета Электрик»): «Текущая X kW / Y A»
+        // вместо «Ток: Y A» (для panel/source/generator/ups, где есть _powerP).
+        { primary: 'currentKw', secondary: 'currentA',  label: 'Текущая',  unit: '' },
         { primary: 'freeKw',    secondary: 'freeA',     label: 'Свободно', unit: '' },
         // Same-unit pairs (legacy fallback — если cross-unit pair не активна)
         { primary: 'demandKw',  secondary: 'maxKw', label: 'Мощность', unit: 'кВт' },
@@ -3045,8 +3057,10 @@ export function renderNodes() {
           for (const i of idxs) _bodyArr.splice(i, 1);
           _bodyArr.splice(Math.min(sIdx, pIdx), 0, merged);
         }
-        // Порядок: Номинал → Ток → Макс → Свободно (с Запасом).
-        const _orderP = ['Номинал:', 'Ток:', 'Макс:', 'Свободно:'];
+        // Порядок: Номинал → Текущая (или Ток) → Макс → Свободно (с Запасом).
+        // v0.60.243: «Текущая X kW / Y A» (новая pair currentKw+currentA)
+        // имеет тот же rank что «Ток:» — fallback если pair не активна.
+        const _orderP = ['Номинал:', 'Текущая:', 'Ток:', 'Макс:', 'Свободно:'];
         const _rankP = (s) => {
           for (let i = 0; i < _orderP.length; i++) {
             if (typeof s === 'string' && s.startsWith(_orderP[i])) return i;

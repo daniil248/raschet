@@ -93,7 +93,11 @@ export const SYSTEM_PRESETS = [
       // Расчёт/Макс/Свободно/cos/U/кабель/автомат/ΔU остаются. Phase
       // остаётся в preset для других типов узлов (ups/source) — но для
       // consumer/consumer-container hidden в valueMap (render.js v0.60.184).
-      const elFields = ['demandKw', 'currentA', 'maxKw', 'maxA',
+      // v0.60.243 (по запросу Пользователя 2026-05-05 «ты еще не добавил
+      // текущее мощность / ток для пресета Электрик»): currentKw добавлен,
+      // даёт пару «Текущая X kW / Y A» на карточке panel/source/generator/ups
+      // (как Макс и Свободно).
+      const elFields = ['demandKw', 'currentKw', 'currentA', 'maxKw', 'maxA',
                         'freeKw', 'freeA',
                         'breakerIn', 'cableSpec', 'deltaUPct',
                         'voltage', 'phase', 'cosPhi', 'count',
