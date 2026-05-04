@@ -51,6 +51,34 @@ export function setContext(ctx) {
 
 const $ = (id) => document.getElementById(id);
 
+// v0.60.173: URL-builder и человекочитаемое имя модуля по refType. Используется
+// в picker'е, когда entity list пуст — Пользователь видит «Открыть модуль X ↗»
+// и может сразу пойти создать первую запись.
+const MODULE_URL_BY_REF_TYPE = {
+  project: (pid) => `../projects/project.html?project=${encodeURIComponent(pid || '')}`,
+  rack: (pid) => `../rack-config/?project=${encodeURIComponent(pid || '')}`,
+  schema: (pid) => `../index.html?project=${encodeURIComponent(pid || '')}`,
+  schematic: (pid) => `../schematic/?project=${encodeURIComponent(pid || '')}`,
+  panel: (pid) => `../panel-config/?project=${encodeURIComponent(pid || '')}`,
+  ups: (pid) => `../ups-config/?project=${encodeURIComponent(pid || '')}`,
+  mv: (pid) => `../mv-config/?project=${encodeURIComponent(pid || '')}`,
+  transformer: (pid) => `../transformer-config/?project=${encodeURIComponent(pid || '')}`,
+  cable: (pid) => `../cable/?project=${encodeURIComponent(pid || '')}`,
+  sketch: (pid) => `../sketch/?project=${encodeURIComponent(pid || '')}`,
+};
+const MODULE_NAME_BY_REF_TYPE = {
+  project: 'Проекты',
+  rack: 'Конфигуратор стойки',
+  schema: 'Конструктор схем',
+  schematic: 'Схема принципиальная',
+  panel: 'Конфигуратор НКУ',
+  ups: 'Конфигуратор ИБП',
+  mv: 'Конфигуратор РУ СН',
+  transformer: 'Конфигуратор трансформатора',
+  cable: 'Расчёт кабельной линии',
+  sketch: 'Скетч',
+};
+
 // ───────── Public render API ────────────────────────────────────────────────
 
 export function renderRefsSidebar() {
@@ -213,8 +241,23 @@ function openPickerModal() {
     const refType = typeSel.value;
     const entities = listEntities(refType, _ctx.pid);
     if (!entities.length) {
-      listEl.innerHTML = `<div class="sk-refs-modal-empty">Нет доступных объектов в проекте.<br>
-        <span style="color:#94a3b8;font-size:11px">Создайте их в соответствующем модуле и вернитесь сюда.</span></div>`;
+      // v0.60.173: для пустого списка показываем прямую ссылку «Открыть
+      // модуль» — Пользователь идёт создавать entity и возвращается.
+      const moduleUrl = MODULE_URL_BY_REF_TYPE[refType];
+      const moduleName = MODULE_NAME_BY_REF_TYPE[refType] || refType;
+      const link = moduleUrl
+        ? `<a href="${escAttr(moduleUrl(_ctx.pid))}" target="_blank"
+             style="display:inline-block;margin-top:8px;padding:6px 12px;
+                    background:#1e40af;color:#fff;border-radius:4px;
+                    text-decoration:none;font-size:12.5px;font-weight:500">
+            Открыть «${escHtml(moduleName)}» ↗
+           </a>`
+        : '';
+      listEl.innerHTML = `<div class="sk-refs-modal-empty">
+        Нет доступных объектов в проекте.<br>
+        <span style="color:#94a3b8;font-size:11px">
+          Создайте их в соответствующем модуле и вернитесь сюда.
+        </span><br>${link}</div>`;
       selectedEntityId = null;
       return;
     }

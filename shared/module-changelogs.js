@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.173', date: '2026-05-04', items: [
+      '🎯 <b>Sketch picker: «Открыть модуль ↗» при пустом списке entity</b>. Phase 3.5 follow-up. Когда Пользователь открывает picker связи в sketch\'е и для выбранного типа в проекте ещё ничего нет — теперь сразу есть кнопка-ссылка «Открыть [модуль] ↗», ведущая в нужный модуль. Раньше сообщение «создайте в соответствующем модуле» было без указания и без линка.',
+      '• <b>MODULE_URL_BY_REF_TYPE</b>: 10 URL-builder\'ов (project / rack / schema / schematic / panel / ups / mv / transformer / cable / sketch).',
+      '• <b>MODULE_NAME_BY_REF_TYPE</b>: человекочитаемые имена для текста кнопки.',
+      'Файл: <code>sketch/sketch-refs-ui.js</code> (+MODULE_URL_BY_REF_TYPE/MODULE_NAME_BY_REF_TYPE + UI fix в renderList empty-state).',
+    ] },
     { version: '0.60.172', date: '2026-05-04', items: [
       '🔗 <b>Reverse-link chip в rack-config</b> (Phase 3.5.1). Возле выбранного шаблона/инстанса стойки в тулбаре rack-config теперь показывается чип «📎 N sketch\'ей» — Пользователь видит, упоминается ли эта стойка в sketch\'ах проекта.',
       '• <b>Логика</b>: чип появляется только если выбрана реальная стойка-инстанс (с tag из scs-config). Для template-шаблонов без tag — скрыт.',
