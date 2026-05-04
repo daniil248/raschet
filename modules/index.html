@@ -21,6 +21,9 @@
       transition: box-shadow 0.15s, transform 0.12s;
     }
     .mod-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); transform: translateY(-1px); border-color: #c7d2fe; }
+    /* v0.60.93: planned-карточки (Phase 2 — будущие дисциплины) */
+    .mod-card-disabled { opacity: 0.55; cursor: not-allowed; pointer-events: none; background: #fafbfc; }
+    .mod-card-disabled .title::after { content: ' 🔒'; }
     .mod-card .title { font-size: 14px; font-weight: 600; color: #1f2430; }
     .mod-card .desc { font-size: 12px; color: #6b7280; line-height: 1.4; }
     .mod-card .meta { font-size: 11px; color: #94a3b8; margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; }
@@ -184,6 +187,61 @@
           <span class="title">Расчёт газового пожаротушения (АГПТ)</span>
           <span class="desc">ГОТВ: FM-200, Novec 1230, HFC-125, CO₂, IG-541/55/100/01, SF₆.</span>
           <span class="meta"><span class="tag standalone">standalone</span><span class="tag draft">draft</span></span>
+        </a>
+        <a class="mod-card mod-card-disabled" href="#" title="Phase 2.E.1 — в разработке">
+          <span class="title">Спринклеры (планируется)</span>
+          <span class="desc">Расчёт по СП 485 / NFPA 13. Подбор насосов, спринклерных головок, гидравлика.</span>
+          <span class="meta"><span class="tag draft">planned</span></span>
+        </a>
+        <a class="mod-card mod-card-disabled" href="#" title="Phase 2.E.2 — в разработке">
+          <span class="title">Дымоудаление (планируется)</span>
+          <span class="desc">Расчёт по СП 7. Подбор вентиляторов дымоудаления, клапанов.</span>
+          <span class="meta"><span class="tag draft">planned</span></span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Phase 2.B (по запросу Пользователя 2026-05-03 «слаботочник отдельно»):
+         СКС уже есть в «Инфраструктура ЦОД». Здесь — будущие модули. -->
+    <div class="mod-section">
+      <h2>🌐 Слаботочные системы</h2>
+      <div class="mod-grid">
+        <a class="mod-card mod-card-disabled" href="#" title="Phase 2.B.1 — в разработке">
+          <span class="title">CCTV / Видеонаблюдение (планируется)</span>
+          <span class="desc">Расстановка камер, расчёт хранилища NVR, требования к сети, FoV/lux.</span>
+          <span class="meta"><span class="tag draft">planned</span></span>
+        </a>
+        <a class="mod-card mod-card-disabled" href="#" title="Phase 2.B.2 — в разработке">
+          <span class="title">СКУД (планируется)</span>
+          <span class="desc">Контроллеры, считыватели, расчёт точек прохода, антипассбэк, иерархия.</span>
+          <span class="meta"><span class="tag draft">planned</span></span>
+        </a>
+        <a class="mod-card mod-card-disabled" href="#" title="Phase 2.B.3 — в разработке">
+          <span class="title">ОПС / Пожарная сигнализация (планируется)</span>
+          <span class="desc">Датчики, шлейфы, ППК. Расчёт зон, СП 484/486.</span>
+          <span class="meta"><span class="tag draft">planned</span></span>
+        </a>
+        <a class="mod-card mod-card-disabled" href="#" title="Phase 2.B.4 — в разработке">
+          <span class="title">СОУЭ / Оповещение (планируется)</span>
+          <span class="desc">Громкоговорители, усилители, расчёт уровней звука по СП 3.13130.</span>
+          <span class="meta"><span class="tag draft">planned</span></span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Phase 2.C (по запросу «АСУ ТП отдельно») -->
+    <div class="mod-section">
+      <h2>🤖 АСУ ТП и автоматика</h2>
+      <div class="mod-grid">
+        <a class="mod-card mod-card-disabled" href="#" title="Phase 2.C.1 — в разработке">
+          <span class="title">SCADA-проектирование (планируется)</span>
+          <span class="desc">PLC, HMI, серверы, IO-схема, логика. Spec полевых сигналов (4-20 мА / Modbus / Profinet).</span>
+          <span class="meta"><span class="tag draft">planned</span></span>
+        </a>
+        <a class="mod-card mod-card-disabled" href="#" title="Phase 2.C.2 — в разработке">
+          <span class="title">КИПиА (планируется)</span>
+          <span class="desc">Полевые датчики, исполнительные механизмы. Ведомость I/O. Спецификация по приборам.</span>
+          <span class="meta"><span class="tag draft">planned</span></span>
         </a>
       </div>
     </div>
