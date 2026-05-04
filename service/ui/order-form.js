@@ -83,6 +83,7 @@ export function renderOrderForm(order, onChange, displayCurrency = '₽', conver
       <div class="sv-section-title" title="Позиции наряда: одна строка = одна работа/материал/командировка с qty/unit/себес/клиент-ценой.">📦 Состав работ и материалов (${o.positions.length})</div>
       <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">
         <button type="button" class="sv-btn-primary" id="sv-add-pos" title="Добавить пустую позицию.">+ Позиция</button>
+        <button type="button" class="sv-btn-primary" id="sv-add-wizard" style="background:#7c3aed;border-color:#7c3aed" title="Phase 42 (v0.60.109): Мастер составления наряда — задаёт вопросы по типу системы (вентиляция/чиллер/ИБП), запрашивает параметры (расход/мощность/тип хладагента) и предлагает релевантные позиции с правильным количеством по периодичности. Можно снять галочки с ненужных, отредактировать qty и нажать «Добавить в наряд».">🪄 Через мастер</button>
         <button type="button" class="sv-btn-ghost" id="sv-add-template" title="Открыть каталог типовых работ для текущего типа наряда (${escAttr(ORDER_TYPES.find(t => t.id === o.type)?.label || '')}). Шаблоны имеют дефолтные себес/клиент-цены — можно редактировать после добавления.">📚 Из шаблонов работ</button>
         <button type="button" class="sv-btn-ghost" id="sv-add-material" title="Добавить позицию из каталога материалов (хладагент, фильтр, масло, АКБ, кабель и т.п.). Дефолтная цена и валюта берутся из каталога; qty по умолчанию 1 — отредактируйте.">📦 Из материалов</button>
         <button type="button" class="sv-btn-ghost" id="sv-import-cooling" title="Импорт работ из cooling-подбора текущего проекта. Для каждой equipment-группы добавится позиция «Монтаж: ...» с qty из топологии (для нарядов типа Монтаж) или «ТО квартальное ...» (для нарядов типа ТО). Цены — дефолтные по типу/мощности; редактируйте после импорта. При повторном импорте — обновление с подтверждением.">❄ Из cooling-подбора</button>
@@ -164,6 +165,14 @@ export function renderOrderForm(order, onChange, displayCurrency = '₽', conver
     if (ev.target.closest('#sv-add-pos')) {
       const next = { ...o, positions: [...o.positions, defaultPosition(displayCurrency)] };
       onChange(next);
+      return;
+    }
+    // Phase 42 v0.60.109 — мастер составления наряда
+    if (ev.target.closest('#sv-add-wizard')) {
+      const { openOrderWizard } = await import('./order-wizard.js');
+      const positions = await openOrderWizard({ orderType: o.type });
+      if (!positions || !positions.length) return;
+      onChange({ ...o, positions: [...o.positions, ...positions] });
       return;
     }
     if (ev.target.closest('#sv-add-template')) {
