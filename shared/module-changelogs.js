@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.224', date: '2026-05-04', items: [
+      '🔒 <b>dgu-config: блокировка loadKw на значении из схемы</b>. По репорту Пользователя 2026-05-04 «дгу должен подбираться по запрашиваемой мощности а не по полю которое пользователь ввел». Когда конфигуратор открыт из инспектора (?nodeId= + ?capacityKw=), поле «Нагрузка, кВт» становится read-only и под ним показывается «🔗 Из схемы: N кВт (требуемая мощность узла)». Кнопка «✏ ручной режим» снимает блокировку для ручного эксперимента; кнопка «🔗 вернуть к схеме» возвращает значение и блокировку.',
+      '🔒 <b>Inspector: ISO 8528 таблица read-only при apply</b>. По репорту «таблицу можно оставить справочно, без возможности редактировать». Когда модель применена из dgu-config (n.appliedConfig.dgu), поля kW/kVA по всем 5 режимам и cos φ ДГУ становятся <code>readonly</code> с серой подложкой. Сверху — зелёный блок «🔒 Таблица заполнена из ДГУ-конфигуратора (vendor model). Для изменения переоткройте конфигуратор» с deep-link <code>?nodeId=</code>.',
+      '🌡 <b>dgu-config: высота из метео + MCRH вместо default</b>. По репорту «не высоты не влажности не передается из метео» + «предавай хотя бы высоту метеостанции, она должна быть в данных».',
+      '• Высота: если <code>project.location.altitudeM</code> не задана, fallback на <code>active.elev</code> метеостанции (источник «🌡 метео» в баннере источников).',
+      '• RH: <code>computeStats()</code> в meteo не считает RH-stats, поэтому раньше всегда было default. Теперь — <b>MCRH (Mean Coincident RH)</b>: средняя влажность в часы когда T close to design (±1°C). Это правильное значение для climate derate ДГУ при наихудших условиях. Источник: «MCRH @ design-T (вычислено по N часов из M)».',
+      '• Баннер источников теперь показывает «высота N м» в meteo-блоке, если elev доступен.',
+      'Файлы: <code>dgu-config/dgu-config.js</code> (loadFromProject + lock helpers), <code>js/engine/inspector/source.js</code> (_renderGenIsoBlock).',
+    ] },
     { version: '0.60.223', date: '2026-05-04', items: [
       '⚡ <b>ДГУ apply: заполняем всю таблицу ISO 8528 (kW + kVA по всем режимам)</b>. По репорту Пользователя 2026-05-04 «раньше в полях были значения, сейчас убрал, хотел получить с конфигуратора».',
       '• <code>dgu-config/dgu-config.js</code> sendApplyToHost: payload теперь содержит <code>selected.ratings = {COP, DCC, PRP, LTP, ESP: {kW, kVA}}</code> и <code>selected.cosNom = 0.8</code> (типовой ISO 8528). Для отсутствующих в datasheet режимов используется <code>getDguModePowerKw</code> с ISO-fallback (v0.60.216). kVA вычисляется как kW/0.8 — это ровно соответствует datasheet (например AJ Power DA3-AJ165-P1: nameplateKw=132 → 132/0.8=165 ✓ модель «165 kVA»).',

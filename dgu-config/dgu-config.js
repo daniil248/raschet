@@ -211,6 +211,28 @@ async function loadFromProject() {
       if (active.ashrae?.cooling04?.rh != null) { rhDesign = active.ashrae.cooling04.rh; rhSource = 'ASHRAE 0.4% (cooling04.rh)'; }
       else if (active.stats?.rh99 != null)       { rhDesign = active.stats.rh99; rhSource = 'rh99 (stats)'; }
       else if (active.stats?.rhMax != null)      { rhDesign = active.stats.rhMax; rhSource = 'rhMax (stats)'; }
+      // v0.60.224 (по репорту Пользователя 2026-05-04 «не высоты не влажности
+      // не передается из метео»): meteo.computeStats() считает только
+      // T-stats — RH в stats нет. Если поля не нашли через ASHRAE/stats,
+      // вычисляем MCRH (Mean Coincident RH) при design-T прямо на лету
+      // по hourly[] (там есть h.RH per hour). MCRH — средняя влажность
+      // в часы когда T близка к design — это правильное значение для
+      // climate derate ДГУ при наихудших условиях.
+      if (rhDesign == null && Array.isArray(active.hourly) && active.hourly.length && tDesign != null) {
+        const close = active.hourly
+          .filter(h => Number.isFinite(Number(h.T)) && Number.isFinite(Number(h.RH)))
+          .filter(h => Math.abs(Number(h.T) - tDesign) < 1.0);  // ±1°C от design
+        if (close.length) {
+          const rhAvg = close.reduce((s, h) => s + Number(h.RH), 0) / close.length;
+          rhDesign = rhAvg;
+          rhSource = `MCRH @ design-T (вычислено по ${close.length} часов из ${active.hourly.length})`;
+        }
+      }
+      // v0.60.224: высота метеостанции (active.elev в метрах) — fallback
+      // когда project.location.altitudeM не задан.
+      let elevSource = null;
+      const elevM = Number(active.elev);
+      const elevValid = Number.isFinite(elevM) && elevM > 0;
 
       _stateMeta.meteoInfo = {
         name: active.name || active.label || active.station || '(meteo dataset)',
@@ -218,6 +240,7 @@ async function loadFromProject() {
         rhSource: rhSource,
         tDesign: tDesign,
         rhDesign: rhDesign,
+        elev: elevValid ? elevM : null,
       };
 
       if (tDesign != null && (_force || _state.ambientTC === 25)) {
@@ -229,6 +252,15 @@ async function loadFromProject() {
         _state.humidityPct = Math.round(rhDesign);
         _stateMeta.humidityPct = 'meteo';
         appliedHints.push(`RH расч. ${_state.humidityPct}% (${rhSource})`);
+      }
+      // v0.60.224: высота из метео — применяем если в проекте локация без
+      // altitudeM (или не задана) И в state ещё default. project.location
+      // имеет приоритет (см. блок 2 выше).
+      if (elevValid && _stateMeta.altitudeM === 'default' && (_force || _state.altitudeM === 0)) {
+        _state.altitudeM = Math.round(elevM);
+        _stateMeta.altitudeM = 'meteo';
+        elevSource = `${Math.round(elevM)} м (метеостанция «${active.name || ''}»)`;
+        appliedHints.push(`высота ${_state.altitudeM} м (${elevSource})`);
       }
     }
   } catch (e) { console.warn('[dgu-config] meteo read failed:', e); }
@@ -497,7 +529,8 @@ function _renderContextBanner() {
     const tParts = [];
     if (meteo.tDesign != null) tParts.push(`T design ${fmt(meteo.tDesign)}°C`);
     if (meteo.rhDesign != null) tParts.push(`RH design ${fmt(meteo.rhDesign)}%`);
-    meteoHtml = `<div title="Активный meteo-dataset проекта. T/RH design используются для climate derate (ISO 3046-1). Источник полей: ${escAttr((meteo.tSource || '—') + ' / ' + (meteo.rhSource || '—'))}.">
+    if (meteo.elev != null) tParts.push(`высота ${fmt(meteo.elev)} м`);
+    meteoHtml = `<div title="Активный meteo-dataset проекта. T/RH design + высота метеостанции используются для climate derate (ISO 3046-1). Источники: T=${escAttr(meteo.tSource || '—')}, RH=${escAttr(meteo.rhSource || '—')}.">
       <b>🌡 Метео:</b> ${escHtml(meteo.name)}<br>
       <span class="muted">${tParts.length ? tParts.join(' · ') : '<i>climate-поля не найдены</i>'}</span>
     </div>`;
@@ -671,6 +704,59 @@ function renderProjectContext() {
   el.innerHTML = '';
 }
 
+// v0.60.224: блокировка поля loadKw на значении из схемы (требуемая
+// мощность узла-генератора). Снимается через кнопку «✏ ручной режим».
+let _loadKwLocked = false;
+function _lockLoadKwToSchema() {
+  const inp = $('dg-loadKw');
+  if (!inp) return;
+  _loadKwLocked = true;
+  inp.readOnly = true;
+  inp.style.background = '#f1f5f9';
+  inp.style.cursor = 'not-allowed';
+  inp.title = 'Поле заблокировано: значение из узла схемы (запрашиваемая мощность). Нажмите ✏ ниже, чтобы перейти в ручной режим.';
+  // Добавим indicator + unlock-button под инпутом, если ещё не добавлены.
+  let hint = document.getElementById('dg-loadKw-hint');
+  if (!hint) {
+    hint = document.createElement('div');
+    hint.id = 'dg-loadKw-hint';
+    hint.style.cssText = 'font-size:11px;margin-top:4px;color:#1e40af;line-height:1.4';
+    inp.parentElement?.appendChild(hint);
+  }
+  hint.innerHTML = `🔗 <b>Из схемы:</b> ${_state.loadKw} кВт (требуемая мощность узла).
+    <button type="button" id="dg-loadKw-unlock" style="margin-left:6px;padding:1px 8px;font-size:11px;background:#fff;border:1px solid #cbd5e1;border-radius:3px;cursor:pointer"
+      title="Перейти в ручной режим: можно ввести любое значение для эксперимента. Подбор будет по введённой цифре, а не по схеме.">✏ ручной режим</button>`;
+  document.getElementById('dg-loadKw-unlock')?.addEventListener('click', _unlockLoadKw);
+}
+function _unlockLoadKw() {
+  const inp = $('dg-loadKw');
+  if (!inp) return;
+  _loadKwLocked = false;
+  inp.readOnly = false;
+  inp.style.background = '';
+  inp.style.cursor = '';
+  inp.title = 'Суммарная электрическая нагрузка объекта (кВт): IT-стойки + охлаждение + потери ИБП + aux. Для ЦОД — обычно 1.4-1.6 × IT-нагрузка.';
+  const hint = document.getElementById('dg-loadKw-hint');
+  if (hint) {
+    hint.innerHTML = `<span class="muted">⚠ Ручной режим: подбор по введённому значению, не по схеме.</span>
+      <button type="button" id="dg-loadKw-relock" style="margin-left:6px;padding:1px 8px;font-size:11px;background:#fff;border:1px solid #cbd5e1;border-radius:3px;cursor:pointer"
+        title="Вернуть значение из схемы и заблокировать поле.">🔗 вернуть к схеме</button>`;
+    document.getElementById('dg-loadKw-relock')?.addEventListener('click', () => {
+      // Перечитать URL-param и заблокировать.
+      const qp = new URLSearchParams(location.search);
+      const v = Number(qp.get('capacityKw'));
+      if (Number.isFinite(v)) {
+        _state.loadKw = v;
+        _stateMeta.loadKw = 'url';
+        applyStateToInputs();
+        _lockLoadKwToSchema();
+        recalcAndRender();
+      }
+    });
+  }
+  _stateMeta.loadKw = 'manual';
+}
+
 async function init() {
   // v0.60.81: project-context first, then load saved state, then URL params override.
   _pid = resolvePid();
@@ -681,6 +767,15 @@ async function init() {
   readUrlParams();
   // v0.60.216: запоминаем nodeId для apply-bar.
   try { _nodeId = new URLSearchParams(location.search).get('nodeId') || null; } catch { _nodeId = null; }
+  // v0.60.224 (по репорту Пользователя 2026-05-04 «дгу должен подбираться по
+  // запрашиваемой мощности а не по полю которое пользователь ввел,
+  // предположительная мощность»): когда конфигуратор открыт из инспектора
+  // схемы (?nodeId= + ?capacityKw=), поле «Нагрузка, кВт» блокируется на
+  // значении из схемы. Кнопка «✏ редактировать» снимает блокировку для
+  // ручного эксперимента.
+  if (_nodeId && _stateMeta.loadKw === 'url') {
+    _lockLoadKwToSchema();
+  }
   renderProjectContext();
   // Заполняем vendor select
   const vendors = listDguVendors();

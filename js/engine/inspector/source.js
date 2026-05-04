@@ -430,11 +430,26 @@ function _renderGenIsoBlock(n) {
   const ratings = (n.genRatings && typeof n.genRatings === 'object') ? n.genRatings : _genRatingDefaults();
   const curMode = n.genRatingMode || 'ESP';
   const cosNom = Number(n.genCosPhi) || 0.8;
+  // v0.60.224 (по репорту Пользователя 2026-05-04 «таблицу можно оставить
+  // справочно, без возможности редактировать»): когда модель применена из
+  // dgu-config (n.appliedConfig.dgu), таблица kW/kVA — read-only. Поля
+  // показываются справочно, но недоступны для правки. Изменить можно только
+  // через переоткрытие конфигуратора.
+  const isAppliedFromCfg = !!(n.appliedConfig && n.appliedConfig.dgu);
+  const sel = isAppliedFromCfg ? (n.appliedConfig.dgu.selected || {}) : {};
   const h = [];
   h.push('<div class="muted" style="font-size:11px;margin-bottom:8px;line-height:1.5">');
+  if (isAppliedFromCfg) {
+    h.push(`<div style="padding:8px 10px;background:#f0fdf4;border-left:3px solid #16a34a;border-radius:3px;color:#14532d;margin-bottom:8px;font-size:11.5px">
+      🔒 <b>Таблица заполнена из ДГУ-конфигуратора</b>${sel.vendor || sel.model ? ' (' + escHtml((sel.vendor || '') + ' ' + (sel.model || '')).trim() + ')' : ''}.
+      Значения — паспортные данные модели по ISO 8528. Для изменения <a href="../dgu-config/?nodeId=${escAttr(n.id)}" target="_blank" style="color:#1d4ed8">переоткройте конфигуратор</a> и выберите другую модель.
+    </div>`);
+  }
   h.push('Стандарт <b>ISO 8528-1:2018</b> определяет 5 режимов работы ДГУ. ');
   h.push('Сортировка ниже — по нарастанию рейтинга: COP &lt; DCC ≈ PRP &lt; LTP &lt; ESP. ');
-  h.push('У каждого режима свой допустимый рейтинг по kW и kVA — заполните по табличке производителя. ');
+  if (!isAppliedFromCfg) {
+    h.push('У каждого режима свой допустимый рейтинг по kW и kVA — заполните по табличке производителя. ');
+  }
   h.push('Программа проверяет достаточность по <b>обоим</b> (kW + kVA) против наиболее тяжёлого режима нагрузки.');
   h.push('</div>');
 
@@ -450,13 +465,16 @@ function _renderGenIsoBlock(n) {
   h.push(`<div class="muted" id="gr-mode-hint" style="font-size:11px;margin-top:-4px;margin-bottom:8px;line-height:1.4;color:#475569">${escHtml(curHint)}</div>`);
 
   // v0.59.665/686: methodology-aware label + helpIcon с tooltip-справкой.
+  // v0.60.224: cos φ read-only при apply из dgu-config (паспортное значение).
   {
     const _cosT = getTerm('powerFactor', GLOBAL.calcMethod || 'iec');
     const _cosTip = getTermTooltip('powerFactor', GLOBAL.calcMethod || 'iec');
     const _fullTip = (_cosTip || '') + ' По умолчанию 0.80 (ISO 8528-1 §7.2.2). Если задано только одно из kW/kVA — другое посчитается через cos φ на Apply.';
+    const _ro = isAppliedFromCfg ? ' readonly tabindex="-1"' : '';
+    const _roBg = isAppliedFromCfg ? 'background:#f1f5f9;cursor:not-allowed' : '';
     h.push(`<div class="field">
       <label>Номинальный ${escHtml(_cosT.label)} ДГУ${helpIcon(_fullTip)}</label>
-      <input type="number" id="gr-cosPhi" min="0.5" max="1.0" step="0.01" value="${cosNom}">
+      <input type="number" id="gr-cosPhi" min="0.5" max="1.0" step="0.01" value="${cosNom}"${_ro} style="${_roBg}">
     </div>`);
   }
 
@@ -488,10 +506,13 @@ function _renderGenIsoBlock(n) {
     const idCell = isActive
       ? `<b style="color:#1d4ed8">⚡ ${escHtml(m.id)}</b>`
       : `<b>${escHtml(m.id)}</b>`;
+    // v0.60.224: read-only когда применено из dgu-config (см. isAppliedFromCfg).
+    const _ro = isAppliedFromCfg ? ' readonly tabindex="-1"' : '';
+    const _roBg = isAppliedFromCfg ? ';background:#f1f5f9;cursor:not-allowed' : '';
     h.push(`<tr style="border-bottom:1px solid #f1f5f9;${rowStyle}">
       <td style="padding:6px 8px">${idCell} <span class="muted" style="font-size:10px">${escHtml(m.label.replace(/^[^—]*— ?/, ''))}</span></td>
-      <td style="padding:4px 8px;text-align:right"><input type="number" min="0" step="1" data-gr-mode="${escHtml(m.id)}" data-gr-field="kW"  value="${kW}"  style="width:80px;padding:3px 6px;text-align:right${isActive ? ';border:1.5px solid #1d4ed8;background:#eff6ff' : ''}"></td>
-      <td style="padding:4px 8px;text-align:right"><input type="number" min="0" step="1" data-gr-mode="${escHtml(m.id)}" data-gr-field="kVA" value="${kVA}" style="width:80px;padding:3px 6px;text-align:right${isActive ? ';border:1.5px solid #1d4ed8;background:#eff6ff' : ''}"></td>
+      <td style="padding:4px 8px;text-align:right"><input type="number" min="0" step="1" data-gr-mode="${escHtml(m.id)}" data-gr-field="kW"  value="${kW}" ${_ro} style="width:80px;padding:3px 6px;text-align:right${isActive ? ';border:1.5px solid #1d4ed8;background:#eff6ff' : ''}${_roBg}"></td>
+      <td style="padding:4px 8px;text-align:right"><input type="number" min="0" step="1" data-gr-mode="${escHtml(m.id)}" data-gr-field="kVA" value="${kVA}" ${_ro} style="width:80px;padding:3px 6px;text-align:right${isActive ? ';border:1.5px solid #1d4ed8;background:#eff6ff' : ''}${_roBg}"></td>
     </tr>`);
   }
   h.push('</tbody></table>');
