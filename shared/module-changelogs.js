@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.242', date: '2026-05-05', items: [
+      '🌬 <b>BFS walk-through consumers (наружные блоки кондиционеров)</b>. По репорту Пользователя 2026-05-05 «ты может не правильно считаешь наружний блок кондиционера, он добавляется к каждому кондиционеру 8,6+0,6 кВт» / «так же и ток должен суммироваться, ток кондиционера + ток наружного блока».',
+      '• Корень: <code>_bfsDownstreamWithActiveTies</code> (для maxDownstreamLoad), <code>_walkBoth</code> (для _maxLoadKwNameplate/_maxLoadKwCalculated), и <code>_walkConsumers</code> (для sibling-clamp) делали <code>continue</code> при попадании на consumer-узел. Это останавливало walk и пропускало downstream sub-consumers (например, Z1.L10 наружные блоки за Z1.L7 кондиционерами).',
+      '• Фикс: убран <code>continue</code> для type=consumer — теперь walk продолжается дальше через outgoing conns. Каждый consumer считается один раз через visited-set; downstream-цепочка (cond → outdoor) полностью обходится. Container остаётся leaf (его slots внутренние).',
+      '• Теперь Z1.L10 (4 × 0.6 = 2.4 кВт) попадает в Макс панели IT1/IT2 наряду с Z1.L7. Ток также суммируется через walkUp (был корректен до этого).',
+      'Файл: <code>js/engine/recalc.js</code> (3 walk-функции).',
+    ] },
     { version: '0.60.241', date: '2026-05-05', items: [
       '⚙ <b>panelMaxBasis default: «calculated» (P<sub>расч</sub> с К<sub>и</sub>)</b>. По уточнениям Пользователя 2026-05-05 «то есть 97.3 кВт а не 60.4 или 65.8» / «вся правда в том что максимум и должен отображать максимальные параметры в любом режиме».',
       '• Раньше default был <code>nameplate</code> (P<sub>уст</sub>) — это давало 126 кВт для PDM-IT (Σ P<sub>ном</sub> без К<sub>и</sub>). Это paper-сумма, на агрегаторе никогда не достигается одновременно.',

@@ -436,7 +436,14 @@ function _bfsDownstreamWithActiveTies(startId, activeTieKeys) {
         const kw = consumerMaxDemandKw(cur);
         if (throughUps) upsConsumerKw += kw; else directKw += kw;
       }
-      continue;
+      // v0.60.242 (по репорту Пользователя 2026-05-05 «ты может не правильно
+      // считаешь наружний блок кондиционера, он добавляется к каждому
+      // кондиционеру 8,6+0,6 кВт» / «так же и ток должен суммироваться»):
+      // НЕ останавливаемся на consumer — у него могут быть downstream
+      // sub-consumers (например, наружние блоки L10 за кондиционером L7).
+      // Каждый consumer считается один раз через visitedConsumers; downstream
+      // walks выполняется ниже стандартным циклом по outgoing conns.
+      // (Раньше был `continue` — L10 не учитывался.)
     }
     if (cur.type === 'ups') {
       if (!visitedUps.has(curId)) {
@@ -3147,6 +3154,12 @@ function recalc() {
                 visitedC.add(to.id);
                 kwName += consumerMaxDemandKw(to, 'nameplate');
                 kwCalc += consumerMaxDemandKw(to, 'calculated');
+                // v0.60.242: для consumer (не container) продолжаем walk —
+                // могут быть downstream sub-consumers (наружные блоки и т.п.).
+                // Container — leaf (его слоты внутренние), не идём дальше.
+                if (to.type === 'consumer') {
+                  if (!visitedN.has(to.id)) { visitedN.add(to.id); stack.push(to.id); }
+                }
               } else if (to.type === 'generator') {
                 // не идём через генератор
               } else {
@@ -3514,9 +3527,13 @@ function recalc() {
           if (!to) continue;
           if (to.type === 'consumer' || to.type === 'consumer-container') {
             reachable.add(to.id);
-            // consumer-container — не идём вглубь его слотов через conns;
-            // он сам добавлен в reachable, demand посчитается через
-            // consumerTotalDemandKw(container).
+            // v0.60.242: для consumer (не container) walk идёт дальше —
+            // могут быть downstream sub-consumers (наружные блоки кондиционера
+            // и т.п.). Они тоже включаются в reachable своих PDM-родителей
+            // через свои conns. consumer-container — leaf (слоты внутренние).
+            if (to.type === 'consumer') {
+              if (!seen.has(to.id)) { seen.add(to.id); stack.push(to.id); }
+            }
           } else if (to.type === 'ups') {
             // Через ИБП — идём дальше: consumers за ИБП тоже reachable.
             if (!seen.has(to.id)) { seen.add(to.id); stack.push(to.id); }
