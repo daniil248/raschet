@@ -4,6 +4,27 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.153', date: '2026-05-04', items: [
+      '🎨 <b>schematic + sketch: drawio-style полный визуальный фикс палитр + tabbed property panel</b>. По двум репортам Пользователя 2026-05-04: «забрать отображение из drawio» + «тоже для схемы принципиальной».',
+      '• <b>schematic palette fix (по второму репорту)</b>:',
+      '  • Раньше CSS-правила <code>.sch-comp .sch-comp-body</code> работали только для placed-components на холсте. В палитре символы рендерились SVG default fill (чёрная заливка) → силуэты вместо line-art.',
+      '  • Добавлены rules <code>.sch-palette-item .sch-comp-body</code> + <code>.sch-comp-pin</code> + <code>text</code> + fallback для shapes без класса.',
+      '  • <code>vector-effect:non-scaling-stroke</code> — линии остаются тонкими при scaling.',
+      '  • Inline <code>fill="#1f2430"</code> на polygon-arrowheads (резистор-переменный, диод) сохраняется — это intentional чёрные части.',
+      '  • Резюме: все ~70 IEC60617 символов теперь правильно отображаются в палитре (резистор, конденсатор, транзистор, двигатель, генератор, трансформатор и т.д.).',
+      '• <b>sketch — drawio-like tabbed property panel</b>:',
+      '  • 3 таба для выделенной фигуры: <b>🎨 Стиль</b> / <b>📝 Текст</b> / <b>📐 Упорядочить</b>.',
+      '  • 1 таб <b>📋 Холст</b> когда ничего не выделено — имя страницы, zoom, статистика, шорткаты.',
+      '  • <b>Стиль</b>: 12 color-presets для fill / stroke + кастомный picker; «без заливки» / «без линии»; толщина (0.5–10pt); пунктир; opacity slider; rounded corners.',
+      '  • <b>Текст</b>: 7 font-family; size 6–72px; B/I/U toggle-buttons; H+V alignment (6 кнопок); цвет текста.',
+      '  • <b>Упорядочить</b>: размер W/H с lock-proportions; позиция X/Y; rotation; flip H/V; layer (front/back/forward/backward).',
+      '  • <b>Edge properties</b> расширены: толщина, стиль стрелки (→ / ↔ / ──), цвет линии.',
+      '  • Кнопки в footer: «📥 В библиотеку» / «⧉ Копия» / «🗑 Удалить».',
+      '  • <code>duplicateSelection()</code> — Ctrl+D дублирует фигуры с offset +20.',
+      '  • <code>_moveLayer()</code> — z-order через splice в shapes[].',
+      '  • renderShape учитывает rotation, flipH/V, opacity, dashed, custom strokeWidth, fontFamily, bold/italic/underline, textAlign, textVAlign, textColor.',
+      'Файлы: <code>schematic/schematic.css</code> (.sch-palette-item .sch-comp-body fix + fallback), <code>sketch/sketch.js</code> (~250 строк новой propertyies tabs logic), <code>sketch/sketch.css</code> (~120 строк стилей: tabs, color-presets, style-buttons, btn-ghost/danger).',
+    ] },
     { version: '0.60.152', date: '2026-05-04', items: [
       '🎨 <b>sketch: drawio-style тонкие линии + правильное отображение тайлов</b>. По репорту Пользователя 2026-05-04 «мог бы ты просто забрать отображение из drawio а то у тебя как то не очень вид».',
       '• <b>Проблема</b>: тайлы палитры рендерились ЧЁРНОЙ заливкой (не белой). Причина: wrap-<g> в SVG-тайле имел <code>--fill</code> CSS-переменную, но элементы внутри (rect/ellipse/path) не ссылались на неё — нужен был inline <code>fill</code>+<code>stroke</code>.',

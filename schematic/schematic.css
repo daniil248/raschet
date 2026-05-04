@@ -90,6 +90,46 @@ html, body {
   width: 78%; height: 78%;
   pointer-events: none;
 }
+/* v0.60.153 (по репорту Пользователя 2026-05-04 «тоже для схемы
+   принципиальной»): drawio-style — символы в палитре должны
+   рендериться как тонкая чёрная линия на белом фоне (line-art),
+   а не чёрной заливкой. Раньше CSS-правила применялись только
+   к .sch-comp (placed components), а в палитре они не было —
+   SVG default fill (чёрный) перекрашивал всё. */
+.sch-palette-item .sch-comp-body {
+  fill: none;
+  stroke: #1f2430;
+  stroke-width: 0.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.sch-palette-item .sch-comp-pin {
+  stroke: #1f2430;
+  stroke-width: 0.6;
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+.sch-palette-item text {
+  font-family: "Arial", sans-serif;
+  fill: #1f2430;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+/* Для shapes без класса sch-comp-body внутри svg — fallback */
+.sch-palette-item svg > * {
+  vector-effect: non-scaling-stroke;
+}
+.sch-palette-item svg circle:not([class]),
+.sch-palette-item svg rect:not([class]),
+.sch-palette-item svg path:not([class]),
+.sch-palette-item svg polygon:not([class]),
+.sch-palette-item svg line:not([class]),
+.sch-palette-item svg ellipse:not([class]) {
+  fill: none;
+  stroke: #1f2430;
+  stroke-width: 0.6;
+}
 .sch-palette-item[title]::after {
   content: attr(data-label);
   position: absolute;

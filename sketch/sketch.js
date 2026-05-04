@@ -273,22 +273,44 @@ function renderShape(sh) {
       handles += `<rect class="sk-handle h-${dir}" x="${x-4}" y="${y-4}" width="8" height="8" data-handle="${dir}"/>`;
     }
   }
-  // Fill / stroke override
+  // Fill / stroke / opacity / rotation override (v0.60.153 — drawio-like).
   const fill = sh.fill || '#fff';
   const stroke = sh.stroke || '#1f2937';
-  // Label
+  const strokeWidth = sh.strokeWidth ?? 1.4;
+  const opacity = sh.opacity ?? 1;
+  const rotation = sh.rotation || 0;
+  const flipH = sh.flipH ? -1 : 1;
+  const flipV = sh.flipV ? -1 : 1;
+  const dashed = sh.dashed ? 'stroke-dasharray="6,4"' : '';
+  // Label с textAlign/textVAlign + bold/italic/underline
   const labelText = sh.label || '';
   const fontSize = sh.fontSize || 12;
+  const fontFamily = sh.fontFamily || 'system-ui';
+  const textColor = sh.textColor || '#0f172a';
+  const fontWeight = sh.bold ? 'bold' : 'normal';
+  const fontStyle = sh.italic ? 'italic' : 'normal';
+  const textDeco = sh.underline ? 'underline' : 'none';
+  const ta = sh.textAlign || 'center';
+  const tva = sh.textVAlign || 'middle';
+  const tx = ta === 'left' ? 4 : ta === 'right' ? w - 4 : w/2;
+  const tAnchor = ta === 'left' ? 'start' : ta === 'right' ? 'end' : 'middle';
+  const ty = tva === 'top' ? fontSize + 2 : tva === 'bottom' ? h - 4 : h/2 + fontSize/3;
   const labelEl = labelText
-    ? `<text x="${w/2}" y="${h/2 + fontSize/3}" text-anchor="middle" font-size="${fontSize}" pointer-events="none">${escHtml(labelText)}</text>`
+    ? `<text x="${tx}" y="${ty}" text-anchor="${tAnchor}" font-size="${fontSize}" font-family="${escAttr(fontFamily)}" font-weight="${fontWeight}" font-style="${fontStyle}" text-decoration="${textDeco}" fill="${textColor}" pointer-events="none">${escHtml(labelText)}</text>`
     : '';
-  // v0.60.152: drawio-like — тонкий stroke 1.4, fill/stroke применяются
-  // через inline style на wrap-<g>; custom-fill внутри svgFrag
-  // (firewall, note, server-status-bars) переопределяет автоматически.
+  // Rounded — для rect-фигур применяется в shape-render. Для прочих — нет
+  // эффекта (неглавное MVP-ограничение).
+  // Rotation + flip через transform на wrap-<g>.
+  const innerTransform = (rotation || flipH < 0 || flipV < 0)
+    ? `translate(${w/2},${h/2}) rotate(${rotation}) scale(${flipH},${flipV}) translate(${-w/2},${-h/2})`
+    : '';
+  const innerOpen = innerTransform
+    ? `<g transform="${innerTransform}" style="fill:${fill};stroke:${stroke === 'none' ? 'none' : stroke};stroke-width:${strokeWidth};stroke-linejoin:round;opacity:${opacity}" ${dashed} vector-effect="non-scaling-stroke">`
+    : `<g style="fill:${fill};stroke:${stroke === 'none' ? 'none' : stroke};stroke-width:${strokeWidth};stroke-linejoin:round;opacity:${opacity}" ${dashed} vector-effect="non-scaling-stroke">`;
   return `<g class="sk-shape ${isSel ? 'selected' : ''}" data-shape-id="${escAttr(sh.id)}"
               transform="translate(${sh.x},${sh.y})"
               style="--fill:${fill};--stroke:${stroke}">
-    <g style="fill:${fill};stroke:${stroke};stroke-width:1.4;stroke-linejoin:round" vector-effect="non-scaling-stroke">${svgFrag}</g>
+    ${innerOpen}${svgFrag}</g>
     ${labelEl}
     ${anchors}
     ${handles}
@@ -385,12 +407,26 @@ function selectNothing() {
   renderProperties();
 }
 
-// ─── Properties panel ───────────────────────────────────────────────────────
+// ─── Properties panel (drawio-style tabbed) ─────────────────────────────────
+// v0.60.153 (по уточнению Пользователя 2026-05-04 — скриншоты drawio): право-
+// панельный UI с tabs «Стиль / Текст / Упорядочить» при выделенной фигуре,
+// и «Холст» когда ничего не выделено.
+let _propsActiveTab = 'style';  // 'style' | 'text' | 'arrange' | 'canvas'
+const COLOR_PRESETS = [
+  '#ffffff', '#f3f4f6', '#dbeafe', '#dcfce7', '#fef3c7', '#fee2e2',
+  '#fce7f3', '#ede9fe', '#cffafe', '#e0e7ff', '#1f2937', '#000000',
+];
+const STROKE_PRESETS = [
+  '#1f2937', '#000000', '#475569', '#dc2626', '#ea580c', '#ca8a04',
+  '#16a34a', '#0891b2', '#1e40af', '#7c3aed', '#db2777', '#94a3b8',
+];
+
 function renderProperties() {
   const host = $('sk-properties');
   if (!host) return;
   if (_selection.size === 0) {
-    host.innerHTML = `<div class="sk-properties-empty">Выберите фигуру или связь, чтобы изменить свойства.</div>`;
+    host.innerHTML = _renderCanvasProperties();
+    _wireCanvasProperties();
     return;
   }
   if (_selection.size > 1) {
@@ -402,62 +438,385 @@ function renderProperties() {
   const sh = page.shapes.find(s => s.id === id);
   const ed = page.edges.find(e => e.id === id);
   if (sh) {
-    host.innerHTML = _renderShapeProperties(sh);
-    _wireShapeProperties(sh);
+    if (_propsActiveTab === 'canvas') _propsActiveTab = 'style';
+    host.innerHTML = _renderShapeTabs(sh);
+    _wireShapeTabs(sh);
   } else if (ed) {
     host.innerHTML = _renderEdgeProperties(ed);
     _wireEdgeProperties(ed);
   }
 }
-function _renderShapeProperties(sh) {
+
+function _renderShapeTabs(sh) {
+  const tabBtn = (id, label, title) => {
+    const active = _propsActiveTab === id;
+    return `<button type="button" class="sk-tab-btn${active ? ' active' : ''}" data-tab="${id}" title="${escAttr(title)}">${label}</button>`;
+  };
+  let body = '';
+  if (_propsActiveTab === 'style') body = _renderStyleTab(sh);
+  else if (_propsActiveTab === 'text') body = _renderTextTab(sh);
+  else if (_propsActiveTab === 'arrange') body = _renderArrangeTab(sh);
   return `
-    <h4>📐 Фигура</h4>
-    <label>Подпись<textarea data-prop="label" rows="2">${escHtml(sh.label || '')}</textarea></label>
+    <div class="sk-tabs">
+      ${tabBtn('style', '🎨 Стиль', 'Заливка, обводка, прозрачность, скругление')}
+      ${tabBtn('text', '📝 Текст', 'Шрифт, размер, выравнивание, цвет текста')}
+      ${tabBtn('arrange', '📐 Упорядочить', 'Позиция, размер, поворот, слой')}
+    </div>
+    <div class="sk-tab-body">${body}</div>
+    <div class="sk-tab-foot">
+      <button type="button" id="sk-shape-add-to-lib" class="sk-btn-ghost"
+              title="Добавить эту фигуру в пользовательскую библиотеку (snapshot — позже доступна в палитре).">📥 В библиотеку</button>
+      <button type="button" id="sk-shape-duplicate" class="sk-btn-ghost"
+              title="Создать копию рядом (Ctrl+D).">⧉ Копия</button>
+      <button type="button" id="sk-shape-delete" class="sk-btn-danger"
+              title="Удалить (Del).">🗑 Удалить</button>
+    </div>`;
+}
+
+function _colorPresetsHtml(prop, current, presets, label) {
+  const tiles = presets.map(c => {
+    const sel = (c.toLowerCase() === String(current || '').toLowerCase()) ? ' selected' : '';
+    return `<button type="button" class="sk-color-preset${sel}" data-prop="${escAttr(prop)}" data-val="${escAttr(c)}" style="background:${c}" title="${escAttr(c)}"></button>`;
+  }).join('');
+  return `
+    <div class="sk-prop-label">${escHtml(label)}</div>
+    <div class="sk-color-row">
+      <div class="sk-color-presets">${tiles}</div>
+      <input type="color" class="sk-color-picker" data-prop="${escAttr(prop)}" value="${escAttr(current || (prop === 'fill' ? '#ffffff' : '#1f2937'))}" title="Выбрать произвольный цвет">
+    </div>`;
+}
+
+function _renderStyleTab(sh) {
+  const fill = sh.fill || '#ffffff';
+  const stroke = sh.stroke || '#1f2937';
+  const strokeWidth = sh.strokeWidth ?? 1.4;
+  const opacity = sh.opacity ?? 1;
+  const rounded = !!sh.rounded;
+  const dashed = !!sh.dashed;
+  const noFill = sh.fill === 'none';
+  const noStroke = sh.stroke === 'none';
+  return `
+    ${_colorPresetsHtml('fill', noFill ? '' : fill, COLOR_PRESETS, '🎨 Заливка')}
+    <label class="sk-prop-check">
+      <input type="checkbox" data-prop="_noFill"${noFill ? ' checked' : ''}>
+      <span>Без заливки (прозрачная)</span>
+    </label>
+    ${_colorPresetsHtml('stroke', noStroke ? '' : stroke, STROKE_PRESETS, '✏ Линия')}
+    <label class="sk-prop-check">
+      <input type="checkbox" data-prop="_noStroke"${noStroke ? ' checked' : ''}>
+      <span>Без линии</span>
+    </label>
+    <div class="sk-prop-row">
+      <label>Толщина, pt
+        <input type="number" data-prop="strokeWidth" min="0.5" max="10" step="0.1" value="${strokeWidth}">
+      </label>
+      <label>Стиль
+        <select data-prop="dashed">
+          <option value="0"${!dashed ? ' selected' : ''}>──── сплошная</option>
+          <option value="1"${dashed ? ' selected' : ''}>- - - пунктир</option>
+        </select>
+      </label>
+    </div>
+    <label>Непрозрачность: <span class="sk-slider-val">${Math.round(opacity * 100)}%</span>
+      <input type="range" data-prop="opacity" min="0" max="1" step="0.05" value="${opacity}">
+    </label>
+    <label class="sk-prop-check" title="Скруглить углы (для прямоугольников и параллелепипедов).">
+      <input type="checkbox" data-prop="rounded"${rounded ? ' checked' : ''}>
+      <span>Скруглённые углы</span>
+    </label>`;
+}
+
+function _renderTextTab(sh) {
+  const fontSize = sh.fontSize || 12;
+  const fontFamily = sh.fontFamily || 'system-ui';
+  const bold = !!sh.bold;
+  const italic = !!sh.italic;
+  const underline = !!sh.underline;
+  const textColor = sh.textColor || '#0f172a';
+  const textAlign = sh.textAlign || 'center';
+  const textVAlign = sh.textVAlign || 'middle';
+  return `
+    <label>Подпись
+      <textarea data-prop="label" rows="3" placeholder="Текст в фигуре">${escHtml(sh.label || '')}</textarea>
+    </label>
+    <div class="sk-prop-row">
+      <label>Шрифт
+        <select data-prop="fontFamily">
+          <option value="system-ui"${fontFamily === 'system-ui' ? ' selected' : ''}>System UI</option>
+          <option value="Helvetica, Arial, sans-serif"${fontFamily.includes('Helvetica') ? ' selected' : ''}>Helvetica</option>
+          <option value="Arial, sans-serif"${fontFamily.includes('Arial') && !fontFamily.includes('Helvetica') ? ' selected' : ''}>Arial</option>
+          <option value="Verdana, sans-serif"${fontFamily.includes('Verdana') ? ' selected' : ''}>Verdana</option>
+          <option value="Georgia, serif"${fontFamily.includes('Georgia') ? ' selected' : ''}>Georgia</option>
+          <option value="Times New Roman, serif"${fontFamily.includes('Times') ? ' selected' : ''}>Times New Roman</option>
+          <option value="Courier New, monospace"${fontFamily.includes('Courier') ? ' selected' : ''}>Courier New</option>
+        </select>
+      </label>
+      <label>Размер, px
+        <input type="number" data-prop="fontSize" min="6" max="72" value="${fontSize}">
+      </label>
+    </div>
+    <div class="sk-style-buttons">
+      <button type="button" class="sk-style-btn${bold ? ' active' : ''}" data-prop="bold" title="Жирный (Ctrl+B)"><b>B</b></button>
+      <button type="button" class="sk-style-btn${italic ? ' active' : ''}" data-prop="italic" title="Курсив (Ctrl+I)"><i>I</i></button>
+      <button type="button" class="sk-style-btn${underline ? ' active' : ''}" data-prop="underline" title="Подчёркнутый (Ctrl+U)"><u>U</u></button>
+    </div>
+    <div class="sk-prop-label">Выравнивание</div>
+    <div class="sk-style-buttons">
+      <button type="button" class="sk-style-btn${textAlign === 'left' ? ' active' : ''}" data-prop="textAlign" data-val="left" title="По левому краю">⇤</button>
+      <button type="button" class="sk-style-btn${textAlign === 'center' ? ' active' : ''}" data-prop="textAlign" data-val="center" title="По центру">⇔</button>
+      <button type="button" class="sk-style-btn${textAlign === 'right' ? ' active' : ''}" data-prop="textAlign" data-val="right" title="По правому краю">⇥</button>
+      <span style="width:8px"></span>
+      <button type="button" class="sk-style-btn${textVAlign === 'top' ? ' active' : ''}" data-prop="textVAlign" data-val="top" title="Сверху">⇡</button>
+      <button type="button" class="sk-style-btn${textVAlign === 'middle' ? ' active' : ''}" data-prop="textVAlign" data-val="middle" title="По центру">⇕</button>
+      <button type="button" class="sk-style-btn${textVAlign === 'bottom' ? ' active' : ''}" data-prop="textVAlign" data-val="bottom" title="Снизу">⇣</button>
+    </div>
+    ${_colorPresetsHtml('textColor', textColor, STROKE_PRESETS, 'Цвет текста')}`;
+}
+
+function _renderArrangeTab(sh) {
+  const rotation = sh.rotation || 0;
+  const lockProps = !!sh.lockProportions;
+  const aspect = sh.h ? (sh.w / sh.h) : 1;
+  return `
+    <div class="sk-prop-label">📐 Размер</div>
+    <div class="sk-prop-row">
+      <label>Ширина<input type="number" data-prop="w" min="20" value="${Math.round(sh.w)}" data-aspect="${aspect}"></label>
+      <label>Высота<input type="number" data-prop="h" min="20" value="${Math.round(sh.h)}" data-aspect="${aspect}"></label>
+    </div>
+    <label class="sk-prop-check" title="При изменении ширины автоматически масштабируется высота (и наоборот).">
+      <input type="checkbox" data-prop="lockProportions"${lockProps ? ' checked' : ''}>
+      <span>Сохранить пропорции</span>
+    </label>
+    <div class="sk-prop-label">📍 Положение</div>
     <div class="sk-prop-row">
       <label>X<input type="number" data-prop="x" value="${Math.round(sh.x)}"></label>
       <label>Y<input type="number" data-prop="y" value="${Math.round(sh.y)}"></label>
     </div>
-    <div class="sk-prop-row">
-      <label>Ширина<input type="number" data-prop="w" min="20" value="${Math.round(sh.w)}"></label>
-      <label>Высота<input type="number" data-prop="h" min="20" value="${Math.round(sh.h)}"></label>
+    <label>🔄 Поворот, °
+      <input type="number" data-prop="rotation" min="-360" max="360" step="1" value="${rotation}">
+    </label>
+    <div class="sk-prop-label">↔ Отразить</div>
+    <div class="sk-style-buttons">
+      <button type="button" class="sk-style-btn" data-prop="_flipH" title="Отразить по горизонтали">⇋ H</button>
+      <button type="button" class="sk-style-btn" data-prop="_flipV" title="Отразить по вертикали">⥯ V</button>
     </div>
-    <div class="sk-prop-row">
-      <label>Заливка<input type="color" data-prop="fill" value="${sh.fill || '#ffffff'}"></label>
-      <label>Линия<input type="color" data-prop="stroke" value="${sh.stroke || '#1f2937'}"></label>
-    </div>
-    <label>Размер шрифта, px<input type="number" data-prop="fontSize" min="8" max="36" value="${sh.fontSize || 12}"></label>
-    <button type="button" id="sk-shape-delete" style="margin-top:8px;background:#fee2e2;color:#991b1b;border:1px solid #fecaca;padding:5px;border-radius:4px;cursor:pointer">🗑 Удалить</button>
-    <button type="button" id="sk-shape-add-to-lib" style="margin-top:4px;background:#fef9c3;color:#854d0e;border:1px solid #fde68a;padding:5px;border-radius:4px;cursor:pointer" title="Добавить эту фигуру в пользовательскую библиотеку (для повторного использования).">📥 Добавить в библиотеку…</button>
-  `;
+    <div class="sk-prop-label">📚 Слой</div>
+    <div class="sk-style-buttons" style="flex-wrap:wrap">
+      <button type="button" class="sk-style-btn" data-prop="_layerFront" title="На передний план">↟</button>
+      <button type="button" class="sk-style-btn" data-prop="_layerForward" title="Перенести вперёд">↑</button>
+      <button type="button" class="sk-style-btn" data-prop="_layerBackward" title="Перенести назад">↓</button>
+      <button type="button" class="sk-style-btn" data-prop="_layerBack" title="На задний план">↡</button>
+    </div>`;
 }
-function _wireShapeProperties(sh) {
+
+function _wireShapeTabs(sh) {
   const host = $('sk-properties');
-  host.querySelectorAll('[data-prop]').forEach(inp => {
-    inp.addEventListener('change', () => {
-      const prop = inp.dataset.prop;
-      let val = inp.type === 'number' ? Number(inp.value) : inp.value;
+  // Tab switching
+  host.querySelectorAll('.sk-tab-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      _propsActiveTab = b.dataset.tab;
+      renderProperties();
+    });
+  });
+  // Color preset clicks
+  host.querySelectorAll('.sk-color-preset').forEach(b => {
+    b.addEventListener('click', () => {
       pushUndo();
-      sh[prop] = val;
-      saveState(); renderCanvas();
+      sh[b.dataset.prop] = b.dataset.val;
+      saveState();
+      renderCanvas();
+      renderProperties();
+    });
+  });
+  // Style toggle buttons (B/I/U/align/flip/layer)
+  host.querySelectorAll('.sk-style-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      pushUndo();
+      const prop = b.dataset.prop;
+      const val = b.dataset.val;
+      if (prop === '_flipH') { sh.flipH = !sh.flipH; }
+      else if (prop === '_flipV') { sh.flipV = !sh.flipV; }
+      else if (prop === '_layerFront') _moveLayer(sh, 'front');
+      else if (prop === '_layerBack') _moveLayer(sh, 'back');
+      else if (prop === '_layerForward') _moveLayer(sh, 'forward');
+      else if (prop === '_layerBackward') _moveLayer(sh, 'backward');
+      else if (val !== undefined) sh[prop] = val;
+      else sh[prop] = !sh[prop];  // toggle bool
+      saveState();
+      renderCanvas();
+      renderProperties();
+    });
+  });
+  // Generic data-prop inputs (input/textarea/select/range/color)
+  host.querySelectorAll('[data-prop]:not(.sk-color-preset):not(.sk-style-btn)').forEach(inp => {
+    const evtName = inp.type === 'range' ? 'input' : 'change';
+    inp.addEventListener(evtName, () => {
+      pushUndo();
+      const prop = inp.dataset.prop;
+      let val;
+      if (inp.type === 'checkbox') val = inp.checked;
+      else if (inp.type === 'number' || inp.type === 'range') val = Number(inp.value);
+      else val = inp.value;
+      // Special meta-props
+      if (prop === '_noFill') {
+        sh.fill = val ? 'none' : (sh.fill === 'none' ? '#ffffff' : sh.fill);
+      } else if (prop === '_noStroke') {
+        sh.stroke = val ? 'none' : (sh.stroke === 'none' ? '#1f2937' : sh.stroke);
+      } else if (prop === 'dashed') {
+        sh.dashed = !!Number(val);
+      } else if (prop === 'lockProportions') {
+        sh.lockProportions = val;
+      } else if ((prop === 'w' || prop === 'h') && sh.lockProportions) {
+        const aspect = Number(inp.dataset.aspect) || (sh.w / sh.h);
+        if (prop === 'w') { sh.w = val; sh.h = Math.round(val / aspect); }
+        else { sh.h = val; sh.w = Math.round(val * aspect); }
+      } else {
+        sh[prop] = val;
+      }
+      // Update slider value display
+      if (inp.type === 'range') {
+        const lbl = inp.parentElement.querySelector('.sk-slider-val');
+        if (lbl) lbl.textContent = Math.round(val * 100) + '%';
+      }
+      saveState();
+      renderCanvas();
+      // Не renderProperties для текстового ввода (label) — потеряет фокус.
+      if (prop === 'label' || prop === 'fontFamily' || prop === 'fontSize') return;
+      renderProperties();
     });
   });
   $('sk-shape-delete')?.addEventListener('click', () => deleteSelection());
   $('sk-shape-add-to-lib')?.addEventListener('click', () => addShapeToUserLibrary(sh));
+  $('sk-shape-duplicate')?.addEventListener('click', () => duplicateSelection());
 }
+
+function _moveLayer(sh, dir) {
+  const arr = activePage().shapes;
+  const idx = arr.indexOf(sh);
+  if (idx < 0) return;
+  arr.splice(idx, 1);
+  if (dir === 'front')   arr.push(sh);
+  else if (dir === 'back') arr.unshift(sh);
+  else if (dir === 'forward')  arr.splice(Math.min(arr.length, idx + 1), 0, sh);
+  else if (dir === 'backward') arr.splice(Math.max(0, idx - 1), 0, sh);
+}
+function duplicateSelection() {
+  if (!_selection.size) return;
+  const page = activePage();
+  pushUndo();
+  const newIds = [];
+  for (const id of _selection) {
+    const sh = page.shapes.find(s => s.id === id);
+    if (!sh) continue;
+    const copy = JSON.parse(JSON.stringify(sh));
+    copy.id = uid('sh');
+    copy.x += 20;
+    copy.y += 20;
+    page.shapes.push(copy);
+    newIds.push(copy.id);
+  }
+  _selection.clear();
+  newIds.forEach(id => _selection.add(id));
+  saveState();
+  renderCanvas();
+  renderProperties();
+}
+
+// ─── Canvas-level properties (when nothing selected) ───────────────────────
+function _renderCanvasProperties() {
+  const v = state.view || {};
+  return `
+    <div class="sk-tabs">
+      <button type="button" class="sk-tab-btn active" data-tab="canvas">📋 Холст</button>
+    </div>
+    <div class="sk-tab-body">
+      <div class="sk-prop-label">📋 Текущая страница</div>
+      <label>Имя
+        <input type="text" data-cprop="pageName" value="${escAttr(activePage().name || '')}">
+      </label>
+      <div class="sk-prop-label">🔍 Вид</div>
+      <div class="sk-prop-row">
+        <label>Zoom
+          <input type="number" data-cprop="zoom" min="20" max="500" step="10" value="${Math.round((v.scale || 1) * 100)}"> %
+        </label>
+        <button type="button" id="sk-canvas-fit" class="sk-btn-ghost" title="Вписать содержимое (F)">⛶ Fit</button>
+      </div>
+      <div class="sk-prop-label">📊 Статистика</div>
+      <p class="muted" style="font-size:11.5px;margin:0">
+        Фигур: <b>${activePage().shapes.length}</b> · связей: <b>${activePage().edges.length}</b><br>
+        Страниц всего: <b>${state.pages.length}</b>
+      </p>
+      <div class="sk-prop-label">⚡ Шорткаты</div>
+      <p class="muted" style="font-size:11px;line-height:1.5;margin:0">
+        <b>V</b> — выделение · <b>C</b> — соединение · <b>T</b> — текст<br>
+        <b>Del</b> — удалить · <b>Ctrl+D</b> — копия · <b>Ctrl+Z/Y</b> — отмена/повтор<br>
+        <b>F</b> — вписать · <b>Esc</b> — снять выделение<br>
+        <b>Ctrl+wheel</b> — zoom · <b>Alt+drag</b> — pan
+      </p>
+    </div>`;
+}
+function _wireCanvasProperties() {
+  const host = $('sk-properties');
+  host.querySelectorAll('[data-cprop]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const prop = inp.dataset.cprop;
+      if (prop === 'pageName') {
+        pushUndo();
+        activePage().name = inp.value;
+        saveState();
+        renderPages();
+      } else if (prop === 'zoom') {
+        const z = Math.max(0.2, Math.min(5, Number(inp.value) / 100 || 1));
+        state.view.scale = z;
+        applyViewTransform();
+        saveState();
+      }
+    });
+  });
+  $('sk-canvas-fit')?.addEventListener('click', fitView);
+}
+
 function _renderEdgeProperties(ed) {
   return `
-    <h4>↔ Связь</h4>
-    <label>Подпись<input type="text" data-prop="label" value="${escAttr(ed.label || '')}"></label>
-    <label style="display:flex;align-items:center;gap:6px;margin-top:6px">
-      <input type="checkbox" data-prop="dashed"${ed.dashed ? ' checked' : ''}>
-      <span>Пунктирная линия</span>
-    </label>
-    <button type="button" id="sk-edge-delete" style="margin-top:8px;background:#fee2e2;color:#991b1b;border:1px solid #fecaca;padding:5px;border-radius:4px;cursor:pointer">🗑 Удалить</button>
-  `;
+    <div class="sk-tabs">
+      <button type="button" class="sk-tab-btn active">↔ Связь</button>
+    </div>
+    <div class="sk-tab-body">
+      <label>Подпись<input type="text" data-prop="label" value="${escAttr(ed.label || '')}"></label>
+      <label class="sk-prop-check">
+        <input type="checkbox" data-prop="dashed"${ed.dashed ? ' checked' : ''}>
+        <span>Пунктирная линия</span>
+      </label>
+      <div class="sk-prop-row">
+        <label>Толщина, pt
+          <input type="number" data-prop="strokeWidth" min="0.5" max="6" step="0.1" value="${ed.strokeWidth || 1.4}">
+        </label>
+        <label>Стиль стрелки
+          <select data-prop="arrowStyle">
+            <option value="end"${(ed.arrowStyle || 'end') === 'end' ? ' selected' : ''}>→ Конец</option>
+            <option value="both"${ed.arrowStyle === 'both' ? ' selected' : ''}>↔ Обе</option>
+            <option value="none"${ed.arrowStyle === 'none' ? ' selected' : ''}>── Без стрелки</option>
+          </select>
+        </label>
+      </div>
+      ${_colorPresetsHtml('stroke', ed.stroke || '#475569', STROKE_PRESETS, 'Цвет линии')}
+    </div>
+    <div class="sk-tab-foot">
+      <button type="button" id="sk-edge-delete" class="sk-btn-danger" title="Удалить (Del)">🗑 Удалить</button>
+    </div>`;
 }
 function _wireEdgeProperties(ed) {
   const host = $('sk-properties');
-  host.querySelectorAll('[data-prop]').forEach(inp => {
+  host.querySelectorAll('.sk-color-preset').forEach(b => {
+    b.addEventListener('click', () => {
+      pushUndo();
+      ed[b.dataset.prop] = b.dataset.val;
+      saveState();
+      renderCanvas();
+      renderProperties();
+    });
+  });
+  host.querySelectorAll('[data-prop]:not(.sk-color-preset)').forEach(inp => {
     inp.addEventListener('change', () => {
       const prop = inp.dataset.prop;
       let val = inp.type === 'checkbox' ? inp.checked : inp.value;
