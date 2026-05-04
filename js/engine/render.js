@@ -2585,30 +2585,30 @@ export function renderNodes() {
         // Icalc per-piece: пересчитываем из per-piece Pcalc.
         const Icalc = (Pcalc > 0 && Ucalc) ? computeCurrentA(Pcalc, Ucalc, cos, isThreePhase(n)) : 0;
         const _vdrop = Number(n._deltaUPct) || 0;
-        // v0.60.182 (по репорту Пользователя 2026-05-04 «падение напряжения
-        // на карточке потребителя не нужно. А вот номинальную мощность / ток,
-        // лучше вывести. Расчетный и максимальный наверное тоже не нужен.
-        // Максимальный ток / мощность актуально только для щитов»):
-        // для consumer-container на карточке показываем ТОЛЬКО номинальную
-        // мощность/ток (Pnom/Inom). Скрываем: расчётный (demandKw/currentA),
-        // максимальный (maxKw/maxA), ΔU (deltaUPct). Pрасч уже в footer-метке
-        // снаружи карточки («8 × 8.2 kW = 65.6 kW (Pрасч 56 kW)»).
+        // v0.60.184 (по репорту Пользователя 2026-05-04 «в режиме Электрик
+        // для потребителя нужно: Номинал P/I + Расчётный P/I + Свободно P/I
+        // + cos φ. Факультативно U. Фаза не нужна»):
+        // demandKw/currentA = расчётная (Pcalc/Icalc),
+        // nominalKw/capacityA = номинальная (Pnom/Inom),
+        // freeKw/freeA = доступная мощность/ток на линии,
+        // phase = скрыт, maxKw/maxA = скрыт (только щиты), ΔU = скрыт.
+        const Icalc_cont = (Pcalc > 0 && Ucalc) ? computeCurrentA(Pcalc, Ucalc, cos, isThreePhase(n)) : 0;
         valueMap = {
-          demandKw:   { v: null },                        // Расчёт — скрыт (есть в footer)
-          currentA:   { v: null },
+          demandKw:   { v: fmtDigits(Pcalc) },           // Расчёт P
+          currentA:   { v: fmtDigits(Icalc_cont) },      // Расчёт I
           nominalKw:  { v: fmtDigits(Pnom)  },           // Номинал P
           capacityA:  { v: fmtDigits(Inom)  },           // Номинал I
           kvAOrVA:    { v: fmtDigits(Snom)  },
           maxKw:      { v: null },                        // Макс — только для щитов
           maxA:       { v: null },
-          freeKw:     { v: fmtDigits(n._freeKw) },
-          freeA:      { v: fmtDigits(n._freeA)  },
+          freeKw:     { v: fmtDigits(n._freeKw) },       // Свободно P
+          freeA:      { v: fmtDigits(n._freeA)  },       // Свободно I
           cosPhi:     { v: cos.toFixed(2) },
-          voltage:    { v: Ucalc ? fmt(Ucalc) : null },
-          phase:      { v: isThreePhase(n) ? '3ph' : '1ph' },
+          voltage:    { v: Ucalc ? fmt(Ucalc) : null },  // Факультативно
+          phase:      { v: null },                        // Фаза — скрыта
           breakerIn:  { v: null },
           cableSpec:  { v: n._cableSpec || null },
-          deltaUPct:  { v: null },                        // ΔU — скрыт по репорту
+          deltaUPct:  { v: null },                        // ΔU — скрыт
           count:      { v: null },                        // count в footer
         };
         labelMap = null;
@@ -2624,22 +2624,22 @@ export function renderNodes() {
         const Pcalc = _isUniformGroup ? (PcalcTotal / cnt) : PcalcTotal;
         const Icalc = _isUniformGroup ? ((Number(n._loadA) || 0) / cnt) : (Number(n._loadA) || 0);
         const _vdrop = Number(n._deltaUPct) || 0;
-        // v0.60.182 (по репорту Пользователя): для consumer на карточке
-        // показываем только Номинал (Pnom/Inom). Скрываем: Расчёт, Макс,
-        // ΔU — они в инспекторе и в footer-метке группы.
+        // v0.60.184 (по репорту Пользователя): для consumer на карточке
+        // показываем Номинал (Pnom/Inom) + Расчёт (Pcalc/Icalc) + Свободно
+        // + cos φ + U (опц.). Скрываем: Макс, ΔU, Фаза.
         valueMap = {
-          demandKw:   { v: null },                        // Расчёт — скрыт
-          currentA:   { v: null },
+          demandKw:   { v: fmtDigits(Pcalc) },           // Расчёт P
+          currentA:   { v: fmtDigits(Icalc) },           // Расчёт I
           nominalKw:  { v: fmtDigits(Pnom)  },           // Номинал P
           capacityA:  { v: fmtDigits(Inom)  },           // Номинал I
           kvAOrVA:    { v: fmtDigits(Snom)  },
           maxKw:      { v: null },                        // Макс — только для щитов
           maxA:       { v: null },
-          freeKw:     { v: fmtDigits(n._freeKw) },
-          freeA:      { v: fmtDigits(n._freeA)  },
+          freeKw:     { v: fmtDigits(n._freeKw) },       // Свободно P
+          freeA:      { v: fmtDigits(n._freeA)  },       // Свободно I
           cosPhi:     { v: cosC.toFixed(2) },
           voltage:    { v: Ucalc ? fmt(Ucalc) : null },
-          phase:      { v: n.phase || '' },
+          phase:      { v: null },                        // Фаза — скрыта
           breakerIn:  { v: Number.isFinite(Number(n.breakerIn)) && n.breakerIn ? String(n.breakerIn) : null },
           cableSpec:  { v: n._cableSpec || null },
           deltaUPct:  { v: null },                        // ΔU — скрыт

@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.184', date: '2026-05-04', items: [
+      '🎴 <b>Карточка потребителя — Электрик preset (final)</b>. По репорту Пользователя 2026-05-04 «в режиме Электрик нужно: Номинал P/I + Расчётный P/I + Свободно P/I + cos φ. Факультативно U. Фаза не нужна — и так понятно».',
+      '• <b>Видимо</b> на consumer/consumer-container: Номинал (Pnom/Inom), Расчёт (Pcalc/Icalc), Свободно (P/I), cos φ, U (опционально), кабель.',
+      '• <b>Скрыто</b>: Макс (только для щитов), ΔU (избыточно), Фаза (понятно из контекста), count для group (есть в footer).',
+      '• <b>Корректировка после v0.60.182</b>: вернули Расчёт (Pcalc/Icalc), убрали Фазу.',
+      'Файл: <code>js/engine/render.js</code> (valueMap для consumer + consumer-container).',
+    ] },
     { version: '0.60.183', date: '2026-05-04', items: [
       '🐛 <b>Расформировать/удалить группу: фикс</b>. По репорту Пользователя 2026-05-04 «группу так и не могу расформировать. В одном месте удаляю, в другом остается. Ничего не происходит». v0.60.180 handler bail\'ил без эффекта при определённых условиях.',
       '• <b>Корень bug</b>: handler фильтровал slots по <code>s.nodeId</code> truthy, но <code>linkedCount</code> в header (что показывал кнопку) проверял <b>существование</b> node в <code>state.nodes</code>. Если был stale-slot (linked-slot с удалённым consumer\'ом) — кнопка показывалась (linkedCount=1) но handler видел linked.length=2 и bail\'ил.',
