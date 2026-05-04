@@ -4,6 +4,18 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.222', date: '2026-05-04', items: [
+      '💡 <b>Inspector: tooltips в сводке ДГУ</b>. По правилу feedback_tooltips «каждая переменная в любом месте проекта должна иметь hover-tooltip с расшифровкой». В green-блоке «✓ ДГУ сконфигурирована» (v0.60.218) добавлены title-атрибуты на каждом поле:',
+      '• Модель — «Производитель и модель ДГУ из каталога. Записано через apply из dgu-config».',
+      '• Номинал — «Nameplate-мощность установки. По выбранному режиму ISO 8528».',
+      '• Режим (ESP/PRP/COP/LTP/DCC/DCP/DCS/MCSP) — индивидуальный tooltip с правилами ISO 8528-1/13.',
+      '• Кол-во — «N: без резерва / N+1: 1+1 / 2N: дублирование».',
+      '• Двигатель — «Дизельный двигатель + цилиндры/displacement из datasheet».',
+      '• SFC — «Specific Fuel Consumption (ISO 3046-1) при 75%».',
+      '• Climate derate — «По ISO 3046-1: высота + Tamb + RH».',
+      '• Hint в footer-секции — про postMessage / storage-bridge mechanism.',
+      'Файл: <code>js/engine/inspector.js</code>.',
+    ] },
     { version: '0.60.221', date: '2026-05-04', items: [
       '📋 <b>BOM: ДГУ показывается с моделью и мощностью</b>. По логике v0.60.216 (apply из dgu-config записывает <code>n.appliedConfig.dgu.selected</code>): теперь BOM использует эту инфо для содержательного label вместо generic «Генератор-1». Пример: вместо «G1» пишется «G1 (AJ Power DA3-AJ165-P1 · 132 кВт ESP)».',
       'Файл: <code>shared/bom.js</code> (bomForNode fallback-ветка для type=generator).',

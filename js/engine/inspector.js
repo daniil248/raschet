@@ -2788,22 +2788,58 @@ export function renderGeneralPanel(n) {
 
     // v0.60.217: если к узлу-генератору применена ДГУ — показываем сводку
     // (round-trip из dgu-config через postMessage('raschet.dgu.apply')).
+    // v0.60.222: tooltips на каждом поле (правило feedback_tooltips).
     if (cfg === _CONFIGURATORS.generator && n.appliedConfig?.dgu) {
       const cfgDgu = n.appliedConfig.dgu;
       const sel = cfgDgu.selected || {};
       const sp  = cfgDgu.spec || {};
       const ageMin = cfgDgu.ts ? Math.round((Date.now() - cfgDgu.ts) / 60000) : null;
       const ageStr = ageMin == null ? '' : (ageMin < 1 ? 'только что' : ageMin < 60 ? `${ageMin} мин назад` : `${Math.round(ageMin / 60)} ч назад`);
-      h.push(`<div style="margin-top:8px;padding:8px 10px;background:#f0fdf4;border-left:3px solid #16a34a;border-radius:3px;font-size:11px;color:#14532d">
-        <b>✓ ДГУ сконфигурирована</b>${ageStr ? ` <span class="muted">(${escHtml(ageStr)})</span>` : ''}<br>
-        ${sel.vendor ? escHtml(sel.vendor) + ' ' : ''}<b>${escHtml(sel.model || '')}</b>
-        ${sel.nameplateKw ? '<br>Номинал: ' + Number(sel.nameplateKw).toFixed(0) + ' кВт' : ''}
-        ${sp.mode ? ' · режим ' + escHtml(sp.mode) : ''}
-        ${sp.qty && sp.qty > 1 ? ' · кол-во ' + sp.qty : ''}
-        ${sel.engineModel ? '<br>Двигатель: ' + escHtml(sel.engineModel) : ''}
-        ${sel.sfcLkWh ? ' · SFC ' + Number(sel.sfcLkWh).toFixed(3) + ' л/кВт·ч' : ''}
-        ${Number.isFinite(Number(sp.derateMultiplier)) ? '<br>Climate derate: ' + (Number(sp.derateMultiplier) * 100).toFixed(1) + '% от nameplate' : ''}
-        <br><span class="muted">Записано через apply из dgu-config. Войдёт в BOM проекта автоматически.</span>
+      const _t = (txt, tooltip) => `<span title="${escAttr(tooltip)}">${txt}</span>`;
+      const modelLine = (sel.vendor || sel.model)
+        ? _t(`${sel.vendor ? escHtml(sel.vendor) + ' ' : ''}<b>${escHtml(sel.model || '')}</b>`,
+             `Производитель и модель ДГУ из каталога. Записано через apply из dgu-config (postMessage 'raschet.dgu.apply').`)
+        : '';
+      const nameplateBlock = sel.nameplateKw
+        ? '<br>' + _t('Номинал: ' + Number(sel.nameplateKw).toFixed(0) + ' кВт',
+                      `Nameplate-мощность установки (один блок). По выбранному режиму ISO 8528. Используется как верхний лимит capacityKw в схеме.`)
+        : '';
+      const modeBlock = sp.mode
+        ? ' · ' + _t('режим ' + escHtml(sp.mode),
+            sp.mode === 'ESP' ? 'Emergency Standby Power. До 200 ч/год. Без перегрузки.' :
+            sp.mode === 'PRP' ? 'Prime Power. Постоянный режим, ≤70% nameplate средн. 10% перегрузка 1ч из 12.' :
+            sp.mode === 'COP' ? 'Continuous Operating Power. 24/7 при 100% постоянной нагрузке.' :
+            sp.mode === 'LTP' ? 'Limited-Time Prime. До 500 ч/год при 100% нагрузке.' :
+            sp.mode === 'DCC' ? 'Data Centre Continuous (ISO 8528-13). 24/7 для критической IT-нагрузки.' :
+            sp.mode === 'DCP' ? 'Data Centre Prime (ISO 8528-13). PRP-аналог для ЦОД.' :
+            sp.mode === 'DCS' ? 'Data Centre Standby (ISO 8528-13). Резерв ЦОД с запуском ≤10 сек.' :
+            sp.mode === 'MCSP' ? 'Mission Critical Standby (Tier IV).' :
+            'Режим ДГУ по ISO 8528.')
+        : '';
+      const qtyBlock = (sp.qty && sp.qty > 1)
+        ? ' · ' + _t('кол-во ' + sp.qty,
+            'Количество единиц ДГУ. ' + (sp.redundancy === 'N+1' ? 'N+1: 1 рабочий + 1 резервный.' : sp.redundancy === '2N' ? '2N: полное дублирование.' : 'N: без резерва.'))
+        : '';
+      const engineBlock = sel.engineModel
+        ? '<br>' + _t('Двигатель: ' + escHtml(sel.engineModel),
+            'Дизельный двигатель ДГУ' + (sel.cylinders ? `, ${sel.cylinders} цилиндров` : '') + (sel.displacement ? `, ${Number(sel.displacement).toFixed(1)} L` : '') + '. Из datasheet производителя.')
+        : '';
+      const sfcBlock = sel.sfcLkWh
+        ? ' · ' + _t('SFC ' + Number(sel.sfcLkWh).toFixed(3) + ' л/кВт·ч',
+            'Specific Fuel Consumption — расход топлива на единицу выработанной энергии при 75% нагрузке (ISO 3046-1). Используется в расчётах объёма бака и стоимости автономии.')
+        : '';
+      const derateBlock = Number.isFinite(Number(sp.derateMultiplier))
+        ? '<br>' + _t('Climate derate: ' + (Number(sp.derateMultiplier) * 100).toFixed(1) + '% от nameplate',
+            'Climate derate по ISO 3046-1: высота, T наружного воздуха, влажность снижают доступную мощность от nameplate. Учитывается при подборе размера ДГУ.')
+        : '';
+      h.push(`<div style="margin-top:8px;padding:8px 10px;background:#f0fdf4;border-left:3px solid #16a34a;border-radius:3px;font-size:11px;color:#14532d"
+        title="Узел-генератор имеет привязанную модель ДГУ из каталога (n.appliedConfig.dgu). Войдёт в BOM проекта.">
+        <b title="Сигнал что ДГУ-конфигуратор успешно вернул выбор в схему.">✓ ДГУ сконфигурирована</b>${ageStr ? ` <span class="muted" title="Время с момента apply из dgu-config.">(${escHtml(ageStr)})</span>` : ''}<br>
+        ${modelLine}
+        ${nameplateBlock}${modeBlock}${qtyBlock}
+        ${engineBlock}${sfcBlock}
+        ${derateBlock}
+        <br><span class="muted" title="Запись произошла через postMessage('raschet.dgu.apply') или storage-bridge от dgu-config. Спецификация автоматически обновится при следующем экспорте BOM/КП.">Записано через apply из dgu-config. Войдёт в BOM проекта автоматически.</span>
       </div>`);
     }
 
