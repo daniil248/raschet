@@ -3923,6 +3923,82 @@ v0.60.105 (`shared/currency-defaults.js::resolveDefaultCurrency`).
 
 ---
 
+## Фаза 43 — Modular development workflow (per-module ownership) 🆕
+
+> Добавлено 2026-05-04 по запросу Пользователя: «как мне перейти на
+> полностью модульную систему, где каждый модуль разрабатывается отдельным
+> специалистом и интегрируется потом с другими модулями (через ветки)».
+
+**Цель:** перевести разработку с монолитного «один человек на всё» на
+модель «owner-per-module через git-ветки», без слома текущего монорепо
+и без необходимости build-step.
+
+См. полное обоснование в memory `feedback_modular_workflow.md`.
+
+### 43.1 — Этап 0: Документировать контракты
+
+- [ ] **shared/storage-keys.md** — каталог всех `raschet.project.<pid>.<module>.<key>`
+  с указанием owner-модуля и схемы записи.
+- [ ] **shared/cross-module-events.md** — каталог всех window-events
+  (raschet:wizards-change, raschet:work-templates-change, ...).
+- [ ] **shared/url-params.md** — стандарт URL-контракта между модулями
+  (?project=, ?from=, ?return=, ?capacityKw=, ...).
+- [ ] **CONTRIBUTING.md** в корне — правила branch-strategy, code review,
+  cross-module dependencies.
+
+### 43.2 — Этап 1: Branch-per-module
+
+- [ ] Назначить owner'а каждому из ~30 модулей (поле `owner` в
+  modules.json).
+- [ ] Создать ветки `module/<name>` для активных модулей (cooling,
+  ups-config, scs-design, tech-workspace, suppression-config — 5 pilot).
+- [ ] Owner работает в своей ветке, рекурсивно ребейзится на main
+  (раз в неделю minimum).
+- [ ] Merges → main через PR. Self-approve если только свой модуль; review
+  обязателен для shared/* и cross-module changes.
+- [ ] **GitHub Actions/CI**:
+  - Auto-run linter (eslint) per branch.
+  - Auto-run validateWizard / validate manifests per PR.
+  - Pre-deploy checks (нет TODO в production-коде, версия бамплена).
+
+### 43.3 — Этап 2: Module manifest
+
+- [ ] **<module>/manifest.json** в каждом модуле:
+  ```json
+  { "id", "name", "version", "owner", "depends": {}, "exports": {
+    "lsKeys": [], "events": [], "urls": [] }, "ui": { "entry", "icon", "category" } }
+  ```
+- [ ] **modules.json** генерируется из всех manifest.json (build-time
+  скрипт `scripts/build-modules-index.js`).
+- [ ] **/modules/index.html** читает modules.json динамически.
+- [ ] **Per-PR validation**: PR не может быть смержен если manifest
+  сломан или объявленные lsKeys/events не используются.
+
+### 43.4 — Этап 3 (опц.): Workspace / submodules
+
+> Только если станет больно (10+ человек / частые конфликты в shared/).
+
+- [ ] Миграция на pnpm workspace с `packages/*`.
+- [ ] Build-step (Vite) для каждого пакета — но deploy всё равно как
+  static site на GitHub Pages.
+- [ ] Внутренний npm-registry или GitHub Packages для версионирования
+  пакетов.
+
+### 43.5 — Owner-board UI
+
+- [ ] В `/modules/` рядом с каждой карточкой — chip с owner'ом
+  (читается из manifest).
+- [ ] Сводная таблица «👥 Owner-board» — кто за что отвечает, когда
+  последний коммит, активные PR.
+
+**Acceptance:**
+- 5 pilot-модулей переведены на ветки + manifest.
+- Owner может разработать фичу в своей ветке, не блокируя других.
+- Merge в main работает без manual intervention для не-shared изменений.
+- Релиз-процесс описан в CONTRIBUTING.md.
+
+---
+
 ## Фаза 42 — Мастер составления нарядов (Service Order Wizard) 🆕
 
 > Добавлено 2026-05-04 по запросу Пользователя: «в нарядах добавь мастер
