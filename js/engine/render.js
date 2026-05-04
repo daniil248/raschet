@@ -573,10 +573,26 @@ export function renderProjectRegistry() {
   // v0.59.332: фильтр по тегу/имени/типу + placement (все/размещён/не размещён).
   const filterQ = (state._regFilter?.q || '').toLowerCase().trim();
   const filterPlace = state._regFilter?.place || 'all';
+  // v0.60.127: «📂 Свернуть группы» — по умолчанию ON. Скрывает
+  // дочерние linked-aliased потребители (SR02-SR08) — они показаны
+  // не отдельной строкой в реестре, а через counter «×N» у master-узла.
+  // По репорту Пользователя 2026-05-04: «потребители включенные в группу
+  // отображаться как потребители без питания и не размещенные потребители
+  // или как потребители ссылки, они должны быть нормально размещенные».
+  // _powered fixed в v0.60.108; теперь visual cleanup.
+  const collapseGroups = state._regFilter?.collapseGroups !== false;  // default true
   const matches = (n) => {
     const pids = Array.isArray(n.pageIds) ? n.pageIds : [];
     if (filterPlace === 'placed' && pids.length === 0) return false;
     if (filterPlace === 'unplaced' && pids.length > 0) return false;
+    // v0.60.127: при collapseGroups=true скрываем aliased / contained-children.
+    if (collapseGroups) {
+      if (n.linkedAlias && state.nodes.get(n.linkedAlias)) return false;
+      if (n.containerId) {
+        const c = state.nodes.get(n.containerId);
+        if (c && c.type === 'consumer-container') return false;
+      }
+    }
     if (!filterQ) return true;
     const hay = `${n.tag || ''} ${n.name || ''} ${n.type || ''}`.toLowerCase();
     return hay.includes(filterQ);
@@ -587,6 +603,22 @@ export function renderProjectRegistry() {
   // Из «Неразмещённые» прячутся только контейнерируемые позиции
   // (linkedAlias != null) — это уже реализовано в renderUnplacedList.
   const filtered = all.filter(matches);
+  // v0.60.127: подсчёт скрытых «членов» для каждого master-узла
+  // (для отображения counter «×N» в master-row).
+  const hiddenMembersByMaster = new Map();
+  if (collapseGroups) {
+    for (const n of all) {
+      let masterId = null;
+      if (n.linkedAlias && state.nodes.get(n.linkedAlias)) masterId = n.linkedAlias;
+      else if (n.containerId) {
+        const c = state.nodes.get(n.containerId);
+        if (c && c.type === 'consumer-container') masterId = n.containerId;
+      }
+      if (masterId) {
+        hiddenMembersByMaster.set(masterId, (hiddenMembersByMaster.get(masterId) || 0) + 1);
+      }
+    }
+  }
   const byType = new Map();
   for (const n of filtered) {
     const t = n.type || 'other';
@@ -634,6 +666,13 @@ export function renderProjectRegistry() {
       const connBadge = connCount > 0
         ? `<span class="pal-reg-badge pal-reg-badge-conn" title="Подключено линий: ${connCount}. Снимите линии прежде чем удалять." style="background:#fde68a;color:#92400e">🔗${connCount}</span>`
         : '';
+      // v0.60.127: «×N» badge — кол-во linked-aliased / containerId-членов
+      // которые скрыты в реестре (when collapseGroups=true). Кликом можно
+      // развернуть (toggle global). Tooltip объясняет.
+      const membersCount = hiddenMembersByMaster.get(n.id) || 0;
+      const membersBadge = membersCount > 0
+        ? `<span class="pal-reg-badge" title="Группа из ${membersCount + 1} элементов (${membersCount} дочерних скрыто). Включите «Показать дочерние» в фильтре чтобы развернуть." style="background:#dcfce7;color:#15803d;font-weight:600">×${membersCount + 1}</span>`
+        : '';
       // v0.59.334: × скрываем, если к узлу ещё привязаны линии (иначе удаление
       // оставит сиротские conn/sysConn). Размещённость на страницах проверяется
       // отдельно в handler'е (toast-сообщение).
@@ -650,14 +689,16 @@ export function renderProjectRegistry() {
         <span class="pal-unplaced-icon">${_unplacedTypeIcon(n)}</span>
         <span class="pal-unplaced-tag">${esc(tag)}</span>
         <span class="pal-unplaced-name">${esc(name)}</span>
-        ${_systemDotsHtml(n)}${placement}${connBadge}${placeBtn}${delBtn}
+        ${_systemDotsHtml(n)}${placement}${membersBadge}${connBadge}${placeBtn}${delBtn}
       </div>`;
     }).join('');
     chunks.push(`<div class="pal-reg-group"><h4 class="pal-reg-group-head">${esc(label)} <span class="muted">(${arr.length})</span></h4>${items}</div>`);
   }
   // v0.59.332: фильтр-бар
+  // v0.60.127: + чекбокс «Развернуть группы» (показать/скрыть aliased members)
   const qVal = esc(state._regFilter?.q || '');
   const pv = state._regFilter?.place || 'all';
+  const totalHidden = collapseGroups ? all.length - filtered.length : 0;
   const filterBar = `<div class="pal-reg-filter" style="display:flex;gap:6px;margin:4px 0 8px;align-items:center;flex-wrap:wrap">
     <input type="search" id="pal-reg-q" placeholder="🔎 поиск по тегу/имени/типу" value="${qVal}" style="flex:1;min-width:140px;font-size:11px;padding:4px 6px;border:1px solid #ccc;border-radius:3px">
     <select id="pal-reg-place" style="font-size:11px;padding:3px 6px;border:1px solid #ccc;border-radius:3px">
@@ -665,12 +706,16 @@ export function renderProjectRegistry() {
       <option value="placed"${pv === 'placed' ? ' selected' : ''}>Размещённые</option>
       <option value="unplaced"${pv === 'unplaced' ? ' selected' : ''}>Не размещённые</option>
     </select>
-    ${(filterQ || pv !== 'all') ? `<span class="muted" style="font-size:10px">${filtered.length} / ${all.length}</span>` : ''}
+    <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;padding:3px 6px;border:1px solid #ccc;border-radius:3px;background:${collapseGroups ? '#dcfce7' : '#fff'}" title="ON (✓) — дочерние потребители групп / linked-aliased копии скрыты в реестре. У master-узла отображается «×N» — общее число элементов в группе. OFF — все потребители показываются отдельной строкой (для отладки и редкого ручного контроля).">
+      <input type="checkbox" id="pal-reg-collapse"${collapseGroups ? ' checked' : ''} style="margin:0">📂 Свернуть группы
+    </label>
+    ${(filterQ || pv !== 'all' || totalHidden > 0) ? `<span class="muted" style="font-size:10px" title="${totalHidden > 0 ? `Скрыто дочерних: ${totalHidden}` : ''}">${filtered.length} / ${all.length}${totalHidden > 0 ? ' (−' + totalHidden + ')' : ''}</span>` : ''}
   </div>`;
   list.innerHTML = filterBar + (chunks.length ? chunks.join('') : `<div class="muted" style="font-size:11px;padding:8px">Нет элементов, соответствующих фильтру.</div>`);
   // Прицепим live-обработчики на фильтры (без render() — локальный re-render).
   const qEl = document.getElementById('pal-reg-q');
   const pEl = document.getElementById('pal-reg-place');
+  const cEl = document.getElementById('pal-reg-collapse');
   if (qEl) {
     qEl.addEventListener('input', () => {
       state._regFilter = state._regFilter || {};
@@ -685,6 +730,13 @@ export function renderProjectRegistry() {
     pEl.addEventListener('change', () => {
       state._regFilter = state._regFilter || {};
       state._regFilter.place = pEl.value;
+      renderProjectRegistry();
+    });
+  }
+  if (cEl) {
+    cEl.addEventListener('change', () => {
+      state._regFilter = state._regFilter || {};
+      state._regFilter.collapseGroups = cEl.checked;
       renderProjectRegistry();
     });
   }

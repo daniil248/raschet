@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.127', date: '2026-05-04', items: [
+      '📂 <b>Group consumers visual cleanup в реестре</b>. По репорту Пользователя (3-й раз — 🔥 HIGH): «потребители включенные в группу отображаться как потребители без питания и не размещенные потребители или как потребители ссылки, они должны быть нормально размещенные». Технический _powered fix был в v0.60.108; теперь визуальная зачистка реестра.',
+      '• <b>«📂 Свернуть группы»</b> чекбокс в фильтр-баре реестра (по умолчанию ON). Скрывает linked-aliased + container-children из топ-уровня списка — они показаны через counter «×N» у master-узла (или container\'а).',
+      '• <b>«×N» badge</b> у master-узла / container\'а — зелёный (#dcfce7) с tooltip «Группа из N+1 элементов (N дочерних скрыто). Включите «Показать дочерние» в фильтре чтобы развернуть».',
+      '• <b>OFF mode</b> — показывает все потребители отдельной строкой (для отладки и редкого ручного контроля); badge «↪ в группе X» у aliased остаётся.',
+      '• <b>Counter в фильтр-баре</b>: «N / M (−K)» где N=показано, M=всего, K=скрыто.',
+      '• Memory-rule <code>feedback_group_consumers_placement.md</code> — техническая часть (v0.60.108) и визуальная (v0.60.127) полностью закрыты.',
+      'Файлы: <code>js/engine/render.js</code> (~30 строк: collapseGroups state + filter + hiddenMembersByMaster Map + membersBadge в master row + UI checkbox в filter-bar).',
+    ] },
     { version: '0.60.126', date: '2026-05-04', items: [
       '🔍 <b>Audit фокус-loss во ВСЕХ модулях по чек-листу из <code>feedback_input_event.md</code></b>. Прошёлся по 15+ модулям с input handlers — приложение в good shape, никаких регрессий не обнаружено.',
       '• <b>Уже починены</b>: <code>service/ui/order-form.js</code> (v0.60.111 input→change) + <code>projects/project.js</code> (v0.60.110 focus-preserve в render).',
