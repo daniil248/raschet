@@ -568,13 +568,30 @@ export function openPanelParamsModal(n) {
       const N = n.inputs || 0;
       const prot = Array.isArray(n.channelProtection) ? n.channelProtection : [];
       const jumps = Array.isArray(n.channelJumpers) ? n.channelJumpers.slice() : [];
+      // v0.60.163 (по репорту Пользователя 2026-05-04 «у клеммной коробки
+      // все так же нужен номинал»): показываем INHERITED upstream-breaker
+      // на каждой цепи — чтобы Пользователь видел эффективную защиту.
+      // Если в цепи нет своего автомата — ток ограничен upstream'ом.
+      const _upstreamBrkPerCh = new Array(N).fill(0);
+      for (const cc of state.conns.values()) {
+        if (cc.to?.nodeId !== n.id) continue;
+        const port = cc.to.port | 0;
+        if (port < 0 || port >= N) continue;
+        const brk = Number(cc._breakerIn) || 0;
+        if (brk > _upstreamBrkPerCh[port]) _upstreamBrkPerCh[port] = brk;
+      }
       h.push('<h4 style="margin:10px 0 6px">Цепи</h4>');
       h.push('<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px">');
       for (let i = 0; i < N; i++) {
         const has = !!prot[i];
+        const upBrk = _upstreamBrkPerCh[i] || 0;
+        const upBrkChip = (!has && upBrk > 0)
+          ? `<span title="Upstream автомат, который защищает эту цепь passthrough'ом (нет своего автомата в коробке)" style="font-size:10px;background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:3px;margin-left:auto">↑ ${upBrk} А</span>`
+          : '';
         h.push(`<div style="display:flex;align-items:center;gap:8px;padding:4px 6px;border:1px solid #eee;border-radius:4px">`);
         h.push(`<span style="font-size:11px;min-width:92px">Цепь ${i + 1}: вх${i + 1} → вых${i + 1}</span>`);
         h.push(`<label style="font-size:11px;cursor:pointer"><input type="checkbox" class="pp-chprot" data-idx="${i}"${has ? ' checked' : ''}> защитный аппарат</label>`);
+        h.push(upBrkChip);
         h.push(`</div>`);
       }
       h.push('</div>');
