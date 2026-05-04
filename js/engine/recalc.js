@@ -3114,6 +3114,19 @@ function recalc() {
         break; // один генератор управляет этим щитом
       }
       n._maxLoadKw = panelMaxKw !== null ? panelMaxKw : maxDownstreamLoad(n.id);
+      // v0.60.228 (по репорту Пользователя 2026-05-05 «не понимаю откуда ток
+      // 171 А и 116 кВт, если максимум 75.6 кВт и 112.2 А»): sanity-clamp.
+      // По определению «Максимум» ≥ «Текущая». Если walkUp-ная _loadKw
+      // (актуальный сценарий) даёт больше, чем panelMaxKw (макс по
+      // сценариям gen.triggerGroups) — значит сценарии генератора неполные
+      // (не активируют все outputs ATS) и не учитывают реальную нагрузку.
+      // В этом случае max должен быть как минимум равен текущей нагрузке —
+      // это консервативный подход для подбора кабеля/автомата.
+      if (Number.isFinite(Number(n._loadKw)) && Number(n._loadKw) > Number(n._maxLoadKw)) {
+        n._maxLoadKwScenarios = Number(n._maxLoadKw); // диагностика — сохраняем сценарный max
+        n._maxLoadKw = Number(n._loadKw);
+        n._maxLoadKwClampedToCurrent = true;          // флаг для подсказки в инспекторе
+      }
       // v0.60.219: «Макс» использует nodeCalcVoltageEff — учитывает
       // GLOBAL.calcVoltageMode ('real' с ΔU vs 'nominal' без ΔU).
       n._maxLoadA = n._maxLoadKw > 0 ? computeCurrentA(n._maxLoadKw, nodeCalcVoltageEff(n), n._cosPhi || GLOBAL.defaultCosPhi, isThreePhase(n)) : 0;

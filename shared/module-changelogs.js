@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.228', date: '2026-05-05', items: [
+      '🩹 <b>Sanity-clamp _maxLoadKw ≥ _loadKw для panel</b>. По репорту Пользователя 2026-05-05 «не понимаю откуда ток 171 А и 116 кВт, если максимум 75.6 кВт и 112.2 А».',
+      '• Корень проблемы: для щита с привязанным генератором (<code>switchPanelId</code>) <code>_maxLoadKw</code> вычислялся как MAX по сценариям <code>gen.triggerGroups</code>. Если сценарии активируют не все outputs ATS — реальная walkUp-нагрузка <code>_loadKw</code> может оказаться больше, чем «максимум по сценариям». В результате «Текущая 116 kW» > «Максимум 75.6 kW», что логически неверно.',
+      '• Фикс: после расчёта panelMaxKw добавлен clamp — если <code>_loadKw > _maxLoadKw</code>, то <code>_maxLoadKw = _loadKw</code> (консервативно для подбора кабеля/автомата). Сценарный max сохраняется в <code>_maxLoadKwScenarios</code>, флаг <code>_maxLoadKwClampedToCurrent = true</code> для диагностики.',
+      'Файл: <code>js/engine/recalc.js</code> (panel-ветка).',
+    ] },
     { version: '0.60.227', date: '2026-05-04', items: [
       '📋 <b>Кабельный журнал: раскрытие группы потребителей в N строк</b>. По репорту Пользователя 2026-05-04 «для линий к группе потребителей нужно учитывать каждый отдельный потребитель, они обозначены отдельно» / «допустим к SR01-SR08» / «8 отдельных кабелей в кабельном журнале».',
       '• <code>_expandConnsForJournal(conns, S)</code> в <code>js/main.js</code> раскрывает conn-ы к группам:',
