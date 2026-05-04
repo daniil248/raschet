@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.172', date: '2026-05-04', items: [
+      '🔗 <b>Reverse-link chip в rack-config</b> (Phase 3.5.1). Возле выбранного шаблона/инстанса стойки в тулбаре rack-config теперь показывается чип «📎 N sketch\'ей» — Пользователь видит, упоминается ли эта стойка в sketch\'ах проекта.',
+      '• <b>Логика</b>: чип появляется только если выбрана реальная стойка-инстанс (с tag из scs-config). Для template-шаблонов без tag — скрыт.',
+      '• <b>Auto-detect pid</b>: ищем инстанс по всем <code>raschet.project.&lt;pid&gt;.rack-config.instances.v1</code> ключам — определяем pid того проекта, в котором живёт эта стойка.',
+      '• <b>hideEmpty=false</b>: даже если 0 sketch\'ей — чип «нет sketch\'ей» показывается, чтобы Пользователь знал «можно сослаться» (побуждение).',
+      'Файлы: <code>rack-config/index.html</code> (+#rc-sketch-refs-mount), <code>rack-config/rack-config.js</code> (+import + mount logic в renderTemplateList).',
+    ] },
     { version: '0.60.171', date: '2026-05-04', items: [
       '🔗 <b>«Sketch\'и проекта и их связи»</b> — обзорный раздел в карточке проекта (project.html). Phase 3.5 follow-up: вместо чипов возле каждого entity — единая страница «что где упоминается» на уровне проекта.',
       '• <b>projects/project.html</b>: новая секция <code>&lt;section class="pr-card"&gt;</code> с заголовком «🔗 Sketch\'и проекта и их связи». Mount-point — <code>#pr-detail-sketch-refs</code>.',

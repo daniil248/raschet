@@ -38,6 +38,12 @@ import { openPduPickerModal } from '../shared/pdu-picker-modal.js';
 import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
 import { wireExportImport } from '../shared/config-io.js';
 import { APP_VERSION } from '../js/engine/constants.js';
+// v0.60.172 (Phase 3.5.1): reverse-link chip «📎 N sketch'ей» возле текущей
+// стойки. Sketch'и могут ссылаться на rack instances (refType='rack'); из
+// rack-config нужно видеть, упоминается ли выбранная стойка в sketch'ах.
+// Чип появляется только если выбрана реальная стойка-инстанс (с tag);
+// для template без tag — скрыт.
+import { mountReverseLinkChip, refreshAllChips } from '../shared/sketch-refs-reverse.js';
 initCatalogBridge();
 
 // Re-render при правках каталога (админ изменил встроенный rack/pdu/accessory).
@@ -838,6 +844,43 @@ function renderTemplateList() {
       : 'Удалить текущий шаблон';
     delBtn.style.opacity = u > 0 ? '0.5' : '';
     delBtn.style.cursor = u > 0 ? 'not-allowed' : '';
+  }
+
+  // v0.60.172 (Phase 3.5.1): reverse-link chip для текущей rack-инстанса.
+  // Используем тег как rack-id (sketch refs хранят refId = id инстанса
+  // из rack-config.instances). isInst — true если у этой записи есть tag.
+  const chipMount = el('rc-sketch-refs-mount');
+  if (chipMount) {
+    chipMount.innerHTML = ''; // очистить старый чип (могла смениться выбранная)
+    if (isInst && state.currentId) {
+      // Находим pid инстанса — он лежит в одном из проектов под ключом
+      // raschet.project.<pid>.rack-config.instances.v1. Ищем первый совпавший.
+      let pid = null;
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (!k || !/^raschet\.project\..+\.rack-config\.instances\.v1$/.test(k)) continue;
+          try {
+            const arr = JSON.parse(localStorage.getItem(k)) || [];
+            if (Array.isArray(arr) && arr.some(r => r.id === state.currentId)) {
+              pid = k.match(/^raschet\.project\.(.+?)\.rack-config/)[1];
+              break;
+            }
+          } catch {}
+        }
+      } catch {}
+      if (pid) {
+        try {
+          mountReverseLinkChip({
+            container: chipMount,
+            refType: 'rack',
+            refId: state.currentId,
+            pid,
+            hideEmpty: false, // показываем «нет sketch'ей» — побуждение Пользователя добавить
+          });
+        } catch {}
+      }
+    }
   }
 }
 
