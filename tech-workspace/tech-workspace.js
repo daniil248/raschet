@@ -88,6 +88,14 @@ function newRackGroup(name) {
     // стойки. null = ещё не привязано (legacy / новая группа). Допустимые
     // значения — id из concept.rooms[].
     roomId: null,
+    // v0.60.128 (memory feedback_rack_clearances.md): минимальные клиренсы
+    // вокруг стойки. По умолчанию = depthMm спереди и сзади (ASHRAE / TIA-942).
+    // Для сзади с двойными дверями допускается уменьшение до 600 мм.
+    // Для статива (только передний доступ) — accessRear=false, rearClearanceMm=0.
+    frontClearanceMm: 1200,   // default ASHRAE/TIA-942 cold aisle
+    rearClearanceMm: 900,     // default hot aisle
+    accessFront: true,
+    accessRear: true,         // false для статива
   };
 }
 function newUpsSystem(name, purpose) {
@@ -179,8 +187,12 @@ function calcRoomCalculatedArea(roomId, concept) {
     if (rg.roomId !== roomId) continue;
     const w = (Number(rg.widthMm) || 600) / 1000;
     const d = (Number(rg.depthMm) || 1200) / 1000;
-    const fc = ((Number(rg.frontClearanceMm) || (FRONT_DEFAULT * 1000)) / 1000);
-    const rc = ((Number(rg.rearClearanceMm)  || (REAR_DEFAULT  * 1000)) / 1000);
+    // v0.60.128: учитываем accessFront / accessRear. Если доступ нет —
+    // клиренс не нужен (статив, прислонённый к стене).
+    const accessFront = rg.accessFront !== false;
+    const accessRear  = rg.accessRear  !== false;
+    const fc = accessFront ? ((Number(rg.frontClearanceMm) || (FRONT_DEFAULT * 1000)) / 1000) : 0;
+    const rc = accessRear  ? ((Number(rg.rearClearanceMm)  || (REAR_DEFAULT  * 1000)) / 1000) : 0;
     const cnt = Number(rg.count) || 0;
     // Каждая стойка: w × (d + fc + rc).
     m2 += cnt * w * (d + fc + rc);
@@ -345,6 +357,11 @@ function migrateVariant(v) {
   if (Array.isArray(c.rackGroups)) {
     c.rackGroups.forEach(rg => {
       if (typeof rg.roomId === 'undefined') rg.roomId = _mainRoomId;
+      // v0.60.128: дозаполнение клиренсов (preserve-on-miss).
+      if (typeof rg.frontClearanceMm !== 'number') rg.frontClearanceMm = 1200;
+      if (typeof rg.rearClearanceMm !== 'number') rg.rearClearanceMm = 900;
+      if (typeof rg.accessFront !== 'boolean') rg.accessFront = true;
+      if (typeof rg.accessRear !== 'boolean') rg.accessRear = true;
     });
   }
   if (Array.isArray(c.upsSystems)) {
@@ -619,6 +636,27 @@ function renderRackGroupCard(rg, isReadOnly, rooms) {
       <label>Глубина, мм:<input type="number" data-field="depthMm" min="800" step="100" value="${rg.depthMm}" ${ro}></label>
     </div>
     ${_bindBtnHtml('rack', rg.id, rg.modelRef)}
+    <!-- v0.60.128: клиренсы и доступ (memory feedback_rack_clearances.md) -->
+    <div class="tw-subsection">
+      <h5 title="Минимальные расстояния спереди и сзади стойки. По умолчанию ≥ глубины стойки (ASHRAE TC 9.9 / TIA-942: front 1200мм cold aisle, rear 900мм hot aisle). Сзади с двойными дверями допускается до 600 мм. Для стативов (статив с доступом только спереди) выключите «Доступ сзади» — клиренс сзади обнулится.">📐 Клиренсы и доступ</h5>
+      <div class="tw-grid">
+        <label title="Передний клиренс (cold aisle). Default ASHRAE: 1200 мм. Можно уменьшить до 900 мм для компактных конфигураций — с обоснованием.">⬅ Спереди, мм:
+          <input type="number" data-field="frontClearanceMm" min="0" step="100" value="${Number(rg.frontClearanceMm) || 1200}" ${ro || (rg.accessFront === false ? 'disabled' : '')} title="${rg.accessFront === false ? 'Передний доступ выключен — клиренс не нужен' : ''}">
+        </label>
+        <label title="Задний клиренс (hot aisle). Default TIA-942: 900 мм. Можно уменьшить до 600 мм где двойные двери. 0 = статив прислонён к стене (accessRear=false).">➡ Сзади, мм:
+          <input type="number" data-field="rearClearanceMm" min="0" step="100" value="${Number(rg.rearClearanceMm) || 900}" ${ro || (rg.accessRear === false ? 'disabled' : '')} title="${rg.accessRear === false ? 'Задний доступ выключен — статив. Клиренс не нужен.' : ''}">
+        </label>
+        <label style="display:flex;align-items:center;gap:6px" title="Доступ спереди (для обслуживания cold-aisle). Default true. Снимите для статива с доступом только сзади (редко).">
+          <input type="checkbox" data-field="accessFront"${rg.accessFront !== false ? ' checked' : ''} ${ro}>
+          Доступ спереди
+        </label>
+        <label style="display:flex;align-items:center;gap:6px" title="Доступ сзади (для обслуживания hot-aisle / задних разъёмов). По умолчанию ON. Снимите для статива (стенд с доступом только спереди — типично для коммутационного оборудования).">
+          <input type="checkbox" data-field="accessRear"${rg.accessRear !== false ? ' checked' : ''} ${ro}>
+          Доступ сзади
+        </label>
+      </div>
+      <p class="muted" style="font-size:11px;margin:4px 0 0">📋 Для расчёта плановой площади помещения см. блок «🏠 Помещения» — суммирует footprint × (глубина + клиренсы).</p>
+    </div>
     <!-- PDU sub-section внутри группы стоек (юзер: «PDU тоже в рамках стойки конфигурируется») -->
     <div class="tw-subsection">
       <h5>🔌 PDU для этой группы</h5>

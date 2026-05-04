@@ -4,6 +4,23 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.128', date: '2026-05-04', items: [
+      '📐 <b>TW: rack clearances + accessFront/Rear (память, статив)</b>. Реализация memory rule <code>feedback_rack_clearances.md</code> зафиксированной 2026-05-04.',
+      '• <b>newRackGroup получил поля</b>:',
+      '  • <code>frontClearanceMm</code> (default 1200, ASHRAE TC 9.9 cold aisle).',
+      '  • <code>rearClearanceMm</code> (default 900, TIA-942 hot aisle; ≤600 для двойных дверей).',
+      '  • <code>accessFront</code> (default true).',
+      '  • <code>accessRear</code> (default true; false для статива — стенда с доступом только спереди).',
+      '• <b>Migration legacy variants</b> — preserve-on-miss, не затирает уже заданные значения.',
+      '• <b>UI секция «📐 Клиренсы и доступ»</b> в карточке группы стоек:',
+      '  • Числовые поля front/rear с tooltip\'ами с ссылками на ASHRAE / TIA-942.',
+      '  • Чекбоксы accessFront / accessRear. Если выключено — соответствующее число readonly+disabled (клиренс не нужен).',
+      '  • Hint про связь с расчётом плановой площади помещения.',
+      '• <b>calcRoomCalculatedArea учитывает accessFront/Rear</b>: если доступ выключен — клиренс = 0 (статив прислонён к стене / шкафу).',
+      '• Расчётная площадь помещения теперь динамически реагирует на изменение клиренсов: при default 600/1200мм для 8 стоек 600×1200 + 2 группы — площадь ≈ 24 м²; при компактном (200/0мм для статива) — ≈ 12 м². Видна сразу в редакторе помещения.',
+      '• Memory rule <code>feedback_rack_clearances.md</code> — основной DR закрыт. Расширения: rack-config UI клиренсов (per-rack-template), отдельный 2D layout-валидатор корридоров — TODO.',
+      'Файлы: <code>tech-workspace/tech-workspace.js</code> (~30 строк: расширение newRackGroup, migration backfill, UI секция в renderRackGroupCard, calcRoomCalculatedArea учитывает access-флаги).',
+    ] },
     { version: '0.60.127', date: '2026-05-04', items: [
       '📂 <b>Group consumers visual cleanup в реестре</b>. По репорту Пользователя (3-й раз — 🔥 HIGH): «потребители включенные в группу отображаться как потребители без питания и не размещенные потребители или как потребители ссылки, они должны быть нормально размещенные». Технический _powered fix был в v0.60.108; теперь визуальная зачистка реестра.',
       '• <b>«📂 Свернуть группы»</b> чекбокс в фильтр-баре реестра (по умолчанию ON). Скрывает linked-aliased + container-children из топ-уровня списка — они показаны через counter «×N» у master-узла (или container\'а).',
