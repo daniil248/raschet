@@ -552,6 +552,66 @@ const STATUSES = [
 ];
 function statusMeta(id) { return STATUSES.find(s => s.id === id) || STATUSES[0]; }
 
+// v0.60.94 (Phase 39): Lifecycle states по ISO 15288 / PLM. 8 состояний от
+// концепции до вывода из эксплуатации. Дополняет существующий p.status
+// (5 базовых) более детальной классификацией.
+const LCM_STATES = [
+  { id: 'concept',      label: 'Концепция',          icon: '💡', color: '#7c3aed', bg: '#ede9fe', desc: 'Идея, первичные требования. TW concept-вариант.' },
+  { id: 'sketch',       label: 'Эскиз / П',          icon: '✏', color: '#0369a1', bg: '#dbeafe', desc: 'Концепция готова, оформление по ГОСТ Р 21.501.' },
+  { id: 'working',      label: 'Рабочая (РД)',       icon: '📐', color: '#1d4ed8', bg: '#dbeafe', desc: 'Детальное проектирование. Схемы / СКС / BOM.' },
+  { id: 'construction', label: 'Монтаж',             icon: '🔨', color: '#b45309', bg: '#fef3c7', desc: 'Выполнение работ на объекте. Service install-наряды.' },
+  { id: 'commissioning',label: 'ПНР',                icon: '⚙', color: '#92400e', bg: '#fed7aa', desc: 'Пусконаладочные работы. Тесты, испытания.' },
+  { id: 'operation',    label: 'Эксплуатация',       icon: '✅', color: '#047857', bg: '#d1fae5', desc: 'Рабочий режим. Asset registry + maintenance schedule.' },
+  { id: 'upgrade',      label: 'Модернизация',       icon: '🔄', color: '#0891b2', bg: '#cffafe', desc: 'Обновление систем. Revision sketch на основе as-built.' },
+  { id: 'decommission', label: 'Decommission',       icon: '🛑', color: '#991b1b', bg: '#fee2e2', desc: 'Вывод из эксплуатации. Документация утилизации.' },
+];
+function lcmStateMeta(id) {
+  return LCM_STATES.find(s => s.id === id) || LCM_STATES[0];
+}
+function _deriveLcmFromStatus(status) {
+  // Backward-compat mapping существующего status → LCM state.
+  const map = {
+    'draft':     'concept',
+    'planned':   'working',
+    'installed': 'commissioning',
+    'operating': 'operation',
+    'archived':  'decommission',
+  };
+  return map[status || 'draft'] || 'concept';
+}
+
+// v0.60.94: picker для lifecycle state.
+function prLcmStatePicker(current) {
+  return new Promise(res => {
+    const overlay = document.createElement('div');
+    overlay.className = 'pr-overlay';
+    const rows = LCM_STATES.map(s => `
+      <button type="button" class="pr-lcm-row" data-id="${s.id}" style="display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:1px solid ${s.id === current ? s.color : '#e2e8f0'};background:${s.id === current ? s.bg : '#fff'};border-radius:8px;cursor:pointer;margin-bottom:6px;text-align:left">
+        <span style="font-size:18px">${s.icon}</span>
+        <span style="flex:1">
+          <b style="color:${s.color}">${s.label}</b>
+          <span style="display:block;font-size:11px;color:#64748b;margin-top:2px">${s.desc}</span>
+        </span>
+        ${s.id === current ? '<span style="color:' + s.color + ';font-size:12px">✓ текущий</span>' : ''}
+      </button>`).join('');
+    overlay.innerHTML = `
+      <div class="pr-modal" style="max-width:540px">
+        <h3>🔄 Жизненный цикл объекта (Phase 39)</h3>
+        <p class="muted" style="font-size:12px;margin:6px 0 12px">ISO 15288 / PLM-подход: 8 состояний от концепции до decommission. Подробнее — ROADMAP Phase 39.</p>
+        <div>${rows}</div>
+        <div class="pr-modal-actions"><button type="button" class="pr-btn-sel" data-act="no">Закрыть</button></div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const done = v => { overlay.remove(); res(v); };
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) done(null);
+      const row = e.target.closest('.pr-lcm-row');
+      if (row) done(row.dataset.id);
+      if (e.target.dataset?.act === 'no') done(null);
+    });
+  });
+}
+
 function prStatusPicker(current) {
   return new Promise(res => {
     const overlay = document.createElement('div');
@@ -654,6 +714,8 @@ function render() {
   }
 
   const st = statusMeta(p.status || 'draft');
+  // v0.60.94 (Phase 39 START): lifecycle state по ISO 15288.
+  const lcm = lcmStateMeta(p.lifecycleState || _deriveLcmFromStatus(p.status));
   const s = projectStats(p.id);
 
   if (headHost) {
@@ -662,7 +724,9 @@ function render() {
         <div style="flex:1;min-width:280px">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <h1 style="margin:0;font-size:24px">${esc(p.name || '(без имени)')}</h1>
-            <span class="pr-badge-status" style="background:${st.bg};color:${st.color};padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600">${esc(st.label)}</span>
+            <span class="pr-badge-status" style="background:${st.bg};color:${st.color};padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;cursor:pointer" title="Статус проекта (упрощённый, 5 значений). Клик — изменить.">${esc(st.label)}</span>
+            <button type="button" class="pr-badge-lcm" data-act="change-lcm" style="background:${lcm.bg};color:${lcm.color};padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid ${lcm.color}33;font-family:inherit"
+                    title="Жизненный цикл объекта по ISO 15288 (8 значений: концепция → ... → decommission). ${esc(lcm.desc)}. Phase 39. Клик — изменить.">${lcm.icon} ${esc(lcm.label)}</button>
             ${p.kind === 'sketch' ? '<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600">🧪 Мини-проект</span>' : ''}
           </div>
           ${p.description ? `<p style="margin:10px 0 0;color:#475569">${esc(p.description)}</p>` : '<p class="muted" style="margin:10px 0 0;font-style:italic">Описание не задано</p>'}
@@ -678,6 +742,18 @@ function render() {
         ${badgeChip('📦', s.inventory, 'IT-устройств',            '#e0f2fe', '#0369a1')}
         ${badgeChip('🏭', s.facility,  'позиций объекта',         '#fef3c7', '#a16207')}
       </div>`;
+    // v0.60.94: handler для LCM-бейджа.
+    const lcmBtn = headHost.querySelector('[data-act="change-lcm"]');
+    if (lcmBtn) {
+      lcmBtn.addEventListener('click', async () => {
+        const cur = p.lifecycleState || _deriveLcmFromStatus(p.status);
+        const next = await prLcmStatePicker(cur);
+        if (next == null || next === cur) return;
+        updateProject(p.id, { lifecycleState: next });
+        prToast(`🔄 Жизненный цикл: ${lcmStateMeta(next).icon} ${lcmStateMeta(next).label}`);
+        render();
+      });
+    }
   }
 
   if (modulesHost) {

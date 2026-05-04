@@ -3781,3 +3781,57 @@ asset registry в единое вьюхно-управление.
 - В operation-стадии работает asset registry с ТО-журналом.
 
 ---
+
+## Фаза 40 — Cloud-синхронизация всех данных проекта
+
+> Зафиксировано Пользователем 2026-05-03: «есть проблема, я на одном
+> устройстве сделал какие то схемы и расчеты, при этом зайдя с другого
+> устройства обнаружил что доступны только схемы, остальных данных не было».
+
+**Корень проблемы:** Schemas хранятся в Firestore (через cloud-adapter), но
+данные остальных модулей (cooling.selections, service.orders, meteo.datasets,
+tech-workspace.variants, dgu-config.state, ...) живут ТОЛЬКО в LocalStorage —
+не синхронизируются между устройствами.
+
+**Цель:** все project-scoped данные должны синхронизироваться через cloud
+(Firestore), чтобы пользователь, работая с одного аккаунта, видел свои
+данные на любом устройстве.
+
+- [ ] **40.1** Архитектура cloud-storage adapter:
+  - <code>shared/cloud-storage.js</code> — общий API <code>cloudGet/cloudSet/cloudDelete</code>.
+  - При isFirebaseReady() — пишет в Firestore коллекцию <code>users/&lt;uid&gt;/project-data/&lt;pid&gt;/&lt;module&gt;-&lt;key&gt;</code>.
+  - LocalStorage как cache (read-through) для скорости и offline.
+- [ ] **40.2** Module-by-module migration:
+  - <code>cooling.selections.v1</code> → cloud
+  - <code>service.orders.v1</code> → cloud
+  - <code>meteo.datasets.v1</code> → cloud (но БОЛЬШИЕ — IDB+blob storage)
+  - <code>tech-workspace.variants.v1</code> → cloud
+  - <code>dgu-config.state.v1 / selected.v1</code> → cloud
+  - <code>ups-config.selected.v1</code> → cloud
+  - <code>history-log</code> → cloud (Phase 35)
+  - <code>cde.documents.v1</code> → cloud (Phase 37)
+  - <code>plan.tasks.v1</code> → cloud (Phase 38)
+- [ ] **40.3** Conflict resolution:
+  - Last-Write-Wins (LWW) с timestamp.
+  - Опционально — diff-merge для конфликтующих полей.
+  - UI «⚠ Изменения с другого устройства» при cross-device write.
+- [ ] **40.4** Realtime updates:
+  - Firestore onSnapshot listener — изменения с другого устройства подхватываются live.
+  - Toast: «🔄 Обновлено с другого устройства».
+- [ ] **40.5** Offline mode:
+  - Если нет сети — пишем только в LS, при подключении — push в cloud.
+  - Banner «📡 Offline — изменения сохранятся локально».
+- [ ] **40.6** Storage quota:
+  - Большие данные (meteo 6+ МБ) — Firebase Storage (blob) с reference в Firestore.
+  - История CDE — TTL для старых snapshot.
+- [ ] **40.7** Account UI:
+  - В global-settings — статус «👤 Аккаунт: user@example.com · 12 проектов в облаке».
+  - Кнопка «🔄 Синхронизировать сейчас» (force pull).
+  - Кнопка «📥 Скачать всё локально (бэкап)» / «📤 Восстановить из бэкапа».
+
+**Acceptance:**
+- Создал cooling-подбор на ноуте → открыл с телефона → подбор виден.
+- Изменил параметр на телефоне → ноут получает update в течение 5 сек.
+- Работает offline — изменения сохраняются и синхронизируются при connect.
+
+---

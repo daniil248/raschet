@@ -4,6 +4,25 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.95', date: '2026-05-03', items: [
+      '🔄 <b>Phase 39 START: lifecycleState badge + picker в проекте</b>.',
+      '• Новые константы <code>LCM_STATES</code> (8 состояний по ISO 15288): концепция / эскиз / РД / монтаж / ПНР / эксплуатация / модернизация / decommission.',
+      '• <code>_deriveLcmFromStatus()</code> — backward-compat mapping старого 5-state в новый 8-state.',
+      '• В заголовке проекта рядом со «Статусом» появился новый бейдж «🔄 Жизненный цикл» с иконкой+цветом per-state. Tooltip с описанием стадии.',
+      '• Click → <code>prLcmStatePicker()</code> модалка с радио-выбором всех 8 состояний с описаниями.',
+      '• Сохранение в <code>project.lifecycleState</code> + toast.',
+      '',
+      '☁ <b>Phase 40 добавлена в ROADMAP: Cloud Sync</b>. По репорту Пользователя 2026-05-03 «есть проблема, я на одном устройстве сделал какие то схемы и расчеты, при этом зайдя с другого устройства обнаружил что доступны только схемы, остальных данных не было».',
+      '• 40.1 <code>shared/cloud-storage.js</code> — общий API cloudGet/Set/Delete над Firestore.',
+      '• 40.2 Module-by-module migration: cooling/service/meteo/tech-workspace/dgu-config/ups-config/history-log/cde/plan.',
+      '• 40.3 Conflict resolution (LWW + diff-merge для конфликтов).',
+      '• 40.4 Realtime updates через Firestore onSnapshot.',
+      '• 40.5 Offline mode + sync при connect.',
+      '• 40.6 Storage quota: blob storage для больших meteo/CDE snapshots.',
+      '• 40.7 Account UI: статус подключения + кнопки «sync now» / «backup».',
+      '',
+      'Файлы: <code>projects/project.js</code> (LCM badge + picker), <code>ROADMAP.md</code> (+Phase 40), <code>modules/index.html</code> (Cloud Sync planned-card).',
+    ] },
     { version: '0.60.94', date: '2026-05-03', items: [
       '📋 <b>ROADMAP: добавлены 3 крупные фазы по требованию Пользователя 2026-05-03</b>: «нужна еще организованная среда общих данных CDE, организация управления проектированием (разработкой) как отдельных систем так и объекта в целом и планирование всего объекта, организация жизненным циклом объекта».',
       '',
