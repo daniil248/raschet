@@ -4,6 +4,18 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.125', date: '2026-05-04', items: [
+      '👥 <b>Catalog: UI promote/demote для общих прайс-листов организации</b>. Завершение Phase 41.2 — теперь Пользователь может управлять scope цен через интерфейс каталога (раньше только API в v0.60.124).',
+      '• <b>Scope-фильтр</b> в toolbar Цен: «Все (N)» / «✏ Личные (M)» / «👥 Организация (K)» с per-scope счётчиками.',
+      '• <b>Визуальная подсветка строк</b>: жёлтый фон #fefce8 = личные, синий #eff6ff = организация. Иконка scope в первой колонке (✏ / 👥) с tooltip объяснением.',
+      '• <b>Per-row кнопки ↑/↓</b>:',
+      '  • ↑ <b>Promote</b> для user-цен — модалка «Опубликовать цену в общий каталог организации? Будет видна всем членам команды».',
+      '  • ↓ <b>Demote</b> для org-цен — модалка «Снять цену из общего каталога? Другие члены команды перестанут её видеть».',
+      '• <b>Scope-aware delete</b>: при удалении org-цены — warning «⚠ Запись будет удалена у всех членов организации».',
+      '• <b>Auto-refresh</b>: <code>onPricesChange</code> уже подписан в catalog.js — после promote/demote/del таблица обновляется автоматически.',
+      '• ROADMAP Phase 41.2 «общие прайс-листы» полностью завершён (data API v0.60.124 + UI v0.60.125).',
+      'Файлы: <code>catalog/catalog.js</code> (~70 строк: scope-фильтр в filters + визуальная подсветка + кнопки promote/demote + handler\'ы + scope-aware delete).',
+    ] },
     { version: '0.60.124', date: '2026-05-04', items: [
       '💰 <b>Phase 41.2: org-уровень для price-records (общие прайс-листы команды)</b>. По pattern из Phase 41.2 (work-templates v0.60.116). Закрывает второй shared-catalog в roadmap.',
       '• <b>Изолированный LS-ключ</b> <code>raschet.priceRecords.org.v1</code> (отделён от user-уровня <code>raschet.priceRecords.v1.&lt;userId&gt;</code>). Удаление user-каталога не трогает org.',

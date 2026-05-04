@@ -3884,7 +3884,11 @@ v0.60.105 (`shared/currency-defaults.js::resolveDefaultCurrency`).
   <code>pricesForElement</code> по умолчанию merged (user+org).
   ID-префикс <code>pr-org-</code>. Audit trail через
   <code>promotedAt/promotedFrom/demotedAt/demotedFrom</code>.
-  TODO Phase 41.2: UI promote/demote кнопки в каталоге цен.
+  ✅ <b>v0.60.125</b>: UI в catalog/ — scope-фильтр (Все/Личные/Организация),
+  per-row scope-icon (✏/👥) с подсветкой жёлтый/синий, кнопки ↑/↓
+  для promote/demote с модалками подтверждения, scope-aware delete
+  с warning для org. <b>Phase 41.2 «общие прайс-листы» полностью
+  завершён</b>.
 - [ ] `org.catalogs.datasheets` — общие datasheets.
 - [ ] `org.catalogs.elementLibrary` — общие наборы element-library.
 - [x] **v0.60.116**: UI каталога работ показывает все 3 scope с разной

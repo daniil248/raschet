@@ -22,6 +22,8 @@ import { tccBreakerTime, tccSamplePoints } from '../shared/tcc-curves.js';
 // mountTccChart используется в cable/ и инспекторе линии — не здесь.
 import {
   listPrices, getPrice, savePrice, removePrice, pricesForElement,
+  // v0.60.125 (Phase 41.2 UI): org-уровень
+  saveOrgPrice, removeOrgPrice, promotePriceToOrg, demotePriceToUser,
   bulkAddPrices, exportPricesJSON, importPricesJSON, onPricesChange,
   listImportBatches, rollbackImportBatch,
   PRICE_TYPES, CURRENCIES,
@@ -1362,7 +1364,8 @@ function openCableSkuModal(cableTypeId) {
 }
 
 // ====================== TAB: ЦЕНЫ ======================
-const priceFilters = { elementId: '', counterpartyId: '', priceType: '', currency: '' };
+// v0.60.125 (Phase 41.2 UI): scope-фильтр + promote/demote.
+const priceFilters = { elementId: '', counterpartyId: '', priceType: '', currency: '', scope: 'all' };
 
 function renderPricesTab() {
   const container = document.getElementById('tab-prices');
@@ -1376,21 +1379,32 @@ function renderPricesTab() {
     `<option value="${c.id}"${priceFilters.counterpartyId === c.id ? ' selected' : ''}>${esc(c.shortName || c.name)}</option>`).join('');
   const curOpts = CURRENCIES.map(c => `<option value="${c}"${priceFilters.currency === c ? ' selected' : ''}>${c}</option>`).join('');
 
+  // v0.60.125 (Phase 41.2 UI): счётчики per-scope для toolbar info.
+  const allPrices = listPrices({ elementId: priceFilters.elementId, counterpartyId: priceFilters.counterpartyId, priceType: priceFilters.priceType, currency: priceFilters.currency, scope: 'all' });
+  const userCnt = allPrices.filter(p => p.scope === 'user').length;
+  const orgCnt  = allPrices.filter(p => p.scope === 'org').length;
+
   const html = [`
     <div class="toolbar">
       <select id="pr-filter-pt"><option value="">Все типы цен</option>${ptOpts}</select>
       <select id="pr-filter-cp"><option value="">Все контрагенты</option>${cpOpts}</select>
       <select id="pr-filter-cur"><option value="">Все валюты</option>${curOpts}</select>
+      <select id="pr-filter-scope" title="Область видимости: ✏ личные (видны только вам) / 👥 организация (видны всем членам команды) / Все (merged).">
+        <option value="all"${priceFilters.scope === 'all' ? ' selected' : ''}>Все (${userCnt + orgCnt})</option>
+        <option value="user"${priceFilters.scope === 'user' ? ' selected' : ''}>✏ Личные (${userCnt})</option>
+        <option value="org"${priceFilters.scope === 'org' ? ' selected' : ''}>👥 Организация (${orgCnt})</option>
+      </select>
       ${priceFilters.elementId ? `<span class="type-badge">Элемент: ${esc(elements.get(priceFilters.elementId)?.label || priceFilters.elementId)} <button style="padding:0;margin-left:4px;background:none;border:none;cursor:pointer;color:#1976d2" id="pr-clear-el">×</button></span>` : ''}
       <div class="spacer"></div>
-      <button id="pr-add" class="primary">+ Добавить цену</button>
+      <button id="pr-add" class="primary" title="Добавить личную цену (видна только вам). Для общих цен — добавьте сначала личную, затем нажмите ↑ в строке.">+ Добавить цену</button>
       <button id="pr-export">Экспорт JSON</button>
     </div>
-    <div class="muted" style="font-size:12px;margin-bottom:8px">Записей: <b>${prices.length}</b></div>
+    <div class="muted" style="font-size:12px;margin-bottom:8px">Записей: <b>${prices.length}</b>. Подсветка: ✏ жёлтая = личные, 👥 синяя = организация. Кнопки ↑/↓ — promote/demote между уровнями.</div>
     <div style="max-height:60vh;overflow:auto">
       <table class="data-table">
         <thead>
           <tr>
+            <th title="Уровень видимости: ✏ личные / 👥 организация"></th>
             <th>Дата</th><th>Элемент</th><th>Тип</th><th class="num">Цена</th>
             <th>Контрагент</th><th>Источник</th><th>Актуальна</th><th></th>
           </tr>
@@ -1403,8 +1417,17 @@ function renderPricesTab() {
     const cp = counterparties.get(p.counterpartyId);
     const pt = PRICE_TYPES[p.priceType] || { label: p.priceType, icon: '' };
     const active = !p.validUntil || p.validUntil >= now;
+    const scope = p.scope || 'user';
+    const scopeIcon = scope === 'org' ? '👥' : '✏';
+    const scopeTitle = scope === 'org' ? 'Общий шаблон организации (виден всем членам команды)' : 'Личный шаблон (виден только вам)';
+    const rowBg = scope === 'org' ? 'background:#eff6ff' : 'background:#fefce8';
+    // promote/demote кнопки
+    const promoteBtn = scope === 'user'
+      ? '<button data-act="promote" title="Опубликовать в общий каталог организации (виден всем членам команды)">↑</button>'
+      : '<button data-act="demote" title="Снять из общего каталога (вернуть в личные)">↓</button>';
     html.push(`
-      <tr data-id="${esc(p.id)}">
+      <tr data-id="${esc(p.id)}" data-scope="${esc(scope)}" style="${rowBg}">
+        <td title="${esc(scopeTitle)}" style="text-align:center">${scopeIcon}</td>
         <td>${fmtDate(p.recordedAt)}</td>
         <td>${el ? esc(el.label || el.id) : '<span class="muted">?' + esc(p.elementId) + '</span>'}</td>
         <td><span class="type-badge">${pt.icon} ${esc(pt.label)}</span></td>
@@ -1412,14 +1435,15 @@ function renderPricesTab() {
         <td>${cp ? esc(cp.shortName || cp.name) : '<span class="muted">—</span>'}</td>
         <td class="muted" style="font-size:11px">${esc(p.source || '—')}</td>
         <td>${active ? '<span class="badge active">да</span>' : '<span class="badge expired">нет</span>'}</td>
-        <td class="actions">
+        <td class="actions" style="white-space:nowrap">
           <button data-act="edit">✎</button>
+          ${promoteBtn}
           <button data-act="del" class="danger">×</button>
         </td>
       </tr>`);
   }
   if (!prices.length) {
-    html.push('<tr><td colspan="8" class="empty">Нет записей. Добавьте первую цену.</td></tr>');
+    html.push('<tr><td colspan="9" class="empty">Нет записей. Добавьте первую цену.</td></tr>');
   }
   html.push('</tbody></table></div>');
   container.innerHTML = html.join('');
@@ -1427,6 +1451,7 @@ function renderPricesTab() {
   document.getElementById('pr-filter-pt').onchange = e => { priceFilters.priceType = e.target.value; renderPricesTab(); };
   document.getElementById('pr-filter-cp').onchange = e => { priceFilters.counterpartyId = e.target.value; renderPricesTab(); };
   document.getElementById('pr-filter-cur').onchange = e => { priceFilters.currency = e.target.value; renderPricesTab(); };
+  document.getElementById('pr-filter-scope').onchange = e => { priceFilters.scope = e.target.value; renderPricesTab(); };
   const clrBtn = document.getElementById('pr-clear-el');
   if (clrBtn) clrBtn.onclick = () => { priceFilters.elementId = ''; renderPricesTab(); };
   document.getElementById('pr-add').onclick = () => openPriceModal();
@@ -1434,10 +1459,30 @@ function renderPricesTab() {
 
   container.querySelectorAll('tr[data-id]').forEach(row => {
     const id = row.dataset.id;
+    const scope = row.dataset.scope || 'user';
     row.querySelectorAll('button').forEach(btn => {
       btn.onclick = async () => {
         if (btn.dataset.act === 'edit') openPriceModal(null, id);
-        else if (btn.dataset.act === 'del') { if (await rsConfirm('Удалить запись цены?', '', { okLabel: 'Удалить', cancelLabel: 'Отмена' })) { removePrice(id); flash('Удалено', 'success'); } }
+        else if (btn.dataset.act === 'del') {
+          // v0.60.125: scope-aware delete с warning для org
+          const warn = scope === 'org' ? '\n\n⚠ Запись будет удалена у всех членов организации.' : '';
+          if (await rsConfirm('Удалить запись цены?' + warn, '', { okLabel: 'Удалить', cancelLabel: 'Отмена' })) {
+            if (scope === 'org') removeOrgPrice(id); else removePrice(id);
+            flash('Удалено', 'success');
+          }
+        }
+        else if (btn.dataset.act === 'promote') {
+          if (await rsConfirm('Опубликовать цену в общий каталог организации?', 'Будет видна всем членам команды (Phase 40 Cloud Sync позже синхронизирует между устройствами).', { okLabel: '↑ Опубликовать', cancelLabel: 'Отмена' })) {
+            const ok = promotePriceToOrg(id);
+            if (ok) flash('👥 Цена в общем каталоге', 'success');
+          }
+        }
+        else if (btn.dataset.act === 'demote') {
+          if (await rsConfirm('Снять цену из общего каталога?', 'Другие члены команды перестанут её видеть. У вас останется в личных записях.', { okLabel: '↓ Снять', cancelLabel: 'Отмена' })) {
+            const ok = demotePriceToUser(id);
+            if (ok) flash('↓ Цена в личных записях', 'info');
+          }
+        }
       };
     });
   });
