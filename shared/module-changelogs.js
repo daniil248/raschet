@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.130', date: '2026-05-04', items: [
+      '📥📤 <b>Phase 42.4 final: импорт/экспорт сценариев wizard\'ов через JSON-файл</b>. Завершение Phase 42 (мастер составления нарядов).',
+      '• <b>📥 Импорт JSON</b> — кнопка в шапке каталога сценариев. File-input принимает <code>.json</code>. Поддерживает 2 формата: одиночный wizard-объект ИЛИ массив (export-all bundle). Каждый сценарий проходит <code>validateWizard</code> перед save. Валидные → в личные (<code>addUserWizard</code>). Невалидные пропускаются с warning «⚠ Пропущено N: {ошибки}».',
+      '• <b>📤 Экспорт всех</b> — кнопка в шапке. Скачивает все user+org сценарии для текущего orderType в один JSON-файл с именем <code>wizards-{install|maintenance|one-off}-{ISO-date}.json</code>. Чистит scope/runtime поля — отдаётся чистый DSL.',
+      '• <b>📤 per-row</b> — кнопка в строке каждого сценария. Скачивает одиночный wizard как <code>wizard-{safe-title}-{ISO-date}.json</code>.',
+      '• <b>Очистка при импорте</b>: удаляются <code>id</code>, <code>scope</code>, <code>promotedAt/From</code>, <code>demotedAt/From</code> — для чистого identity. Новый id присваивается через addUserWizard.',
+      '• <b>file input reset</b> после импорта — позволяет повторно импортировать тот же файл.',
+      '• ROADMAP Phase 42.4 «конфигурируемость» полностью отмечен ✅. <b>Phase 42 завершён</b> (42.1 START + 42.2 UI + 42.3 6 seed-сценариев + 42.4 CRUD + 42.5 cross-module pre-fill + 42.4 final import/export).',
+      'Файлы: <code>service/ui/wizard-catalog.js</code> (~80 строк: import/export-all/per-row кнопки в шапке + file-input + handlers с validate / blob / URL.createObjectURL / download).',
+    ] },
     { version: '0.60.129', date: '2026-05-04', items: [
       '📚 <b>/modules/ — обновление технического реестра</b> (по правилу memory <code>feedback_modules_index.md</code>). После недавнего бурного развития платформы (v0.60.105–128: каскады валюты/НДС, мастер нарядов, org-уровень для work-templates и price-records, NEC методика, auto-norm, rooms, rack clearances) — реестр обновлён.',
       '• <b>Calc-библиотеки</b> расширены:',

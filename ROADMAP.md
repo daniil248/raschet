@@ -4036,8 +4036,15 @@ v0.60.105 (`shared/currency-defaults.js::resolveDefaultCurrency`).
 - [x] **v0.60.118**: Promotion в org-catalog (по pattern Phase 41.2):
   личные ✏ ↑ → общие 👥 ↓ → личные. ID-префиксы wz-usr-/wz-org-.
   Audit trail (promotedAt/promotedFrom).
-- [ ] Импорт/экспорт сценариев JSON для обмена между командами
-  (manual copy через Edit JSON работает уже сейчас).
+- [x] **v0.60.130 (Phase 42.4 final)**: Импорт/экспорт сценариев JSON
+  через файл. Кнопки в каталоге сценариев:
+  • <b>📥 Импорт JSON</b> — загрузка одиночного wizard или массива
+    (export-all bundle). Validate перед save. Импортированные → в личные.
+  • <b>📤 Экспорт всех</b> — скачать ВСЕ user+org для текущего orderType
+    в один JSON-файл (для отправки коллегам / другому org).
+  • <b>📤 в строке</b> — скачать одиночный сценарий.
+  Пометка скачивается как <code>wizards-{type}-{date}.json</code> или
+  <code>wizard-{title}-{date}.json</code>. Phase 42.4 закрыт полностью.
 
 ### 42.5 — Cross-module pre-fill
 - [x] **v0.60.117**: Если активен проект с cooling-подбором — мастер
