@@ -70,8 +70,8 @@
     },
     {
       "id": "sketch",
-      "name": "Скетч / Whiteboard",
-      "description": "Drawio-like редактор предварительных набросков по проекту: библиотеки фигур (базовые, BPMN, сеть, электрика, HVAC, стрелки) с возможностью клонирования, создания пользовательских библиотек, импорта/экспорта JSON. Multi-page, undo/redo, экспорт SVG/PNG/JSON",
+      "name": "Скетч (drawio)",
+      "description": "Полнофункциональный drawio (jgraph/drawio, Apache 2.0) интегрирован через embed iframe + postMessage protocol. Все библиотеки drawio (BPMN, AWS, Azure, GCP, networking, electrical, UML, ...). Multi-page, undo/redo, экспорт SVG/PNG/XML. Self-hosted из GitHub release или fallback на embed.diagrams.net. Update: bash sketch/update-drawio.sh",
       "path": "sketch/",
       "icon": "purple",
       "badge": "new",

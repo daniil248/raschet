@@ -4,6 +4,24 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.166', date: '2026-05-04', items: [
+      '🎨 <b>Скетч-модуль: переход на ОФИЦИАЛЬНЫЙ drawio (jgraph/drawio)</b>. По репорту Пользователя 2026-05-04 «давай drawio просто заберем с гитхаба и интегрируем в наш продукт https://github.com/jgraph/drawio, вместо нашего псевдо drawio» + «обновлять так же будем с гитхаба».',
+      '• <b>Удалены</b>: <code>sketch/shape-library.js</code> + <code>sketch/library-store.js</code> (псевдо-drawio с 6 категориями фигур и custom-библиотеками). drawio имеет полный набор официальных библиотек (BPMN, AWS, Azure, GCP, networking, electrical, UML, mindmap, и т.д. — сотни фигур), наш велосипед был лишним.',
+      '• <b>sketch/index.html</b>: 3-панельный layout заменён на full-screen iframe с drawio. Свой toolbar над iframe: Сохранить / SVG / PNG / XML / Импорт / Sketches dropdown.',
+      '• <b>sketch/sketch.js</b>: переписан под drawio JSON embed protocol (<code>https://www.drawio.com/doc/faq/embed-mode</code>):',
+      '  • <code>resolveDrawioSrc()</code> — приоритет self-hosted (<code>./drawio-app/index.html</code>), fallback на <code>embed.diagrams.net</code>.',
+      '  • <code>postToDrawio()</code> — отправка action-msg в iframe (<code>load</code>, <code>export</code>).',
+      '  • <code>window.message</code> listener — обработка drawio-event\'ов (<code>init</code>, <code>save</code>, <code>autosave</code>, <code>export</code>).',
+      '  • Persistence per-project per-sketch: <code>raschet.sketch.&lt;pid&gt;.&lt;sid&gt;.v2</code> (XML) + <code>raschet.sketch.&lt;pid&gt;.list.v1</code> (список sketches).',
+      '  • Multi-sketch support: создать / переименовать / удалить через toolbar.',
+      '  • Ctrl+S — save (триггерит drawio export-XML и сохраняет в LS).',
+      '• <b>sketch/update-drawio.sh</b>: bash-скрипт обновления self-hosted drawio из github tagged release. Использование: <code>bash sketch/update-drawio.sh [v24.7.17]</code>. Скачивает tarball, распаковывает webapp в <code>sketch/drawio-app/</code>, фиксирует версию в <code>drawio-app/VERSION</code>.',
+      '• <b>sketch/UPDATE-DRAWIO.md</b>: документация — архитектура интеграции, протокол, описание self-hosting, лицензия (Apache 2.0).',
+      '• <b>modules.json</b> + <b>hub.html</b>: описание обновлено. Карточка теперь «Скотч (drawio)» с пометкой «drawio» в badge.',
+      '• <b>Лицензия</b>: drawio распространяется под Apache 2.0. Использование как embed допустимо без изменений. По умолчанию используется официальный hosted drawio (embed.diagrams.net), self-hosting — опционален.',
+      '• <b>v0.60.151 deprecated</b>: предыдущая псевдо-drawio имплементация (~2170 строк своего кода) полностью удалена. Все ранее созданные user-библиотеки в LS остаются (LS-keys другие — не конфликтуют), но в новом UI не показываются.',
+      'Файлы: <code>sketch/index.html</code> (rewrite), <code>sketch/sketch.js</code> (rewrite ~280 строк под drawio embed protocol), <code>sketch/sketch.css</code> (минимизирован), <code>sketch/update-drawio.sh</code> (новый), <code>sketch/UPDATE-DRAWIO.md</code> (новый), <code>modules.json</code>, <code>hub.html</code>. <b>Удалены</b>: <code>sketch/shape-library.js</code>, <code>sketch/library-store.js</code>.',
+    ] },
     { version: '0.60.165', date: '2026-05-04', items: [
       '🔌 <b>«В резерве» применено к consumer + inspector statusBlock</b>. Расширение v0.60.164 на остальные узлы.',
       '• <b>render.js</b>: для consumer status «нет питания» теперь становится «В резерве» если есть upstream source (через <code>_hasUpstreamSource</code>). Раньше потребитель всегда показывал «нет питания» при <code>!_powered</code>, не различая orphan vs idle.',
