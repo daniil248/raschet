@@ -410,6 +410,58 @@ export function resolveLabel(refTypeId, refId, pid) {
   try { return t.labelOf(refId, pid) || refId; } catch { return refId; }
 }
 
+// ───────── Reverse lookup ──────────────────────────────────────────────────
+// v0.60.169 (Phase 3.5 — reverse-link UI): по refType+refId находит все
+// sketch'и (текущего проекта или всех проектов), которые ссылаются на
+// данный entity. Используется в исходных модулях (rack-config / schematic
+// / panel-config / ups-config / …) для отображения чипа «📎 N sketch'ей»
+// у каждого referenceable объекта.
+
+export function findSketchesReferencing(refType, refId, pid) {
+  if (!refType || !refId) return [];
+  // pid обязателен — sketch list per-project. Если не задан — берём активный.
+  if (!pid) {
+    try {
+      pid = localStorage.getItem('raschet.activeProjectId.v1');
+      if (pid) pid = JSON.parse(pid);
+    } catch {}
+  }
+  if (!pid) return [];
+
+  // Список sketches проекта
+  let sketchList = [];
+  try {
+    const raw = localStorage.getItem(`raschet.sketch.${pid}.list.v1`);
+    sketchList = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(sketchList)) sketchList = [];
+  } catch { sketchList = []; }
+
+  const matches = [];
+  for (const sk of sketchList) {
+    if (!sk || !sk.id) continue;
+    const refs = loadRefs(pid, sk.id);
+    const matched = refs.filter(r => r.refType === refType && r.refId === refId);
+    if (matched.length) {
+      matches.push({
+        sketchId: sk.id,
+        sketchName: sk.name || sk.id,
+        refs: matched, // обычно 1 (дедуп), но на всякий случай array
+      });
+    }
+  }
+  return matches;
+}
+
+// Вернёт URL открытия sketch'a с уже выбранным элементом (если sketch.js
+// в init читает ?sketch=…). Используется для перехода из reverse-chip.
+export function buildSketchOpenUrl(sketchId, pid) {
+  if (!sketchId) return null;
+  const params = new URLSearchParams();
+  if (pid) params.set('project', pid);
+  params.set('sketch', sketchId);
+  return `../sketch/?${params.toString()}`;
+}
+
 // ───────── Drawio cell XML builder ──────────────────────────────────────────
 // Возвращает XML-fragment, готовый к merge в drawio через postMessage:
 //   { action: 'merge', xml: '<mxGraphModel>...</mxGraphModel>' }

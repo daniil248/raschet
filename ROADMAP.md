@@ -1639,7 +1639,11 @@ Phase 10 (`mdc-config/`) желательна для импорта коорди
 - [ ] **3.2** В sheet-mode: ISO 7200 основная надпись, рамка, штамп
 - [ ] **3.3** Переиспользовать `schematic/iso-paper.js`
 - [ ] **3.4** Авто-layout для новых элементов (packing слева)
-- [ ] **3.5** Reverse-link UI: в исходных модулях (rack-config / schematic / panel-config / ups-config) показывать чип «📎 N sketch'ей ссылаются на этот объект» с дропдауном → открыть sketch.
+- [~] **3.5** Reverse-link UI: в исходных модулях (rack-config / schematic / panel-config / ups-config) показывать чип «📎 N sketch'ей ссылаются на этот объект» с дропдауном → открыть sketch. Generic helper `shared/sketch-refs-reverse.js` (mountReverseLinkChip). Pilot: projects/projects.js (на карточках проектов). v0.60.169.
+  - [ ] **3.5.1** Расширить на rack-config (рядом с tag стойки в инспекторе)
+  - [ ] **3.5.2** schematic (header листа)
+  - [ ] **3.5.3** panel-config / ups-config / mv-config / transformer-config (header конфигурации)
+  - [ ] **3.5.4** cable (рядом с tag кабельной линии)
 
 ---
 

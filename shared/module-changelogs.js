@@ -4,6 +4,22 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.169', date: '2026-05-04', items: [
+      '🔁 <b>Reverse-link chips: «📎 N sketch\'ей»</b> в исходных модулях. Phase 3.5 ROADMAP — продолжение v0.60.168.',
+      '• <b>Идея</b>: после v0.60.168 sketch\'и могут ссылаться на стойки, схемы, НКУ, ИБП и т.д. Но из исходного модуля было непонятно, упоминается ли данный объект где-то в sketch\'ах. Теперь рядом с каждым referenceable объектом — чип <code>📎 N sketch\'ей</code> с popover\'ом списка и переходом.',
+      '• <b>shared/sketch-refs.js</b> расширен:',
+      '  • <code>findSketchesReferencing(refType, refId, pid)</code> — сканирует sketch\'и проекта, возвращает <code>[{sketchId, sketchName, refs[]}]</code>.',
+      '  • <code>buildSketchOpenUrl(sketchId, pid)</code> — URL-builder для перехода в Скетч с уже выбранным sketch\'ем.',
+      '• <b>shared/sketch-refs-reverse.js</b> (новый) — generic UI helper:',
+      '  • <code>mountReverseLinkChip({container, refType, refId, pid, hideEmpty})</code> — вставляет чип в любой контейнер.',
+      '  • Click → popover с списком sketch\'ей, click по имени → открывает sketch в новой вкладке.',
+      '  • Auto-refresh при <code>storage</code>-event (другая вкладка изменила refs).',
+      '  • Inline CSS injection — модуль не требует подключения CSS-файла.',
+      '  • Russian pluralization: «1 sketch» / «2 sketch\'a» / «5 sketch\'ей».',
+      '• <b>Pilot — projects/projects.js</b>: на каждой карточке проекта чип <code>📎 N sketch\'ей</code> (hideEmpty=true — невидим если 0). Сразу видно, в каких проектах sketch\'и активно используются как часть документации.',
+      '• <b>Дальше</b>: интеграция в rack-config (рядом с tag стойки), schematic (header листа), panel-config / ups-config / mv-config / transformer-config (header конфигурации). Phase 3.5 в ROADMAP.',
+      'Файлы: <code>shared/sketch-refs.js</code> (+findSketchesReferencing + buildSketchOpenUrl), <code>shared/sketch-refs-reverse.js</code> (новый, ~280 строк), <code>projects/projects.js</code> (mountReverseLinkChip integration).',
+    ] },
     { version: '0.60.168', date: '2026-05-04', items: [
       '🔗 <b>Sketch (drawio) ⇆ данные Raschet — полноценная связь</b>. По репорту Пользователя 2026-05-04 «нам тем более нужно связывать файлы (данные), которые мы будем генерировать в этом модуле».',
       '• <b>Что было</b>: sketch (drawio) был изолированным холстом — рисуй что хочешь, но никак не привязан к стойкам / схемам / конфигурациям проекта.',

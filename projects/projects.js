@@ -19,6 +19,11 @@ import { historyList, historyTrash, historyStats } from '../shared/history-log.j
 // Пользователь не internal — currentRole === null → false для всех permissions.
 // canCreateProjects/canDeleteProjects = true только для manager / gip.
 import { hasPermission, isInternalUser, currentRole, ROLES } from '../shared/subscriptions.js';
+// v0.60.169 (Phase 3.5 — reverse-link chips): на каждой карточке проекта
+// показываем чип «📎 N sketch'ей», если в этом проекте есть sketch'и со
+// ссылкой на сам проект (refType='project', refId=p.id). Click → popover
+// со списком sketch'ей и переходом в модуль Скетч.
+import { mountReverseLinkChip } from '../shared/sketch-refs-reverse.js';
 
 // v0.59.507: автоматическая миграция orphan-схем при первом заходе на
 // /projects/. Schemes без projectId → привязываем к контейнеру с тем же
@@ -482,7 +487,7 @@ function render() {
         </div>
       </div>
       ${p.description ? `<div class="pr-project-desc">${escapeHtml(p.description)}</div>` : ''}
-      <div class="pr-project-stats" style="margin:8px 0 0;display:flex;flex-wrap:wrap;gap:6px;align-items:center">${statsBadges(projectStats(p.id))}</div>
+      <div class="pr-project-stats" style="margin:8px 0 0;display:flex;flex-wrap:wrap;gap:6px;align-items:center">${statsBadges(projectStats(p.id))}<span data-sk-rev-mount="1"></span></div>
       <div class="pr-project-meta muted">
         <span>Создан: ${fmtDate(p.createdAt)}</span>
         <span>· Изменён: ${fmtDate(p.updatedAt)}</span>
@@ -494,6 +499,27 @@ function render() {
   // v0.59.344: «Открыть проект» — корневой переход, очищаем back-stack.
   host.querySelectorAll('[data-act="open"]').forEach(a => {
     a.addEventListener('click', () => { try { clearNavStack(); } catch {} });
+  });
+
+  // v0.60.169 (Phase 3.5): reverse-link chip на каждой карточке проекта.
+  // Чип hideEmpty=true — показывается только если у проекта есть sketch'и
+  // со ссылкой на него. Иначе невидим (не засоряем UI).
+  host.querySelectorAll('.pr-project').forEach(el => {
+    const id = el.dataset.id;
+    const mount = el.querySelector('[data-sk-rev-mount="1"]');
+    if (mount && id) {
+      try {
+        mountReverseLinkChip({
+          container: mount,
+          refType: 'project',
+          refId: id,
+          pid: id, // sketch'и проекта → ищем в LS этого pid
+          hideEmpty: true,
+        });
+      } catch (e) {
+        console.warn('[projects] reverse-link chip mount failed:', e);
+      }
+    }
   });
 
   host.querySelectorAll('.pr-project').forEach(el => {
