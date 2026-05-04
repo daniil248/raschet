@@ -32,6 +32,10 @@ import {
   CURRENCIES, getOrgProfile, saveOrgProfile,
   resolveDefaultCurrencyWithSource, resolveDefaultVatWithSource,
 } from './currency-defaults.js';
+// v0.60.132 (Phase 44.3): подписки.
+import {
+  PLANS, getSubscription, saveSubscription, activateTrial, planBadge,
+} from './subscriptions.js';
 
 const STORAGE_KEY = 'raschet.global.v1';
 
@@ -519,6 +523,78 @@ function _renderCompanySection(host) {
   });
 }
 
+/* v0.60.132 (Phase 44.3): рендер секции «Подписка». Управление планом
+   подписки + активация триала + просмотр доступных модулей. */
+function _renderSubscriptionSection(host) {
+  const escAttr = (s) => String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const escHtml = escAttr;
+  const sub = getSubscription();
+  const curPlanId = sub.plan || 'free';
+  const curPlan = PLANS[curPlanId] || PLANS.free;
+  const isTrial = !!sub.isTrial && sub.expiresAt && sub.expiresAt > Date.now();
+  const trialDaysLeft = isTrial ? Math.ceil((sub.expiresAt - Date.now()) / (24 * 60 * 60 * 1000)) : 0;
+  const expired = sub.expired === true;
+
+  // Плашка текущего плана
+  const planBgColor = isTrial ? '#fef3c7' : (curPlanId === 'free' ? '#f3f4f6' : '#dbeafe');
+  const planTextColor = isTrial ? '#92400e' : (curPlanId === 'free' ? '#6b7280' : '#1e40af');
+
+  // Список планов с галочкой текущего
+  const planRows = Object.entries(PLANS).filter(([id]) => id !== 'custom').map(([planId, p]) => {
+    const isCurrent = planId === curPlanId;
+    const moduleCount = p.modules.includes('*') ? 'все' : p.modules.length;
+    const trialBtn = !isCurrent && !isTrial && curPlanId === 'free' && planId !== 'free'
+      ? `<button type="button" class="rs-gs-trial-btn" data-plan="${escAttr(planId)}" style="padding:4px 10px;background:#16a34a;color:#fff;border:0;border-radius:4px;cursor:pointer;font:inherit;font-size:11px">🎁 Триал 14 дн.</button>`
+      : '';
+    return `<div style="display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;align-items:center;padding:8px 12px;margin:4px 0;background:${isCurrent ? '#dbeafe' : '#fff'};border:1px solid ${isCurrent ? '#93c5fd' : '#e2e8f0'};border-radius:5px">
+      <span style="font-weight:600;color:${isCurrent ? '#1e40af' : '#0f172a'}">${escHtml(p.label)}${isCurrent ? ' ✓' : ''}</span>
+      <span class="muted" style="font-size:11.5px">${escHtml(p.description)}</span>
+      <span class="muted" style="font-size:11px;white-space:nowrap">${moduleCount} модулей</span>
+      <span style="font-size:11.5px;font-weight:600;min-width:80px;text-align:right">${p.price === 0 ? '<span style="color:#15803d">бесплатно</span>' : (p.price ? p.price.toLocaleString('ru-RU') + ' ₽/мес' : '<span class="muted">договорная</span>')}</span>
+      ${trialBtn ? `<div style="grid-column:1/-1;text-align:right">${trialBtn}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  host.innerHTML = `
+    <div style="padding:10px 14px;background:${planBgColor};border:1px solid ${planTextColor}33;border-radius:5px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:14px;font-weight:600;color:${planTextColor}">🎫 ${escHtml(curPlan.label)}</span>
+        ${isTrial ? `<span style="background:#d97706;color:#fff;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:600">ТРИАЛ · ${trialDaysLeft} дн.</span>` : ''}
+        ${expired ? `<span style="background:#dc2626;color:#fff;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:600">ИСТЁК → free</span>` : ''}
+      </div>
+      <div class="muted" style="font-size:11.5px;margin-top:4px;color:${planTextColor}AA">${escHtml(curPlan.description)}</div>
+      ${isTrial ? `<div class="muted" style="font-size:11px;margin-top:6px;color:#92400e">⏰ Триал заканчивается ${new Date(sub.expiresAt).toLocaleDateString('ru-RU')}. После — auto-rollback на free.</div>` : ''}
+    </div>
+
+    <div style="margin-bottom:8px">
+      <h5 style="margin:0 0 6px;font-size:12px;color:#075985;text-transform:uppercase;letter-spacing:0.4px">Доступные планы</h5>
+      ${planRows}
+    </div>
+
+    <p class="muted" style="font-size:11px;margin:8px 0 0">
+      💡 Soft-enforcement: подписка проверяется только в client-side. Calc-библиотеки (cooling/calc, shared/auto-norm, js/methods и т.д.) <b>авто-включаются</b> вместе с любым UI-модулем который их использует — без отдельной подписки.
+    </p>
+    <p class="muted" style="font-size:11px;margin:4px 0 0">
+      🚧 Платёжная интеграция (Stripe/ЮKassa/Tinkoff) — Phase 44.4 TODO.
+      Сейчас доступен только триал и manual override через DevTools (для разработчиков).
+    </p>
+  `;
+
+  // Wire trial buttons
+  host.querySelectorAll('.rs-gs-trial-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const planId = btn.dataset.plan;
+      try {
+        activateTrial(planId, 14);
+        rsToast(`✓ Триал ${PLANS[planId]?.label || planId} активирован на 14 дней. Перезагружаем…`, 'success');
+        setTimeout(() => location.reload(), 1500);
+      } catch (e) {
+        rsToast('Ошибка активации триала: ' + (e.message || e), 'error');
+      }
+    });
+  });
+}
+
 /* v0.60.115 (Phase 41 START): рендер секции «Организация».
    Группа людей с общими настройками (валюта/налоги по умолчанию,
    общий каталог шаблонов, brand). Полный multi-user — Phase 40 Cloud Sync. */
@@ -577,6 +653,10 @@ export function openSettingsModal() {
         <button type="button" class="rs-gs-close" aria-label="Закрыть">×</button>
       </div>
       <div class="rs-gs-body">
+        <h4>🎫 Подписка</h4>
+        <div class="muted" style="margin-bottom:8px" title="Текущий план подписки и доступные модули. Soft-enforcement (бизнес-стимул); calc-libs включены автоматически.">Управление подпиской на модули. Phase 44 v0.60.131+.</div>
+        <div id="rs-gs-subscription-section" style="margin-bottom:18px"></div>
+
         <h4>🏢 Реквизиты компании-исполнителя</h4>
         <div class="muted" style="margin-bottom:8px" title="Реквизиты компании-исполнителя для шапки КП клиенту, договоров и отчётов. Сохраняются глобально для всех проектов; per-project override настраивается в свойствах проекта.">Реквизиты для шапки КП и договоров. Используются модулем «🛠 Сервис: монтаж и ТО» при экспорте КП клиенту. v0.60.115: добавлены default-валюта и default-НДС для каскада в калькуляторах.</div>
         <div id="rs-gs-company-section" style="margin-bottom:18px"></div>
@@ -614,6 +694,10 @@ export function openSettingsModal() {
   // v0.60.115 (Phase 41 START): секция «Организация».
   const orgHost = overlay.querySelector('#rs-gs-org-section');
   if (orgHost) _renderOrgSection(orgHost);
+
+  // v0.60.132 (Phase 44.3): секция «Подписка».
+  const subHost = overlay.querySelector('#rs-gs-subscription-section');
+  if (subHost) _renderSubscriptionSection(subHost);
 
   const close = () => overlay.remove();
   overlay.querySelector('.rs-gs-close').addEventListener('click', close);

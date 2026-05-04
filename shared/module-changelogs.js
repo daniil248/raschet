@@ -4,6 +4,25 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.132', date: '2026-05-04', items: [
+      '🎫 <b>Phase 44.2 + 44.3: subscription locks в /modules/ + plan management UI</b>. Подписка стала видимой end-to-end.',
+      '• <b>/modules/index.html</b> — после load читает modules.json + проверяет каждую карточку через <code>hasModuleAccess(moduleId)</code>:',
+      '  • Locked card → CSS class <code>.mod-card-locked</code> (приглушение opacity 0.65 + жёлтая рамка при hover).',
+      '  • Lock-chip в правом верхнем углу: «🔒 ⭐ Pro» — показывает требуемый план.',
+      '  • Click → <code>showLockedModal(moduleId, name)</code> с upsell.',
+      '  • Calc-libs (kind=\'calc-lib\') пропускаются — не имеют UI-локов.',
+      '  • Карточки уже помеченные как <code>.mod-card-disabled</code> (planned) — без двойной обработки.',
+      '• <b>Plan-badge под H1</b> в /modules/ — кликабельный chip «🎫 ⭐ Pro · триал 13 дн.» открывает global-settings.',
+      '• <b>⚙ Глобальные настройки → новый раздел «🎫 Подписка»</b>:',
+      '  • Текущий план + его описание + цена.',
+      '  • Триал-таймер (если активен): «ТРИАЛ · 13 дн. ⏰ Заканчивается 18.05.2026».',
+      '  • Список 4 планов (Free / Starter / Pro / Enterprise) с описанием, кол-вом модулей и ценой.',
+      '  • Кнопка «🎁 Триал 14 дн.» рядом с каждым платным планом (только если ещё не использовался).',
+      '  • Подсветка current plan голубым.',
+      '  • Hint: «calc-libs auto-included» + «Платёжная интеграция Phase 44.4 TODO».',
+      '• <b>Принцип «calc-deps auto-included» соблюдён</b>: только UI-модули (kind=\'ui\' в modules.json) проверяются. Импорты shared/calc-modules, cooling/calc/, js/methods/ работают всегда.',
+      'Файлы: <code>modules/index.html</code> (CSS .mod-card-locked + JS подключающий subscriptions.js + walking через карточки + plan-badge), <code>shared/global-settings.js</code> (+ новый _renderSubscriptionSection ~70 строк, секция в модалке, импорты из subscriptions.js).',
+    ] },
     { version: '0.60.131', date: '2026-05-04', items: [
       '🎫 <b>Phase 44 START: Subscription per-module (коммерческая модель)</b>. По запросу Пользователя 2026-05-04: «хочется поддерживать мульти модули чтобы подавать подписку на модули» + «зависящие модули расчёта должны попадать в доступ автоматически, но без графического отображения».',
       '• <b>shared/subscriptions.js</b> (новый, ~250 строк) — API:',

@@ -24,6 +24,16 @@
     /* v0.60.93: planned-карточки (Phase 2 — будущие дисциплины) */
     .mod-card-disabled { opacity: 0.55; cursor: not-allowed; pointer-events: none; background: #fafbfc; }
     .mod-card-disabled .title::after { content: ' 🔒'; }
+    /* v0.60.132 (Phase 44.2): subscription-locked модули. Кликабельны
+       (открывают upsell-модалку) но визуально приглушены. */
+    .mod-card-locked { opacity: 0.65; background: #fafbfc; position: relative; }
+    .mod-card-locked .title::after { content: ' 🔒'; }
+    .mod-card-locked .lock-info {
+      position: absolute; top: 6px; right: 8px; font-size: 10px;
+      padding: 2px 8px; border-radius: 8px; background: #fef3c7;
+      color: #92400e; font-weight: 600;
+    }
+    .mod-card-locked:hover { transform: none; box-shadow: 0 2px 8px rgba(217,119,6,0.2); border-color: #fcd34d; }
     .mod-card .title { font-size: 14px; font-weight: 600; color: #1f2430; }
     .mod-card .desc { font-size: 12px; color: #6b7280; line-height: 1.4; }
     .mod-card .meta { font-size: 11px; color: #94a3b8; margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; }
@@ -40,6 +50,72 @@
   <script type="module">
     import { mountHeader } from '../shared/app-header.js';
     mountHeader({ title: 'Модули', showHome: true, home: '../hub.html' });
+
+    // v0.60.132 (Phase 44.2): subscription locks на карточках модулей.
+    // Каждая карточка <a class="mod-card" href="../<id>/"> проверяется
+    // на доступ через hasModuleAccess. Если нет — добавляется lock-styling
+    // и click intercepted → showLockedModal с upsell.
+    import { hasModuleAccess, showLockedModal, planBadge, getSubscription, PLANS } from '../shared/subscriptions.js';
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Загружаем modules.json для маппинга id → subscriptionPlan / name.
+      let manifest = { modules: [] };
+      try {
+        const res = await fetch('../modules.json');
+        manifest = await res.json();
+      } catch (e) { console.warn('[modules] manifest fetch failed:', e); }
+      const idToMod = new Map();
+      for (const m of (manifest.modules || [])) idToMod.set(m.id, m);
+
+      // Извлекаем moduleId из href: «../cooling/» → 'cooling'.
+      const extractId = (href) => {
+        if (!href) return null;
+        const m = href.match(/\.\.\/([a-z-]+)\//);
+        return m ? m[1] : null;
+      };
+
+      // Walk через все mod-card.
+      document.querySelectorAll('.mod-card').forEach(card => {
+        if (card.classList.contains('mod-card-disabled')) return;  // planned, skip
+        const href = card.getAttribute('href') || '';
+        const moduleId = extractId(href);
+        if (!moduleId) return;
+        const mod = idToMod.get(moduleId);
+        // Если модуль не в manifest — не проверяем (может быть calc-lib или
+        // утилитный без подписки).
+        if (!mod) return;
+        if (mod.kind === 'calc-lib') return;  // calc-libs не имеют UI-локов
+        if (hasModuleAccess(moduleId)) return;  // доступ есть, не блокируем
+
+        // Доступа нет → визуальный лок + intercept click.
+        card.classList.add('mod-card-locked');
+        const planLabel = PLANS[mod.subscriptionPlan]?.label || mod.subscriptionPlan;
+        const lockChip = document.createElement('span');
+        lockChip.className = 'lock-info';
+        lockChip.textContent = '🔒 ' + planLabel;
+        lockChip.title = 'Доступно с плана ' + planLabel + '. Click → активировать триал.';
+        card.appendChild(lockChip);
+        card.addEventListener('click', async (ev) => {
+          ev.preventDefault();
+          await showLockedModal(moduleId, mod.name);
+        });
+      });
+
+      // Plan-badge в шапке main (под H1).
+      const sub = getSubscription();
+      const main = document.querySelector('main h1');
+      if (main) {
+        const badge = document.createElement('div');
+        badge.style.cssText = 'display:inline-block;margin-left:12px;padding:4px 12px;border-radius:14px;background:#dbeafe;color:#1e40af;font-size:12px;font-weight:600;cursor:pointer;vertical-align:middle';
+        badge.textContent = '🎫 ' + planBadge();
+        badge.title = 'Текущий план подписки. Click → управление подпиской в ⚙ Глобальные настройки.';
+        badge.addEventListener('click', async () => {
+          const { openSettingsModal } = await import('../shared/global-settings.js');
+          openSettingsModal();
+        });
+        main.appendChild(badge);
+      }
+    });
   </script>
 
   <main>
