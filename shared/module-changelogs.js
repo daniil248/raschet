@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.229', date: '2026-05-05', items: [
+      '⚖ <b>Parallel-sibling panels: выравнивание _maxLoadKw</b>. По репорту Пользователя 2026-05-05 «панель UPS1.IT1 и UPS1.IT2 питают одну и туже нагрузку с двух сторон, почему параметр Макс у них разный».',
+      '• Корень: <code>maxDownstreamLoad(panelId)</code> делал BFS только от данной панели. Для двух parallel-feeder PDM-щитов одного ИБП (IT1/IT2 с conns to consumers через P1/P2) сумма зависела от того, к каким consumer-ам из общего пула вели conns именно от этой панели. Если связи асимметричны — max получался разный. Текущая (Текущая) согласовывалась с активным сценарием, а Макс — нет.',
+      '• Фикс: добавлен ВТОРОЙ ПРОХОД после расчёта _maxLoadKw для всех панелей:',
+      '  1. Для каждой <code>panel</code> walk-им downstream и собираем Set достижимых consumer-id.',
+      '  2. Группируем panel-и с пересекающимися sets — это parallel-siblings (общая нагрузка с разных сторон).',
+      '  3. Для каждой группы считаем «union max» — sum demand всех consumer-ов из объединения sets.',
+      '  4. Применяем <code>_maxLoadKw = max(own, union)</code> ко всем siblings → они получают ОДИНАКОВЫЙ Макс. Текущая остаётся разной (зависит от активного scенария).',
+      '• Диагностика: <code>n._maxLoadKwOwn</code> (исходный max до выравнивания), <code>n._maxLoadKwSiblingGroup</code> (id-шники sibling-ов), <code>n._maxLoadKwClampedToSiblings = true</code>.',
+      'Файл: <code>js/engine/recalc.js</code> (новый второй проход перед sectioned-aggregation).',
+    ] },
     { version: '0.60.228', date: '2026-05-05', items: [
       '🩹 <b>Sanity-clamp _maxLoadKw ≥ _loadKw для panel</b>. По репорту Пользователя 2026-05-05 «не понимаю откуда ток 171 А и 116 кВт, если максимум 75.6 кВт и 112.2 А».',
       '• Корень проблемы: для щита с привязанным генератором (<code>switchPanelId</code>) <code>_maxLoadKw</code> вычислялся как MAX по сценариям <code>gen.triggerGroups</code>. Если сценарии активируют не все outputs ATS — реальная walkUp-нагрузка <code>_loadKw</code> может оказаться больше, чем «максимум по сценариям». В результате «Текущая 116 kW» > «Максимум 75.6 kW», что логически неверно.',

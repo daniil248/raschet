@@ -3425,6 +3425,105 @@ function recalc() {
     }
   }
 
+  // v0.60.229 (по репорту Пользователя 2026-05-05 «панель UPS1.IT1 и UPS1.IT2
+  // питают одну и туже нагрузку с двух сторон, почему параметр Макс у них
+  // разный, текущий да может быть разный, но макс должен быть одинаковый»):
+  // выравнивание _maxLoadKw для parallel-sibling панелей (PDM-щиты одного
+  // ИБП, или просто два щита питающие общий пул потребителей).
+  //
+  // Алгоритм:
+  //   1. Для каждой panel'и собираем set достижимых consumer-id (downstream).
+  //   2. Группируем panel'и с пересекающимися sets как parallel-siblings.
+  //      Критерий: ≥1 общий consumer ИЛИ оба integratedChildIds одного UPS.
+  //   3. Для каждой группы пересчитываем «union max» — сумма demand всех
+  //      consumer-ов из объединения sets.
+  //   4. Все siblings получают одинаковый _maxLoadKw = union max
+  //      (если он больше их собственного).
+  {
+    const panelDownstream = new Map(); // panelId → Set<consumerId>
+    const _walkConsumers = (startId) => {
+      const reachable = new Set();
+      const seen = new Set([startId]);
+      const stack = [startId];
+      while (stack.length) {
+        const cur = stack.pop();
+        for (const c of state.conns.values()) {
+          if (c.from.nodeId !== cur) continue;
+          if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+          const to = state.nodes.get(c.to.nodeId);
+          if (!to) continue;
+          if (to.type === 'consumer' || to.type === 'consumer-container') {
+            reachable.add(to.id);
+            // consumer-container — не идём вглубь его слотов через conns;
+            // он сам добавлен в reachable, demand посчитается через
+            // consumerTotalDemandKw(container).
+          } else if (to.type === 'ups') {
+            // Через ИБП — идём дальше: consumers за ИБП тоже reachable.
+            if (!seen.has(to.id)) { seen.add(to.id); stack.push(to.id); }
+          } else if (to.type === 'generator') {
+            // Через genератор — не идём (он сам генерирует свою выходную мощность).
+          } else {
+            if (!seen.has(to.id)) { seen.add(to.id); stack.push(to.id); }
+          }
+        }
+      }
+      return reachable;
+    };
+    for (const n of state.nodes.values()) {
+      if (n.type !== 'panel') continue;
+      panelDownstream.set(n.id, _walkConsumers(n.id));
+    }
+    // Группируем sibling-ов по пересечению.
+    const panelIds = [...panelDownstream.keys()];
+    const assigned = new Set();
+    const groups = [];
+    for (const a of panelIds) {
+      if (assigned.has(a)) continue;
+      const group = [a];
+      assigned.add(a);
+      const aSet = panelDownstream.get(a);
+      if (!aSet || !aSet.size) continue; // panel без downstream — не sibling
+      for (const b of panelIds) {
+        if (a === b || assigned.has(b)) continue;
+        const bSet = panelDownstream.get(b);
+        if (!bSet || !bSet.size) continue;
+        // Любое пересечение → siblings (parallel-feeders общей нагрузки).
+        let overlap = false;
+        for (const x of aSet) if (bSet.has(x)) { overlap = true; break; }
+        if (overlap) { group.push(b); assigned.add(b); }
+      }
+      if (group.length > 1) groups.push(group);
+    }
+    // Для каждой группы — пересчёт «union max» и выравнивание.
+    for (const grp of groups) {
+      const unionConsumers = new Set();
+      for (const id of grp) {
+        const set = panelDownstream.get(id);
+        if (set) for (const cid of set) unionConsumers.add(cid);
+      }
+      let unionKw = 0;
+      for (const cid of unionConsumers) {
+        const c = state.nodes.get(cid);
+        if (!c) continue;
+        unionKw += consumerTotalDemandKw(c);
+      }
+      // Применяем clamp ко всем sibling-ам.
+      for (const id of grp) {
+        const n = state.nodes.get(id);
+        if (!n) continue;
+        const cur = Number(n._maxLoadKw) || 0;
+        if (unionKw > cur) {
+          n._maxLoadKwOwn = cur;             // диагностика: исходный max до выравнивания
+          n._maxLoadKwSiblingGroup = grp;    // диагностика: id-шники sibling-ов
+          n._maxLoadKw = unionKw;
+          n._maxLoadKwClampedToSiblings = true;
+          // Пересчёт _maxLoadA с обновлённым _maxLoadKw.
+          n._maxLoadA = computeCurrentA(n._maxLoadKw, nodeCalcVoltageEff(n), n._cosPhi || GLOBAL.defaultCosPhi, isThreePhase(n));
+        }
+      }
+    }
+  }
+
   // Второй проход: многосекционные контейнеры агрегируют параметры
   // уже посчитанных секций (на первом проходе порядок Map мог быть таким,
   // что контейнер обрабатывался раньше своих секций).
