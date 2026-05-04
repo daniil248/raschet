@@ -14,6 +14,13 @@
 // Pure JS / LS utility wrappers.
 
 const LS_KEY = 'raschet.service.workTemplates.v1';
+// v0.60.116 (Phase 41.2): org-уровень — общие шаблоны команды.
+// LS-ключ отделён от личного, чтобы при удалении user-шаблонов
+// org-templates не пострадали (resetUserTemplates() трогает только LS_KEY).
+//
+// В будущем (Phase 40 Cloud Sync) этот ключ будет синхронизирован между
+// устройствами всех членов организации через Firestore.
+const LS_KEY_ORG = 'raschet.service.workTemplates.org.v1';
 
 /**
  * Seed-каталог. Read-only встроенные шаблоны с дефолтными ценами в ₽.
@@ -85,16 +92,34 @@ function saveUserTemplates(data) {
   } catch {}
 }
 
+// v0.60.116 (Phase 41.2): org-templates loader/saver.
+function loadOrgTemplates() {
+  try {
+    const raw = localStorage.getItem(LS_KEY_ORG);
+    return raw ? JSON.parse(raw) : { install: [], maintenance: [], 'one-off': [] };
+  } catch {
+    return { install: [], maintenance: [], 'one-off': [] };
+  }
+}
+function saveOrgTemplates(data) {
+  try {
+    localStorage.setItem(LS_KEY_ORG, JSON.stringify(data));
+    _notifyChange();
+  } catch {}
+}
+
 /**
- * Получить merged-список шаблонов для типа наряда (seed + user).
+ * Получить merged-список шаблонов для типа наряда (seed + user + org).
  *
  * @param {string} type — 'install' | 'maintenance' | 'one-off'
- * @returns {Array<{id, label, category, unit, costPrice, clientPrice, isUser?}>}
+ * @returns {Array<{id, label, category, unit, costPrice, clientPrice, scope}>}
+ *   scope: 'seed' | 'user' | 'org'.
  */
 export function listTemplates(type) {
-  const seed = (SEED_TEMPLATES[type] || []).map(t => ({ ...t, isUser: false }));
-  const user = (loadUserTemplates()[type] || []).map(t => ({ ...t, isUser: true }));
-  return [...seed, ...user];
+  const seed = (SEED_TEMPLATES[type] || []).map(t => ({ ...t, isUser: false, scope: 'seed' }));
+  const user = (loadUserTemplates()[type] || []).map(t => ({ ...t, isUser: true,  scope: 'user' }));
+  const org  = (loadOrgTemplates()[type]  || []).map(t => ({ ...t, isUser: true,  scope: 'org'  }));
+  return [...seed, ...org, ...user];
 }
 
 /**
@@ -152,6 +177,91 @@ export function deleteTemplate(type, id) {
 /** Удалить все user-шаблоны (вернуть только seed). */
 export function resetUserTemplates() {
   try { localStorage.removeItem(LS_KEY); _notifyChange(); } catch {}
+}
+
+// v0.60.116 (Phase 41.2): promotion/demotion между user и org.
+//
+// promoteToOrg(type, id) — переместить пользовательский шаблон в общий
+// org-каталог (видимый всем членам организации). Phase 41 START — пока
+// локально, multi-user через Phase 40 Cloud Sync.
+//
+// demoteToOrgUser(type, id) — обратное: org-шаблон вернуть в личные.
+//
+// Seed-шаблоны не могут быть promoted/demoted (их правят только Anthropic
+// при апгрейде платформы; для override используйте clone → user → promote).
+
+/** Продвинуть user-шаблон в org-каталог (доступен всем членам команды). */
+export function promoteToOrg(type, id) {
+  if (id?.startsWith('seed-')) return false;
+  const userData = loadUserTemplates();
+  const arr = userData[type] || [];
+  const idx = arr.findIndex(t => t.id === id);
+  if (idx < 0) return false;
+  // Перемещаем в org-каталог
+  const tpl = arr[idx];
+  const orgData = loadOrgTemplates();
+  if (!orgData[type]) orgData[type] = [];
+  // Регенерируем id с префиксом org- чтобы избежать коллизий с user-id
+  // и чтобы при возможной desync user/org одновременно — был чёткий
+  // identity-маркер. promotedFrom хранит ссылку на исходный user-id для аудита.
+  const orgTpl = {
+    ...tpl,
+    id: 'org-' + Math.random().toString(36).slice(2, 8),
+    promotedAt: Date.now(),
+    promotedFrom: tpl.id,
+  };
+  orgData[type].push(orgTpl);
+  // Удаляем из user-каталога
+  arr.splice(idx, 1);
+  saveOrgTemplates(orgData);
+  saveUserTemplates(userData);
+  return orgTpl;
+}
+
+/** Вернуть org-шаблон в личные. */
+export function demoteToUser(type, id) {
+  if (!id?.startsWith('org-')) return false;
+  const orgData = loadOrgTemplates();
+  const arr = orgData[type] || [];
+  const idx = arr.findIndex(t => t.id === id);
+  if (idx < 0) return false;
+  const tpl = arr[idx];
+  const userData = loadUserTemplates();
+  if (!userData[type]) userData[type] = [];
+  const userTpl = {
+    ...tpl,
+    id: 'usr-' + Math.random().toString(36).slice(2, 8),
+    demotedAt: Date.now(),
+    demotedFrom: tpl.id,
+  };
+  delete userTpl.promotedAt;
+  delete userTpl.promotedFrom;
+  userData[type].push(userTpl);
+  arr.splice(idx, 1);
+  saveUserTemplates(userData);
+  saveOrgTemplates(orgData);
+  return userTpl;
+}
+
+/** Обновить org-шаблон (только для admin/owner — в Phase 41.4). */
+export function updateOrgTemplate(type, id, patch) {
+  if (!id?.startsWith('org-')) return false;
+  const data = loadOrgTemplates();
+  const arr = data[type] || [];
+  const idx = arr.findIndex(t => t.id === id);
+  if (idx < 0) return false;
+  arr[idx] = { ...arr[idx], ...patch, id };
+  saveOrgTemplates(data);
+  return true;
+}
+
+/** Удалить org-шаблон. */
+export function deleteOrgTemplate(type, id) {
+  if (!id?.startsWith('org-')) return false;
+  const data = loadOrgTemplates();
+  data[type] = (data[type] || []).filter(t => t.id !== id);
+  saveOrgTemplates(data);
+  return true;
 }
 
 /* Pub/sub для UI auto-refresh */

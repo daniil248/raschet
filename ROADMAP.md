@@ -3871,12 +3871,17 @@ v0.60.105 (`shared/currency-defaults.js::resolveDefaultCurrency`).
   brand.{logoDataUrl, colorPrimary}, parentOrgId для иерархии).
 
 ### 41.2 — Shared catalogs
-- [ ] `org.catalogs.workTemplates` — общий каталог шаблонов работ.
-  Promotion-flow: «🔒 личное → 👥 в организацию».
+- [x] **v0.60.116**: `org.catalogs.workTemplates` — общий каталог
+  шаблонов работ. Promotion-flow: «✏ личное → 👥 в организацию» через
+  кнопку ↑ в каталоге работ. Backward demotion ↓ — снять из общего.
+  Updates/deletes работают per-scope. LS-ключ
+  `raschet.service.workTemplates.org.v1` отделён от user.
 - [ ] `org.catalogs.priceLists` — общие прайс-листы.
 - [ ] `org.catalogs.datasheets` — общие datasheets.
 - [ ] `org.catalogs.elementLibrary` — общие наборы element-library.
-- [ ] UI: в catalog-pickerе фильтр «Личные | 👥 Организация | 📦 Системные».
+- [x] **v0.60.116**: UI каталога работ показывает все 3 scope с разной
+  подсветкой (синий = org, жёлтый = user, нейтральный = seed) + иконка
+  📦/👥/✏. Фильтр «Только …» — TODO.
 
 ### 41.3 — UI настроек организации
 - [x] **v0.60.115**: В `⚙ Глобальные настройки` — новая секция

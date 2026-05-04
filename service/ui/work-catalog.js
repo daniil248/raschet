@@ -10,6 +10,7 @@
 import {
   SEED_TEMPLATES, listTemplates, addTemplate, updateTemplate,
   deleteTemplate, resetUserTemplates,
+  promoteToOrg, demoteToUser, updateOrgTemplate, deleteOrgTemplate,
 } from '../catalog/work-templates.js';
 import { ORDER_TYPES, POSITION_CATEGORIES, UNITS } from '../calc/order-model.js';
 import { escAttr, escHtml, modalOpen, toast } from '../../meteo/util.js';
@@ -29,28 +30,42 @@ export async function openWorkCatalogModal() {
     if (!rows.length) return '<tr><td colspan="6" class="muted" style="text-align:center;padding:20px">Шаблонов нет.</td></tr>';
     return rows.map(t => {
       const catLabel = POSITION_CATEGORIES.find(c => c.id === t.category)?.label || t.category;
-      const isSeed = !t.isUser;
-      const lock = isSeed ? '📦' : '✏';
-      const editBtn = isSeed
+      // v0.60.116 (Phase 41.2): три scope-уровня — seed / user / org.
+      const scope = t.scope || (t.isUser ? 'user' : 'seed');
+      const lock = scope === 'seed' ? '📦' : scope === 'org' ? '👥' : '✏';
+      const scopeTitle = scope === 'seed'
+        ? 'Встроенный (read-only) — поставляется с платформой, всем доступен.'
+        : scope === 'org'
+          ? 'Общий шаблон организации — виден всем членам команды. Чтобы вернуть в личные — кнопка ↓ Снять.'
+          : 'Личный пользовательский шаблон — виден только вам.';
+      const editBtn = scope === 'seed'
         ? '<button type="button" disabled style="opacity:0.3;cursor:not-allowed" title="Встроенный шаблон — нельзя редактировать. Скопируйте его кнопкой 📋 если нужно изменить.">✏</button>'
-        : `<button type="button" class="wc-edit" data-id="${escAttr(t.id)}" title="Редактировать пользовательский шаблон">✏</button>`;
-      const cloneBtn = `<button type="button" class="wc-clone" data-id="${escAttr(t.id)}" title="Скопировать как пользовательский шаблон (можно потом редактировать)">📋</button>`;
-      const delBtn = isSeed
+        : `<button type="button" class="wc-edit" data-id="${escAttr(t.id)}" data-scope="${escAttr(scope)}" title="Редактировать ${scope === 'org' ? 'общий шаблон организации' : 'личный шаблон'}">✏</button>`;
+      const cloneBtn = `<button type="button" class="wc-clone" data-id="${escAttr(t.id)}" title="Скопировать как личный шаблон (можно потом редактировать)">📋</button>`;
+      // v0.60.116: promote/demote — toggle между user и org.
+      const promoteBtn = scope === 'user'
+        ? `<button type="button" class="wc-promote" data-id="${escAttr(t.id)}" title="Опубликовать в общий каталог организации (видим всем членам команды)">↑</button>`
+        : scope === 'org'
+          ? `<button type="button" class="wc-demote" data-id="${escAttr(t.id)}" title="Вернуть в личные шаблоны (только вы будете видеть)">↓</button>`
+          : '';
+      const delBtn = scope === 'seed'
         ? '<button type="button" disabled style="opacity:0.3;cursor:not-allowed" title="Встроенный шаблон — нельзя удалить">🗑</button>'
-        : `<button type="button" class="wc-del" data-id="${escAttr(t.id)}" title="Удалить пользовательский шаблон">🗑</button>`;
+        : `<button type="button" class="wc-del" data-id="${escAttr(t.id)}" data-scope="${escAttr(scope)}" title="Удалить ${scope === 'org' ? 'общий шаблон организации' : 'личный шаблон'}">🗑</button>`;
       // v0.60.105: валюта подтягивается из самого шаблона; legacy без
       // costCurrency — fallback к каскаду project→company→org→user→₽.
       const _legacyFallback = resolveDefaultCurrency(getActiveProjectId());
       const costCur = t.costCurrency || _legacyFallback;
       const cliCur  = t.clientCurrency || _legacyFallback;
-      return `<tr data-tid="${escAttr(t.id)}">
-        <td title="${isSeed ? 'Встроенный (read-only)' : 'Пользовательский'}">${lock}</td>
+      // Подсветка строки по scope.
+      const rowBg = scope === 'org' ? 'background:#eff6ff' : (scope === 'user' ? 'background:#fefce8' : '');
+      return `<tr data-tid="${escAttr(t.id)}" data-scope="${escAttr(scope)}" style="${rowBg}">
+        <td title="${escAttr(scopeTitle)}">${lock}</td>
         <td>${escHtml(t.label)}</td>
         <td title="${escAttr(POSITION_CATEGORIES.find(c => c.id === t.category)?.tip || '')}">${escHtml(catLabel)}</td>
         <td>${escHtml(t.unit)}</td>
         <td class="num">${(t.costPrice || 0).toLocaleString('ru-RU')} ${escHtml(costCur)}</td>
         <td class="num">${(t.clientPrice || 0).toLocaleString('ru-RU')} ${escHtml(cliCur)}</td>
-        <td style="white-space:nowrap">${cloneBtn}${editBtn}${delBtn}</td>
+        <td style="white-space:nowrap">${cloneBtn}${editBtn}${promoteBtn}${delBtn}</td>
       </tr>`;
     }).join('');
   };
@@ -61,7 +76,7 @@ export async function openWorkCatalogModal() {
 
   const body = `
     <p class="muted" style="font-size:11.5px;margin:0 0 8px">
-      📦 — встроенные (read-only, всегда доступны). ✏ — пользовательские. Используйте 📋 чтобы скопировать встроенный как редактируемый.
+      📦 — встроенные (read-only). 👥 — общие шаблоны организации (видят все члены команды). ✏ — личные. <b>📋</b> копирует, <b>↑</b> публикует в общий каталог, <b>↓</b> возвращает в личные.
     </p>
     <div class="wc-tabs" style="display:flex;gap:4px;border-bottom:2px solid #e2e8f0;margin-bottom:8px">${typeTabs}</div>
     <div class="wc-table-wrap" style="max-height:50vh;overflow:auto;border:1px solid #e2e8f0;border-radius:3px">
@@ -142,31 +157,64 @@ export async function openWorkCatalogModal() {
       const t = all.find(x => x.id === tid);
       if (!t) return;
 
+      const scope = t.scope || (t.isUser ? 'user' : 'seed');
+
       if (ev.target.closest('.wc-clone')) {
         const tpl = { ...t, label: t.label + ' (копия)' };
         delete tpl.id;
         delete tpl.isUser;
+        delete tpl.scope;
+        delete tpl.promotedAt;
+        delete tpl.promotedFrom;
         const created = addTemplate(activeType, tpl);
         toast(`✓ Скопирован: «${created.label}»`, 'ok');
         refresh();
         return;
       }
-      if (ev.target.closest('.wc-edit') && t.isUser) {
+      if (ev.target.closest('.wc-edit') && (scope === 'user' || scope === 'org')) {
         const updated = await editTemplateForm(t);
         if (!updated) return;
-        updateTemplate(activeType, tid, updated);
+        if (scope === 'org') updateOrgTemplate(activeType, tid, updated);
+        else updateTemplate(activeType, tid, updated);
         toast(`✓ Обновлён: «${updated.label}»`, 'ok');
         refresh();
         return;
       }
-      if (ev.target.closest('.wc-del') && t.isUser) {
+      if (ev.target.closest('.wc-del') && (scope === 'user' || scope === 'org')) {
+        const scopeLbl = scope === 'org' ? 'общий шаблон организации' : 'личный шаблон';
         const ok = await modalOpen('<h3>Подтверждение</h3>',
-          `<p>Удалить шаблон «${escHtml(t.label)}»? Уже созданные наряды НЕ затрагиваются.</p>`,
+          `<p>Удалить ${scopeLbl} «${escHtml(t.label)}»? Уже созданные наряды НЕ затрагиваются.${scope === 'org' ? '<br><b style="color:#dc2626">⚠ Будет удалён у всех членов организации.</b>' : ''}</p>`,
           async () => ({ ok: true })
         );
         if (!ok) return;
-        deleteTemplate(activeType, tid);
+        if (scope === 'org') deleteOrgTemplate(activeType, tid);
+        else deleteTemplate(activeType, tid);
         toast(`Шаблон удалён`, 'info');
+        refresh();
+        return;
+      }
+      // v0.60.116 (Phase 41.2): promote / demote
+      if (ev.target.closest('.wc-promote') && scope === 'user') {
+        const ok = await modalOpen('<h3>👥 В организацию?</h3>',
+          `<p>Опубликовать «${escHtml(t.label)}» в общий каталог организации?<br>
+           <span class="muted" style="font-size:11.5px">Будет виден всем членам команды (Phase 40 Cloud Sync синхронизирует между устройствами в будущем; пока локально на этом устройстве).</span></p>`,
+          async () => ({ ok: true })
+        );
+        if (!ok) return;
+        const promoted = promoteToOrg(activeType, tid);
+        if (promoted) toast(`👥 «${t.label}» теперь в общем каталоге организации`, 'ok');
+        refresh();
+        return;
+      }
+      if (ev.target.closest('.wc-demote') && scope === 'org') {
+        const ok = await modalOpen('<h3>↓ В личные?</h3>',
+          `<p>Снять «${escHtml(t.label)}» из общего каталога и вернуть в личные?<br>
+           <span class="muted" style="font-size:11.5px">Другие члены команды перестанут его видеть. У вас останется в личных шаблонах.</span></p>`,
+          async () => ({ ok: true })
+        );
+        if (!ok) return;
+        const demoted = demoteToUser(activeType, tid);
+        if (demoted) toast(`↓ «${t.label}» вернулся в личные шаблоны`, 'info');
         refresh();
         return;
       }

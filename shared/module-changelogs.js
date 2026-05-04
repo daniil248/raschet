@@ -4,6 +4,19 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.116', date: '2026-05-04', items: [
+      '👥 <b>Phase 41.2: Promotion шаблонов работ в org-catalog</b>. По roadmap: общие шаблоны работ команды (видны всем членам организации). Закрывает первый shared-catalog из Phase 41.2.',
+      '• <b>Три scope</b>: 📦 seed (встроенные read-only) / ✏ user (личные, видны только вам) / 👥 org (общие команды).',
+      '• <b>Promote</b> ↑ — кнопка в каталоге работ переводит личный шаблон в общий каталог организации. Подтверждение модалкой с пояснением «Будет виден всем членам команды».',
+      '• <b>Demote</b> ↓ — обратная операция: снять из общего и вернуть в личные.',
+      '• <b>Изолированные хранилища</b>: <code>raschet.service.workTemplates.v1</code> для user, <code>raschet.service.workTemplates.org.v1</code> для org. Удаление user-каталога не трогает org-каталог.',
+      '• <b>Per-scope CRUD</b>: <code>updateOrgTemplate</code>, <code>deleteOrgTemplate</code>, <code>promoteToOrg</code>, <code>demoteToUser</code>. ID-префиксы: <code>seed-</code> / <code>usr-</code> / <code>org-</code> для чёткого identity.',
+      '• <b>UI подсветка</b>: org-строки на синем фоне (#eff6ff), user — на жёлтом (#fefce8), seed — нейтральный.',
+      '• <b>Audit trail</b>: <code>promotedAt</code> / <code>promotedFrom</code> хранят историю при promote, <code>demotedAt</code> / <code>demotedFrom</code> — при demote. Для дальнейшего использования в Phase 41.4 (роли) и Phase 40 (Cloud Sync).',
+      '• <b>Удаление org-шаблона</b>: warning <code>«⚠ Будет удалён у всех членов организации»</code> в модалке подтверждения.',
+      '• <b>Phase 40 Cloud Sync интеграция</b> (будущее): org-каталог станет real-time shared между устройствами всех членов через Firestore. Пока локально — то же поведение что user-каталог, но отдельный неймспейс.',
+      'Файлы: <code>service/catalog/work-templates.js</code> (~70 строк: LS_KEY_ORG + loadOrgTemplates/saveOrgTemplates + listTemplates с 3-scope merge + promoteToOrg/demoteToUser/updateOrgTemplate/deleteOrgTemplate), <code>service/ui/work-catalog.js</code> (~50 строк: ↑/↓ кнопки + scope-aware edit/delete + строки с подсветкой по scope).',
+    ] },
     { version: '0.60.115', date: '2026-05-04', items: [
       '👥 <b>Phase 41 START: Организация + UI default-валюты/НДС в global-settings</b>. По запросу Пользователя 2026-05-04 «нужно еще добавить настройки организации (группа людей работающих над общими проектами и имеющая общий настройки шаблонов и общих данных)». Закрывает TODO с v0.60.112 «Global-settings UI для company.defaultVat».',
       '• <b>⚙ → Глобальные настройки → 🏢 Реквизиты компании</b> расширены: новая секция «💱 Финансовые дефолты компании» — default-валюта (10 опций или «не задано») + НДС-пресет (KZ-2026 / KZ-pre / RU / BY / Экспорт без НДС / Custom) + ставка % + чекбокс «Учитывать в КП». Custom разблокирует ручной ввод.',
