@@ -16,7 +16,7 @@ import { getTemplate as getReportTemplate, saveTemplate as saveReportTemplate } 
 import { BUILTIN_TEMPLATES as REPORT_BUILTIN_TEMPLATES } from '../reports/templates-seed.js';
 import { openSettingsModal as openGlobalSettingsModal } from '../shared/global-settings.js';
 import { listCableTypes as _listCableTypes } from '../shared/cable-types-catalog.js';
-import { BREAKER_SERIES as _BREAKER_SERIES, BREAKER_TYPES as _BREAKER_TYPES, STARTER_TYPES as _STARTER_TYPES, CONSUMER_CATALOG as _CONSUMER_CATALOG, GLOBAL as _GLOBAL } from './engine/constants.js';
+import { BREAKER_SERIES as _BREAKER_SERIES, BREAKER_TYPES as _BREAKER_TYPES, STARTER_TYPES as _STARTER_TYPES, CONSUMER_CATALOG as _CONSUMER_CATALOG, GLOBAL as _GLOBAL, IEC_TABLES as _IEC_TABLES } from './engine/constants.js';
 import { effectiveTag as _effectiveTag } from './engine/zones.js';
 import { rsToast, rsConfirm, rsPrompt, rsPickOne } from '../shared/dialog.js';
 // v0.59.633: generic preset-система для таблиц — переиспользуется во всех модулях.
@@ -3155,6 +3155,37 @@ function _ctNodeTag(n) {
 //     (cable-spec — общий, физически 1 кабель к группе/контейнеру).
 // Bulk-edit и inline-правки работают на parent-conn (data-id одинаковый
 // для всех виртуальных строк одной группы — правка отразится на всех).
+// v0.60.233 (по уточнению Пользователя 2026-05-05 «если бы это был один
+// кабель к группе из 8 потребителей, я бы с тобой согласился» — т.е. в
+// текущей модели это N отдельных кабелей, каждый по Pном одного прибора):
+// helper подбирает min IEC-сечение под одиночный ток (без учёта breaker).
+function _pickIecSizeForCurrent(parentConn, currentA) {
+  if (!Number.isFinite(currentA) || currentA <= 0) return null;
+  try {
+    const G = window.Raschet?.getGlobal?.() || {};
+    // Используем те же материал/изоляцию/способ что и у parent-conn (общая марка).
+    const material = parentConn.material || G.defaultMaterial || 'Cu';
+    const insulation = parentConn.insulation || G.defaultInsulation || 'PVC';
+    const method = parentConn._cableMethod || parentConn.installMethod || G.defaultInstallMethod || 'B1';
+    const tablesMod = _IEC_TABLES;
+    if (!tablesMod) return null;
+    const m = tablesMod[material] || tablesMod.Cu;
+    const ins = m && (m[insulation] || m.PVC || Object.values(m)[0]);
+    const tbl = ins && (ins[method] || ins.B1 || Object.values(ins)[0]);
+    if (!Array.isArray(tbl)) return null;
+    // Фильтр по maxCableSize.
+    const maxS = Number(G.maxCableSize) || 240;
+    const eff = tbl.filter(([s]) => s <= maxS);
+    // Применяем k_temp / k_group / k_bundling если такие данные доступны
+    // у parent-conn (упрощённо — используем номинальные таблицы без deratings,
+    // чтобы быстро показать «индикативное» сечение для журнала).
+    for (const [s, iRef] of eff) {
+      if (iRef >= currentA) return s;
+    }
+    return null; // ни одно сечение не подходит
+  } catch { return null; }
+}
+
 function _expandConnsForJournal(conns, S) {
   if (!Array.isArray(conns)) return [];
   const out = [];
@@ -3175,7 +3206,8 @@ function _expandConnsForJournal(conns, S) {
           if (!a) continue;
           slotTag = _ctNodeTag(a);
           slotName = a.name || a.tag || slotTag;
-          slotKw = (Number(a.demandKw) || 0) * Math.max(1, Number(a.count) || 1);
+          // Pном ОДНОГО прибора (не группы).
+          slotKw = Number(a.demandKw) || 0;
           slotCos = Number(a.cosPhi) || 0;
         } else if (s.kind === 'placeholder') {
           slotTag = `${_ctNodeTag(toN)}-${idx}`;
@@ -3185,6 +3217,13 @@ function _expandConnsForJournal(conns, S) {
         } else continue;
         const linePrefix = c._isHV ? 'WH' : (c._isDC ? 'WD' : 'W');
         const fromN = S.nodes.get(c.from?.nodeId);
+        const cosEff = slotCos || c._cosPhi || 0.92;
+        const slotA = (slotKw > 0)
+          ? (slotKw * 1000) / ((c._threePhase ? Math.sqrt(3) : 1) * (c._voltage || 400) * cosEff)
+          : 0;
+        // v0.60.233: per-virtual-row sizing — каждая строка получает своё
+        // сечение под ток ОДНОГО прибора (не общий с parent-conn).
+        const indSize = _pickIecSizeForCurrent(c, slotA);
         const v = Object.assign(Object.create(c), {
           _virtualParentId: c.id,
           _virtualGroupIdx: idx - 1,
@@ -3192,9 +3231,9 @@ function _expandConnsForJournal(conns, S) {
           _virtualToTag: slotTag,
           _virtualToName: slotName,
           _virtualLoadKw: slotKw,
-          _virtualLoadA: (slotKw > 0 && c._cosPhi)
-            ? (slotKw * 1000) / ((c._threePhase ? Math.sqrt(3) : 1) * (c._voltage || 400) * (slotCos || c._cosPhi || 0.92))
-            : null,
+          _virtualLoadA: slotA || null,
+          _virtualMaxA: slotA || null,
+          _virtualCableSize: indSize,
         });
         out.push(v);
       }
@@ -3209,6 +3248,11 @@ function _expandConnsForJournal(conns, S) {
       const fromN = S.nodes.get(c.from?.nodeId);
       for (let i = 1; i <= cnt; i++) {
         const slotTag = cnt > 1 ? `${baseTag}-${String(i).padStart(2, '0')}` : baseTag;
+        const cosEff = c._cosPhi || 0.92;
+        const slotA = (baseKw > 0)
+          ? (baseKw * 1000) / ((c._threePhase ? Math.sqrt(3) : 1) * (c._voltage || 400) * cosEff)
+          : 0;
+        const indSize = _pickIecSizeForCurrent(c, slotA);
         const v = Object.assign(Object.create(c), {
           _virtualParentId: c.id,
           _virtualGroupIdx: i - 1,
@@ -3216,9 +3260,9 @@ function _expandConnsForJournal(conns, S) {
           _virtualToTag: slotTag,
           _virtualToName: toN.name || baseTag,
           _virtualLoadKw: baseKw,
-          _virtualLoadA: (baseKw > 0 && c._cosPhi)
-            ? (baseKw * 1000) / ((c._threePhase ? Math.sqrt(3) : 1) * (c._voltage || 400) * (c._cosPhi || 0.92))
-            : null,
+          _virtualLoadA: slotA || null,
+          _virtualMaxA: slotA || null,
+          _virtualCableSize: indSize,
         });
         out.push(v);
       }
@@ -3369,7 +3413,8 @@ function exportCableTableCsv() {
     if (fMethod && String(c._cableMethod || c.installMethod || '').toLowerCase() !== fMethod) return false;
     if (fCond) {
       const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
-      const size = c._cableSize || '?';
+      // v0.60.233: для виртуальных строк — индивидуальное сечение.
+      const size = (c._virtualCableSize != null ? c._virtualCableSize : (c._cableSize || '?'));
       const n = Number(c._neutralSizeMm2) || 0;
       const spec = (c._busbarNom
         ? `шинопровод ${c._busbarNom} А`
@@ -3886,6 +3931,10 @@ function renderCableTable() {
     const toLabel = c._virtualToTag || _ctNodeTag(toN);
     const linePrefix = c._isHV ? 'WH' : (c._isDC ? 'WD' : 'W');
     const lineLabel = c._virtualLabel || c.lineLabel || `${linePrefix}-${fromLabel}-${toLabel}`;
+    // v0.60.233: для виртуальных строк (раскрытие группы) — индивидуальное
+    // сечение под Pном одного прибора (см. _expandConnsForJournal).
+    const _vCableSize = c._virtualCableSize;
+    const _vMaxA = c._virtualMaxA;
 
     // Фильтр допустимых марок по классу линии
     const allowedCats = c._isHV ? ['hv'] : (c._isDC ? ['dc', 'power'] : ['power']);
@@ -3920,7 +3969,9 @@ function renderCableTable() {
       conductorSpec = `шинопр. ${c._busbarNom} А`;
     } else {
       const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
-      const size = c._cableSize || '?';
+      // v0.60.233: для виртуальных строк (раскрытие группы) — индивидуальное
+      // сечение под Pном одного прибора.
+      const size = _vCableSize != null ? _vCableSize : (c._cableSize || '?');
       const nSize = Number(c._neutralSizeMm2) || 0;
       conductorSpec = (nSize > 0 && nSize < Number(size))
         ? `${cores - 1}×${size} + 1×${nSize} мм²`

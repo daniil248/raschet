@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.233', date: '2026-05-05', items: [
+      '🪄 <b>Cable journal: per-row sizing для виртуальных строк групп</b>. По уточнению Пользователя 2026-05-05 «если бы это был один кабель к группе из 8 потребителей, я бы с тобой согласился» — т.е. контейнер = упрощение N отдельных кабелей.',
+      '• Каждая виртуальная строка журнала (раскрытие consumer-container или consumer.count>1) получает <b>своё</b> сечение под P<sub>ном</sub> ОДНОГО прибора. Раньше все строки группы имели одинаковое сечение от parent-conn.',
+      '• Хелпер <code>_pickIecSizeForCurrent(parentConn, currentA)</code> подбирает min IEC-сечение из таблицы ампасити (того же материала/изоляции/способа что у parent-conn).',
+      '• Поля строки: <code>_virtualLoadKw</code> (P<sub>ном</sub> одного), <code>_virtualLoadA</code> (ток одного), <code>_virtualMaxA</code>, <code>_virtualCableSize</code>.',
+      '🩹 <b>Cable к контейнеру по P<sub>ном</sub> (без К<sub>и</sub>)</b>. Откатил v0.60.232 для линии-к-контейнеру: контейнер логически = N раздельных кабелей, каждый прибор может работать на 100% nameplate. Σ P<sub>ном</sub> без К<sub>и</sub>. <code>panelMaxBasis</code> применяется только на уровне ЩИТА (агрегация многих линий).',
+      'Файл: <code>js/main.js</code> (_pickIecSizeForCurrent + расширенный _expandConnsForJournal), <code>js/engine/recalc.js</code> (revert для cable к contained).',
+    ] },
     { version: '0.60.232', date: '2026-05-05', items: [
       '⚙ <b>Setting panelMaxBasis: «Pуст» vs «Pрасч» для агрегации «Макс»</b>. По запросу Пользователя 2026-05-05 «давай сделаем вариант В, пусть пользователь решает, как ему считать».',
       '• <b>nameplate</b> (default) — «Макс» = Σ P<sub>ном</sub> downstream без учёта К<sub>и</sub>. Консервативно. Pуст.',
