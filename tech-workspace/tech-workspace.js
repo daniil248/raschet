@@ -83,6 +83,11 @@ function newRackGroup(name) {
     widthMm: 600, depthMm: 1200,
     modelRef: null,
     pdu: { kind: 'metered', phases: '3ph', ratingA: 32, inputsPerRack: 2, modelRef: null },
+    // v0.60.111 (rooms-концепция, повторное введение после v0.60.107 fix
+    // дcType-ternary): roomId — id помещения объекта, в котором стоят эти
+    // стойки. null = ещё не привязано (legacy / новая группа). Допустимые
+    // значения — id из concept.rooms[].
+    roomId: null,
   };
 }
 function newUpsSystem(name, purpose) {
@@ -93,6 +98,9 @@ function newUpsSystem(name, purpose) {
     count: 2, ratedKva: 0, redundancy: 'N+1',
     cosPhi: 0.95, loadFactor: 0.8, autonomyMin: 15, batteryTech: 'vrla',
     modelRef: null,
+    // v0.60.111: ИБП могут стоять в одном зале со стойками (roomId = тот
+    // же что у rackGroup) или в отдельной электрощитовой/UPS-room.
+    roomId: null,
   };
 }
 function newCoolingUnit(name) {
@@ -101,6 +109,30 @@ function newCoolingUnit(name) {
     name: name || 'Климат',
     count: 3, kwPerUnit: 0, type: 'crac', redundancy: 'N+1',
     modelRef: null,
+    // v0.60.111: scope ∈ 'room' | 'shared'.
+    //   'room'   — закреплён за одним залом (CRAC/InRow); roomId = id зала.
+    //   'shared' — обслуживает несколько залов (chiller-plant, AHU);
+    //              roomIds[] = массив обслуживаемых залов.
+    // Это позволяет иметь общий чиллер + per-room CRAC, или независимые
+    // DX в каждом зале с разной технологией.
+    scope: 'room',
+    roomId: null,
+    roomIds: [],
+  };
+}
+// v0.60.111: помещение объекта (зал стоек, UPS-room, насосная, офис...).
+//   id        — уникальный идентификатор
+//   name      — отображаемое имя («Главный зал», «UPS-room», ...)
+//   kind      — 'it' | 'ups' | 'mech' | 'office' | 'other'
+//   areaSqM   — площадь, м² (плотность нагрузки кВт/м²)
+//   notes     — заметки
+function newRoom(name, kind) {
+  return {
+    id: _newId('rm'),
+    name: name || 'Зал',
+    kind: kind || 'it',
+    areaSqM: 0,
+    notes: '',
   };
 }
 
@@ -186,9 +218,21 @@ function newVariant(name) {
         dateOfDesign: '',
         notes: '',
       },
-      rackGroups: [newRackGroup('Стойки IT')],
-      upsSystems: [newUpsSystem('ИБП IT', 'it')],
-      coolingUnits: [newCoolingUnit('Климат')],
+      // v0.60.111 (rooms-концепция): по умолчанию один главный IT-зал.
+      // Все начальные группы стоек/ИБП/климата автопривязаны к нему через
+      // roomId. Юзер может добавить новые залы в rail-блоке «🏠 Помещения».
+      ...(() => {
+        const mainRoom = newRoom('Главный зал', 'it');
+        const rg = newRackGroup('Стойки IT');     rg.roomId = mainRoom.id;
+        const us = newUpsSystem('ИБП IT', 'it');  us.roomId = mainRoom.id;
+        const cu = newCoolingUnit('Климат');       cu.scope = 'room'; cu.roomId = mainRoom.id;
+        return {
+          rooms: [mainRoom],
+          rackGroups: [rg],
+          upsSystems: [us],
+          coolingUnits: [cu],
+        };
+      })(),
       coolingSystem: newCoolingSystem(),
       // v0.59.893: блоки МЦОД — массив зданий с привязкой к sub-project mdc-config.
       // По умолчанию пустой (стационарный ЦОД); пользователь добавляет МЦОД явно.
@@ -213,6 +257,30 @@ function migrateVariant(v) {
   if (typeof v.linkedSketchProjectId === 'undefined') v.linkedSketchProjectId = null;
   if (typeof v.approvedAt === 'undefined') v.approvedAt = null;
   const c = v.concept;
+  // v0.60.111 (rooms-концепция): добавить rooms[] если нет, и привязать
+  // существующее оборудование к главному залу. Sacred-params правило:
+  // не затирать уже заданные roomId / scope / roomIds.
+  if (!Array.isArray(c.rooms) || c.rooms.length === 0) {
+    c.rooms = [newRoom('Главный зал', 'it')];
+  }
+  const _mainRoomId = c.rooms[0]?.id || null;
+  if (Array.isArray(c.rackGroups)) {
+    c.rackGroups.forEach(rg => {
+      if (typeof rg.roomId === 'undefined') rg.roomId = _mainRoomId;
+    });
+  }
+  if (Array.isArray(c.upsSystems)) {
+    c.upsSystems.forEach(us => {
+      if (typeof us.roomId === 'undefined') us.roomId = _mainRoomId;
+    });
+  }
+  if (Array.isArray(c.coolingUnits)) {
+    c.coolingUnits.forEach(cu => {
+      if (typeof cu.scope !== 'string') cu.scope = 'room';
+      if (typeof cu.roomId === 'undefined') cu.roomId = _mainRoomId;
+      if (!Array.isArray(cu.roomIds)) cu.roomIds = cu.roomId ? [cu.roomId] : [];
+    });
+  }
   // racks (single) → rackGroups[]
   if (!Array.isArray(c.rackGroups)) {
     if (c.racks) {

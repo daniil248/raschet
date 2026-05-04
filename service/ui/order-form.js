@@ -143,7 +143,16 @@ export function renderOrderForm(order, onChange, displayCurrency = '₽', conver
     </div>
   `;
 
-  wrap.addEventListener('input', (ev) => {
+  // v0.60.111 FIX (правило feedback_input_event.md, упомянуто Пользователем
+  // ≥4 раз — 🔥 HIGH): «все поля не должны терять фокус при вводе много
+  // символьных строк». Раньше слушали 'input' который срабатывает на
+  // каждый keystroke → onChange → service.js::renderActive() → wrap.innerHTML
+  // переписывается → input уничтожается → фокус теряется.
+  //
+  // Теперь — 'change' (срабатывает на blur/Enter/stepper-click) на ВСЕ
+  // поля наряда (data-of top-level + tr[data-pos] позиции). Живой
+  // апдейт totals откладывается до blur, что приемлемо.
+  wrap.addEventListener('change', (ev) => {
     const inp = ev.target.closest('[data-of]');
     if (inp) {
       const path = inp.dataset.of;
@@ -152,12 +161,6 @@ export function renderOrderForm(order, onChange, displayCurrency = '₽', conver
       onChange(next);
       return;
     }
-    // Position cells
-    const tr = ev.target.closest('tr[data-pos]');
-    if (tr) handlePositionInput(ev, tr, o, onChange, displayCurrency, convertFn);
-  });
-  wrap.addEventListener('change', (ev) => {
-    // selects: обработка currency-change с пересчётом
     const tr = ev.target.closest('tr[data-pos]');
     if (tr) handlePositionInput(ev, tr, o, onChange, displayCurrency, convertFn, /*isChange*/true);
   });

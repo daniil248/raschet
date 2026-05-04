@@ -4,6 +4,20 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.111', date: '2026-05-04', items: [
+      '🔒 <b>Service order-form: fix потери фокуса при вводе многосимвольных строк</b>. По репорту Пользователя 2026-05-04 (повторное упоминание ≥4 раз — 🔥 HIGH): «все поля не должны терять фокус при вводе много символьных строк, уже несколько раз это указывал».',
+      '• <b>Корень бага</b>: <code>wrap.addEventListener(\'input\', ...)</code> срабатывал на КАЖДЫЙ keystroke в полях СЕБЕС/ЕД, КЛИЕНТ/ЕД, qty, label, top-level Учётный №/Название/Контакт/Накладные/НДС → <code>onChange()</code> → <code>service.js::renderActive()</code> → <code>wrap.innerHTML = \'\'</code> + <code>renderOrderForm()</code> → input уничтожается → фокус теряется.',
+      '• <b>Fix</b>: replaced <code>\'input\'</code> handler с <code>\'change\'</code> (срабатывает на blur/Enter/stepper-click). Один обработчик на все поля наряда (top-level data-of + tr[data-pos] positions). Курсор остаётся на месте при наборе многозначных чисел вроде «59994.79».',
+      '• <b>Side effect</b>: live-update итогов (Σ Себес / К оплате / маржа) теперь обновляется на blur, а не на keystroke. Допустимо — данные сохраняются мгновенно при потере фокуса. Приоритет — UX набора важнее live-totals.',
+      '• Memory rule <code>feedback_input_event.md</code> усилен: добавлены 5 причин потери фокуса и чек-лист для новых полей.',
+      '🏠 <b>Rooms-концепция в TW: data model</b>. Повторное введение после v0.60.107 fix dcType-ternary (теперь файл парсится корректно, можно безопасно расширять renderListRail). На этот раз — только data-layer, UI добавим в следующих версиях.',
+      '• <code>newRoom(name, kind)</code> factory: id, name, kind ∈ it/ups/mech/office/other, areaSqM, notes.',
+      '• <code>concept.rooms[]</code> с дефолтным «Главный зал» (kind=it). Все начальные группы стоек/ИБП/климата автопривязаны через <code>roomId = mainRoom.id</code>.',
+      '• Расширены factories: <code>newRackGroup</code>/<code>newUpsSystem</code> получили поле <code>roomId</code> (default null). <code>newCoolingUnit</code> получил <code>scope</code> ∈ \'room\'/\'shared\', <code>roomId</code>, <code>roomIds[]</code> для общих систем (chiller-plant, AHU обслуживающих несколько залов).',
+      '• Migration legacy variants: добавляет <code>concept.rooms = [Главный зал]</code> + проставляет <code>roomId</code>/<code>scope</code>/<code>roomIds</code> в существующих группах. Sacred-params правило: не затирает уже заданные значения.',
+      '• <b>UI пока без изменений</b> — следующий коммит добавит rail-блок «🏠 Помещения», room editor и pickers в карточках. Разделение на два коммита намеренно — чтобы поэтапно проверить парсинг файла после dcType-ternary fix.',
+      'Файлы: <code>service/ui/order-form.js</code> (input → change handler), <code>tech-workspace/tech-workspace.js</code> (newRoom + newRackGroup/newUpsSystem/newCoolingUnit с roomId/scope, IIFE в newVariant с привязкой к main room, migration в migrateVariant).',
+    ] },
     { version: '0.60.110', date: '2026-05-04', items: [
       '🐛 <b>Fix: значения полей в карточке проекта сбрасывались при background re-render</b>. По репорту Пользователя 2026-05-04: «значение некоторых полей постоянно сбрасывается». Sacred-params правило (см. memory <code>feedback_user_params.md</code>).',
       '• <b>Корень бага</b>: <code>render()</code> в <code>projects/project.js</code> вызывается на <code>Auth.onAuthChange</code> (строка 1907) — Firebase periodically refresh\'ит токен в фоне и эмитит auth-change. Это перерисовывает innerHTML detail-секций. Если в этот момент юзер набирает текст в input «Заказчик» / «Обозначение / шифр» / «Объект / адрес» — несохранённое значение теряется (change-event ещё не сработал, т.к. срабатывает только на blur).',
