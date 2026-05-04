@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.174', date: '2026-05-04', items: [
+      '🐛 <b>Sketch\'и теперь часть export/import/copy/clear проекта</b>. Регрессия после v0.60.166: sketch\'и хранятся в раздельном LS-namespace <code>raschet.sketch.&lt;pid&gt;.*</code> (не в общем <code>raschet.project.&lt;pid&gt;.*</code>) и не подпадали под общий префикс. При export+import sketch\'и терялись, при copy — не копировались, при удалении проекта оставались в LS висеть.',
+      '• <b>shared/project-storage.js — collectSketches(pid)</b>: новая функция, сканирует <code>raschet.sketch.&lt;pid&gt;.*</code> и собирает все sketch\'и + refs.',
+      '• <b>exportProject</b>: добавлено поле <code>sketches</code> в JSON (рядом с <code>scoped</code>). Backward-compat — старые импортёры просто игнорируют.',
+      '• <b>importProject</b>: восстанавливает sketch\'и под новый pid импортированного проекта.',
+      '• <b>copyProject</b>: при копировании проекта sketch\'и тоже копируются + прогоняются через rack-instance idMap (если в копии стойки получили новые id, sketch refs обновляются вместе с ними).',
+      '• <b>clearProjectData / deleteProject</b>: чистят <b>и</b> raschet.sketch.&lt;pid&gt;.* префикс — sketch\'и удалённого проекта больше не висят в LS «бесхозными».',
+      'Файл: <code>shared/project-storage.js</code> (+collectSketches +export/import/copy/clear updates).',
+    ] },
     { version: '0.60.173', date: '2026-05-04', items: [
       '🎯 <b>Sketch picker: «Открыть модуль ↗» при пустом списке entity</b>. Phase 3.5 follow-up. Когда Пользователь открывает picker связи в sketch\'е и для выбранного типа в проекте ещё ничего нет — теперь сразу есть кнопка-ссылка «Открыть [модуль] ↗», ведущая в нужный модуль. Раньше сообщение «создайте в соответствующем модуле» было без указания и без линка.',
       '• <b>MODULE_URL_BY_REF_TYPE</b>: 10 URL-builder\'ов (project / rack / schema / schematic / panel / ups / mv / transformer / cable / sketch).',

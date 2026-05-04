@@ -265,6 +265,32 @@ export function copyProject(srcId, { nameSuffix = ' (копия)', kind } = {}) 
     }
     try { localStorage.setItem(dstPrefix + rel, out); } catch {}
   });
+  // v0.60.174: копируем sketch'и проекта (другой namespace
+  // raschet.sketch.<pid>.*). Sketch-id'ы оставляем — они уникальны в LS,
+  // конфликта с другими проектами нет, plus refs внутри sketch'a ссылаются
+  // на entity того же проекта (которые могли быть переименованы через idMap).
+  // Прогоняем sketch-данные через idMap rack instances для consistency.
+  const srcSkPrefix = `raschet.sketch.${src.id}.`;
+  const dstSkPrefix = `raschet.sketch.${dst.id}.`;
+  const skKeys = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(srcSkPrefix)) skKeys.push(k);
+    }
+  } catch {}
+  skKeys.forEach(srcKey => {
+    const rel = srcKey.slice(srcSkPrefix.length);
+    let raw = localStorage.getItem(srcKey);
+    if (raw && Object.keys(idMap).length) {
+      try {
+        let s = raw;
+        for (const [oldId, newId] of Object.entries(idMap)) s = s.split(oldId).join(newId);
+        raw = s;
+      } catch {}
+    }
+    try { localStorage.setItem(dstSkPrefix + rel, raw); } catch {}
+  });
   updateProject(dst.id, {});
   return dst;
 }
@@ -361,6 +387,25 @@ function collectScoped(pid) {
   return scoped;
 }
 
+// v0.60.174 (по необходимости — sketch'и не были частью export'а):
+// собираем ВСЕ sketch'и проекта (raschet.sketch.<pid>.* — другой namespace!)
+// и их refs (raschet.sketch.<pid>.<sid>.refs.v1). Без этого при export+import
+// sketch'и теряются и связи с другими модулями обрываются.
+function collectSketches(pid) {
+  const sketches = {};
+  const prefix = `raschet.sketch.${pid}.`;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith(prefix)) continue;
+      const rel = k.slice(prefix.length); // "list.v1" / "<sid>.v2" / "<sid>.refs.v1"
+      const raw = localStorage.getItem(k);
+      try { sketches[rel] = JSON.parse(raw); } catch { sketches[rel] = raw; }
+    }
+  } catch {}
+  return sketches;
+}
+
 export function exportProject(id) {
   const p = getProject(id); if (!p) return null;
   const data = {
@@ -368,6 +413,10 @@ export function exportProject(id) {
     exportedAt: Date.now(),
     project: p,
     scoped: collectScoped(p.id),
+    // v0.60.174: sketch'и в отдельном поле (другой namespace в LS).
+    // Schema-version inline для backward-compat: старые импортёры просто
+    // проигнорируют поле sketches.
+    sketches: collectSketches(p.id),
   };
   return new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
 }
@@ -391,17 +440,27 @@ export function importProject(obj) {
       try { localStorage.setItem(prefix + rel, JSON.stringify(value)); } catch {}
     }
   }
+  // v0.60.174: восстановление sketch'ей (если были экспортированы).
+  if (obj.sketches && typeof obj.sketches === 'object') {
+    const prefix = `raschet.sketch.${p.id}.`;
+    for (const [rel, value] of Object.entries(obj.sketches)) {
+      try { localStorage.setItem(prefix + rel, JSON.stringify(value)); } catch {}
+    }
+  }
   return p;
 }
 
 // Удаляет все scoped-данные проекта (но не метаданные). Использование —
 // «очистить проект» в UI. Метаданные удаляются отдельно через deleteProject().
+// v0.60.174: также чистим sketch'и проекта (raschet.sketch.<pid>.* — другой
+// namespace, не подпадал под общий префикс).
 export function clearProjectData(pid) {
-  const prefix = `raschet.project.${pid}.`;
+  const prefix1 = `raschet.project.${pid}.`;
+  const prefix2 = `raschet.sketch.${pid}.`;
   const toRemove = [];
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
-    if (k && k.startsWith(prefix)) toRemove.push(k);
+    if (k && (k.startsWith(prefix1) || k.startsWith(prefix2))) toRemove.push(k);
   }
   toRemove.forEach(k => { try { localStorage.removeItem(k); } catch {} });
   return toRemove.length;
