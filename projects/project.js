@@ -290,6 +290,26 @@ function renderCompanyOverrideSection(p) {
   `;
   const effective = loadEffectiveCompanyProfile(p.id);
   const isFallback = !overrideEnabled;
+  // v0.60.100: если override выключен — скрываем блок полей ввода целиком
+  // (раньше показывали disabled-серыми, но Пользователь попросил не выводить вовсе).
+  const fieldsBlock = overrideEnabled ? `
+    <div class="pr-cf-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px 12px">
+      ${f('name', 'Название организации', profile.name, { placeholder: 'ТОО «...» / ООО «...»', tip: 'Полное наименование юр.лица.' })}
+      ${f('address', 'Юридический адрес', profile.address, { placeholder: '050000, г. Алматы, ул. ...', tip: 'Адрес для шапки документов.' })}
+      ${f('phone', 'Телефон', profile.phone, { placeholder: '+7 (...)', tip: 'Контактный телефон.' })}
+      ${f('email', 'Email', profile.email, { type: 'email', placeholder: 'info@company.kz', tip: 'Email для деловой переписки.' })}
+      ${f('website', 'Сайт', profile.website, { placeholder: 'https://company.kz', tip: 'Корпоративный сайт.' })}
+      ${f('bin', 'БИН / ИНН', profile.bin, { placeholder: '12 цифр', tip: 'БИН (KZ) или ИНН (RU).' })}
+      ${f('director', 'Руководитель', profile.director, { placeholder: 'Иванов И.И.', tip: 'ФИО для подписей в КП.' })}
+    </div>
+    <label class="pr-cf-field" style="display:block;margin-top:8px" title="Банковские реквизиты для счёт-фактуры.">
+      <span style="font-size:11.5px;color:#475569;display:block">Банковские реквизиты</span>
+      <textarea data-cf="bankRequisites" rows="3" placeholder="АО «Банк» БИК ... ИИК ..." style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font:inherit;font-size:12px;resize:vertical">${esc(profile.bankRequisites || '')}</textarea>
+    </label>
+    <p class="muted" style="font-size:11px;margin-top:6px">
+      💡 Эффективный профиль для проекта: <b>${esc(effective.name || '(не заполнено)')} (project override)</b>
+    </p>
+  ` : '';
   return `
     <hr style="border:none;border-top:1px dashed #cbd5e1;margin:14px 0">
     <h4 style="margin:0 0 8px;font-size:12.5px;color:#075985;text-transform:uppercase;letter-spacing:0.4px" title="Реквизиты компании-исполнителя для шапки КП и договоров. По умолчанию используются глобальные (⚙ → Реквизиты организации). Можно переопределить для этого проекта.">🏢 Реквизиты компании-исполнителя</h4>
@@ -304,22 +324,7 @@ function renderCompanyOverrideSection(p) {
           : `📋 Используются глобальные реквизиты: <b>${esc(effective.name || '(не заполнены — заполните в ⚙ → Реквизиты организации)')}</b>.`}
       </p>
     </div>
-    <div class="pr-cf-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px 12px">
-      ${f('name', 'Название организации', profile.name, { placeholder: 'ТОО «...» / ООО «...»', tip: 'Полное наименование юр.лица.' })}
-      ${f('address', 'Юридический адрес', profile.address, { placeholder: '050000, г. Алматы, ул. ...', tip: 'Адрес для шапки документов.' })}
-      ${f('phone', 'Телефон', profile.phone, { placeholder: '+7 (...)', tip: 'Контактный телефон.' })}
-      ${f('email', 'Email', profile.email, { type: 'email', placeholder: 'info@company.kz', tip: 'Email для деловой переписки.' })}
-      ${f('website', 'Сайт', profile.website, { placeholder: 'https://company.kz', tip: 'Корпоративный сайт.' })}
-      ${f('bin', 'БИН / ИНН', profile.bin, { placeholder: '12 цифр', tip: 'БИН (KZ) или ИНН (RU).' })}
-      ${f('director', 'Руководитель', profile.director, { placeholder: 'Иванов И.И.', tip: 'ФИО для подписей в КП.' })}
-    </div>
-    <label class="pr-cf-field" style="display:block;margin-top:8px" title="Банковские реквизиты для счёт-фактуры.">
-      <span style="font-size:11.5px;color:#475569;display:block">Банковские реквизиты</span>
-      <textarea data-cf="bankRequisites" rows="3" placeholder="АО «Банк» БИК ... ИИК ..." ${overrideEnabled ? '' : 'disabled'} style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font:inherit;font-size:12px;resize:vertical${overrideEnabled ? '' : ';background:#f8fafc;color:#94a3b8;cursor:not-allowed'}">${esc(profile.bankRequisites || '')}</textarea>
-    </label>
-    <p class="muted" style="font-size:11px;margin-top:6px">
-      💡 Эффективный профиль для проекта: <b>${esc(effective.name || '(не заполнено)')}${isFallback ? ' (из глобальных)' : ' (project override)'}</b>
-    </p>
+    ${fieldsBlock}
   `;
 }
 

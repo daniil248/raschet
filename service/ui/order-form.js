@@ -303,16 +303,6 @@ function renderPositionsTable(positions, displayCurrency) {
       <td><button type="button" class="sv-pos-del" title="Удалить позицию">×</button></td>
     </tr>`;
   }).join('');
-      <td><select class="sv-pos-cat" data-attr="category" title="Категория позиции">${catOpts(p.category)}</select></td>
-      <td><input type="number" min="0" step="0.5" class="sv-pos-qty" data-attr="qty" value="${Number(p.qty) || 1}" title="Количество"></td>
-      <td><select class="sv-pos-unit" data-attr="unit" title="Единица измерения">${unitOpts(p.unit)}</select></td>
-      <td><input type="number" min="0" step="100" class="sv-pos-val" data-col="costPrice" data-attr="value" value="${Number(p.costPrice?.value) || 0}" title="Себестоимость одной единицы"></td>
-      <td><select class="sv-pos-cur" data-col="costPrice" data-attr="currency" title="Валюта себестоимости">${curOpts(p.costPrice?.currency || displayCurrency)}</select></td>
-      <td><input type="number" min="0" step="100" class="sv-pos-val" data-col="clientPrice" data-attr="value" value="${Number(p.clientPrice?.value) || 0}" title="Цена для клиента за единицу"></td>
-      <td><select class="sv-pos-cur" data-col="clientPrice" data-attr="currency" title="Валюта клиент-цены">${curOpts(p.clientPrice?.currency || displayCurrency)}</select></td>
-      <td><button type="button" class="sv-pos-del" title="Удалить позицию">×</button></td>
-    </tr>
-  `).join('');
   return `
     <table class="sv-pos-table">
       <thead>

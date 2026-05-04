@@ -1267,6 +1267,9 @@ function renderActiveTab() {
                 <option value="cold"${eq.standbyMode === 'cold' ? ' selected' : ''}>❄ Холодный</option>
                 <option value="hot"${eq.standbyMode === 'hot' ? ' selected' : ''}>🔥 Горячий</option>
               </select></td>
+          <td>${(opt.equipment || []).length > 1
+            ? `<button type="button" class="cl-btn-ghost" data-eq-del="${i}" title="Удалить группу из опции" style="padding:2px 8px;font-size:11px;color:#991b1b">×</button>`
+            : ''}</td>
         </tr>`;
       }).join('');
       cwrap.innerHTML = `
@@ -1288,13 +1291,24 @@ function renderActiveTab() {
         </div>
 
         <div class="cl-chiller-section">
-          <div class="cl-chiller-section-title" title="Резервирование задаётся per-группа оборудования. Внутри одной группы все единицы одинаковы; N — рабочих, M — резерв (cold/hot).">📐 Группы оборудования + резервирование</div>
+          <div class="cl-chiller-section-title" title="Резервирование задаётся per-группа оборудования. Внутри одной группы все единицы одинаковы; N — рабочих, M — резерв (cold/hot). v0.60.99: можно добавить несколько групп в одну опцию (например Чиллер + CRAC) для корректного сравнения с self-contained системами (DX).">📐 Группы оборудования + резервирование</div>
           ${(opt.equipment || []).length === 0
-            ? '<p class="muted">Нет оборудования. Добавьте варианты через «+ Вариант» в боковой панели.</p>'
+            ? '<p class="muted">Нет оборудования. Задайте параметры в табе Spec или добавьте группу ниже.</p>'
             : `<table class="cl-annual-table" style="font-size:12px">
-                <thead><tr><th>Имя</th><th>Тип</th><th class="num" title="Rated capacity одной единицы">Rated</th><th title="Количество одинаковых единиц в группе">Qty</th><th title="N — рабочих">N</th><th title="M — в резерве">M</th><th title="Режим резерва">Резерв</th></tr></thead>
+                <thead><tr><th>Имя</th><th>Тип</th><th class="num" title="Rated capacity одной единицы">Rated</th><th title="Количество одинаковых единиц в группе">Qty</th><th title="N — рабочих">N</th><th title="M — в резерве">M</th><th title="Режим резерва">Резерв</th><th></th></tr></thead>
                 <tbody>${eqRows}</tbody>
               </table>`}
+          <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <button type="button" class="cl-btn-primary" id="cl-eq-add-chiller" title="Добавить чиллер в этот подбор. Особенно важно если вы выбрали CRAC — без чиллера CRAC water-cooled не работает (нужна холодная вода). Comparison с DX будет корректным только если в одной опции есть полный комплект оборудования.">➕ Добавить чиллер</button>
+            <button type="button" class="cl-btn-ghost" id="cl-eq-add-crac" title="Добавить CRAC. Используется парно с чиллером (CRAC отдаёт тепло в чиллер).">➕ Добавить CRAC</button>
+            <button type="button" class="cl-btn-ghost" id="cl-eq-add-dx" title="Добавить self-contained DX-блок (без upstream чиллера).">➕ Добавить DX</button>
+          </div>
+          <p class="muted" style="font-size:11px;margin:8px 0 0;padding:6px 10px;background:#fef3c7;border:1px solid #fde68a;border-radius:3px">
+            💡 <b>Для сравнения «Чиллер+CRAC vs DX»</b> создайте 2 опции в ОДНОМ подборе:<br>
+            • <b>Опция A</b>: Чиллер + CRAC (2 группы оборудования) — общий контур.<br>
+            • <b>Опция B</b>: DX (1 группа) — self-contained.<br>
+            Затем во вкладке «📊 Сравнение» (selection-уровень) увидите side-by-side energy/CAPEX/OPEX/TCO.
+          </p>
         </div>
 
         <div class="cl-chiller-section">
@@ -1361,6 +1375,45 @@ function renderActiveTab() {
         if (!opt.topology) opt.topology = {};
         opt.topology.loopMode = loopSel.value;
         persist(); renderActiveTab();
+      });
+      // v0.60.99: «+ Добавить чиллер/CRAC/DX» в топологии — добавляет вторую (или N-ю)
+      // группу оборудования в опцию. Решает проблему «как сравнить Чиллер+CRAC с DX»:
+      // надо чтобы все компоненты решения были в одной опции.
+      const _addEqBtn = (selector, kind) => {
+        const btn = cwrap.querySelector(selector);
+        if (!btn) return;
+        btn.addEventListener('click', () => {
+          if (!opt.equipment) opt.equipment = [];
+          const defaults = {
+            chiller:    { name: 'Новый чиллер',    systemType: 'chiller', ratedCapKw: 200, ratedCOP: 3.5, freeCoolingMode: 'dry', chwsTemp: 7, freeCoolingApproach: 5 },
+            crac:       { name: 'Новый CRAC',      systemType: 'crac-water', ratedCapKw: 50, ratedCOP: 30 },
+            dx:         { name: 'Новый DX-блок',   systemType: 'dx-air', ratedCapKw: 100, ratedCOP: 3.2 },
+          };
+          const newSpec = { ...defaults[kind] };
+          opt.equipment.push({
+            id: `eq-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`,
+            spec: newSpec,
+            qty: 1, redundancyN: 1, redundancyM: 0, standbyMode: 'cold',
+            role: kind === 'crac' ? 'crac' : kind === 'chiller' ? 'chiller' : 'dx',
+          });
+          persist(); renderActiveTab();
+          util.toast(`✓ Добавлена группа «${newSpec.name}». Откройте таб «⚙ Spec» для настройки параметров.`, 'ok');
+        });
+      };
+      _addEqBtn('#cl-eq-add-chiller', 'chiller');
+      _addEqBtn('#cl-eq-add-crac', 'crac');
+      _addEqBtn('#cl-eq-add-dx', 'dx');
+      // v0.60.99: удаление equipment-группы
+      cwrap.querySelectorAll('[data-eq-del]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const i = +btn.dataset.eqDel;
+          if (!opt.equipment || opt.equipment.length <= 1) return;
+          const eq = opt.equipment[i];
+          if (!eq) return;
+          opt.equipment.splice(i, 1);
+          persist(); renderActiveTab();
+          util.toast(`✓ Удалена группа «${eq.spec?.name || ''}»`, 'info');
+        });
       });
     }
     // Per-equipment results через новый simulateOptionTopology
