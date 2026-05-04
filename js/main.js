@@ -1818,6 +1818,42 @@ function openSettingsModal() {
   set('set-maxParallelAuto',     G.maxParallelAuto ?? 10);
   set('set-maxVdropPct',         G.maxVdropPct ?? 5);
   set('set-calcMethod',          G.calcMethod ?? 'iec');
+  // v0.60.122: hint о рекомендуемой методике по стране проекта.
+  // По правилу memory feedback_auto_norm_by_location — система не меняет
+  // выбор пользователя, но показывает что рекомендовано для текущей страны.
+  (async () => {
+    try {
+      const { resolveAutoNormForActiveProject, getProjectCountry, countryLabel, detectCountryCode } = await import('../shared/auto-norm.js');
+      const country = getProjectCountry(null);
+      if (!country) return;
+      const cc = detectCountryCode(country);
+      const recommended = resolveAutoNormForActiveProject('cable');
+      // recommended = 'iec-60364' / 'pue-7' / 'nec'
+      const recMethodId = recommended === 'pue-7' ? 'pue'
+                        : recommended === 'iec-60364' ? 'iec'
+                        : recommended === 'nec' ? 'iec'  // NEC ближе к IEC по подходу к ампасити чем ПУЭ
+                        : null;
+      if (!recMethodId) return;
+      const sel = document.getElementById('set-calcMethod');
+      if (!sel) return;
+      const recOpt = sel.querySelector(`option[value="${recMethodId}"]`);
+      const recLabel = recOpt ? recOpt.textContent : recMethodId;
+      // Найти контейнер field и добавить hint
+      const field = sel.closest('.field');
+      if (!field) return;
+      const oldHint = field.querySelector('.set-calc-method-hint');
+      if (oldHint) oldHint.remove();
+      const isMatch = (G.calcMethod || 'iec') === recMethodId;
+      const hint = document.createElement('div');
+      hint.className = 'set-calc-method-hint';
+      hint.style.cssText = 'font-size:11px;margin-top:4px;color:' + (isMatch ? '#15803d' : '#92400e') + ';padding:4px 8px;background:' + (isMatch ? '#dcfce7' : '#fef3c7') + ';border-left:3px solid ' + (isMatch ? '#15803d' : '#d97706') + ';border-radius:3px';
+      hint.title = 'Рекомендуется на основе country проекта (см. shared/auto-norm.js NORM_MATRIX). Можно проигнорировать — это не сбрасывает ваш выбор.';
+      hint.innerHTML = isMatch
+        ? '✓ ' + countryLabel(cc) + ' — ваш выбор совпадает с рекомендуемым (<b>' + recLabel + '</b>)'
+        : '📋 ' + countryLabel(cc) + ' — рекомендуется <b>' + recLabel + '</b>. Текущий выбор сохраняется.';
+      field.appendChild(hint);
+    } catch (e) { console.warn('[settings] auto-norm hint failed:', e); }
+  })();
   set('set-parallelProtection',  G.parallelProtection ?? 'individual');
   set('set-breakerMinMarginPct', G.breakerMinMarginPct ?? 0);
   const showHelpEl = document.getElementById('set-showHelp');

@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.122', date: '2026-05-04', items: [
+      '📋 <b>Cable methodology hint по стране проекта в Параметрах расчёта</b>. Шаг 2 «по порядку». В модалке «⚙ Параметры расчёта» под селектом «Методика расчёта» теперь показывается hint о рекомендуемой методике для country активного проекта.',
+      '• <b>Совпадение</b>: зелёная плашка «✓ 🇰🇿 Казахстан — ваш выбор совпадает с рекомендуемым (IEC 60364-5-52)».',
+      '• <b>Несоответствие</b>: жёлтая плашка «📋 🇰🇿 Казахстан — рекомендуется ПУЭ 7. Текущий выбор сохраняется» (без авто-смены — Пользователь может игнорировать).',
+      '• Маппинг через <code>resolveAutoNormForActiveProject(\'cable\')</code> из shared auto-norm.js: KZ→IEC / RU→ПУЭ / US→NEC (≈IEC).',
+      '• Country читается из project.location.country активного проекта; если не задан — hint не показывается (тихий fallback).',
+      '• <b>Sacred-params правило</b> соблюдено: hint не сбрасывает ваш выбор calcMethod, не показывает confirm-диалог. Только подсказка для прозрачности.',
+      'Файлы: <code>js/main.js</code> (~30 строк в openSettingsModal — async dynamic import auto-norm + insert hint элемента под set-calcMethod field).',
+    ] },
     { version: '0.60.121', date: '2026-05-04', items: [
       '🌍 <b>Shared <code>auto-norm.js</code>: универсальный helper для авто-выбора нормативного документа по country проекта</b>. Шаг 1 порядка — фундамент для применения к другим модулям. По roadmap-задаче «Auto-norm в других модулях по тому же паттерну».',
       '• <b>NORM_MATRIX</b> — карта <code>domain × country → norm-id</code> по 7 доменам (suppression / cable / scs / cooling / panel / mv / battery / dgu) и 6 кодам стран (KZ / RU / BY / US / CA / EU). Расширяемая.',
