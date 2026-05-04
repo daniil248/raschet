@@ -2702,6 +2702,55 @@ export function renderGeneralPanel(n) {
       if (n.capacityA) qp.set('In_A', String(n.capacityA));
       if (n.mvSwitchgearId) qp.set('lockedId', n.mvSwitchgearId);
       href = cfg.href + '?' + qp.toString();
+    } else if (cfg === _CONFIGURATORS.generator) {
+      // v0.60.207 (по репорту Пользователя 2026-05-04 «почему в конфигуратор
+      // ДГУ не передалась реальная максимальная мощность необходимая для
+      // схемы?? а так же условия объекта»):
+      // передаём nodeId + max-kW (необходимая мощность по downstream-нагрузке)
+      // + климат из project.location (altitude/T/humidity).
+      const qp = new URLSearchParams();
+      qp.set('nodeId', n.id);
+      if (n.name) qp.set('name', n.name);
+      // Реальная максимальная мощность, которую должен покрыть ДГУ —
+      // _maxLoadKw (downstream worst-case). Fallback: capacityKw (paper-rating).
+      const reqKw = Number(n._maxLoadKw) || Number(n.capacityKw) || 0;
+      if (reqKw > 0) qp.set('loadKw', String(Math.ceil(reqKw)));
+      // Климат: из активного проекта project.location.{altitudeM, ambientTC,
+      // humidityPct} (или дефолты: 0м / 25°C / 60%RH ISO 3046-1 baseline).
+      try {
+        const pid = _activeProjectId();
+        if (pid) {
+          const _proj = pid && (typeof window !== 'undefined' ? window : globalThis)
+            ?.Raschet?._projectStorageGet?.(pid);
+          // fallback: прямое чтение через listProjects
+        }
+      } catch {}
+      try {
+        const _ls = (typeof localStorage !== 'undefined') ? localStorage : null;
+        if (_ls) {
+          const raw = _ls.getItem('raschet.projects.v1');
+          const arr = raw ? JSON.parse(raw) : [];
+          const pid = _activeProjectId();
+          const proj = Array.isArray(arr) ? arr.find(p => p && p.id === pid) : null;
+          const loc = proj && proj.location;
+          if (loc) {
+            if (Number.isFinite(Number(loc.altitudeM))) qp.set('altitude', String(Number(loc.altitudeM)));
+            if (Number.isFinite(Number(loc.ambientTC))) qp.set('tamb', String(Number(loc.ambientTC)));
+            if (Number.isFinite(Number(loc.humidityPct))) qp.set('humidity', String(Number(loc.humidityPct)));
+          }
+        }
+      } catch {}
+      // Резервный/основной режим (PRP/COP/ESP/LTP per ISO 8528-1).
+      // backup=true → ESP (резерв), false → PRP (основной).
+      qp.set('mode', n.backupMode ? 'ESP' : 'PRP');
+      // Резервирование: n.redundancy если задано (формат «N+1» и т.п.).
+      if (n.redundancy) qp.set('redundancy', n.redundancy);
+      // Автономия — если задана auxAutonomyHr / fuelAutonomyHr.
+      const autonomyHr = Number(n.fuelAutonomyHr) || Number(n.autonomyHr) || 0;
+      if (autonomyHr > 0) qp.set('autonomy', String(autonomyHr));
+      // Vendor preference (если уже задан).
+      if (n.manufacturer) qp.set('vendor', n.manufacturer);
+      href = cfg.href + '?' + qp.toString();
     }
     const isPanel = (cfg === _CONFIGURATORS.panel || cfg === _CONFIGURATORS.panelMv);
     h.push(`<a class="full-btn" href="${escAttr(href)}" target="_blank" rel="noopener" style="display:block;margin-top:8px;text-align:center;text-decoration:none">🔧 ${escHtml(cfg.label)}</a>`);

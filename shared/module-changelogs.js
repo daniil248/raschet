@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.207', date: '2026-05-04', items: [
+      '🔌 <b>Конфигуратор ДГУ принимает контекст из схемы</b>. По репорту Пользователя 2026-05-04 «почему в конфигуратор ДГУ не передалась реальная максимальная мощность необходимая для схемы?? а так же условия объекта». В v0.60.202 была привязка к схеме (кнопка), но без передачи URL-params — DGU-конфигуратор стартовал с дефолтов 500/0/25/60.',
+      '• <b>Передаётся в URL</b>: <code>nodeId</code>, <code>name</code>, <code>loadKw</code> (= <code>n._maxLoadKw</code> или fallback <code>n.capacityKw</code>), <code>mode</code> (PRP / ESP в зависимости от <code>backupMode</code>), <code>redundancy</code>, <code>autonomy</code>, <code>vendor</code>.',
+      '• <b>Климат из проекта</b>: читается <code>project.location.{altitudeM, ambientTC, humidityPct}</code> и передаётся как <code>altitude</code>, <code>tamb</code>, <code>humidity</code>. Конфигуратор ДГУ применит ISO 3046-1 derate (high-altitude / temperature / humidity).',
+      'Файл: <code>js/engine/inspector.js</code> (новая ветка cfg === _CONFIGURATORS.generator в _CONFIGURATORS launch logic).',
+    ] },
     { version: '0.60.206', date: '2026-05-04', items: [
       '🧮 <b>Setting calcVoltageMode перенесён в модалку «Параметры расчёта» Конструктора схем</b>. По репорту Пользователя 2026-05-04 «я имел в виду параметры расчета конструктора схем».',
       '• Из <code>shared/global-settings.js</code> (open settings/⚙ в хедере) — удалено.',
