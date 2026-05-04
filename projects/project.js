@@ -580,24 +580,171 @@ function _deriveLcmFromStatus(status) {
   return map[status || 'draft'] || 'concept';
 }
 
-// v0.60.94: picker для lifecycle state.
-function prLcmStatePicker(current) {
+// v0.60.96 (Phase 39.2): per-state checklists. Что должно быть у проекта,
+// чтобы перейти в данное состояние. <code>artifacts</code> — массив проверок,
+// каждая возвращает {ok:bool, label, hint} по чтению LS-данных проекта.
+const LCM_CHECKLISTS = {
+  concept: [
+    { label: 'Концепция в Технологе ЦОД', hint: 'Хотя бы один вариант с заполненным «🏷 Объект»',
+      check: (pid) => {
+        try {
+          const v = JSON.parse(localStorage.getItem(`raschet.project.${pid}.tech-workspace.variants.v1`) || '[]');
+          return Array.isArray(v) && v.length > 0;
+        } catch { return false; }
+      } },
+    { label: 'Локация объекта',
+      hint: 'Координаты заполнены в свойствах проекта',
+      check: (pid) => { const p = listProjects().find(x => x.id === pid); return !!(p?.location?.lat && p?.location?.lon); } },
+  ],
+  sketch: [
+    { label: 'Реквизиты заказчика',
+      hint: 'p.requisites.code/customer/address заполнены',
+      check: (pid) => { const p = listProjects().find(x => x.id === pid); return !!(p?.requisites?.code && p?.requisites?.customer); } },
+    { label: 'Утверждённый вариант концепции',
+      hint: 'В TW есть variant с approvedAt',
+      check: (pid) => {
+        try {
+          const v = JSON.parse(localStorage.getItem(`raschet.project.${pid}.tech-workspace.variants.v1`) || '[]');
+          return Array.isArray(v) && v.some(x => x.approvedAt);
+        } catch { return false; }
+      } },
+    { label: 'IT-нагрузка > 0',
+      hint: 'rackGroups.count × kwPerRack > 0',
+      check: (pid) => {
+        try {
+          const v = JSON.parse(localStorage.getItem(`raschet.project.${pid}.tech-workspace.variants.v1`) || '[]');
+          if (!Array.isArray(v)) return false;
+          const primary = v.find(x => x.primary) || v[0];
+          if (!primary?.concept?.rackGroups) return false;
+          const itKw = primary.concept.rackGroups.reduce((s, rg) => s + (Number(rg.count) || 0) * (Number(rg.kwPerRack) || 0), 0);
+          return itKw > 0;
+        } catch { return false; }
+      } },
+  ],
+  working: [
+    { label: 'Главная схема (schematic)',
+      hint: 'Хотя бы один узел в схеме',
+      check: (pid) => {
+        try {
+          const sch = JSON.parse(localStorage.getItem(`raschet.project.${pid}.engine.scheme.v1`) || '{}');
+          return Array.isArray(sch.nodes) && sch.nodes.length > 0;
+        } catch { return false; }
+      } },
+    { label: 'Подбор холодильных систем',
+      hint: 'Хотя бы один cooling-подбор с ★ вариантом',
+      check: (pid) => {
+        try {
+          const s = JSON.parse(localStorage.getItem(`raschet.project.${pid}.cooling.selections.v1`) || '[]');
+          return Array.isArray(s) && s.some(x => x.options?.length > 0);
+        } catch { return false; }
+      } },
+    { label: 'Метеоданные загружены',
+      hint: 'Активный climate dataset в meteo',
+      check: (pid) => {
+        try {
+          const ds = JSON.parse(localStorage.getItem(`raschet.project.${pid}.meteo.datasets.v1`) || '[]');
+          return Array.isArray(ds) && ds.length > 0;
+        } catch { return false; }
+      } },
+    { label: 'СКС-проект (если есть)',
+      hint: 'scs-design.scs (опционально для электр.-only)',
+      check: (pid) => {
+        try {
+          const scs = localStorage.getItem(`raschet.project.${pid}.scs-design.scs.v1`);
+          return !!scs && scs !== 'null' && scs !== '{}';
+        } catch { return false; }
+      }, optional: true },
+  ],
+  construction: [
+    { label: 'Монтажные наряды (service)',
+      hint: 'service.orders с type=install',
+      check: (pid) => {
+        try {
+          const o = JSON.parse(localStorage.getItem(`raschet.project.${pid}.service.orders.v1`) || '[]');
+          return Array.isArray(o) && o.some(x => x.type === 'install');
+        } catch { return false; }
+      } },
+  ],
+  commissioning: [
+    { label: 'ПНР наряды или акты',
+      hint: 'service.orders type=one-off с пометкой ПНР',
+      check: () => false, optional: true },
+  ],
+  operation: [
+    { label: 'Регламентное ТО запланировано',
+      hint: 'service.orders с type=maintenance',
+      check: (pid) => {
+        try {
+          const o = JSON.parse(localStorage.getItem(`raschet.project.${pid}.service.orders.v1`) || '[]');
+          return Array.isArray(o) && o.some(x => x.type === 'maintenance');
+        } catch { return false; }
+      } },
+    { label: 'Asset registry (facility-inventory)',
+      hint: 'Реестр оборудования объекта заполнен',
+      check: (pid) => {
+        try {
+          const fi = JSON.parse(localStorage.getItem(`raschet.project.${pid}.facility-inventory.items.v1`) || '[]');
+          return Array.isArray(fi) && fi.length > 0;
+        } catch { return false; }
+      }, optional: true },
+  ],
+  upgrade: [
+    { label: 'Создан upgrade-вариант',
+      hint: 'TW variant с approvedAt и parentRevision (TODO Phase 39.5)',
+      check: () => false, optional: true },
+  ],
+  decommission: [
+    { label: 'Документация утилизации',
+      hint: 'TODO Phase 39.6',
+      check: () => false, optional: true },
+  ],
+};
+
+function _renderChecklist(stateId, pid) {
+  const items = LCM_CHECKLISTS[stateId] || [];
+  if (!items.length) return '<p class="muted" style="font-size:11px">Нет требований для этого состояния.</p>';
+  return `<div style="margin-top:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px">
+    <div style="font-size:11px;font-weight:600;color:#475569;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.4px">Что нужно для перехода:</div>
+    ${items.map(it => {
+      const ok = it.check(pid);
+      const icon = ok ? '✅' : (it.optional ? '⏸' : '❌');
+      const color = ok ? '#15803d' : (it.optional ? '#94a3b8' : '#b91c1c');
+      return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px;color:${color}">
+        <span>${icon}</span>
+        <span style="flex:1">
+          <b>${esc(it.label)}</b>${it.optional ? ' <span style="font-size:10.5px;font-weight:400;color:#94a3b8">(опц.)</span>' : ''}
+          <span style="display:block;font-size:10.5px;color:#64748b">${esc(it.hint)}</span>
+        </span>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+// v0.60.94/96: picker для lifecycle state. v0.60.96 добавлен per-state
+// checklist (что нужно для каждой стадии — auto-detection из LS-данных).
+function prLcmStatePicker(current, pid) {
   return new Promise(res => {
     const overlay = document.createElement('div');
     overlay.className = 'pr-overlay';
-    const rows = LCM_STATES.map(s => `
-      <button type="button" class="pr-lcm-row" data-id="${s.id}" style="display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:1px solid ${s.id === current ? s.color : '#e2e8f0'};background:${s.id === current ? s.bg : '#fff'};border-radius:8px;cursor:pointer;margin-bottom:6px;text-align:left">
-        <span style="font-size:18px">${s.icon}</span>
-        <span style="flex:1">
-          <b style="color:${s.color}">${s.label}</b>
-          <span style="display:block;font-size:11px;color:#64748b;margin-top:2px">${s.desc}</span>
-        </span>
-        ${s.id === current ? '<span style="color:' + s.color + ';font-size:12px">✓ текущий</span>' : ''}
-      </button>`).join('');
+    const rows = LCM_STATES.map(s => {
+      const isCurrent = s.id === current;
+      const checklistHtml = pid ? _renderChecklist(s.id, pid) : '';
+      return `<div class="pr-lcm-card" style="border:1px solid ${isCurrent ? s.color : '#e2e8f0'};background:${isCurrent ? s.bg : '#fff'};border-radius:8px;margin-bottom:8px;overflow:hidden">
+        <button type="button" class="pr-lcm-row" data-id="${s.id}" style="display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:none;background:transparent;cursor:pointer;text-align:left">
+          <span style="font-size:18px">${s.icon}</span>
+          <span style="flex:1">
+            <b style="color:${s.color}">${s.label}</b>
+            <span style="display:block;font-size:11px;color:#64748b;margin-top:2px">${s.desc}</span>
+          </span>
+          ${isCurrent ? '<span style="color:' + s.color + ';font-size:12px;font-weight:600">✓ текущий</span>' : '<span style="color:#94a3b8;font-size:12px">→ перевести</span>'}
+        </button>
+        ${checklistHtml ? '<div style="padding:0 12px 10px">' + checklistHtml + '</div>' : ''}
+      </div>`;
+    }).join('');
     overlay.innerHTML = `
-      <div class="pr-modal" style="max-width:540px">
+      <div class="pr-modal" style="max-width:600px;max-height:90vh;overflow-y:auto">
         <h3>🔄 Жизненный цикл объекта (Phase 39)</h3>
-        <p class="muted" style="font-size:12px;margin:6px 0 12px">ISO 15288 / PLM-подход: 8 состояний от концепции до decommission. Подробнее — ROADMAP Phase 39.</p>
+        <p class="muted" style="font-size:12px;margin:6px 0 12px">ISO 15288 / PLM: 8 состояний от концепции до decommission. Под каждым — checklist (что нужно для перехода). ✅ выполнено · ❌ обязательное · ⏸ опц.</p>
         <div>${rows}</div>
         <div class="pr-modal-actions"><button type="button" class="pr-btn-sel" data-act="no">Закрыть</button></div>
       </div>`;
@@ -747,7 +894,7 @@ function render() {
     if (lcmBtn) {
       lcmBtn.addEventListener('click', async () => {
         const cur = p.lifecycleState || _deriveLcmFromStatus(p.status);
-        const next = await prLcmStatePicker(cur);
+        const next = await prLcmStatePicker(cur, p.id);
         if (next == null || next === cur) return;
         updateProject(p.id, { lifecycleState: next });
         prToast(`🔄 Жизненный цикл: ${lcmStateMeta(next).icon} ${lcmStateMeta(next).label}`);

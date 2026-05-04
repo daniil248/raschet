@@ -4,6 +4,19 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.96', date: '2026-05-03', items: [
+      '✅ <b>Phase 39.2: per-state checklists для жизненного цикла</b>. В picker каждое состояние показывает auto-detection «Что нужно для перехода».',
+      '• <code>LCM_CHECKLISTS</code> — массив проверок per-state, каждая читает project LS и возвращает true/false.',
+      '• Иконки: ✅ выполнено · ❌ обязательное не выполнено · ⏸ опционально.',
+      '• Examples:',
+      '  - <b>concept:</b> Концепция в TW + локация',
+      '  - <b>sketch:</b> Реквизиты + утверждённый variant + IT-нагрузка > 0',
+      '  - <b>working:</b> schematic + cooling-подбор + meteo + (опц.) СКС',
+      '  - <b>construction:</b> монтажные наряды (service install)',
+      '  - <b>operation:</b> ТО-наряды + facility-inventory',
+      '• Picker модалка теперь показывает все 8 состояний с inline-checklists (max-height:90vh + scroll).',
+      'Файлы: <code>projects/project.js</code> — LCM_CHECKLISTS + _renderChecklist + prLcmStatePicker(pid).',
+    ] },
     { version: '0.60.95', date: '2026-05-03', items: [
       '🔄 <b>Phase 39 START: lifecycleState badge + picker в проекте</b>.',
       '• Новые константы <code>LCM_STATES</code> (8 состояний по ISO 15288): концепция / эскиз / РД / монтаж / ПНР / эксплуатация / модернизация / decommission.',
