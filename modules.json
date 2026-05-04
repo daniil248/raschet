@@ -23,7 +23,8 @@
       ],
       "kind": "ui",
       "subscriptionPlan": "starter",
-      "enabled": true
+      "enabled": true,
+      "internalOnly": false
     },
     {
       "id": "cable",
@@ -44,7 +45,8 @@
       ],
       "enabled": true,
       "kind": "ui",
-      "subscriptionPlan": "free"
+      "subscriptionPlan": "free",
+      "internalOnly": false
     },
     {
       "id": "schematic",
@@ -63,7 +65,8 @@
       ],
       "enabled": true,
       "kind": "ui",
-      "subscriptionPlan": "starter"
+      "subscriptionPlan": "starter",
+      "internalOnly": false
     },
     {
       "id": "battery",
@@ -82,7 +85,8 @@
       ],
       "enabled": true,
       "kind": "ui",
-      "subscriptionPlan": "free"
+      "subscriptionPlan": "free",
+      "internalOnly": false
     },
     {
       "id": "ups-config",
@@ -102,7 +106,8 @@
       ],
       "enabled": true,
       "kind": "ui",
-      "subscriptionPlan": "starter"
+      "subscriptionPlan": "starter",
+      "internalOnly": false
     },
     {
       "id": "panel-config",
@@ -121,7 +126,8 @@
       ],
       "enabled": true,
       "kind": "ui",
-      "subscriptionPlan": "starter"
+      "subscriptionPlan": "starter",
+      "internalOnly": false
     },
     {
       "id": "mv-config",
@@ -140,7 +146,8 @@
       ],
       "enabled": true,
       "kind": "ui",
-      "subscriptionPlan": "pro"
+      "subscriptionPlan": "pro",
+      "internalOnly": false
     },
     {
       "id": "transformer-config",
@@ -159,7 +166,8 @@
       ],
       "enabled": true,
       "kind": "ui",
-      "subscriptionPlan": "starter"
+      "subscriptionPlan": "starter",
+      "internalOnly": false
     },
     {
       "id": "reports",
@@ -179,7 +187,8 @@
       ],
       "enabled": true,
       "kind": "ui",
-      "subscriptionPlan": "pro"
+      "subscriptionPlan": "pro",
+      "internalOnly": true
     },
     {
       "id": "catalog",
@@ -205,7 +214,8 @@
       ],
       "enabled": true,
       "kind": "ui",
-      "subscriptionPlan": "pro"
+      "subscriptionPlan": "pro",
+      "internalOnly": false
     },
     {
       "id": "help",
@@ -221,7 +231,8 @@
       ],
       "enabled": true,
       "kind": "ui",
-      "subscriptionPlan": "free"
+      "subscriptionPlan": "free",
+      "internalOnly": false
     },
     {
       "id": "tech-workspace",
@@ -240,7 +251,8 @@
       ],
       "enabled": true,
       "kind": "ui",
-      "subscriptionPlan": "pro"
+      "subscriptionPlan": "pro",
+      "internalOnly": false
     },
     {
       "id": "logistics",
@@ -263,7 +275,30 @@
       ],
       "enabled": true,
       "kind": "ui",
-      "subscriptionPlan": "pro"
+      "subscriptionPlan": "pro",
+      "internalOnly": true
+    },
+    {
+      "id": "projects",
+      "name": "Управление проектами",
+      "description": "Реестр проектов компании. Создание / редактирование / удаление проектов. Только для project-manager / ГИП.",
+      "path": "projects/",
+      "icon": "blue",
+      "badge": "internal",
+      "requires": [
+        "shared/auth",
+        "shared/project-storage"
+      ],
+      "dbCollections": [
+        "projects"
+      ],
+      "permissions": [
+        "projects.use"
+      ],
+      "kind": "ui",
+      "subscriptionPlan": "enterprise",
+      "internalOnly": true,
+      "enabled": true
     }
   ]
 }

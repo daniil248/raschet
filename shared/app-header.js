@@ -657,7 +657,19 @@ function _openStandaloneProjectMenu(currentModuleId) {
     } catch {}
     if (!name || !String(name).trim()) return;
     try {
-      const p = createProject({ name: String(name).trim(), kind: 'full' });
+      // v0.60.133: локальные проекты создаются как kind='sketch' с
+      // ownerModule = текущий модуль. По репорту Пользователя 2026-05-04:
+      // «локальный проект не должен создавать проект в модуле проекты,
+      // только в своем собственном модуле».
+      // /projects/ фильтрует kind==='sketch' (см. projects.js:311) →
+      // локальные не попадают в основной реестр. Module-scope-pickers
+      // показывают только sketch с ownerModule = текущий модуль или
+      // tech-workspace (по правилу feedback_module_scope_pickers).
+      const p = createProject({
+        name: String(name).trim(),
+        kind: 'sketch',
+        ownerModule: currentModuleId || null,
+      });
       if (p && p.id) {
         setActiveProjectId(p.id);
         close();

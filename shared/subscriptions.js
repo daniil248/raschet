@@ -149,13 +149,137 @@ export function saveSubscription(sub) {
 }
 
 /**
+ * Internal-user check (для internalOnly модулей).
+ *
+ * v0.60.133: По запросу Пользователя 2026-05-04: «часть модулей будут
+ * доступны только внутри организации. модули которые дают функциональное
+ * преимущество, например модуль проекты не планируется пока делать
+ * доступным по подписке, только внутрикорпоративное использование».
+ *
+ * Internal-flag — отдельный от subscription. Хранится в LS-ключе
+ * <code>raschet.internal.v1</code>. Активируется через master-токен или
+ * Firebase auth-claim. Ни один subscription-tier не открывает internal-
+ * модули — это разделение «продукт vs внутренний инструмент».
+ */
+const LS_INTERNAL = 'raschet.internal.v1';
+const LS_INTERNAL_ROLE = 'raschet.internal.role.v1';
+
+export function isInternalUser() {
+  try {
+    const v = localStorage.getItem(LS_INTERNAL);
+    if (v === '1' || v === 'true') return true;
+  } catch {}
+  // В будущем (Phase 44.4): server-side check через Firebase auth.users[uid].internal.
+  return false;
+}
+export function setInternalUser(flag) {
+  try {
+    if (flag) localStorage.setItem(LS_INTERNAL, '1');
+    else localStorage.removeItem(LS_INTERNAL);
+  } catch {}
+}
+
+/**
+ * v0.60.133: Роли внутри организации.
+ *
+ * По запросу Пользователя 2026-05-04: «В модуле Проекты только менеджер
+ * проектов или ГИП может создавать проекты».
+ *
+ * Роли применяются ТОЛЬКО к internal-users (для коммерческих клиентов
+ * есть subscription / Phase 41 org-roles owner/admin/member/viewer).
+ *
+ * Permissions:
+ *   canCreateProjects   — создание новых проектов в /projects/
+ *   canDeleteProjects   — удаление проектов
+ *   canEditEconomics    — изменение тарифа/валюты/НДС в свойствах проекта
+ *   canApproveVariants  — утверждение вариантов концепции в TW
+ *   canPromoteOrgItems  — promote шаблонов работ / прайсов в org-каталог
+ */
+export const ROLES = {
+  manager: {
+    label: '👑 Менеджер проектов',
+    description: 'Полный доступ: создание / удаление проектов, утверждение вариантов, экономика, promote в org.',
+    permissions: {
+      canCreateProjects: true, canDeleteProjects: true,
+      canEditEconomics: true, canApproveVariants: true,
+      canPromoteOrgItems: true,
+    },
+  },
+  gip: {
+    label: '🛠 ГИП',
+    description: 'Главный Инженер Проекта: создание / утверждение, экономика, инженерные решения.',
+    permissions: {
+      canCreateProjects: true, canDeleteProjects: true,
+      canEditEconomics: true, canApproveVariants: true,
+      canPromoteOrgItems: true,
+    },
+  },
+  engineer: {
+    label: '👤 Инженер',
+    description: 'Работа в существующих проектах: схемы, расчёты, спецификации. Создание проектов — нет.',
+    permissions: {
+      canCreateProjects: false, canDeleteProjects: false,
+      canEditEconomics: false, canApproveVariants: false,
+      canPromoteOrgItems: false,
+    },
+  },
+  viewer: {
+    label: '👁 Наблюдатель',
+    description: 'Только просмотр. Используется для показа клиентам / суб-подрядчикам.',
+    permissions: {
+      canCreateProjects: false, canDeleteProjects: false,
+      canEditEconomics: false, canApproveVariants: false,
+      canPromoteOrgItems: false,
+    },
+  },
+};
+
+/**
+ * Текущая роль internal-пользователя. Default 'engineer'.
+ * Возвращает null если не internal-user (роли неприменимы).
+ */
+export function currentRole() {
+  if (!isInternalUser()) return null;
+  try {
+    const r = localStorage.getItem(LS_INTERNAL_ROLE);
+    if (r && ROLES[r]) return r;
+  } catch {}
+  return 'engineer';
+}
+
+export function setRole(role) {
+  if (!ROLES[role]) throw new Error('[role] unknown role: ' + role);
+  try { localStorage.setItem(LS_INTERNAL_ROLE, role); } catch {}
+}
+
+/**
+ * Проверка permission. Для не-internal users возвращает false для всех
+ * permission'ов (роли неприменимы — внешние клиенты управляются через
+ * subscription).
+ *
+ * @param {string} perm — id permission'а из ROLES.*.permissions
+ * @returns {boolean}
+ */
+export function hasPermission(perm) {
+  const role = currentRole();
+  if (!role) return false;
+  return !!ROLES[role]?.permissions?.[perm];
+}
+
+/**
  * Имеет ли пользователь доступ к модулю?
  *
  * @param {string} moduleId — id модуля из modules.json
+ * @param {object} [moduleManifest] — опционально, manifest-запись для проверки internalOnly
  * @returns {boolean}
  */
-export function hasModuleAccess(moduleId) {
+export function hasModuleAccess(moduleId, moduleManifest) {
   if (!moduleId) return true;  // пустой id = нет проверки
+  // v0.60.133: internal-only модули доступны ТОЛЬКО internal-пользователям.
+  // Никакой subscription-tier их не открывает.
+  if (moduleManifest && moduleManifest.internalOnly) {
+    return isInternalUser();
+  }
   const sub = getSubscription();
   const plan = PLANS[sub.plan] || PLANS.free;
   // 1) Проверка по plan.modules
@@ -217,8 +341,41 @@ export function planBadge() {
 /**
  * UI: показать модалку «модуль заблокирован» с предложением upgrade'а.
  * Возвращает Promise<boolean> — true если активировал триал.
+ *
+ * v0.60.133: для internal-only модулей показывает другую модалку без
+ * upsell'а — модуль НЕ продаётся, только внутрикорпоративное использование.
  */
-export async function showLockedModal(moduleId, moduleName) {
+export async function showLockedModal(moduleId, moduleName, moduleManifest) {
+  // v0.60.133: internal-only модули — особое сообщение.
+  if (moduleManifest && moduleManifest.internalOnly) {
+    return new Promise(resolve => {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;font:14px/1.5 system-ui,sans-serif';
+      overlay.innerHTML = `
+        <div style="background:#fff;border-radius:10px;box-shadow:0 12px 48px rgba(0,0,0,0.3);max-width:520px;width:100%;overflow:hidden">
+          <div style="padding:16px 20px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff">
+            <h3 style="margin:0;font-size:18px">🏢 Корпоративный модуль</h3>
+            <div style="font-size:13px;opacity:0.9;margin-top:4px">${moduleName || moduleId}</div>
+          </div>
+          <div style="padding:18px 20px">
+            <p style="margin:0 0 12px">Этот модуль доступен <b>только для внутрикорпоративного использования</b>. Не входит в коммерческие подписки.</p>
+            <p class="muted" style="font-size:12.5px;color:#64748b;margin:0 0 14px">
+              Модуль предназначен для управления проектами разработчика платформы и не продаётся отдельно. Если вы сотрудник компании-разработчика — обратитесь к администратору для активации corporate-доступа.
+            </p>
+            <p class="muted" style="font-size:11.5px;color:#9ca3af">
+              Технически: <code>localStorage.setItem('raschet.internal.v1', '1')</code> через DevTools для самостоятельной активации (developer mode).
+            </p>
+            <button type="button" id="sub-cancel-btn" style="width:100%;padding:10px;margin-top:8px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font:inherit;color:#374151">Понятно</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      const close = (val) => { overlay.remove(); resolve(val); };
+      overlay.querySelector('#sub-cancel-btn')?.addEventListener('click', () => close(false));
+      overlay.addEventListener('click', e => { if (e.target === overlay) close(false); });
+    });
+  }
+
   const minPlan = minPlanForModule(moduleId);
   const planLabel = minPlan ? PLANS[minPlan].label : 'Custom';
   const sub = getSubscription();

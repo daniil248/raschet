@@ -4,6 +4,25 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.133', date: '2026-05-04', items: [
+      '🏢 <b>Phase 44: внутрикорпоративные модули + ролевая модель</b>. По двум новым требованиям Пользователя 2026-05-04:',
+      '  • «часть модулей будут доступны только внутри организации... модуль проекты не планируется делать доступным по подписке, только внутрикорпоративное использование»',
+      '  • «В модуле Проекты только менеджер проектов или ГИП может создавать проекты»',
+      '• <b>shared/subscriptions.js</b> расширен:',
+      '  • <code>ROLES</code> — 4 роли: <code>👑 manager</code> / <code>🛠 gip</code> / <code>👤 engineer</code> / <code>👁 viewer</code>. Каждая с permissions <code>canCreateProjects</code>, <code>canDeleteProjects</code>, <code>canEditEconomics</code>, <code>canApproveVariants</code>, <code>canPromoteOrgItems</code>.',
+      '  • <code>isInternalUser()</code> / <code>setInternalUser(bool)</code> / <code>currentRole()</code> / <code>setRole(roleId)</code> / <code>hasPermission(perm)</code>.',
+      '  • <code>hasModuleAccess(moduleId, moduleManifest)</code> теперь читает <code>moduleManifest.internalOnly</code>: если true → проверка только <code>isInternalUser()</code>, не подписка.',
+      '  • <code>showLockedModal()</code> — для internalOnly показывает «🏢 Корпоративный модуль» (без upsell).',
+      '• <b>modules.json v1.1.0</b>:',
+      '  • Поле <code>internalOnly: true|false</code> у всех модулей.',
+      '  • <code>internalOnly: true</code>: <code>reports</code>, <code>logistics</code>, новый <code>projects</code>.',
+      '  • Добавлена карточка <code>projects</code> (внутренняя, enterprise-план для аудита, реально открывается только internal-Пользователям).',
+      '• <b>shared/app-header.js</b> — локальные проекты (через project-context picker в шапке) теперь создаются как <code>kind: \'sketch\'</code> с <code>ownerModule = currentModuleId</code>. По репорту: «локальный проект не должен создавать проект в модуле проекты, только в своем собственном модуле». /projects/ фильтрует sketch (см. projects.js:311) → локальные не видны в основном реестре.',
+      '• <b>Memory rules</b>:',
+      '  • <code>feedback_internal_modules.md</code> — список internalOnly модулей и правила добавления.',
+      '  • <code>feedback_role_based_access.md</code> — таблица permissions × roles, чек-лист guard\'ов.',
+      'Файлы: <code>shared/subscriptions.js</code> (+ROLES +isInternalUser +hasPermission, ~+160 строк), <code>modules.json</code> (+internalOnly у 13 модулей + новая карточка projects), <code>shared/app-header.js</code> (kind:sketch +ownerModule).',
+    ] },
     { version: '0.60.132', date: '2026-05-04', items: [
       '🎫 <b>Phase 44.2 + 44.3: subscription locks в /modules/ + plan management UI</b>. Подписка стала видимой end-to-end.',
       '• <b>/modules/index.html</b> — после load читает modules.json + проверяет каждую карточку через <code>hasModuleAccess(moduleId)</code>:',
