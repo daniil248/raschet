@@ -2786,6 +2786,27 @@ export function renderGeneralPanel(n) {
         : 'Выбор конкретной модели из каталога и конкретные параметры — в отдельном модуле.'
     }${cfg === _CONFIGURATORS.rack ? ' После настройки нажмите в модуле «↩ Применить к узлу схемы». Наполнение PDU/устройствами — в Компоновщике (количество стоек count=N развёрнуто в N виртуалов).' : ''}</div>`);
 
+    // v0.60.217: если к узлу-генератору применена ДГУ — показываем сводку
+    // (round-trip из dgu-config через postMessage('raschet.dgu.apply')).
+    if (cfg === _CONFIGURATORS.generator && n.appliedConfig?.dgu) {
+      const cfgDgu = n.appliedConfig.dgu;
+      const sel = cfgDgu.selected || {};
+      const sp  = cfgDgu.spec || {};
+      const ageMin = cfgDgu.ts ? Math.round((Date.now() - cfgDgu.ts) / 60000) : null;
+      const ageStr = ageMin == null ? '' : (ageMin < 1 ? 'только что' : ageMin < 60 ? `${ageMin} мин назад` : `${Math.round(ageMin / 60)} ч назад`);
+      h.push(`<div style="margin-top:8px;padding:8px 10px;background:#f0fdf4;border-left:3px solid #16a34a;border-radius:3px;font-size:11px;color:#14532d">
+        <b>✓ ДГУ сконфигурирована</b>${ageStr ? ` <span class="muted">(${escHtml(ageStr)})</span>` : ''}<br>
+        ${sel.vendor ? escHtml(sel.vendor) + ' ' : ''}<b>${escHtml(sel.model || '')}</b>
+        ${sel.nameplateKw ? '<br>Номинал: ' + Number(sel.nameplateKw).toFixed(0) + ' кВт' : ''}
+        ${sp.mode ? ' · режим ' + escHtml(sp.mode) : ''}
+        ${sp.qty && sp.qty > 1 ? ' · кол-во ' + sp.qty : ''}
+        ${sel.engineModel ? '<br>Двигатель: ' + escHtml(sel.engineModel) : ''}
+        ${sel.sfcLkWh ? ' · SFC ' + Number(sel.sfcLkWh).toFixed(3) + ' л/кВт·ч' : ''}
+        ${Number.isFinite(Number(sp.derateMultiplier)) ? '<br>Climate derate: ' + (Number(sp.derateMultiplier) * 100).toFixed(1) + '% от nameplate' : ''}
+        <br><span class="muted">Записано через apply из dgu-config. Войдёт в BOM проекта автоматически.</span>
+      </div>`);
+    }
+
     // v0.58.81: если к узлу уже применён rack-шаблон — показываем сводку,
     // чтобы было видно без повторного открытия конфигуратора.
     if (cfg === _CONFIGURATORS.rack && n.rackTemplate && typeof n.rackTemplate === 'object') {

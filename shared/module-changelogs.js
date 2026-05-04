@@ -4,6 +4,10 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.218', date: '2026-05-04', items: [
+      '✓ <b>Инспектор: сводка применённой ДГУ</b>. Аналогично сводке rack-шаблона (v0.58.81), для генератора с <code>appliedConfig.dgu</code> теперь показывается зелёный блок «✓ ДГУ сконфигурирована» с производителем, моделью, nameplateKw, режимом ESP/PRP, кол-вом, двигателем, SFC, climate-derate и timestamp («только что» / «N мин назад» / «N ч назад»). Чтобы Пользователь видел статус привязки без открытия конфигуратора заново.',
+      'Файл: <code>js/engine/inspector.js</code>.',
+    ] },
     { version: '0.60.217', date: '2026-05-04', items: [
       '📁 <b>Каталоги: продолжение split-а на подпапки by-vendor</b>. Продолжая v0.60.214 (dgu/ups/battery), сейчас разбиты:',
       '• <code>shared/catalogs/racks/</code> — apc.js, cmo.js, rittal.js, hyperline.js, kehua.js + index.js (агрегатор + DOOR_LABEL/TOP_LABEL/... + listBuiltinRacks/getLiveKitCatalog/kitById).',
