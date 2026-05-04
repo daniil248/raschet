@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.201', date: '2026-05-04', items: [
+      '🗄 <b>«Перечень электротехнического оборудования»</b>: переименован modal + исключены integrated UPS секции и multi-section panel секции. По репорту Пользователя 2026-05-04 «то не перечень оборудования а перечень электротехнического оборудования. И снова, всё то что входит в другие приборы, например в интегрированный ИБП, не должно отображаться как отдельный щит, он живет только в рамках ИБП».',
+      '• <b>Title</b>: «🗄 Перечень оборудования» → «🗄 Перечень электротехнического оборудования» (везде в UI).',
+      '• <b>Фильтр</b>: исключены panel-узлы с <code>parentSectionedId</code> (секции multi-section) и panel-узлы из <code>ups.integratedChildIds</code> (PDM-AC/IT/Bypass MR33). Z1.UPS1.AC, Z1.UPS1.IN, Z1.UPS1.IT1, Z1.UPS1.IT2 больше не появляются как отдельные щиты — они часть Z1.UPS1.',
+      'Файлы: <code>js/main.js</code> (renderEquipmentTable filter), <code>index.html</code> (title).',
+    ] },
     { version: '0.60.200', date: '2026-05-04', items: [
       '🧮 <b>Per-unit = total / count в group footer и body — math сходится</b>. По репорту Пользователя 2026-05-04 «почему 4 × 8.0 ???». Раньше «4 × 8.0 kW = 34.3 kW» — арифметика не билась (4×8=32, не 34.3).',
       '• <b>Корень bug</b>: per-unit вычислялся через формулу <code>_homo.common.demandKw × _homo.common.kUse</code> (homogeneous-fast-path). Эта формула могла давать ОТЛИЧНОЕ число от <code>total / count</code>, если у одного из членов внутренний <code>n.count > 1</code> или режимный factor применился.',

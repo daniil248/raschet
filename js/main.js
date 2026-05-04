@@ -4776,7 +4776,7 @@ function renderDashboard() {
       <button type="button" class="dash-action" data-action="issues" style="padding:8px 14px;border:1px solid #c62828;background:#fff;color:#c62828;border-radius:4px;cursor:pointer;font-size:12px">⚠ Проверки проекта</button>
       <button type="button" class="dash-action" data-action="cables" style="padding:8px 14px;border:1px solid #1976d2;background:#fff;color:#1976d2;border-radius:4px;cursor:pointer;font-size:12px">🔌 Перечень кабелей</button>
       <button type="button" class="dash-action" data-action="consumers" style="padding:8px 14px;border:1px solid #7b1fa2;background:#fff;color:#7b1fa2;border-radius:4px;cursor:pointer;font-size:12px">💡 Перечень потребителей</button>
-      <button type="button" class="dash-action" data-action="equipment" style="padding:8px 14px;border:1px solid #5d4037;background:#fff;color:#5d4037;border-radius:4px;cursor:pointer;font-size:12px">🗄 Перечень оборудования</button>
+      <button type="button" class="dash-action" data-action="equipment" style="padding:8px 14px;border:1px solid #5d4037;background:#fff;color:#5d4037;border-radius:4px;cursor:pointer;font-size:12px">🗄 Перечень электротехнического оборудования</button>
       <button type="button" class="dash-action" data-action="search" style="padding:8px 14px;border:1px solid #2e7d32;background:#fff;color:#2e7d32;border-radius:4px;cursor:pointer;font-size:12px">🔍 Найти (Ctrl+F)</button>
     </div>
   `);
@@ -6123,7 +6123,7 @@ function _spNodeIcon(n) {
 // Ctrl+Shift+I — ⚠ Проверки проекта / Issues
 // Ctrl+Shift+L — 🔌 Перечень кабелей (Lines)
 // Ctrl+Shift+U — 💡 Перечень потребителей (Users/Consumers)
-// Ctrl+Shift+E — 🗄 Перечень оборудования (Equipment)
+// Ctrl+Shift+E — 🗄 Перечень электротехнического оборудования (Equipment)
 document.addEventListener('keydown', (e) => {
   const tgt = e.target;
   const inField = tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable);
@@ -7133,7 +7133,26 @@ function renderEquipmentTable() {
   const S = window.Raschet?._state;
   if (!S) { mount.innerHTML = '<div class="muted">Состояние недоступно</div>'; return; }
 
+  // v0.60.201 (по репорту Пользователя 2026-05-04 «то не перечень
+  // оборудования а перечень электротехнического оборудования. И снова,
+  // все то что входит в другие приборы, например в интегрированный ИБП,
+  // не должно отображаться как отдельный щит, он живет только в рамках
+  // ИБП»): исключаем panel-секции, которые являются частью integrated UPS
+  // (PDM-AC/IT/Bypass MR33) или multi-section panel-обёртки.
+  const _integratedChildIds = new Set();
+  for (const n of S.nodes.values()) {
+    if (n && n.type === 'ups' && Array.isArray(n.integratedChildIds)) {
+      for (const cid of n.integratedChildIds) _integratedChildIds.add(cid);
+    }
+  }
   const equip = [...S.nodes.values()]
+    .filter(n => {
+      // Секция многосекционного щита — часть parent'а, не отдельная позиция.
+      if (n.type === 'panel' && n.parentSectionedId && S.nodes.get(n.parentSectionedId)) return false;
+      // Panel-секция integrated UPS (PDM-AC/IT/Bypass) — учтена в parent ИБП.
+      if (n.type === 'panel' && _integratedChildIds.has(n.id)) return false;
+      return true;
+    })
     .map(n => ({ n, kind: _equipKindOf(n) }))
     .filter(e => e.kind);
 
@@ -7845,7 +7864,7 @@ async function init() {
         <tr><td>⚠ Проверки проекта / Issues</td><td><code>Ctrl+Shift+I</code></td></tr>
         <tr><td>🔌 Перечень кабелей (Lines)</td><td><code>Ctrl+Shift+L</code></td></tr>
         <tr><td>💡 Перечень потребителей (Users)</td><td><code>Ctrl+Shift+U</code></td></tr>
-        <tr><td>🗄 Перечень оборудования (Equipment)</td><td><code>Ctrl+Shift+E</code></td></tr>
+        <tr><td>🗄 Перечень электротехнического оборудования (Equipment)</td><td><code>Ctrl+Shift+E</code></td></tr>
         <tr><td>📐 Вместить всё (fit-to-view)</td><td><code>Пробел</code></td></tr>
         <tr><td>📏 Показать/скрыть сетку</td><td><code>G</code></td></tr>
         <tr><td>✕ Закрыть верхнюю модалку</td><td><code>Escape</code></td></tr>
