@@ -1587,6 +1587,25 @@ function drawLinkOverlay() {
 
   const parts = [];
   const links = getVisibleLinks();
+  // v0.60.158 (по репорту Пользователя 2026-05-04 «пересечения линий
+  // между стойками выглядит не очень»): группируем линки по парам
+  // (fromRackId, toRackId) и присваиваем порядковый индекс внутри
+  // каждой группы. Это обеспечивает stagger как в channel-Y (вертикаль),
+  // так и в gap-X (между стойками) — линии не накладываются друг
+  // на друга.
+  const _pairIndex = new Map();
+  for (const l of links) {
+    if (!l) continue;
+    // Канонический ключ — без направления (A↔B = B↔A одно «русло»).
+    const key = [l.fromRackId, l.toRackId].sort().join('|');
+    if (!_pairIndex.has(key)) _pairIndex.set(key, []);
+    _pairIndex.get(key).push(l.id);
+  }
+  const linkStaggerInGroup = (l) => {
+    const key = [l.fromRackId, l.toRackId].sort().join('|');
+    const arr = _pairIndex.get(key) || [];
+    return arr.indexOf(l.id);
+  };
   links.forEach(l => {
     const fromCenter = cardXCenter(l.fromRackId);
     const toCenter = cardXCenter(l.toRackId);
@@ -1635,28 +1654,46 @@ function drawLinkOverlay() {
         return { left: r.left - wrapRect.left, right: r.right - wrapRect.left, top: r.top - wrapRect.top };
       })();
       if (!fromCardBox || !toCardBox) return;
-      const GAP = 12;  // отступ между стойками для прохода кабеля
+      // v0.60.158: stagger для устранения наложения линий в одной паре.
+      const _stIdx = linkStaggerInGroup(l);
+      const _stagger = _stIdx >= 0 ? _stIdx : 0;
+      // gap-X stagger: линии в одной паре стоек получают разный x в gap'е.
+      const STAGGER_X = 3;  // px между параллельными вертикалями
+      const STAGGER_Y = 4;  // px между параллельными горизонталями в channel
+      const GAP = 12 + (_stagger % 5) * STAGGER_X;  // отступ между стойками + jitter
       // 1) Выход сбоку device — куда идёт линия
       const exitX = goingRight ? (fromCardBox.right + GAP) : (fromCardBox.left - GAP);
       const enterX = goingRight ? (toCardBox.left - GAP) : (toCardBox.right + GAP);
-      // 2) Channel Y — на 30 px выше самой высокой стойки
-      const chY = Math.min(_channelY, Math.min(fromCardBox.top, toCardBox.top) - 20);
+      // 2) Channel Y — на 30 px выше самой высокой стойки + stagger по индексу.
+      // Каждый следующий линк в группе получает channel y на STAGGER_Y выше.
+      const chYBase = Math.min(_channelY, Math.min(fromCardBox.top, toCardBox.top) - 20);
+      const chY = chYBase - _stagger * STAGGER_Y;
       const dPath = `M ${A.x} ${A.y} L ${exitX} ${A.y} L ${exitX} ${chY} L ${enterX} ${chY} L ${enterX} ${B.y} L ${B.x} ${B.y}`;
       parts.push(`<path class="sd-link-path sd-link-overrack${isSel ? ' selected' : ''}" data-link-id="${escapeAttr(l.id)}" d="${dPath}" fill="none" stroke="${color}" stroke-width="2.5" stroke-opacity="0.85" stroke-linejoin="round" stroke-linecap="round" style="cursor:pointer"><title>${titleAttr} (клик: выделить связь, Shift+клик — добавить)</title></path>`);
       return;
     }
 
     // Bezier-mode (default): bezier по бокам с провисанием.
+    // v0.60.158 (по репорту Пользователя «а ты не забыл про чек боксы???»):
+    // stagger применяется и в bezier-режиме (раньше был только в over-rack).
+    // Без stagger несколько линий между одной парой стоек ложились друг
+    // на друга без визуальной разницы.
     const fromSide = fromCenter < toCenter ? 'right' : 'left';
     const toSide   = fromCenter < toCenter ? 'left'  : 'right';
     const A = getCenter(l.fromRackId, l.fromDevId, fromSide);
     const B = getCenter(l.toRackId, l.toDevId, toSide);
     if (!A || !B) return;
+    const _stIdx = linkStaggerInGroup(l);
+    const _stagger = _stIdx >= 0 ? _stIdx : 0;
     const dx = Math.abs(B.x - A.x);
     const bend = Math.max(40, dx * 0.35);
     const c1x = A.x + (fromSide === 'right' ? bend : -bend);
     const c2x = B.x + (toSide === 'right' ? bend : -bend);
-    const sag = linksSagEnabled ? Math.min(120, Math.max(20, dx * 0.18)) : 0;
+    // Sag stagger: каждая следующая линия в группе провисает на 6px глубже,
+    // плюс control-point bend варьируется. Это визуально «расслаивает»
+    // bezier-кривые, делая их различимыми.
+    const sagBase = linksSagEnabled ? Math.min(120, Math.max(20, dx * 0.18)) : 0;
+    const sag = sagBase + _stagger * 6;
     const c1y = A.y + sag;
     const c2y = B.y + sag;
     parts.push(`<path class="sd-link-path${isSel ? ' selected' : ''}" data-link-id="${escapeAttr(l.id)}" d="M ${A.x} ${A.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${B.x} ${B.y}" stroke="${color}" style="cursor:pointer"><title>${titleAttr} (клик: выделить связь, Shift+клик — добавить)</title></path>`);
@@ -5042,6 +5079,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // v0.59.869: «над стойками» режим — кабели идут полупрозрачно через
   // потолок над всеми шкафами вместо bezier по бокам.
   const overRackCb = document.getElementById('sd-links-overrack');
+  // v0.60.158: применяем класс .overrack-on к .sd-racks-wrap для условного
+  // padding-top (резерв пространства под channel-линии).
+  const _applyOverRackClass = () => {
+    document.querySelectorAll('.sd-racks-wrap').forEach(el => {
+      el.classList.toggle('overrack-on', !!linksOverRackEnabled);
+    });
+  };
+  _applyOverRackClass();
   if (overRackCb) {
     overRackCb.checked = linksOverRackEnabled;
     overRackCb.addEventListener('change', e => {
@@ -5054,6 +5099,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try { localStorage.setItem('scs-design.linksOverlay.sag.v1', '0'); } catch {}
         if (sagCb) sagCb.checked = false;
       }
+      _applyOverRackClass();
       drawLinkOverlay();
     });
   }

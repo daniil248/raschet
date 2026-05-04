@@ -254,11 +254,16 @@
 
 .sd-racks-wrap {
   position: relative;
-  /* v0.60.157 (по повторному репорту Пользователя 2026-05-04 «сверху
-     линий не видно»): padding-top 60px — резерв над стойками для over-rack
-     channel линий. Раньше racks начинались с y=8px, channelY уходил в
-     отрицательные координаты и обрезался SVG-viewBox'ом. */
-  padding-top: 60px;
+  /* v0.60.157/158: padding-top — резерв над стойками для over-rack
+     channel линий. Применяется ТОЛЬКО когда over-rack режим включён
+     (класс .overrack-on на body или .sd-racks-wrap). По репорту
+     Пользователя «а ты не забыл про чек боксы???» — раньше padding
+     применялся всегда, даже когда checkbox unchecked, и оставался
+     лишний пробел сверху. */
+  padding-top: 8px;
+}
+.sd-racks-wrap.overrack-on {
+  padding-top: 120px;
 }
 .sd-racks-row {
   /* v0.59.285: выравнивание карточек по низу — U1 всегда на одной линии,

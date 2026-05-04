@@ -4,6 +4,18 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.158', date: '2026-05-04', items: [
+      '🔗 <b>scs-design: stagger линий + checkbox-aware padding</b>. По репортам Пользователя 2026-05-04 «пересечения линий между стойками выглядит не очень» + «а ты не забыл про чек боксы???»',
+      '• <b>Stagger в обоих режимах</b> (over-rack + bezier-with-sag):',
+      '  • Group по канон-ключу <code>[fromRack, toRack].sort().join(\'|\')</code> — направление неважно (A↔B = B↔A одно «русло»).',
+      '  • Index линка в группе → stagger.',
+      '  • <b>Over-rack</b>: каждая следующая линия пары получает channelY на 4px выше + jitter exitX/enterX на 3px. Параллельные горизонтали и вертикали не перекрываются.',
+      '  • <b>Bezier+sag</b>: каждая следующая линия в паре провисает на 6px глубже базового sag. Bezier-кривые «расслаиваются» вертикально вниз.',
+      '• <b>Padding-top conditional</b>:',
+      '  • Раньше padding-top:120px применялся ВСЕГДА (даже когда over-rack OFF) → лишний пробел сверху.',
+      '  • Теперь: <code>.sd-racks-wrap.overrack-on</code> получает 120px, иначе 8px (минимум). Класс toggle\'ится в обработчике checkbox.',
+      'Файлы: <code>scs-design/scs-design.js</code> (linkStaggerInGroup helper + stagger в обоих режимах + _applyOverRackClass), <code>scs-design/scs-design.css</code> (.sd-racks-wrap padding-top conditional через .overrack-on класс).',
+    ] },
     { version: '0.60.157', date: '2026-05-04', items: [
       '🔗 <b>scs-design follow-up: 3 фикса по повторным репортам Пользователя 2026-05-04</b>.',
       '• <b>«сверху линий не видно»</b>: добавлен <code>padding-top:60px</code> к <code>.sd-racks-wrap</code> — резерв над стойками для over-rack channel линий. Раньше racks начинались с y=8px, channelY уходил в отрицательные координаты и обрезался SVG-viewBox\'ом. Теперь над стойками 60px свободного пространства, channel виден.',
