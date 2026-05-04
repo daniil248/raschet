@@ -296,6 +296,17 @@
   flex-shrink: 0; width: 220px; background: #fff;
   border: 1px solid #d4d8e0; border-radius: 8px; overflow: hidden;
   box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+  /* v0.60.149 (применение правила psychrometrics v0.60.148 «запрещено
+     выделять больше одного поля» к scs-design rack-cards): drag по
+     холсту больше не захватывает текст из нескольких карточек. Selection
+     разрешён только в input/textarea (для копирования значений). */
+  user-select: none;
+  -webkit-user-select: none;
+}
+.sd-rack-card input,
+.sd-rack-card textarea {
+  user-select: text;
+  -webkit-user-select: text;
 }
 .sd-rack-card .sd-rack-head {
   padding: 8px 10px; background: #f1f5f9; border-bottom: 1px solid #d4d8e0;

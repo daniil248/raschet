@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.149', date: '2026-05-04', items: [
+      '🎨 <b>scs-design: user-select fix на rack-cards</b>. Применение паттерна psychrometrics v0.60.148 «запрещено выделять больше одного поля» — drag по холсту больше не захватывает текст из нескольких rack-карточек одновременно (был визуальный баг «синее выделение везде»).',
+      '• <code>.sd-rack-card</code> получил <code>user-select:none</code>; внутри input/textarea — <code>user-select:text</code> (для копирования значений).',
+      '• Memory rule <code>feedback_sidebar_item_ergonomics.md</code> расширен — добавлен раздел «Связанное правило: user-select на canvas-карточках» с чек-листом.',
+      'Файлы: <code>scs-design/scs-design.css</code> (.sd-rack-card user-select:none + override на input).',
+    ] },
     { version: '0.60.148', date: '2026-05-04', items: [
       '🌡 <b>psychrometrics: 3 фикса по репорту Пользователя 2026-05-04</b>.',
       '• <b>«запрещено выделять больше одного поля»</b>: на карточках точек включён <code>user-select:none</code>. Selection текста разрешена только внутри input/textarea/computed-блока. Раньше drag по холсту захватывал текст из нескольких карточек, давая «синее выделение везде».',
