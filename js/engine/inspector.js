@@ -1829,59 +1829,133 @@ function _wireContainerMembersModal(n, body, modal) {
   const collapseBtn = document.getElementById('cm-collapse-group');
   if (collapseBtn) {
     collapseBtn.addEventListener('click', () => {
-      const slots = Array.isArray(n.slots) ? n.slots : [];
-      const linked = slots.filter(s => s && s.kind === 'linked' && s.nodeId);
-      if (linked.length !== 1) return;
-      const memberId = linked[0].nodeId;
-      const a = state.nodes.get(memberId);
-      if (!a) return;
-      snapshot('container-collapse:' + n.id);
-      // Возвращаем consumer на canvas: pageIds + positionsByPage от контейнера.
-      a.pageIds = Array.isArray(n.pageIds) ? n.pageIds.slice() : [];
-      if (n.positionsByPage) {
-        try { a.positionsByPage = JSON.parse(JSON.stringify(n.positionsByPage)); } catch {}
-      }
-      a.x = n.x; a.y = n.y;
-      delete a.containerId;
-      // Перенаправить connections container → consumer.
-      for (const c of state.conns.values()) {
-        if (c.from && c.from.nodeId === n.id) c.from.nodeId = a.id;
-        if (c.to && c.to.nodeId === n.id) c.to.nodeId = a.id;
-      }
-      if (state.sysConns) {
-        for (const sc of state.sysConns.values()) {
-          if (sc.fromNodeId === n.id) sc.fromNodeId = a.id;
-          if (sc.toNodeId === n.id) sc.toNodeId = a.id;
+      try {
+        const slots = Array.isArray(n.slots) ? n.slots : [];
+        // v0.60.183 fix (по репорту Пользователя «группу так и не могу
+        // расформировать. В одном месте удаляю, в другом остается»):
+        // 1. Фильтруем по СУЩЕСТВОВАНИЮ node в state.nodes (как в header
+        //    linkedCount), а не только по truthy nodeId. Раньше stale-slot
+        //    (linked-slot с удалённым consumer'ом) давал linked.length>1 →
+        //    handler bail'ил без эффекта.
+        // 2. Чистим stale-slots до проверки.
+        // 3. Принудительный bypassConnGate в _deleteNode (на случай если
+        //    redirect не покрыл какие-то connections).
+        const liveSlots = slots.filter(s => {
+          if (!s) return false;
+          if (s.kind === 'placeholder') return true;
+          if (s.kind === 'linked' && s.nodeId) {
+            return !!state.nodes.get(s.nodeId);
+          }
+          return false;
+        });
+        const liveLinked = liveSlots.filter(s => s.kind === 'linked' && s.nodeId);
+        const livePh = liveSlots.filter(s => s.kind === 'placeholder');
+        if (liveLinked.length !== 1 || livePh.length !== 0) {
+          console.warn('[collapse-group] aborted: liveLinked=' + liveLinked.length + ' livePh=' + livePh.length);
+          return;
         }
+        const memberId = liveLinked[0].nodeId;
+        const a = state.nodes.get(memberId);
+        if (!a) {
+          console.warn('[collapse-group] aborted: member not found:', memberId);
+          return;
+        }
+        snapshot('container-collapse:' + n.id);
+        // Возвращаем consumer на canvas: pageIds + positionsByPage от контейнера.
+        a.pageIds = Array.isArray(n.pageIds) ? n.pageIds.slice() : [];
+        if (n.positionsByPage) {
+          try { a.positionsByPage = JSON.parse(JSON.stringify(n.positionsByPage)); } catch {}
+        }
+        a.x = n.x; a.y = n.y;
+        delete a.containerId;
+        // Перенаправить connections container → consumer.
+        for (const c of state.conns.values()) {
+          if (c.from && c.from.nodeId === n.id) c.from.nodeId = a.id;
+          if (c.to && c.to.nodeId === n.id) c.to.nodeId = a.id;
+        }
+        if (state.sysConns) {
+          for (const sc of state.sysConns.values()) {
+            if (sc.fromNodeId === n.id) sc.fromNodeId = a.id;
+            if (sc.toNodeId === n.id) sc.toNodeId = a.id;
+          }
+        }
+        // Перед удалением — обнуляем slots, чтобы не было cascading.
+        n.slots = [];
+        // Удаляем контейнер. bypassConnGate — на случай если какие-то
+        // connections не покрылись redirect'ом (sectioned/system-conns).
+        const delResult = _deleteNode(n.id, {
+          hard: true, silent: true, force: true, bypassConnGate: true
+        });
+        if (delResult && delResult.blocked) {
+          console.warn('[collapse-group] _deleteNode blocked:', delResult);
+          // Попытка fallback: удалить напрямую из state.nodes
+          state.nodes.delete(n.id);
+        }
+        // Снимаем выделение если был выбран контейнер.
+        if (state.selectedKind === 'node' && state.selectedId === n.id) {
+          state.selectedKind = null; state.selectedId = null;
+        }
+        modal.classList.add('hidden');
+        _render();
+        try { renderInspector(); } catch {}
+        notifyChange();
+      } catch (err) {
+        console.error('[collapse-group] FAILED:', err);
+        alert('Ошибка расформирования группы. Откройте консоль (F12) для деталей.');
       }
-      // Удалить контейнер (без удаления consumer'а — мы передали ему ссылки).
-      try { _deleteNode(n.id, { hard: true, silent: true, force: true }); } catch {}
-      modal.classList.add('hidden');
-      _render(); notifyChange();
     });
   }
   // v0.60.180: «🗑 Удалить группу полностью» — контейнер + все linked-members.
   const deleteContainerBtn = document.getElementById('cm-delete-container');
   if (deleteContainerBtn) {
     deleteContainerBtn.addEventListener('click', async () => {
-      const slots = Array.isArray(n.slots) ? n.slots : [];
-      const linked = slots.filter(s => s && s.kind === 'linked' && s.nodeId);
-      const lcount = linked.length;
-      const ok = await rsConfirm(
-        'Удалить группу полностью?',
-        `Удалятся: контейнер «${n.tag || n.name || n.id}» и ${lcount} linked-потребител${lcount === 1 ? 'ь' : (lcount < 5 ? 'я' : 'ей')}. Действие необратимо.`,
-        { okLabel: 'Удалить', cancelLabel: 'Отмена' }
-      );
-      if (!ok) return;
-      snapshot('container-deleteall:' + n.id);
-      // Удаляем сначала linked-consumer'ы (без force — они могут иметь
-      // pageIds=[] так что hard-delete пройдёт), затем сам контейнер.
-      for (const s of linked) {
-        try { _deleteNode(s.nodeId, { hard: true, silent: true, force: true }); } catch {}
+      try {
+        const slots = Array.isArray(n.slots) ? n.slots : [];
+        const linked = slots.filter(s => s && s.kind === 'linked' && s.nodeId && state.nodes.get(s.nodeId));
+        const lcount = linked.length;
+        const ok = await rsConfirm(
+          'Удалить группу полностью?',
+          `Удалятся: контейнер «${n.tag || n.name || n.id}» и ${lcount} linked-потребител${lcount === 1 ? 'ь' : (lcount < 5 ? 'я' : 'ей')}. Действие необратимо.`,
+          { okLabel: 'Удалить', cancelLabel: 'Отмена' }
+        );
+        if (!ok) return;
+        snapshot('container-deleteall:' + n.id);
+        // Сначала обрываем все state.conns/sysConns ссылающиеся на контейнер
+        // и его linked-members (иначе delete-gate блокирует hard-delete).
+        const allIds = new Set([n.id]);
+        for (const s of linked) allIds.add(s.nodeId);
+        for (const [cid, c] of Array.from(state.conns.entries())) {
+          if (allIds.has(c.from?.nodeId) || allIds.has(c.to?.nodeId)) {
+            state.conns.delete(cid);
+          }
+        }
+        if (state.sysConns) {
+          for (const [scid, sc] of Array.from(state.sysConns.entries())) {
+            if (allIds.has(sc.fromNodeId) || allIds.has(sc.toNodeId) ||
+                allIds.has(sc.from?.nodeId) || allIds.has(sc.to?.nodeId)) {
+              state.sysConns.delete(scid);
+            }
+          }
+        }
+        n.slots = [];
+        // Удаляем linked-consumer'ы, затем сам контейнер.
+        for (const s of linked) {
+          const r = _deleteNode(s.nodeId, { hard: true, silent: true, force: true, bypassConnGate: true });
+          if (r && r.blocked) state.nodes.delete(s.nodeId);
+        }
+        const r2 = _deleteNode(n.id, { hard: true, silent: true, force: true, bypassConnGate: true });
+        if (r2 && r2.blocked) state.nodes.delete(n.id);
+        if (state.selectedKind === 'node' && allIds.has(state.selectedId)) {
+          state.selectedKind = null; state.selectedId = null;
+        }
+        modal.classList.add('hidden');
+        _render();
+        try { renderInspector(); } catch {}
+        notifyChange();
+      } catch (err) {
+        console.error('[delete-container] FAILED:', err);
+        alert('Ошибка удаления группы. Откройте консоль (F12) для деталей.');
       }
-      try { _deleteNode(n.id, { hard: true, silent: true, force: true }); } catch {}
-      modal.classList.add('hidden');
-      _render(); notifyChange();
     });
   }
   // close handlers

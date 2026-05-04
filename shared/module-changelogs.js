@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.183', date: '2026-05-04', items: [
+      '🐛 <b>Расформировать/удалить группу: фикс</b>. По репорту Пользователя 2026-05-04 «группу так и не могу расформировать. В одном месте удаляю, в другом остается. Ничего не происходит». v0.60.180 handler bail\'ил без эффекта при определённых условиях.',
+      '• <b>Корень bug</b>: handler фильтровал slots по <code>s.nodeId</code> truthy, но <code>linkedCount</code> в header (что показывал кнопку) проверял <b>существование</b> node в <code>state.nodes</code>. Если был stale-slot (linked-slot с удалённым consumer\'ом) — кнопка показывалась (linkedCount=1) но handler видел linked.length=2 и bail\'ил.',
+      '• <b>Фикс «↩ Расформировать»</b>: фильтрация по <code>state.nodes.get(s.nodeId)</code> (как в header), bypassConnGate в _deleteNode, fallback <code>state.nodes.delete(n.id)</code> если delete-gate блокирует, явный <code>renderInspector()</code> после.',
+      '• <b>Фикс «🗑 Удалить группу полностью»</b>: тот же existence-filter, явный сброс state.conns/sysConns ссылающихся на контейнер и members ДО hard-delete, fallback на state.nodes.delete.',
+      '• <b>Try/catch с alert</b>: если что-то фундаментально сломано — Пользователь видит ошибку вместо тихого no-op. Console.warn при abort\'ах для диагностики.',
+      'Файл: <code>js/engine/inspector.js</code> (collapseBtn handler + deleteContainerBtn handler).',
+    ] },
     { version: '0.60.182', date: '2026-05-04', items: [
       '🎴 <b>Карточка потребителя/группы: только Номинал, без Расчёт/Макс/ΔU</b>. По репорту Пользователя 2026-05-04 «падение напряжения на карточке потребителя не нужно. А вот номинальную мощность / ток, лучше вывести. Расчетный и максимальный наверное тоже не нужен. Максимальный ток / мощность актуально только для щитов».',
       '• <b>Скрыто</b> на consumer/consumer-container карточках: демандKw (Расчёт), currentA, maxKw (Макс), maxA, deltaUPct (ΔU).',
