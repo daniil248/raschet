@@ -533,6 +533,10 @@ export function generateReport() {
   for (const n of state.nodes.values()) {
     if (!_inSpace(n)) continue;
     if (n.type === 'consumer') {
+      // v0.60.194: члены consumer-container и linked-aliases подключены
+      // через родителя — пропускаем «не подключён» проверку для них.
+      if (n.containerId && state.nodes.get(n.containerId)) continue;
+      if (n.linkedAlias && state.nodes.get(n.linkedAlias)) continue;
       const hasIn = [...state.conns.values()].some(c => c.to.nodeId === n.id);
       if (!hasIn) issues.push(`  ⚠ Потребитель ${fullTag(n) || n.name} не подключён`);
       if (!n._powered) issues.push(`  ⚠ Потребитель ${fullTag(n) || n.name} без питания`);

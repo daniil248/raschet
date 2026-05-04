@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.194', date: '2026-05-04', items: [
+      '✅ <b>Члены группы больше не считаются «не подключёнными»</b> в отчёте «Проверки и предупреждения». По репорту Пользователя 2026-05-04 «в отчете моя группа потребителей считается неподключенной, исправляй». 8 потребителей SR01-SR08 внутри группы помечались как «не подключён», хотя группа физически запитана.',
+      '• <b>Корень bug</b>: проверка <code>state.conns.values().some(c =&gt; c.to.nodeId === n.id)</code> искала connection напрямую к consumer\'у. Но дочерние члены container\'а — это linked-slots внутри n.slots, connections идут к container.id, не к consumer.id.',
+      '• <b>Фикс</b>: пропускаем consumer\'ов с <code>n.containerId</code> (член группы — подключён через container) и <code>n.linkedAlias</code> (alias master\'а — запитан через master).',
+      '• <b>Применено</b> в обоих местах: <code>js/engine/report-sections.js</code> (структурированный отчёт) и <code>js/engine/report.js</code> (text-формат).',
+      'Файлы: <code>js/engine/report-sections.js</code>, <code>js/engine/report.js</code>.',
+    ] },
     { version: '0.60.193', date: '2026-05-04', items: [
       '🔧 <b>Serial-mode иконки больше не наезжают на текст</b>. По репорту Пользователя 2026-05-04 «при последовательном включении потребителей отображается графика которая накладывается на текст, исправь проблему».',
       '• Иконки серии (5 розеток в ряду) перенесены с <code>y=NODE_H-30=90</code> (прямо в body) на <code>y=66</code> — выделенная полоса между subtitle и body.',

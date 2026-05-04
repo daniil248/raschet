@@ -1285,6 +1285,14 @@ function sectionChecks() {
   for (const n of state.nodes.values()) {
     if (!inSpace(n)) continue;
     if (n.type === 'consumer') {
+      // v0.60.194 (по репорту Пользователя 2026-05-04 «в отчете моя группа
+      // потребителей считается неподключенной, исправляй»): дочерние члены
+      // consumer-container'а подключены ЧЕРЕЗ container (container.id видит
+      // connections, а consumer.id — нет, т.к. это linked-slot). Также
+      // linkedAlias-узлы — копии master-узла, физически они «не размещены»
+      // на canvas, но запитаны через master.
+      if (n.containerId && state.nodes.get(n.containerId)) continue; // член группы
+      if (n.linkedAlias && state.nodes.get(n.linkedAlias)) continue; // алиас master'а
       const hasIn = [...state.conns.values()].some(c => c.to.nodeId === n.id);
       if (!hasIn) issues.push({ level: 'warn', text: `Потребитель ${fullTag(n) || n.name} не подключён` });
       if (!n._powered) issues.push({ level: 'warn', text: `Потребитель ${fullTag(n) || n.name} без питания` });
