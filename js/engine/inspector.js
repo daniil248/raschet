@@ -1439,7 +1439,20 @@ export function openContainerMembersModal(container) {
           </div>`);
           continue;
         }
-        const tag = effectiveTag(a) || a.tag || a.id;
+        // v0.60.238 (по запросу Пользователя 2026-05-05 «добавь на карточки
+        // количество портов и приоритет их использования» / «отобрази все
+        // поля которые отображаются на карточке размещенного потребителя»
+        // / «и в обозначение потребителя так же добавь обозначение зоны,
+        // чтобы не путаться»): расширенная карточка члена контейнера —
+        // те же поля что у standalone-consumer card, плюс зонный префикс.
+        let tag = effectiveTag(a) || a.tag || a.id;
+        // Если effectiveTag не вернул префикс зоны (consumer внутри
+        // container не считается прямым членом zone) — берём префикс зоны
+        // самого container'а.
+        if (!tag.includes('.') && container) {
+          const cZone = findZoneForMember(container);
+          if (cZone && cZone.zonePrefix) tag = `${cZone.zonePrefix}.${tag}`;
+        }
         const name = a.name || '';
         const kw = Number(a.demandKw) || 0;
         const cnt = Math.max(1, Number(a.count) || 1);
@@ -1447,16 +1460,58 @@ export function openContainerMembersModal(container) {
         const cos = a.cosPhi || 0.95;
         const phase = a.phase || '3ph';
         const v = Number(a.voltage) || 400;
+        const ku = (a.kUse != null) ? Number(a.kUse) : 1;
+        const inputs = Math.max(1, Number(a.inputs) || 1);
+        const priorities = Array.isArray(a.priorities) ? a.priorities : [];
+        // Описание портов и приоритетов.
+        let portsTxt = `${inputs} вх.`;
+        if (inputs > 1 && priorities.length) {
+          const allOnes = priorities.every(p => Number(p) === 1);
+          const ascending = priorities.every((p, idx) => Number(p) === idx + 1);
+          if (allOnes) {
+            portsTxt = `${inputs} вх. · параллель (все ${priorities.map(p => `prio=${p}`).join(', ')})`;
+          } else if (ascending) {
+            portsTxt = `${inputs} вх. · АВР (${priorities.map((p, idx) => `P${idx + 1}=${p}`).join(', ')})`;
+          } else {
+            portsTxt = `${inputs} вх. · ${priorities.map((p, idx) => `P${idx + 1}=${p}`).join(', ')}`;
+          }
+        }
+        // Расчётный ток (упрощённо: I = P × count × Ки / (k × U × cos)).
+        const ph3 = phase === '3ph';
+        const Uc = ph3 ? v : (v <= 250 ? v : 230);
+        const k = ph3 ? Math.sqrt(3) : 1;
+        const Pnom = kw * cnt;
+        const Inom = (Pnom > 0 && Uc > 0 && cos > 0) ? (Pnom * 1000) / (k * Uc * cos) : 0;
+        const Pcalc = Pnom * ku;
+        const Icalc = (Pcalc > 0 && Uc > 0 && cos > 0) ? (Pcalc * 1000) / (k * Uc * cos) : 0;
+        // Статус питания.
+        const powered = !!a._powered;
+        const overload = !!a._overload;
+        const statusBadge = overload
+          ? `<span style="background:#fee2e2;color:#991b1b;padding:1px 6px;border-radius:3px;font-size:10px">⚠ перегруз</span>`
+          : (powered
+              ? `<span style="background:#dcfce7;color:#166534;padding:1px 6px;border-radius:3px;font-size:10px">⚡ запитан</span>`
+              : `<span style="background:#f1f5f9;color:#64748b;padding:1px 6px;border-radius:3px;font-size:10px">○ без питания</span>`);
         h.push(`<div style="padding:10px 12px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;display:flex;flex-direction:column;gap:4px">
           <div style="display:flex;align-items:center;gap:6px;border-bottom:1px solid #f1f5f9;padding-bottom:5px">
-            <span style="flex:1;font-weight:600;font-size:14px">${escHtml(tag)}</span>
+            <span style="flex:1;font-weight:600;font-size:14px" title="Полный путь с зоной/контейнером для уникальной идентификации потребителя.">${escHtml(tag)}</span>
+            ${statusBadge}
             <span style="color:#778899;font-size:11px">#${i + 1}</span>
           </div>
           <div style="font-size:12px;color:#334155;margin-bottom:4px">${escHtml(name)} · <span style="color:#64748b">${escHtml(sub)}</span></div>
           <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 8px;font-size:11px;color:#475569;align-items:center">
-            <span>P:</span><b>${cnt > 1 ? `${cnt}×${kw}` : kw} кВт</b>
-            <span>cos φ:</span><b>${cos}</b>
-            <span>Фаза:</span><b>${escHtml(phase)} · ${v} В</b>
+            <span title="Установленная мощность одного прибора (P_ном) × количество.">P_ном:</span>
+            <b>${cnt > 1 ? `${cnt}×${kw} = ${fmt(Pnom)}` : fmt(kw)} кВт <span class="muted">/ ${fmt(Inom, 1)} A</span></b>
+            <span title="Расчётная мощность с учётом коэффициента использования (К_и). По ПУЭ 1.3.13.">P_расч:</span>
+            <b>${fmt(Pcalc)} кВт <span class="muted">/ ${fmt(Icalc, 1)} A</span></b>
+            <span title="Коэффициент использования (К_и).">К_и:</span>
+            <b>${ku.toFixed(2)}</b>
+            <span title="Косинус φ — коэффициент мощности.">cos φ:</span>
+            <b>${cos}</b>
+            <span title="Фаза и напряжение.">U / Фаза:</span>
+            <b>${escHtml(phase)} · ${v} В</b>
+            <span title="Количество входных портов (P1, P2…) и приоритеты их использования. Параллель = все приоритеты одинаковые. АВР = разные (1=primary, 2=standby).">Входы:</span>
+            <b>${escHtml(portsTxt)}</b>
           </div>
           <div style="display:flex;gap:4px;margin-top:6px">
             <button type="button" data-cm-edit="${escAttr(a.id)}" style="flex:1;padding:4px 8px;font-size:11px;border:1px solid #2563eb;background:#dbeafe;color:#1e40af;border-radius:4px;cursor:pointer" title="Открыть полный инспектор члена">⚙ Редактировать</button>

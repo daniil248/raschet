@@ -3155,36 +3155,11 @@ function _ctNodeTag(n) {
 //     (cable-spec — общий, физически 1 кабель к группе/контейнеру).
 // Bulk-edit и inline-правки работают на parent-conn (data-id одинаковый
 // для всех виртуальных строк одной группы — правка отразится на всех).
-// v0.60.233 (по уточнению Пользователя 2026-05-05 «если бы это был один
-// кабель к группе из 8 потребителей, я бы с тобой согласился» — т.е. в
-// текущей модели это N отдельных кабелей, каждый по Pном одного прибора):
-// helper подбирает min IEC-сечение под одиночный ток (без учёта breaker).
-function _pickIecSizeForCurrent(parentConn, currentA) {
-  if (!Number.isFinite(currentA) || currentA <= 0) return null;
-  try {
-    const G = window.Raschet?.getGlobal?.() || {};
-    // Используем те же материал/изоляцию/способ что и у parent-conn (общая марка).
-    const material = parentConn.material || G.defaultMaterial || 'Cu';
-    const insulation = parentConn.insulation || G.defaultInsulation || 'PVC';
-    const method = parentConn._cableMethod || parentConn.installMethod || G.defaultInstallMethod || 'B1';
-    const tablesMod = _IEC_TABLES;
-    if (!tablesMod) return null;
-    const m = tablesMod[material] || tablesMod.Cu;
-    const ins = m && (m[insulation] || m.PVC || Object.values(m)[0]);
-    const tbl = ins && (ins[method] || ins.B1 || Object.values(ins)[0]);
-    if (!Array.isArray(tbl)) return null;
-    // Фильтр по maxCableSize.
-    const maxS = Number(G.maxCableSize) || 240;
-    const eff = tbl.filter(([s]) => s <= maxS);
-    // Применяем k_temp / k_group / k_bundling если такие данные доступны
-    // у parent-conn (упрощённо — используем номинальные таблицы без deratings,
-    // чтобы быстро показать «индикативное» сечение для журнала).
-    for (const [s, iRef] of eff) {
-      if (iRef >= currentA) return s;
-    }
-    return null; // ни одно сечение не подходит
-  } catch { return null; }
-}
+// v0.60.237 (по уточнению Пользователя 2026-05-05 «сечения кабеля для
+// группового потребителя или для группы потребителей менять не стоит,
+// так как там обычно абсолютно одинаковые нагрузки. А вот длина может
+// немного отличатся»): per-row sizing откачено. Все виртуальные строки
+// группы используют сечение parent-conn (одинаковое). Helper удалён.
 
 function _expandConnsForJournal(conns, S) {
   if (!Array.isArray(conns)) return [];
@@ -3221,9 +3196,9 @@ function _expandConnsForJournal(conns, S) {
         const slotA = (slotKw > 0)
           ? (slotKw * 1000) / ((c._threePhase ? Math.sqrt(3) : 1) * (c._voltage || 400) * cosEff)
           : 0;
-        // v0.60.233: per-virtual-row sizing — каждая строка получает своё
-        // сечение под ток ОДНОГО прибора (не общий с parent-conn).
-        const indSize = _pickIecSizeForCurrent(c, slotA);
+        // v0.60.237: per-row sizing откачено — сечение НЕ меняется (берётся
+        // от parent-conn). Per-row остаются: метка, To-tag, индивидуальная
+        // нагрузка/ток. Длина пока тоже общая (parent.lengthM).
         const v = Object.assign(Object.create(c), {
           _virtualParentId: c.id,
           _virtualGroupIdx: idx - 1,
@@ -3233,7 +3208,6 @@ function _expandConnsForJournal(conns, S) {
           _virtualLoadKw: slotKw,
           _virtualLoadA: slotA || null,
           _virtualMaxA: slotA || null,
-          _virtualCableSize: indSize,
         });
         out.push(v);
       }
@@ -3252,7 +3226,6 @@ function _expandConnsForJournal(conns, S) {
         const slotA = (baseKw > 0)
           ? (baseKw * 1000) / ((c._threePhase ? Math.sqrt(3) : 1) * (c._voltage || 400) * cosEff)
           : 0;
-        const indSize = _pickIecSizeForCurrent(c, slotA);
         const v = Object.assign(Object.create(c), {
           _virtualParentId: c.id,
           _virtualGroupIdx: i - 1,
@@ -3262,7 +3235,6 @@ function _expandConnsForJournal(conns, S) {
           _virtualLoadKw: baseKw,
           _virtualLoadA: slotA || null,
           _virtualMaxA: slotA || null,
-          _virtualCableSize: indSize,
         });
         out.push(v);
       }
@@ -3413,8 +3385,8 @@ function exportCableTableCsv() {
     if (fMethod && String(c._cableMethod || c.installMethod || '').toLowerCase() !== fMethod) return false;
     if (fCond) {
       const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
-      // v0.60.233: для виртуальных строк — индивидуальное сечение.
-      const size = (c._virtualCableSize != null ? c._virtualCableSize : (c._cableSize || '?'));
+      // v0.60.237: per-row sizing откачено — все строки используют parent _cableSize.
+      const size = c._cableSize || '?';
       const n = Number(c._neutralSizeMm2) || 0;
       const spec = (c._busbarNom
         ? `шинопровод ${c._busbarNom} А`
@@ -3931,9 +3903,8 @@ function renderCableTable() {
     const toLabel = c._virtualToTag || _ctNodeTag(toN);
     const linePrefix = c._isHV ? 'WH' : (c._isDC ? 'WD' : 'W');
     const lineLabel = c._virtualLabel || c.lineLabel || `${linePrefix}-${fromLabel}-${toLabel}`;
-    // v0.60.233: для виртуальных строк (раскрытие группы) — индивидуальное
-    // сечение под Pном одного прибора (см. _expandConnsForJournal).
-    const _vCableSize = c._virtualCableSize;
+    // v0.60.237: per-row sizing откачено. Все строки группы используют
+    // parent _cableSize. Per-row остаётся только метка / To-tag / нагрузка.
     const _vMaxA = c._virtualMaxA;
 
     // Фильтр допустимых марок по классу линии
