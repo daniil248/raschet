@@ -4,6 +4,19 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.159', date: '2026-05-04', items: [
+      '⚡ <b>Трансформатор: нет автомата на выходе (по ПУЭ)</b>. По репорту Пользователя 2026-05-04 «у трансформатора обычно нет автомата на выходе».',
+      '• <b>Контекст</b>: на secondary side трансформатора (LV) автомата нет — защита ставится в ВВОДНОМ автомате downstream-ЩС (по ПУЭ-7.3.1 / IEC 60364-4-43, первый распределительный щит после ТП).',
+      '• <b>recalc.js</b> — новый блок <code>_isTransformerOutput</code>:',
+      '  • Срабатывает когда <code>fromN.type==\'source\'</code> и <code>sourceSubtype==\'transformer\'</code> (default subtype для source).',
+      '  • Помечает кабель как <code>_breakerInternal</code> + <code>transformer-secondary-passthrough</code> (исключается из BOM как отдельная позиция).',
+      '  • Использует <code>downstream.mainBreakerIn</code> или <code>inputBreakerIn</code> у panel/ups как защиту для cable.',
+      '  • Если ничего не задано — кабель не помечается как «In > Iz» ошибка (защита подберётся в downstream).',
+      '  • <code>manualBreakerIn</code> override остаётся (для случаев промежуточного автомата на длинном cable run).',
+      '  • По аналогии с UPS QF1/QF2/QF3 + utility infeed — единый pattern «защита в downstream-узле».',
+      '• <b>Эффект</b>: кабель transformer→panel больше не помечается как «не защищён» автоматом который физически отсутствует. Проверка переходит на main breaker downstream-щита.',
+      'Файлы: <code>js/engine/recalc.js</code> (+_isTransformerOutput блок ~30 строк перед UPS-обработкой).',
+    ] },
     { version: '0.60.158', date: '2026-05-04', items: [
       '🔗 <b>scs-design: stagger линий + checkbox-aware padding</b>. По репортам Пользователя 2026-05-04 «пересечения линий между стойками выглядит не очень» + «а ты не забыл про чек боксы???»',
       '• <b>Stagger в обоих режимах</b> (over-rack + bezier-with-sag):',

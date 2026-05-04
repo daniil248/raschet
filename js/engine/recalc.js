@@ -2546,6 +2546,55 @@ function recalc() {
       continue;
     }
 
+    // v0.60.159 (по репорту Пользователя 2026-05-04 «у трансформатора
+    // обычно нет автомата на выходе»): кабель ОТ трансформатора (secondary
+    // side, LV) защищается ВВОДНЫМ автоматом downstream-щита (main
+    // breaker первого ЩС после ТП). По ПУЭ-7.3.1 / IEC 60364-4-43 защита
+    // на стороне НН ставится в первом распределительном щите.
+    // На самой обмотке вторички автомата нет.
+    //
+    // Поведение:
+    //   • Если в downstream-узле (toN) задан inputBreakerIn (panel.mainBreaker
+    //     или panel.inputBreakerIn) — используем его для проверки кабеля.
+    //   • Иначе — кабель помечается как «защищён downstream'ом» без проверки
+    //     (аналогично utility infeed). Защита подбирается в downstream-щите.
+    //   • Manual override (c.manualBreakerIn) допускается — экзотика
+    //     (промежуточный автомат на cable run > 3м).
+    const _isTransformerOutput = fromN.type === 'source'
+      && (fromN.sourceSubtype || 'transformer') === 'transformer'
+      && fromN.sourceSubtype !== 'utility' && fromN.sourceSubtype !== 'grid';
+    if (_isTransformerOutput) {
+      // Ищем main breaker у downstream-узла (panel/ups input).
+      let downBrk = null;
+      if (toN.type === 'panel') {
+        downBrk = Number(toN.mainBreakerIn) || Number(toN.inputBreakerIn) || null;
+      } else if (toN.type === 'ups') {
+        downBrk = Number(toN.inputBreakerIn) || null;
+      }
+      if (c.manualBreakerIn) {
+        // Manual override — это и есть защита (промежуточный автомат).
+        c._breakerIn = Number(c.manualBreakerIn);
+        c._breakerInternal = false;
+        c._breakerExcludeFromBom = false;
+        c._breakerCount = 1;
+      } else {
+        c._breakerInternal = true;
+        c._breakerInternalSource = 'transformer-secondary-passthrough';
+        c._breakerExcludeFromBom = true;
+        c._breakerIn = downBrk;
+        c._breakerCount = 0;
+      }
+      c._breakerPerLine = null;
+      const IzTr = c._cableIz || 0;
+      const parTr = Math.max(1, c._cableParallel || 1);
+      // Если downstream-щит имеет inputBreakerIn — проверяем кабель против него.
+      // Если нет — не помечаем как ошибку (защита подберётся в downstream).
+      c._breakerAgainstCable = !!(c._breakerIn && IzTr > 0 && c._breakerIn > IzTr * parTr);
+      c._breakerUndersize = !!(c._breakerIn && c._maxA && c._breakerIn < c._maxA);
+      c._breakerCurveEff = 'MCCB';
+      continue;
+    }
+
     // Линия ОТ ИБП: защита — встроенный выходной автомат ИБП (QF3).
     // Если в параметрах ИБП задан outputBreakerIn — используем это
     // значение как номинал защиты линии. Если hasOutputBreaker=false —
