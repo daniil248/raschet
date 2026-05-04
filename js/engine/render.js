@@ -2174,37 +2174,38 @@ export function renderNodes() {
       const iconG = el('g', { transform: `translate(${w - 22},16)`, class: 'node-icon' });
       drawConsumerIconTo(iconG, _iconSubtype);
       g.appendChild(iconG);
-      // Serial-mode: нарисовать ряд мелких иконок В ВЕРХНЕЙ ПОЛОСЕ карточки
-      // (между subtitle и body), не накладываясь на текст.
-      // v0.60.193 (по репорту Пользователя 2026-05-04 «при последовательном
-      // включении потребителей отображается графика которая накладывается
-      // на текст, исправь проблему»): cy перенесён с NODE_H-30 (=90, прямо
-      // в body) на y=66 — между subtitle (~58) и body (начинается с y~80
-      // если bodyTopMin учитывает serialMode). Body fit-loop тоже знает
-      // про serialMode и сдвигает bodyTopMin вниз.
+      // Serial-mode: нарисовать цепочку мелких иконок В ПРАВОМ СТОЛБЦЕ
+      // карточки (вертикально), не накладываясь на body-текст.
+      // v0.60.196 (по репорту Пользователя 2026-05-04 «давай цепочку
+      // разместим справа вертикально, а тексты разместим как на обычных
+      // карточках»): cy/cx перевернуты — теперь иконки идут вертикально
+      // от y=46 (под верхним icon\'ом w-22,16) до y≈NODE_H-20. body
+      // возвращается к стандартному bodyTopMin=60 (как обычные карточки).
       const count = Math.max(1, Number(n.count) || 1);
       if (n.serialMode && count > 1) {
         const maxShown = Math.min(count, 6);
-        const step = Math.min(20, (w - 24) / maxShown);
-        const startX = 12 + step / 2;
-        const cy = 66;  // Между subtitle и body
+        const colCx = w - 14;        // правый столбец, ниже верхнего icon-а
+        const startY = 46;           // под верхним icon-ом (y=16, h≈26)
+        const endY = NODE_H - 18;    // оставляем место под низом
+        const step = Math.min(16, (endY - startY) / Math.max(1, maxShown));
         for (let k = 0; k < maxShown; k++) {
-          const cx = startX + k * step;
-          const sg = el('g', { transform: `translate(${cx},${cy}) scale(0.5)`, class: 'node-icon' });
+          const cy = startY + step * k + step / 2;
+          const sg = el('g', { transform: `translate(${colCx},${cy}) scale(0.45)`, class: 'node-icon' });
           drawConsumerIconTo(sg, n.consumerSubtype || 'custom', '#90a4ae');
           g.appendChild(sg);
+          // Вертикальная соединительная линия между иконками.
           if (k < maxShown - 1) {
             g.appendChild(el('line', {
-              x1: cx + step * 0.3, y1: cy,
-              x2: cx + step * 0.7, y2: cy,
+              x1: colCx, y1: cy + step * 0.3,
+              x2: colCx, y2: cy + step * 0.7,
               stroke: '#90a4ae', 'stroke-width': 1.2,
               class: 'node-icon',
             }));
           }
         }
         if (count > maxShown) {
-          const t = text(w - 12, cy + 4, `+${count - maxShown}`, 'node-icon-letter');
-          t.setAttribute('text-anchor', 'end');
+          const t = text(colCx, endY + 4, `+${count - maxShown}`, 'node-icon-letter');
+          t.setAttribute('text-anchor', 'middle');
           t.style.fill = '#90a4ae';
           g.appendChild(t);
         }
@@ -2977,12 +2978,10 @@ export function renderNodes() {
       const _bodyRowsAll = rowsByPos.body;
       const footerRows = rowsByPos.footer;
       const footerH = footerRows.length ? 12 : 0;
-      // v0.60.193: serial-mode иконки занимают полосу y=58..76 → body
-      // начинается с y=78. Без serialMode body начинается с y=60.
-      const _serialIconsActive = (n.type === 'consumer' || n.type === 'consumer-container')
-        && n.serialMode && (Number(n.count) || 1) > 1
-        && _presetShowIcon && GLOBAL.showConsumerIcons !== false;
-      const bodyTopMin = _serialIconsActive ? 78 : 60;
+      // v0.60.196: serial-mode иконки теперь в правом столбце (вертикально),
+      // body снова занимает стандартное вертикальное пространство как
+      // у обычных карточек (bodyTopMin=60).
+      const bodyTopMin = 60;
       const bodyAvail = baseY - statusOffset - footerH - bodyTopMin;
       // lineH подбираем «снизу вверх» — самый большой lh, при котором все
       // строки помещаются. Минимум 7 px (читаемо, не разваливается).
