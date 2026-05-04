@@ -120,20 +120,88 @@ function newCoolingUnit(name) {
     roomIds: [],
   };
 }
-// v0.60.111: помещение объекта (зал стоек, UPS-room, насосная, офис...).
+// v0.60.111: помещение объекта.
+// v0.60.119: убран жёсткий select типа помещения — имя задаётся технологом
+// в свободной форме («Главный зал», «UPS-room», «Щитовая А», «Зал ГПУ»).
+// Добавлены климатические требования и прочие требования.
+//
+// Поля:
 //   id        — уникальный идентификатор
-//   name      — отображаемое имя («Главный зал», «UPS-room», ...)
-//   kind      — 'it' | 'ups' | 'mech' | 'office' | 'other'
-//   areaSqM   — площадь, м² (плотность нагрузки кВт/м²)
+//   name      — отображаемое имя (любое)
+//   areaSqM   — ПЛАНОВАЯ площадь м² (вводит технолог).
+//               Расчётная площадь — отдельно, по footprint оборудования
+//               + клиренсы (calcRoomCalculatedArea).
 //   notes     — заметки
+//   climate   — { tMinC, tMaxC, rhMinPct, rhMaxPct, ashraeClass } —
+//               климатические требования (default ASHRAE A1).
+//   requirements — { fireSuppression, accessLevel, antistatic,
+//                    raised_floor, additional } — прочие требования.
+//   kind (legacy) — оставлен для backward-compat но не используется в UI.
 function newRoom(name, kind) {
   return {
     id: _newId('rm'),
-    name: name || 'Зал',
-    kind: kind || 'it',
+    name: name || 'Помещение',
+    kind: kind || '',  // legacy, без UI
     areaSqM: 0,
     notes: '',
+    climate: {
+      tMinC: 18,
+      tMaxC: 27,
+      rhMinPct: 20,
+      rhMaxPct: 80,
+      ashraeClass: 'A1',
+    },
+    requirements: {
+      fireSuppression: '',     // 'gas' / 'sprinkler' / 'mist' / 'none'
+      accessLevel: '',         // 'restricted' / 'normal'
+      antistatic: false,       // антистатический пол
+      raisedFloor: false,      // фальшпол
+      additional: '',          // freeform
+    },
   };
+}
+
+// v0.60.119: расчёт «расчётной площади» помещения по footprint
+// оборудования + дефолтные клиренсы.
+//   front clearance default 1200 мм (ASHRAE / TIA-942 cold aisle)
+//   rear  clearance default 900  мм (hot aisle)
+//   общие коридоры (между рядами) +30% к equipment-footprint
+//
+// Когда rack.frontClearanceMm / rackRearClearanceMm появятся (TODO
+// memory rule feedback_rack_clearances.md) — использовать их.
+function calcRoomCalculatedArea(roomId, concept) {
+  if (!roomId || !concept) return 0;
+  let m2 = 0;
+  const FRONT_DEFAULT = 1.2;  // м (1200 мм)
+  const REAR_DEFAULT  = 0.9;  // м
+  // Стойки
+  for (const rg of (concept.rackGroups || [])) {
+    if (rg.roomId !== roomId) continue;
+    const w = (Number(rg.widthMm) || 600) / 1000;
+    const d = (Number(rg.depthMm) || 1200) / 1000;
+    const fc = ((Number(rg.frontClearanceMm) || (FRONT_DEFAULT * 1000)) / 1000);
+    const rc = ((Number(rg.rearClearanceMm)  || (REAR_DEFAULT  * 1000)) / 1000);
+    const cnt = Number(rg.count) || 0;
+    // Каждая стойка: w × (d + fc + rc).
+    m2 += cnt * w * (d + fc + rc);
+  }
+  // ИБП (приблизительно 0.6 × 1.0 м корпус + 0.6 м клиренс спереди).
+  for (const us of (concept.upsSystems || [])) {
+    if (us.roomId !== roomId) continue;
+    const cnt = Number(us.count) || 0;
+    m2 += cnt * (0.6 * (1.0 + 0.6));  // ~0.96 m² × cnt
+  }
+  // Кондиционеры (0.8 × 1.5 м + 0.5 м клиренс).
+  for (const cu of (concept.coolingUnits || [])) {
+    const inThisRoom = (cu.scope === 'room' && cu.roomId === roomId)
+      || (cu.scope === 'shared' && Array.isArray(cu.roomIds) && cu.roomIds.includes(roomId));
+    if (!inThisRoom) continue;
+    const cnt = Number(cu.count) || 0;
+    m2 += cnt * (0.8 * (1.5 + 0.5));  // ~1.6 m² × cnt
+  }
+  // Общие коридоры между рядами + сервисные зоны: +30%.
+  m2 *= 1.30;
+  return Math.ceil(m2);
 }
 
 // v0.59.901: глобальные настройки системы охлаждения. Влияет на расчёт PUE
@@ -263,6 +331,16 @@ function migrateVariant(v) {
   if (!Array.isArray(c.rooms) || c.rooms.length === 0) {
     c.rooms = [newRoom('Главный зал', 'it')];
   }
+  // v0.60.119: дозаполнение climate / requirements в существующих rooms
+  // (preserve-on-miss). Не затираем уже заданные значения.
+  c.rooms.forEach(rm => {
+    if (!rm.climate || typeof rm.climate !== 'object') {
+      rm.climate = { tMinC: 18, tMaxC: 27, rhMinPct: 20, rhMaxPct: 80, ashraeClass: 'A1' };
+    }
+    if (!rm.requirements || typeof rm.requirements !== 'object') {
+      rm.requirements = { fireSuppression: '', accessLevel: '', antistatic: false, raisedFloor: false, additional: '' };
+    }
+  });
   const _mainRoomId = c.rooms[0]?.id || null;
   if (Array.isArray(c.rackGroups)) {
     c.rackGroups.forEach(rg => {
@@ -1255,6 +1333,8 @@ function renderListRail(c, ro) {
   // секция «🏠 Помещения» — список помещений объекта со счётчиком
   // привязанного оборудования. Click → редактор помещения.
   const _rooms = Array.isArray(c.rooms) ? c.rooms : [];
+  // v0.60.119: kind убран из UI — единая иконка 🏠 для всех помещений.
+  // Legacy kind остаётся в данных (для отчётов / фильтров в будущем).
   const ROOM_KIND_ICON = { it: '🗄', ups: '⚡', mech: '🛠', office: '🏢', other: '📦' };
   const _countInRoom = (rid) => {
     const rg = (c.rackGroups || []).filter(x => x.roomId === rid).reduce((s, x) => s + (Number(x.count) || 0), 0);
@@ -1265,7 +1345,9 @@ function renderListRail(c, ro) {
   const roomRows = _rooms.map(rm => {
     const cnt = _countInRoom(rm.id);
     const subLine = `${cnt.rg} ст · ${cnt.us} ИБП · ${cnt.cu} клим`;
-    const icon = ROOM_KIND_ICON[rm.kind] || '🚪';
+    // v0.60.119: единая иконка для rail; для legacy данных с kind показываем
+    // соответствующую (для preview-плавного перехода со старых вариантов).
+    const icon = ROOM_KIND_ICON[rm.kind] || '🏠';
     const chip = rm.areaSqM > 0 ? `<span class="tw-rail-chip">${rm.areaSqM} м²</span>` : '';
     return `<button type="button" class="tw-rail-item${_selCls('room', rm.id)}" data-bk="room" data-bid="${escAttr(rm.id)}">
       <span class="tw-rail-name">${icon} ${escHtml(rm.name || 'Зал')}</span>
@@ -1599,43 +1681,107 @@ function renderDetails(c, ro) {
       </div>`;
   }
   // v0.60.113: редактор помещения объекта (rooms-концепция UI).
+  // v0.60.119: убран select типа помещения (имена в свободной форме);
+  // добавлены климат-требования и прочие требования; плановая vs
+  // расчётная площадь.
   if (sel.kind === 'room') {
     const rm = (c.rooms || []).find(x => x.id === sel.id);
     if (!rm) return '<div class="tw-details-empty muted">Помещение удалено. Выберите другое слева.</div>';
-    const ROOM_KIND_OPTS = [
-      { v: 'it',     l: '🗄 IT-зал (стойки)' },
-      { v: 'ups',    l: '⚡ Электрощитовая ИБП' },
-      { v: 'mech',   l: '🛠 Механическое (насосная, BMS)' },
-      { v: 'office', l: '🏢 Офис / диспетчерская' },
-      { v: 'other',  l: '📦 Прочее' },
-    ];
-    const kindOpts = ROOM_KIND_OPTS.map(o => `<option value="${o.v}"${rm.kind === o.v ? ' selected' : ''}>${o.l}</option>`).join('');
+    const climate = rm.climate || { tMinC: 18, tMaxC: 27, rhMinPct: 20, rhMaxPct: 80, ashraeClass: 'A1' };
+    const reqs = rm.requirements || { fireSuppression: '', accessLevel: '', antistatic: false, raisedFloor: false, additional: '' };
+    const ashraeOpts = ['A1', 'A2', 'A3', 'A4', 'N/A'].map(c => `<option value="${c}"${climate.ashraeClass === c ? ' selected' : ''}>${c}</option>`).join('');
+    const fireOpts = [
+      { v: '', l: '— не задано —' },
+      { v: 'gas', l: '🔥 Газовое (FM-200/FK-5-1-12/Inergen)' },
+      { v: 'sprinkler', l: '💧 Спринклерное' },
+      { v: 'mist', l: '🌫 Тонкораспылённая вода' },
+      { v: 'none', l: '✗ Нет' },
+    ].map(o => `<option value="${o.v}"${reqs.fireSuppression === o.v ? ' selected' : ''}>${o.l}</option>`).join('');
+    const accessOpts = [
+      { v: '', l: '— не задано —' },
+      { v: 'restricted', l: '🔒 Ограниченный (СКУД)' },
+      { v: 'normal', l: '👤 Обычный' },
+    ].map(o => `<option value="${o.v}"${reqs.accessLevel === o.v ? ' selected' : ''}>${o.l}</option>`).join('');
+
     const racksHere = (c.rackGroups || []).filter(rg => rg.roomId === rm.id);
     const upsHere = (c.upsSystems || []).filter(us => us.roomId === rm.id);
     const coolHere = (c.coolingUnits || []).filter(cuRoom => (cuRoom.scope === 'room' && cuRoom.roomId === rm.id) || (cuRoom.scope === 'shared' && Array.isArray(cuRoom.roomIds) && cuRoom.roomIds.includes(rm.id)));
     const itKwHere = racksHere.reduce((s, rg) => s + (Number(rg.count) || 0) * (Number(rg.kwPerRack) || 0), 0);
     const upsKvaHere = upsHere.reduce((s, us) => s + (Number(us.ratedKva) || 0) * (Number(us.count) || 0), 0);
     const coolKwHere = coolHere.reduce((s, cuRoom) => s + (Number(cuRoom.count) || 0) * (Number(cuRoom.kwPerUnit) || 0), 0);
+    // v0.60.119: расчётная площадь.
+    const calcAreaM2 = calcRoomCalculatedArea(rm.id, c);
+    const planAreaM2 = Number(rm.areaSqM) || 0;
     const _li = (arr, fmt) => arr.length
       ? '<ul style="margin:4px 0 0;padding-left:20px;font-size:12px">' + arr.map(fmt).join('') + '</ul>'
       : '<div class="muted" style="font-size:12px">— ничего не привязано —</div>';
     const headSub = `${racksHere.length} групп стоек · ${upsHere.length} ИБП · ${coolHere.length} клим. систем`;
-    return _detailsHeaderHtml('🏠 Помещение объекта', rm.id, ro, 'room', headSub)
+    // Сравнение plan vs calc — предупреждение если plan меньше calc.
+    const areaWarn = (planAreaM2 > 0 && calcAreaM2 > planAreaM2)
+      ? `<span style="color:#dc2626;font-size:11px;margin-left:8px" title="Плановая площадь меньше расчётной — оборудование может не поместиться с нормативными клиренсами.">⚠ +${calcAreaM2 - planAreaM2} м²</span>`
+      : '';
+    return _detailsHeaderHtml('🏠 Помещение', rm.id, ro, 'room', headSub)
       + `<div class="tw-card" data-card-kind="room" data-card-id="${escAttr(rm.id)}">
           <div class="tw-card-head">
-            <input type="text" class="tw-card-name" data-field="name" value="${escAttr(rm.name)}" placeholder="Например: Главный зал, UPS-room, Щитовая А" ${ro ? 'disabled' : ''}>
+            <input type="text" class="tw-card-name" data-field="name" value="${escAttr(rm.name)}" placeholder="Имя помещения (свободная форма)" ${ro ? 'disabled' : ''}>
           </div>
-          <div class="tw-grid">
-            <label title="Тип помещения. Используется для иконки в rail и группировки в отчёте.">Тип помещения:
-              <select data-field="kind" ${ro ? 'disabled' : ''}>${kindOpts}</select>
+          <p class="muted" style="font-size:11.5px;margin:4px 0 8px">💡 Имя задаёт технолог в свободной форме (например, «Главный зал», «UPS-room», «Машзал ИБП», «Зал GPU», «Щитовая 0.4 кВ»).</p>
+
+          <h5 style="margin:10px 0 6px;font-size:12.5px;color:#075985">📐 Площадь</h5>
+          <div class="tw-grid" style="grid-template-columns:1fr 1fr">
+            <label title="Плановая площадь — задаётся технологом по архитектурному заданию или плану здания.">📋 Плановая, м²:
+              <input type="number" data-field="areaSqM" min="0" step="1" value="${planAreaM2}" ${ro ? 'disabled' : ''}>
             </label>
-            <label title="Площадь помещения в м². Используется для расчёта плотности нагрузки кВт/м² и проверки норм по ТКП 308-2011 / ASHRAE.">Площадь, м²:
-              <input type="number" data-field="areaSqM" min="0" step="1" value="${Number(rm.areaSqM) || 0}" ${ro ? 'disabled' : ''}>
+            <label title="Расчётная площадь — вычисляется автоматически: сумма footprint оборудования + клиренсы (front 1200мм, rear 900мм по умолчанию ASHRAE/TIA-942) × 1.30 на общие коридоры.&#10;&#10;Когда поля frontClearanceMm/rearClearanceMm появятся в карточках стоек — будут использоваться они.">🧮 Расчётная, м²:
+              <input type="text" value="${calcAreaM2} м²" readonly style="background:#f0f9ff;color:#0c4a6e;cursor:not-allowed">
             </label>
           </div>
-          <label style="display:block;margin-top:8px" title="Заметки (требования к температуре/влажности, особенности, ограничения)">Заметки:
-            <textarea data-field="notes" rows="2" placeholder="Особые требования, привязка к плану здания, etc." ${ro ? 'disabled' : ''} style="width:100%;font:inherit;font-size:13px;padding:6px;border:1px solid #cbd5e1;border-radius:4px;resize:vertical">${escHtml(rm.notes || '')}</textarea>
+          ${areaWarn ? `<p style="margin:4px 0 0;font-size:11.5px;color:#dc2626">${areaWarn} — расчётная площадь больше плановой. Увеличьте плановую или уменьшите оборудование/клиренсы.</p>` : ''}
+
+          <h5 style="margin:14px 0 6px;font-size:12.5px;color:#075985">🌡 Климатические требования</h5>
+          <div class="tw-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
+            <label title="ASHRAE TC 9.9 класс по T/RH:&#10;A1: 18-27°C / 5.5-60% (типовой DC)&#10;A2: 10-35°C / 8-80%&#10;A3: 5-40°C / 8-85%&#10;A4: 5-45°C / 8-90% (легкий DC, edge)">ASHRAE класс:
+              <select data-field="climate.ashraeClass" ${ro ? 'disabled' : ''}>${ashraeOpts}</select>
+            </label>
+            <label title="Минимальная температура воздуха в зале, °C">T мин, °C:
+              <input type="number" data-field="climate.tMinC" min="-20" max="50" step="0.5" value="${Number(climate.tMinC) || 0}" ${ro ? 'disabled' : ''}>
+            </label>
+            <label title="Максимальная температура воздуха в зале, °C">T макс, °C:
+              <input type="number" data-field="climate.tMaxC" min="-20" max="50" step="0.5" value="${Number(climate.tMaxC) || 0}" ${ro ? 'disabled' : ''}>
+            </label>
+            <label title="Минимальная относительная влажность, %">RH мин, %:
+              <input type="number" data-field="climate.rhMinPct" min="0" max="100" step="1" value="${Number(climate.rhMinPct) || 0}" ${ro ? 'disabled' : ''}>
+            </label>
+            <label title="Максимальная относительная влажность, %">RH макс, %:
+              <input type="number" data-field="climate.rhMaxPct" min="0" max="100" step="1" value="${Number(climate.rhMaxPct) || 0}" ${ro ? 'disabled' : ''}>
+            </label>
+          </div>
+
+          <h5 style="margin:14px 0 6px;font-size:12.5px;color:#075985">🔧 Прочие требования</h5>
+          <div class="tw-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+            <label title="Тип системы пожаротушения для этого помещения.">Пожаротушение:
+              <select data-field="requirements.fireSuppression" ${ro ? 'disabled' : ''}>${fireOpts}</select>
+            </label>
+            <label title="Уровень доступа: ограниченный (через СКУД, для серверных) или обычный (офис / диспетчерская).">Доступ:
+              <select data-field="requirements.accessLevel" ${ro ? 'disabled' : ''}>${accessOpts}</select>
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px" title="Антистатическое покрытие пола / ESD-защита (для серверных и щитовых).">
+              <input type="checkbox" data-field="requirements.antistatic"${reqs.antistatic ? ' checked' : ''} ${ro ? 'disabled' : ''}>
+              <span>Антистатическое покрытие</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px" title="Фальшпол с раздачей холодного воздуха (типично для классических машзалов).">
+              <input type="checkbox" data-field="requirements.raisedFloor"${reqs.raisedFloor ? ' checked' : ''} ${ro ? 'disabled' : ''}>
+              <span>Фальшпол</span>
+            </label>
+          </div>
+          <label style="display:block;margin-top:8px" title="Дополнительные требования / ограничения / пометки технолога.">Дополнительно:
+            <textarea data-field="requirements.additional" rows="2" placeholder="Особые требования, привязка к плану здания, ограничения по нагрузке, шумовые ограничения и т.п." ${ro ? 'disabled' : ''} style="width:100%;font:inherit;font-size:13px;padding:6px;border:1px solid #cbd5e1;border-radius:4px;resize:vertical">${escHtml(reqs.additional || '')}</textarea>
           </label>
+
+          <label style="display:block;margin-top:8px" title="Заметки (общие, отображаются в отчёте по помещению).">📝 Заметки:
+            <textarea data-field="notes" rows="2" placeholder="Свободные заметки." ${ro ? 'disabled' : ''} style="width:100%;font:inherit;font-size:13px;padding:6px;border:1px solid #cbd5e1;border-radius:4px;resize:vertical">${escHtml(rm.notes || '')}</textarea>
+          </label>
+
           <hr style="border:none;border-top:1px dashed #cbd5e1;margin:14px 0">
           <h5 style="margin:0 0 8px;font-size:12.5px;color:#075985">📦 Что в помещении</h5>
           <div class="tw-grid" style="grid-template-columns:1fr 1fr 1fr">
