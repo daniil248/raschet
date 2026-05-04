@@ -2034,10 +2034,14 @@ export function renderNodes() {
       // × N = Σ Pcalc), а не установленную (Pnom × N). Раньше «8 × 8.2 kW
       // = 65.6 kW (Pрасч 56 kW)» — показывал и Pуст и Pрасч в скобках.
       // Теперь только Pрасч: «8 × 7 kW = 56 kW».
+      // v0.60.200 (по репорту Пользователя 2026-05-04 «почему 4 × 8.0 ???»):
+      // per-unit ВСЕГДА вычисляется как total / count — гарантирует
+      // что math сходится в footer-метке. Раньше для homogeneous был
+      // отдельный путь <code>demandKw × kUse</code>, который мог давать
+      // отличный результат от <code>total / count</code> (например, если
+      // у одного из членов внутренний n.count > 1, или factor режима).
       const _calcKwTotal = _isContainer ? consumerCalcDemandKw(n) : 0;
-      const _calcKwPerUnit = (_homo && _homo.homogeneous && _homo.common && _homo.common.demandKw > 0)
-        ? _homo.common.demandKw * (_homo.common.kUse || 1)
-        : (_homo && _homo.count > 0 ? _calcKwTotal / _homo.count : 0);
+      const _calcKwPerUnit = (_homo && _homo.count > 0) ? _calcKwTotal / _homo.count : 0;
       const _mismatchSuffix = _isMixed ? ' ⚠' : '';
       // v0.60.197 (по репорту Пользователя 2026-05-04 «округление в группе
       // для мощности сделай 0,0»): footer-метка использует фиксированную
@@ -2631,11 +2635,10 @@ export function renderNodes() {
         const Inom = (Pnom > 0 && Ucalc) ? computeCurrentA(Pnom, Ucalc, cos, isThreePhase(n)) : 0;
         const Snom = Pnom > 0 ? Pnom / Math.max(0.1, cos) : 0;
         const PcalcTotal = Number(n._loadKw) || 0;
-        // Pcalc per-piece: для однородного — Pnom × kUse (per piece);
-        // для разнородного — средний.
-        const Pcalc = (_homoForCard.homogeneous && _homoForCard.common && _homoForCard.common.demandKw > 0)
-          ? _homoForCard.common.demandKw * (_homoForCard.common.kUse || 1)
-          : (cnt > 0 ? PcalcTotal / cnt : PcalcTotal);
+        // v0.60.200: Pcalc per-piece = total/count (consistent с footer-меткой).
+        // Раньше для homogeneous был отдельный путь Pnom×kUse — он мог
+        // давать число, не совпадающее с total/count.
+        const Pcalc = cnt > 0 ? PcalcTotal / cnt : PcalcTotal;
         // Icalc per-piece: пересчитываем из per-piece Pcalc.
         const Icalc = (Pcalc > 0 && Ucalc) ? computeCurrentA(Pcalc, Ucalc, cos, isThreePhase(n)) : 0;
         const _vdrop = Number(n._deltaUPct) || 0;

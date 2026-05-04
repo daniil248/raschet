@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.200', date: '2026-05-04', items: [
+      '🧮 <b>Per-unit = total / count в group footer и body — math сходится</b>. По репорту Пользователя 2026-05-04 «почему 4 × 8.0 ???». Раньше «4 × 8.0 kW = 34.3 kW» — арифметика не билась (4×8=32, не 34.3).',
+      '• <b>Корень bug</b>: per-unit вычислялся через формулу <code>_homo.common.demandKw × _homo.common.kUse</code> (homogeneous-fast-path). Эта формула могла давать ОТЛИЧНОЕ число от <code>total / count</code>, если у одного из членов внутренний <code>n.count > 1</code> или режимный factor применился.',
+      '• <b>Фикс</b>: per-unit ВСЕГДА = <code>total / count</code> (один путь, math гарантированно сходится). Применено в footer-метке (group container + groupConsumer) И в body card Pcalc.',
+      '• <b>Эффект</b>: «4 × 8.6 kW = 34.3 kW» (8.6 ≈ 34.3/4 = 8.575). Числа в body, footer и сумме согласованы.',
+      'Файл: <code>js/engine/render.js</code> (footer _calcKwPerUnit + body Pcalc для consumer-container).',
+    ] },
     { version: '0.60.199', date: '2026-05-04', items: [
       '🔧 <b>Consumer-container наследует priorities от первого linked-member</b>. По open-issue из v0.60.197 «JB1 Ток 171 > Макс 111.4А — parallel-priority bug».',
       '• <b>Раньше</b>: <code>container.priorities</code> = undefined → <code>activeInputs()</code> применял default 1 ко всем портам. Для PARALLEL [1,1] это работало (равный share), но для АВР-настроек inner consumer\'а [1,2] container всё равно делил 50/50, не уважая standby-вход.',
