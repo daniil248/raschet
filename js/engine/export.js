@@ -361,7 +361,18 @@ export function initToolbar() {
         const parentName = src ? (src.name || src.id) : '?';
         typeHtml = ` <span class="page-tab-type">→ ${escapePage(parentName)}</span>`;
       }
-      tab.innerHTML = `${kindBadge}<span class="page-tab-name">${sheetPrefix}${escapePage(p.name || p.id)}</span>${typeHtml}`;
+      // v0.60.176 (по репорту Пользователя 2026-05-04 «не могу страницы
+      // удалять»): на каждой вкладке (кроме случая «единственная страница»)
+      // появляется маленькая кнопка × Chrome-стиля — самый заметный способ
+      // удаления. Раньше удаление было только через правый клик → меню,
+      // что не очевидно. Кнопка скрывается на единственной странице (нечего
+      // удалять). Полная информация о страницы (узлы, которые потеряются)
+      // — в подтверждающем диалоге как раньше.
+      const showCloseBtn = (state.pages || []).length > 1;
+      const closeBtn = showCloseBtn
+        ? `<span class="page-tab-close" title="Удалить страницу" data-act="del-page">×</span>`
+        : '';
+      tab.innerHTML = `${kindBadge}<span class="page-tab-name">${sheetPrefix}${escapePage(p.name || p.id)}</span>${typeHtml}${closeBtn}`;
       // Tooltip с полной инфой листа
       const tipParts = [];
       if (p.title) tipParts.push(p.title);
@@ -371,6 +382,13 @@ export function initToolbar() {
       tab.onclick = (e) => {
         // Если клик пришёл по inline-input (ещё идёт переименование) — не переключаем
         if (e.target.classList && e.target.classList.contains('page-tab-rename')) return;
+        // v0.60.176: клик по × — удалить страницу (через diff-confirm как
+        // в showPageMenu)
+        if (e.target.classList && e.target.classList.contains('page-tab-close')) {
+          e.stopPropagation();
+          deletePage(p.id);
+          return;
+        }
         switchPage(p.id);
       };
       tab.ondblclick = (e) => {

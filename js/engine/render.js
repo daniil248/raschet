@@ -2371,8 +2371,20 @@ export function renderNodes() {
       else if (!n._powered) {
         // v0.60.164: различаем «orphan» (нет связи с источником) vs «idle»
         // (связь есть, но источник в standby — например, ДГУ не запущен).
-        statusLine = _hasUpstreamSource(n) ? 'В резерве' : 'Без питания';
-        loadCls += ' off';
+        // v0.60.176 (по репорту Пользователя 2026-05-04 «Надпись в резерве,
+        // не выводи»): «В резерве» убрана — карточка не должна загромождаться
+        // статус-надписью, когда узел просто запитан от standby-источника.
+        // Visual-сигнал «idle/reserve» уже даёт класс <code>off</code> (faded
+        // стиль карточки) + AVR-индикация на портах. Для truly-orphan узлов
+        // оставляем «Без питания».
+        if (_hasUpstreamSource(n)) {
+          // standby — без надписи; faded-вид уже сигнализирует «idle».
+          statusLine = '';
+          loadCls += ' off';
+        } else {
+          statusLine = 'Без питания';
+          loadCls += ' off';
+        }
       }
       // v0.59.654: «номин» для щита = СУММА P_ном downstream-нагрузок (а не
       // capacityA × U × cos φ — это физический лимит шин/автомата щита).
@@ -2408,8 +2420,20 @@ export function renderNodes() {
       if (!effectiveOn(n)) { statusLine = 'Отключён'; loadCls += ' off'; }
       else if (!n._powered) {
         // v0.60.164: различаем «orphan» vs «idle» (источник в standby).
-        statusLine = _hasUpstreamSource(n) ? 'В резерве' : 'Без питания';
-        loadCls += ' off';
+        // v0.60.176 (по репорту Пользователя 2026-05-04 «Надпись в резерве,
+        // не выводи»): «В резерве» убрана — карточка не должна загромождаться
+        // статус-надписью, когда узел просто запитан от standby-источника.
+        // Visual-сигнал «idle/reserve» уже даёт класс <code>off</code> (faded
+        // стиль карточки) + AVR-индикация на портах. Для truly-orphan узлов
+        // оставляем «Без питания».
+        if (_hasUpstreamSource(n)) {
+          // standby — без надписи; faded-вид уже сигнализирует «idle».
+          statusLine = '';
+          loadCls += ' off';
+        } else {
+          statusLine = 'Без питания';
+          loadCls += ' off';
+        }
       }
       else if (n._onStaticBypass) statusLine = 'БАЙПАС';
       else if (n._onBattery) {
@@ -2464,7 +2488,8 @@ export function renderNodes() {
       const Icalc = _isUniformGroup ? (IcalcTotal / cnt) : IcalcTotal;
       if (!n._powered) {
         // v0.60.165: distinguish orphan vs idle (источник в standby).
-        statusLine = _hasUpstreamSource(n) ? 'В резерве' : 'нет питания';
+        // v0.60.176: «В резерве» убрана (см. panel/ups branches).
+        statusLine = _hasUpstreamSource(n) ? '' : 'нет питания';
         loadCls += ' off';
       }
       // v0.59.678: Превышение по фиксированному автомату или кабелю.
@@ -2890,8 +2915,15 @@ export function renderNodes() {
       if (footerRows.length) {
         g.appendChild(text(12, baseY, footerRows.join(' · '), loadCls + ' node-load-row'));
       }
-      // TopRight: стек справа сверху, маленький шрифт, right-align
-      let trY = 16;
+      // TopRight: стек справа сверху, маленький шрифт, right-align.
+      // v0.60.176 (по репорту Пользователя 2026-05-04 «накладка на иконку»):
+      // когда иконка потребителя видна, она занимает правый-верхний угол
+      // (translate(w-22,16) + ~22px высота). Начинаем topRight-стек НИЖЕ
+      // иконки (y=42), чтобы overflow body-rows не наезжали на неё.
+      // Если иконка не показывается — стартуем как раньше с y=16.
+      const _iconVisible = (n.type === 'consumer' || n.type === 'consumer-container')
+        && GLOBAL.showConsumerIcons !== false && _presetShowIcon;
+      let trY = _iconVisible ? 42 : 16;
       for (const r of rowsByPos.topRight) {
         const t = text(w - 8, trY, r, loadCls + ' node-load-row');
         t.setAttribute('text-anchor', 'end');
