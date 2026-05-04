@@ -2457,7 +2457,11 @@ export function renderNodes() {
       const IcalcTotal = Number(n._loadA) || (PcalcTotal > 0 && Ucalc
         ? computeCurrentA(PcalcTotal, Ucalc, cos, isThreePhase(n)) : 0);
       const Icalc = _isUniformGroup ? (IcalcTotal / cnt) : IcalcTotal;
-      if (!n._powered) { statusLine = 'нет питания'; loadCls += ' off'; }
+      if (!n._powered) {
+        // v0.60.165: distinguish orphan vs idle (источник в standby).
+        statusLine = _hasUpstreamSource(n) ? 'В резерве' : 'нет питания';
+        loadCls += ' off';
+      }
       // v0.59.678: Превышение по фиксированному автомату или кабелю.
       // Пользователь: «если автомат на кабеле зафиксирован, то превышение
       // на потребителе прежде всего должно выводить предупреждение на

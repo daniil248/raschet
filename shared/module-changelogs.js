@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.165', date: '2026-05-04', items: [
+      '🔌 <b>«В резерве» применено к consumer + inspector statusBlock</b>. Расширение v0.60.164 на остальные узлы.',
+      '• <b>render.js</b>: для consumer status «нет питания» теперь становится «В резерве» если есть upstream source (через <code>_hasUpstreamSource</code>). Раньше потребитель всегда показывал «нет питания» при <code>!_powered</code>, не различая orphan vs idle.',
+      '• <b>inspector.js</b>: <code>statusBlock(n)</code> для всех типов узлов получил inline-копию <code>_hasUpstreamSourceForInspector</code> (модули shared state.nodes/conns). Badge «в резерве» (жёлтый, #fef3c7) вместо «без питания» (серый) когда есть upstream source.',
+      '• <b>UX</b>: одинаковая логика в карточке на canvas и в правом инспекторе — Пользователь видит согласованное состояние.',
+      'Файлы: <code>js/engine/render.js</code> (consumer status), <code>js/engine/inspector.js</code> (+_hasUpstreamSourceForInspector + statusBlock update).',
+    ] },
     { version: '0.60.164', date: '2026-05-04', items: [
       '🔌 <b>«Без питания» vs «В резерве»</b>: разделение orphan от standby. По двум репортам Пользователя 2026-05-04: «По резерву, если макс 111,4 А а щит 160А, наверное запас все таки есть???» + «оповещение что щит без питания, только если щит не подключен к источнику энергии, но данный щит подключен и просто ДГУ на данный момент не запущен».',
       '• <b>Свободно vs Запас</b> — formula consistency: <code>Iused = max(_loadA, _maxA)</code> вместо просто <code>_loadA</code>. Раньше при фазовой неравномерности или транзиентах <code>_loadA</code> мог превышать <code>_maxA</code> design-peak, давая Свободно=0 даже когда Запас был положительным. Теперь <code>Свободно = capacity − max(load, design-max)</code>, что согласуется с <code>Запас = (capacity − maxLoad) / capacity × 100</code>.',

@@ -4111,10 +4111,41 @@ export function prioritySection(n) {
   rows.push('</div>');
   return rows.join('');
 }
+// v0.60.165: helper для distinguishing «orphan» vs «idle» (см. render.js
+// _hasUpstreamSource v0.60.164). Inline-копия для inspector.js — оба
+// модуля шарят state.nodes / state.conns через тот же import.
+function _hasUpstreamSourceForInspector(n) {
+  if (!n) return false;
+  const visited = new Set();
+  const stack = [n.id];
+  while (stack.length) {
+    const id = stack.pop();
+    if (visited.has(id)) continue;
+    visited.add(id);
+    const node = state.nodes.get(id);
+    if (!node) continue;
+    if (id !== n.id && (node.type === 'source' || node.type === 'generator' || node.type === 'ups')) {
+      return true;
+    }
+    for (const c of state.conns.values()) {
+      if (c?.to?.nodeId !== id) continue;
+      const fromId = c?.from?.nodeId;
+      if (fromId && !visited.has(fromId)) stack.push(fromId);
+    }
+  }
+  return false;
+}
 export function statusBlock(n) {
   const parts = [];
   if (n._powered) parts.push('<span class="badge on">есть питание</span>');
-  else parts.push('<span class="badge off">без питания</span>');
+  else {
+    // v0.60.165: «В резерве» если есть upstream source (но он currently off).
+    // «Без питания» только для truly disconnected nodes.
+    const isIdle = _hasUpstreamSourceForInspector(n);
+    parts.push(isIdle
+      ? '<span class="badge" style="background:#fef3c7;color:#92400e">в резерве</span>'
+      : '<span class="badge off">без питания</span>');
+  }
   if (n.type === 'panel') parts.push(` нагрузка: <b>${fmt(n._loadKw)} kW</b>`);
   return `<div class="inspector-section"><div class="muted" style="font-size:11px">${parts.join(' ')}</div></div>`;
 }
