@@ -269,21 +269,19 @@ export function mountHeader(opts = {}) {
   });
 
   // Project-badge — клик:
-  //   linked-mode (project-mode из URL) → к карточке проекта /projects/project.html.
-  //   standalone / empty (v0.60.103) → меню переключения / создания.
+  //   v0.60.134 (по репорту Пользователя 2026-05-04 «как то объедини выбор
+  //   и отображение проекта в одном месте»): во ВСЕХ режимах (linked /
+  //   standalone / empty) клик открывает единое меню — с переключением,
+  //   созданием локального проекта и ссылкой «→ Карточка проекта» для
+  //   linked-mode (вместо прямого перехода). Раньше linked клик уводил
+  //   на /projects/project.html, что мешало быстрому переключению —
+  //   приходилось ходить туда-обратно.
   const projBadge = header.querySelector('.rs-proj-badge');
   if (projBadge) {
     projBadge.style.cursor = 'pointer';
-    const mode = projBadge.dataset.projMode;
-    if (mode === 'linked') {
-      projBadge.addEventListener('click', () => {
-        const inSub = !/^\/(?:index\.html)?$/.test(location.pathname) && location.pathname.split('/').filter(Boolean).length > 1;
-        const base = inSub ? '../projects/project.html' : './projects/project.html';
-        location.href = buildModuleHref(base, { projectId: ctx.projectId });
-      });
-    } else {
-      projBadge.addEventListener('click', () => _openStandaloneProjectMenu(moduleId));
-    }
+    projBadge.addEventListener('click', () => _openStandaloneProjectMenu(moduleId, {
+      linkedPid: ctx.projectId || null,
+    }));
   }
 
   // Auth widget — привязываем к window.Auth если доступен
@@ -563,7 +561,11 @@ function _checkOrphanProjects() {
 // приложения нет ни какого упоминания к какому проекту это относится» +
 // «открылся какой то проект, я даже не знаю какой, и не могу создать
 // локальный проект или переключится на другой».
-function _openStandaloneProjectMenu(currentModuleId) {
+// v0.60.134: меню используется во ВСЕХ режимах (linked / standalone / empty).
+// opts.linkedPid — id проекта из URL ?project= (linked-mode). Если задан,
+// меню добавляет ссылку «→ Карточка проекта» для перехода в /projects/.
+function _openStandaloneProjectMenu(currentModuleId, opts = {}) {
+  const linkedPid = opts.linkedPid || null;
   // Уже открытая модалка — закрыть
   const existing = document.querySelector('.rs-proj-menu-overlay');
   if (existing) { existing.remove(); return; }
@@ -622,9 +624,10 @@ function _openStandaloneProjectMenu(currentModuleId) {
         <div style="font-size:11.5px;color:#475569;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.4px">Переключиться на другой:</div>
         <div class="rs-proj-menu-list" style="margin-bottom:12px">${rowsHtml}</div>
 
-        <div style="display:flex;gap:8px;border-top:1px dashed #cbd5e1;padding-top:12px">
-          <button type="button" class="rs-proj-menu-create" style="flex:1;padding:8px 12px;background:#16a34a;color:#fff;border:0;border-radius:5px;cursor:pointer;font:inherit;font-weight:600;font-size:12px" title="Создать новый локальный проект и сделать его активным.">➕ Создать локальный проект</button>
-          <a href="../projects/" class="rs-proj-menu-open" style="padding:8px 12px;background:#3b82f6;color:#fff;border-radius:5px;text-decoration:none;font-weight:600;font-size:12px;display:inline-flex;align-items:center" title="Открыть полный список проектов в /projects/.">→ Все проекты</a>
+        <div style="display:flex;gap:8px;border-top:1px dashed #cbd5e1;padding-top:12px;flex-wrap:wrap">
+          <button type="button" class="rs-proj-menu-create" style="flex:1 1 220px;padding:8px 12px;background:#16a34a;color:#fff;border:0;border-radius:5px;cursor:pointer;font:inherit;font-weight:600;font-size:12px" title="Создать новый локальный проект (sketch) с привязкой к этому модулю и сделать его активным.">➕ Создать локальный проект</button>
+          ${linkedPid ? `<a href="../projects/project.html?project=${esc(linkedPid)}" class="rs-proj-menu-detail" style="padding:8px 12px;background:#0ea5e9;color:#fff;border-radius:5px;text-decoration:none;font-weight:600;font-size:12px;display:inline-flex;align-items:center" title="Открыть карточку текущего проекта в модуле «Управление проектами»: реквизиты, локация, BOM, сотрудники.">📋 Карточка проекта</a>` : ''}
+          <a href="../projects/" class="rs-proj-menu-open" style="padding:8px 12px;background:#3b82f6;color:#fff;border-radius:5px;text-decoration:none;font-weight:600;font-size:12px;display:inline-flex;align-items:center" title="Открыть полный список проектов в модуле «Управление проектами».">→ Все проекты</a>
         </div>
       </div>
     </div>

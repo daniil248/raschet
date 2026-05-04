@@ -355,44 +355,16 @@ function recalcAndRender() {
   if (best) saveSelectedDgu(best);
 }
 
+// v0.60.134 (по репорту Пользователя 2026-05-04 «как то объедини выбор и
+// отображение проекта в одном месте»): sidebar-picker выпилен — он был
+// дубликатом header chip (rs-proj-badge в shared/app-header.js). Header
+// chip уже показывает активный проект и по клику открывает меню
+// переключения / создания. Stub оставлен для совместимости call-sites.
 function renderProjectContext() {
   const el = $('dg-project-context');
   if (!el) return;
-  let projects = [];
-  try { projects = listProjects() || []; } catch {}
-  // v0.60.90 (правило feedback_module_scope_pickers.md, фидбэк Пользователя
-  // 2026-05-03 «зачем подсовывать проекты, в которых не может быть использован
-  // этот конфигуратор»): фильтр sketch-проектов.
-  //   - full проекты: всегда показываем
-  //   - sketch проекты: только если ownerModule === 'dgu-config' (свой)
-  //     или 'tech-workspace' (TW-варианты — концептуальный контейнер для
-  //     любого equipment configurator)
-  const relevant = projects.filter(p => {
-    if (p.kind === 'full' || !p.kind) return true;
-    if (p.kind === 'sketch') return p.ownerModule === 'dgu-config' || p.ownerModule === 'tech-workspace';
-    return false;
-  });
-  const opts = relevant.map(p => {
-    const labelText = p.name || p.designation || p.id;
-    const icon = p.kind === 'sketch' ? (p.ownerModule === 'tech-workspace' ? '🪛' : '🛠') : '📁';
-    return `<option value="${escAttr(p.id)}"${p.id === _pid ? ' selected' : ''} title="${escAttr(p.kind === 'sketch' ? 'sketch-проект (' + p.ownerModule + ')' : 'основной проект')}">${icon} ${escHtml(labelText)}</option>`;
-  }).join('');
-  el.innerHTML = `
-    <label style="display:block;font-size:11px;font-weight:600;color:#475569;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.4px"
-           title="Проект, к которому привязан ДГУ-расчёт. Параметры и выбранная модель сохраняются автоматически.">📁 Контекст проекта</label>
-    <select id="dg-project-sel" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px;font:inherit;font-size:12.5px;background:#fff;cursor:pointer">
-      ${opts || '<option value="">— нет проектов —</option>'}
-    </select>
-  `;
-  const sel = el.querySelector('#dg-project-sel');
-  if (!sel) return;
-  sel.addEventListener('change', (e) => {
-    const v = e.target.value;
-    if (!v || v === _pid) return;
-    const url = new URL(location.href);
-    url.searchParams.set('project', v);
-    location.href = url.toString();
-  });
+  el.hidden = true;
+  el.innerHTML = '';
 }
 
 async function init() {

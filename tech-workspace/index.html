@@ -59,11 +59,14 @@
   <main class="tw-main">
     <!-- Левая панель: варианты + переключатель режима -->
     <aside class="tw-sidebar rs-sidebar">
-      <!-- v0.60.76: project context picker — концепция привязана к проекту,
-           переключение через select. По требованию Пользователя 2026-05-03
-           «модуль Технолог ЦОД так же должен иметь привязку к проекту». -->
-      <div id="tw-project-context" class="tw-project-context"
-           title="Контекст проекта. Концепция, варианты, связанные модули — всё хранится per-project."></div>
+      <!-- v0.60.134 (по репорту Пользователя 2026-05-04 «как то объедини
+           выбор и отображение проекта в одном месте»): дублирующий picker
+           проекта в sidebar убран. Активный проект отображается в шапке
+           через rs-proj-badge (shared/app-header.js); клик по нему
+           открывает меню переключения / создания. tw-project-context
+           больше не используется, но id оставлен скрытым на случай
+           legacy-кода / тестов (не вмешивается в layout). -->
+      <div id="tw-project-context" class="tw-project-context" hidden></div>
 
       <div class="tw-mode-toggle">
         <button type="button" class="tw-mode-btn active" data-mode="list" title="Заполнение параметров по разделам">📋 Список</button>

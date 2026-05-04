@@ -4,6 +4,18 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.134', date: '2026-05-04', items: [
+      '🔁 <b>Project picker: единая точка вместо двух</b>. По репорту Пользователя 2026-05-04 «как то объедини выбор и отображение проекта в одном месте».',
+      '• <b>Header chip (rs-proj-badge)</b> теперь во ВСЕХ режимах (linked / standalone / empty) открывает единое меню (раньше linked-mode уходил на /projects/project.html).',
+      '• <b>Меню обновлено</b>: добавлена кнопка «📋 Карточка проекта» (только в linked-mode), которая ведёт на /projects/project.html?project=… для тех, кому нужна полная карточка.',
+      '• <b>Sidebar-pickers удалены</b> в TW (<code>tw-project-context</code>) и dgu-config (<code>dg-project-context</code>) — это были дубликаты header chip. <code>renderProjectContext()</code> в обоих модулях превращён в no-op stub для совместимости.',
+      '• <b>Memory rule</b> <code>feedback_unified_project_picker.md</code> — правило для всех будущих модулей: НЕ дублировать picker проекта в sidebar, использовать только rs-proj-badge.',
+      '🔁 <b>Project main data propagation в TW</b>. По репорту Пользователя 2026-05-04 «основные данные проекта опять не передаются».',
+      '• <b>renderActiveVariant()</b> теперь вызывает <code>_syncProjectDataFromProject(v.concept)</code> на КАЖДОМ render (preserve-on-miss). Раньше синк был только на init() / addVariant() / клик «🔄 Синхр.», поэтому если Пользователь заполнял реквизиты в /projects/ ПОСЛЕ создания variant — данные не подхватывались.',
+      '• <b>Fallback chain для designation</b>: <code>requisites.code → proj.designation → proj.name</code> (имя проекта часто содержит шифр, напр. «25006-GEP-GEN-ELC-901_TBC Bank»).',
+      '• <b>objectType (тип объекта)</b> также передаётся из <code>requisites.objectType</code>, если в концепции пусто.',
+      'Файлы: <code>shared/app-header.js</code> (+linkedPid в _openStandaloneProjectMenu, единый клик-handler), <code>tech-workspace/index.html</code> (sidebar picker hidden), <code>tech-workspace/tech-workspace.js</code> (renderProjectContext stub, sync-on-render, designation fallback chain), <code>dgu-config/dgu-config.js</code> (renderProjectContext stub).',
+    ] },
     { version: '0.60.133', date: '2026-05-04', items: [
       '🏢 <b>Phase 44: внутрикорпоративные модули + ролевая модель</b>. По двум новым требованиям Пользователя 2026-05-04:',
       '  • «часть модулей будут доступны только внутри организации... модуль проекты не планируется делать доступным по подписке, только внутрикорпоративное использование»',

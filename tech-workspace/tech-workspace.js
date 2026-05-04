@@ -2282,6 +2282,16 @@ function renderActiveVariant() {
   if (_mode === 'compare') renderCompareMode();
   $('tw-variant-name').textContent = v.name + (v.primary ? ' ⭐' : '');
   $('tw-readonly-badge').hidden = !v.readOnly;
+  // v0.60.134 (репорт Пользователя 2026-05-04 «основные данные проекта
+  // опять не передаются»): автосинк projectData из метаданных проекта на
+  // КАЖДОМ render. preserve-on-miss (setIfEmpty) сохраняет ручные правки —
+  // заполняются только пустые поля. Раньше синк был ТОЛЬКО на init() /
+  // addVariant() / клик «🔄 Синхр», поэтому при изменении requisites в
+  // /projects/ (или при открытии TW в проекте, где requisites уже
+  // заполнены, но variant создан до того) данные не подхватывались.
+  // setIfEmpty гарантирует idempotent — повторный вызов без эффекта если
+  // поля уже заполнены (вручную или из предыдущего синка).
+  if (_syncProjectDataFromProject(v.concept)) persistVariants();
   const c = v.concept;
   const ro = !!v.readOnly;
   // Compute summaries
@@ -3959,11 +3969,22 @@ function _syncProjectDataFromProject(concept) {
       changed = true;
     }
   };
-  setIfEmpty('designation', r.code || proj.designation || '');
+  // v0.60.134: fallback chain — requisites.code → proj.designation → proj.name.
+  // По репорту Пользователя: «основные данные проекта опять не передаются».
+  // Имя проекта часто содержит шифр (напр. «25006-GEP-GEN-ELC-901_TBC Bank»),
+  // поэтому используется как последний fallback, если явный шифр не задан.
+  setIfEmpty('designation', r.code || proj.designation || proj.name || '');
   setIfEmpty('customer', r.customer || '');
   setIfEmpty('address', r.address || '');
   setIfEmpty('city', loc.city || '');
   setIfEmpty('designer', r.gip || '');
+  // v0.60.134: тип объекта (ЦОД / серверная / ...) тоже из реквизитов, если
+  // в концепции ещё не задан конкретный dcType. Только если значения
+  // совпадают со словарём концепции — предотвращаем хаос свободного текста.
+  if (r.objectType && (concept.projectData.objectType == null || concept.projectData.objectType === '')) {
+    concept.projectData.objectType = r.objectType;
+    changed = true;
+  }
   // lat/lon — числа; setIfEmpty не пройдёт null check
   if (loc.lat != null && (concept.projectData.lat == null)) {
     concept.projectData.lat = Number(loc.lat);
@@ -4083,61 +4104,19 @@ async function approveVariant(vid) {
   twToast(`✓ Вариант «${v.name}» утверждён.`, 'ok');
 }
 
-// v0.60.76 (по требованию Пользователя 2026-05-03 «модуль Технолог ЦОД должен
-// иметь привязку к проекту»): UI picker контекста проекта в sidebar.
+// v0.60.76 (по требованию Пользователя 2026-05-03 «модуль Технолог ЦОД
+// должен иметь привязку к проекту»): UI picker контекста проекта в sidebar.
+// v0.60.134 (по репорту Пользователя 2026-05-04 «как то объедини выбор и
+// отображение проекта в одном месте»): sidebar-picker выпилен — он был
+// дубликатом header chip (rs-proj-badge в shared/app-header.js). Header
+// chip уже показывает активный проект и по клику открывает меню переклю-
+// чения / создания. Сохраняем функцию-stub чтобы существующие call-sites
+// (`renderProjectContext()` в renderActiveVariant) не падали.
 function renderProjectContext() {
   const el = $('tw-project-context');
   if (!el) return;
-  let projects = [];
-  try { projects = listProjects() || []; } catch {}
-  const currentVal = _pid || '';
-  // v0.60.90 (правило feedback_module_scope_pickers.md): TW работает с
-  // концепциями ЦОД — sketch-проекты других модулей (СКС, cooling-only)
-  // тут не нужны. Показываем только full + tech-workspace sketches.
-  const relevant = projects.filter(p => {
-    if (p.kind === 'full' || !p.kind) return true;
-    if (p.kind === 'sketch') return p.ownerModule === 'tech-workspace';
-    return false;
-  });
-  const opts = relevant.map(p => {
-    const labelText = p.name || p.designation || p.id;
-    const icon = p.kind === 'sketch' ? '🪛' : '📁';
-    return `<option value="${escAttr(p.id)}"${p.id === currentVal ? ' selected' : ''} title="${escAttr(p.kind === 'sketch' ? 'sketch-проект варианта' : 'основной проект')}">${icon} ${escHtml(labelText)}</option>`;
-  }).join('');
-  el.innerHTML = `
-    <label style="display:block;font-size:11px;font-weight:600;color:#475569;margin-bottom:3px;text-transform:uppercase;letter-spacing:0.4px"
-           title="Проект, к которому привязана текущая концепция. Все варианты, связанные модули (cooling/service/ups-config/dgu-config) — хранятся per-project.">📁 Контекст проекта</label>
-    <select id="tw-project-sel" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px;font:inherit;font-size:12.5px;background:#fff;cursor:pointer">
-      ${opts || '<option value="">— нет проектов —</option>'}
-      <option value="__create__">➕ Создать новый проект…</option>
-    </select>
-  `;
-  const sel = el.querySelector('#tw-project-sel');
-  if (!sel) return;
-  sel.addEventListener('change', async (e) => {
-    const v = e.target.value;
-    if (v === '__create__') {
-      const name = await twPrompt('Название нового проекта:', `Концепция ${new Date().toLocaleDateString('ru-RU')}`);
-      if (!name) { sel.value = currentVal; return; }
-      try {
-        const p = createProject({ name: name.trim(), description: 'Создан из Технолога ЦОД', kind: 'full' });
-        setActiveProjectId(p.id);
-        const url = new URL(location.href);
-        url.searchParams.set('project', p.id);
-        location.href = url.toString();
-      } catch (err) {
-        twToast('Ошибка создания: ' + (err.message || err), 'warn');
-        sel.value = currentVal;
-      }
-      return;
-    }
-    if (!v || v === currentVal) return;
-    // Переключение проекта = редирект с ?project=v чтобы корректно
-    // перезагрузить _variants для нового проекта.
-    const url = new URL(location.href);
-    url.searchParams.set('project', v);
-    location.href = url.toString();
-  });
+  el.hidden = true;
+  el.innerHTML = '';
 }
 
 // =============================================================================
