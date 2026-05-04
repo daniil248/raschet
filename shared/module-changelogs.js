@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.249', date: '2026-05-05', items: [
+      '🌐 <b>Sibling-detection: разные zones — НЕ siblings</b>. По уточнению Пользователя 2026-05-05 «у нас есть полное обозначение и оно включает зоны, панелей PDC1 но они в разных зонах».',
+      '• Корень: в TBC-проекте 8 PDC панелей (PDC1-PDC8) разбросаны по разным зонам, но cross-zone shared consumer (АГПТ/слаботочка для резервирования) приводил к Jaccard ≥0.7 в некоторых случаях, или старый min-ratio ≥0.5 склеивал ВСЕ 25 в одну группу.',
+      '• Фикс: дополнительный guard перед Jaccard — <code>panelZoneId</code> кэш через <code>findZoneForMember(panel)</code>. Если zoneA !== zoneB → пропускаем (не siblings).',
+      '• Эффект: PDC1+PDC2 (Z1) — siblings ✓. PDC1(Z1) и PDC1(Z2) — НЕ siblings ✓. Cross-zone АГПТ-cross-feed не объединяет панели разных зон.',
+      'Файл: <code>js/engine/recalc.js</code> (импорт findZoneForMember + panelZoneId map).',
+    ] },
     { version: '0.60.248', date: '2026-05-05', items: [
       '🎯 <b>Sibling-detection: симметричный Jaccard (≥0.7)</b>. По диагностике Пользователя 2026-05-05 — console.log показал siblingGroup из 25 панелей в S3-проекте (TBC Bank), что давало Макс 1777 кВт.',
       '• Корень: критерий v0.60.235 <code>|A ∩ B| / min(|A|, |B|) ≥ 0.5</code> — ловил ложные совпадения. Когда одна panel маленькая (2 consumer-а), а другая большая (10), 1 общий consumer давал ratio = 1/2 = 50% и они становились siblings — хотя реально это лишь cross-feed для резервирования.',

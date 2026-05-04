@@ -10,7 +10,7 @@ import { nodeVoltage, nodeVoltageLN, nodeCalcVoltage, nodeCalcVoltageEff, isThre
          upsChargeKw, sourceImpedance, isNodeDC, effectiveUpsCapacity } from './electrical.js';
 import { CONSUMER_CATALOG, STARTER_TYPES } from './constants.js';
 import { effectiveOn, effectiveLoadFactor } from './modes.js';
-import { normalizeContainers } from './zones.js';
+import { normalizeContainers, findZoneForMember } from './zones.js';
 import { runModules as runCalcModules } from '../../shared/calc-modules/index.js';
 // v0.59.653: РТМ 36.18.32.4-92 — расчёт максимума по упорядоченным диаграммам.
 import { rtmComputeMax as _rtmComputeMax } from '../../shared/calc-modules/rtm-load.js';
@@ -3585,6 +3585,19 @@ function recalc() {
     //   • IT1+IT2 для Темиртау (100% общих) — Jaccard=1.0 → siblings ✓
     //   • AC vs IT (1 общий АГПТ-cross-feed) — Jaccard ≈ 0.1 → НЕ siblings ✓
     const SIBLING_JACCARD_THRESHOLD = 0.7;
+    // v0.60.249 (по уточнению Пользователя 2026-05-05 «у нас есть полное
+    // обозначение и оно включает зоны, панелей PDC1 но они в разных
+    // зонах»): кэш zoneId для каждой panel. Панели в разных зонах
+    // НЕ могут быть siblings, даже если consumer-ы пересекаются
+    // (cross-zone shared АГПТ/слаботочка для резервирования —
+    // не делает их parallel-feeders).
+    const panelZoneId = new Map();
+    for (const id of panelDownstream.keys()) {
+      const panel = state.nodes.get(id);
+      if (!panel) { panelZoneId.set(id, null); continue; }
+      const z = findZoneForMember(panel);
+      panelZoneId.set(id, z ? z.id : null);
+    }
     const panelIds = [...panelDownstream.keys()];
     const assigned = new Set();
     const groups = [];
@@ -3594,10 +3607,14 @@ function recalc() {
       assigned.add(a);
       const aSet = panelDownstream.get(a);
       if (!aSet || !aSet.size) continue;
+      const aZone = panelZoneId.get(a);
       for (const b of panelIds) {
         if (a === b || assigned.has(b)) continue;
         const bSet = panelDownstream.get(b);
         if (!bSet || !bSet.size) continue;
+        // v0.60.249: panels в разных зонах — никогда не siblings.
+        const bZone = panelZoneId.get(b);
+        if (aZone !== bZone) continue;
         // Jaccard = |A ∩ B| / |A ∪ B|.
         let overlapCount = 0;
         for (const x of aSet) if (bSet.has(x)) overlapCount++;
