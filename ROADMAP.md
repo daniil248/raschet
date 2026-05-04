@@ -3876,7 +3876,15 @@ v0.60.105 (`shared/currency-defaults.js::resolveDefaultCurrency`).
   кнопку ↑ в каталоге работ. Backward demotion ↓ — снять из общего.
   Updates/deletes работают per-scope. LS-ключ
   `raschet.service.workTemplates.org.v1` отделён от user.
-- [ ] `org.catalogs.priceLists` — общие прайс-листы.
+- [x] **v0.60.124**: `org.catalogs.priceLists` — общие прайс-листы
+  через price-records org API. LS-ключ <code>raschet.priceRecords.org.v1</code>
+  (отделён от user). API: <code>saveOrgPrice / removeOrgPrice /
+  clearAllOrgPrices / promotePriceToOrg / demotePriceToUser</code>.
+  <code>listPrices({scope:'all'|'user'|'org'})</code> — scope-фильтр.
+  <code>pricesForElement</code> по умолчанию merged (user+org).
+  ID-префикс <code>pr-org-</code>. Audit trail через
+  <code>promotedAt/promotedFrom/demotedAt/demotedFrom</code>.
+  TODO Phase 41.2: UI promote/demote кнопки в каталоге цен.
 - [ ] `org.catalogs.datasheets` — общие datasheets.
 - [ ] `org.catalogs.elementLibrary` — общие наборы element-library.
 - [x] **v0.60.116**: UI каталога работ показывает все 3 scope с разной

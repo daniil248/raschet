@@ -109,10 +109,17 @@ function _uid() {
 /**
  * Список цен с фильтрацией.
  * filter = { elementId, counterpartyId, priceType, currency,
- *            recordedAfter, recordedBefore, activeOnly }
+ *            recordedAfter, recordedBefore, activeOnly,
+ *            scope: 'user' | 'org' | 'all' (default 'all') }
+ *
+ * v0.60.124 (Phase 41.2): scope-фильтр. Default 'all' — merged user+org.
+ * Каждая запись получает <code>scope: 'user' | 'org'</code> при выдаче.
  */
 export function listPrices(filter = {}) {
-  let list = _read();
+  const scope = filter.scope || 'all';
+  const userList = (scope === 'org') ? [] : _read().map(p => ({ ...p, scope: 'user' }));
+  const orgList  = (scope === 'user') ? [] : _readOrg().map(p => ({ ...p, scope: 'org' }));
+  let list = [...userList, ...orgList];
   if (filter.elementId) list = list.filter(p => p.elementId === filter.elementId);
   if (filter.counterpartyId) list = list.filter(p => p.counterpartyId === filter.counterpartyId);
   if (filter.priceType) list = list.filter(p => p.priceType === filter.priceType);
@@ -220,6 +227,106 @@ export function removePrice(id) {
 }
 
 export function clearAllPrices() { _write([]); }
+
+// =============================================================================
+// v0.60.124 (Phase 41.2): org-уровень API.
+//
+// Параллельный набор функций для работы с org-каталогом цен. ID-префикс
+// 'pr-org-' для identity (отделение от user 'pr-...').
+//
+// Promotion: user → org через promotePriceToOrg(id) — переносит запись
+// в org-каталог (с новым id, original остаётся в audit-trail).
+// Demotion: org → user через demotePriceToUser(id).
+// =============================================================================
+
+function _uidOrg() {
+  return 'pr-org-' + Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 5);
+}
+
+/** Сохранить org-цену. Аналогично savePrice, но в org-каталоге. */
+export function saveOrgPrice(rec) {
+  if (!rec) throw new Error('[price-org] record required');
+  if (!rec.elementId) throw new Error('[price-org] elementId required');
+  if (rec.price == null || !Number.isFinite(Number(rec.price))) {
+    throw new Error('[price-org] valid price required');
+  }
+  const list = _readOrg();
+  const now = Date.now();
+  if (!rec.id) rec.id = _uidOrg();
+  if (!rec.recordedAt) rec.recordedAt = now;
+  if (!rec.priceType) rec.priceType = 'purchase';
+  if (!rec.currency) rec.currency = 'RUB';
+  if (!PRICE_TYPES[rec.priceType]) throw new Error('[price-org] invalid priceType: ' + rec.priceType);
+  const idx = list.findIndex(p => p.id === rec.id);
+  const saved = {
+    ...rec,
+    price: Number(rec.price),
+    createdAt: (idx >= 0 ? list[idx].createdAt : now),
+    updatedAt: now,
+  };
+  if (idx >= 0) list[idx] = saved;
+  else list.push(saved);
+  _writeOrg(list);
+  return saved;
+}
+
+export function removeOrgPrice(id) {
+  if (!id?.startsWith('pr-org-')) return false;
+  const list = _readOrg();
+  const idx = list.findIndex(p => p.id === id);
+  if (idx < 0) return false;
+  list.splice(idx, 1);
+  _writeOrg(list);
+  return true;
+}
+
+export function clearAllOrgPrices() { _writeOrg([]); }
+
+/** Promote user price → org-каталог. Source-запись удаляется из user. */
+export function promotePriceToOrg(id) {
+  if (id?.startsWith('pr-org-')) return false;  // уже org
+  const userList = _read();
+  const idx = userList.findIndex(p => p.id === id);
+  if (idx < 0) return false;
+  const src = userList[idx];
+  const orgList = _readOrg();
+  const newId = _uidOrg();
+  const orgRec = {
+    ...src,
+    id: newId,
+    promotedAt: Date.now(),
+    promotedFrom: src.id,
+  };
+  orgList.push(orgRec);
+  userList.splice(idx, 1);
+  _writeOrg(orgList);
+  _write(userList);
+  return orgRec;
+}
+
+/** Demote org price → личные. */
+export function demotePriceToUser(id) {
+  if (!id?.startsWith('pr-org-')) return false;
+  const orgList = _readOrg();
+  const idx = orgList.findIndex(p => p.id === id);
+  if (idx < 0) return false;
+  const src = orgList[idx];
+  const userList = _read();
+  const newId = _uid();
+  const userRec = {
+    ...src,
+    id: newId,
+    demotedAt: Date.now(),
+    demotedFrom: src.id,
+  };
+  delete userRec.promotedAt;
+  delete userRec.promotedFrom;
+  userList.push(userRec);
+  orgList.splice(idx, 1);
+  _write(userList);
+  _writeOrg(orgList);
+  return userRec;
+}
 
 /**
  * Массовое добавление цен (для импорта из XLSX).

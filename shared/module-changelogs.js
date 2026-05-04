@@ -4,6 +4,18 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.124', date: '2026-05-04', items: [
+      '💰 <b>Phase 41.2: org-уровень для price-records (общие прайс-листы команды)</b>. По pattern из Phase 41.2 (work-templates v0.60.116). Закрывает второй shared-catalog в roadmap.',
+      '• <b>Изолированный LS-ключ</b> <code>raschet.priceRecords.org.v1</code> (отделён от user-уровня <code>raschet.priceRecords.v1.&lt;userId&gt;</code>). Удаление user-каталога не трогает org.',
+      '• <b>scope-фильтр</b> в <code>listPrices({ scope: \'all\' | \'user\' | \'org\' })</code>. Default <code>\'all\'</code> — merged user+org. Каждая запись получает поле <code>scope</code> в выдаче.',
+      '• <b>org API</b>: <code>saveOrgPrice(rec)</code>, <code>removeOrgPrice(id)</code>, <code>clearAllOrgPrices()</code>.',
+      '• <b>promotePriceToOrg(id)</b>: user-цена ↑ в org-каталог (новый id <code>pr-org-...</code>, audit <code>promotedAt</code> + <code>promotedFrom</code>; original удаляется из user).',
+      '• <b>demotePriceToUser(id)</b>: org-цена ↓ обратно в личные (новый id <code>pr-...</code>, audit <code>demotedAt</code> + <code>demotedFrom</code>).',
+      '• <b>BOM-расчёты автоматически получают доступ к org-ценам</b>: <code>pricesForElement(elementId)</code> внутри использует merged listPrices, поэтому никаких изменений в catalog/cooling/service/mv-config не требуется. Latest из org или user — что новее по recordedAt.',
+      '• <b>Phase 40 Cloud Sync интеграция (будущее)</b>: org-каталог станет real-time shared между членами команды через Firestore. Сейчас локально, но изолированный неймспейс позволяет независимую sync-стратегию.',
+      '• ROADMAP Phase 41.2 «общие прайс-листы» отмечен ✅. UI promote/demote кнопки в catalog/ — следующей итерацией.',
+      'Файлы: <code>shared/price-records.js</code> (~80 строк: LS_KEY_ORG + _readOrg/_writeOrg + scope-filter в listPrices + saveOrgPrice/removeOrgPrice/clearAllOrgPrices/promotePriceToOrg/demotePriceToUser).',
+    ] },
     { version: '0.60.123', date: '2026-05-04', items: [
       '🇺🇸 <b>Добавлена методика NEC (NFPA 70) для проектов в США/Канаде</b>. По указанию Пользователя 2026-05-04: «ну так добавь NEC».',
       '• <b>Опция «NEC (NFPA 70)»</b> добавлена в select <code>set-calcMethod</code> (⚙ Параметры расчёта → Методика расчёта). Помимо IEC 60364-5-52 / ПУЭ 7 / РТМ 36.18.32.4-92.',
