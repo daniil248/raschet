@@ -4,6 +4,26 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.150', date: '2026-05-04', items: [
+      '🔤 <b>Sweep: N+M → N+R redundancy notation во всём проекте</b>. По репорту Пользователя 2026-05-04 «используй не N+M а N+R redundancy (во всем проекте)».',
+      '• <b>Заменено user-facing notation</b> «N+M» → «N+R» в 8 файлах, 26 мест:',
+      '  • <code>cooling/cooling.js</code> (8): paragraphs, table headers, tooltips.',
+      '  • <code>cooling/index.html</code> (3): topology config, KPI tooltips.',
+      '  • <code>cooling/ui/comparison-view.js</code> (3): metrics tooltips.',
+      '  • <code>cooling/ui/topology-view.js</code> (3): redundancy form labels + Σ-summary.',
+      '  • <code>cooling/calc/capex-tco.js</code> + <code>comparison.js</code> + <code>topology.js</code> (8): JSDoc/comments.',
+      '  • <code>ROADMAP.md</code> (1).',
+      '• <b>Standalone «M» как переменная в UI</b> заменена на «R»:',
+      '  • Колонка «M» в таблице вариантов → «R».',
+      '  • Tooltip «M — количество в резерве» → «R — количество в резерве».',
+      '  • Formula «N+1 → M=1, N+2 → M=2, 2N → M=N» → «N+1 → R=1, N+2 → R=2, 2N → R=N».',
+      '  • «Σ N + M = …» → «Σ N + R = …».',
+      '  • «M=0 — без резервирования» → «R=0 — без резервирования».',
+      '• <b>JS property <code>redundancyM</code></b> в data-структурах cooling-config <b>оставлен как есть</b> — это internal naming, хранится в LocalStorage. Переименование сломало бы legacy-проекты Пользователей. Memory rule зафиксировал это как backward-compat концепцию.',
+      '• <b>Concrete options</b> «N+1», «N+2», «2N» в dropdown\'ах <b>оставлены без изменений</b> — это конкретные значения резервирования, не абстрактные переменные.',
+      '• <b>Memory rule</b> <code>feedback_redundancy_notation.md</code> новый — таблица «использовать / не использовать» + чек-лист для будущих модулей с резервированием.',
+      'Файлы: cooling/* (7 файлов), ROADMAP.md, memory/feedback_redundancy_notation.md (новый), memory/MEMORY.md (+ссылка).',
+    ] },
     { version: '0.60.149', date: '2026-05-04', items: [
       '🎨 <b>scs-design: user-select fix на rack-cards</b>. Применение паттерна psychrometrics v0.60.148 «запрещено выделять больше одного поля» — drag по холсту больше не захватывает текст из нескольких rack-карточек одновременно (был визуальный баг «синее выделение везде»).',
       '• <code>.sd-rack-card</code> получил <code>user-select:none</code>; внутри input/textarea — <code>user-select:text</code> (для копирования значений).',

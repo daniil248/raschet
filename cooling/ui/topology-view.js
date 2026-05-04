@@ -68,12 +68,12 @@ export function renderTopologyConfig(topoConfig, onChange, sel) {
         <label title="N — количество штатно работающих чиллеров. На них распределяется суммарная нагрузка от CRAC поровну. Если у вас 3 чиллера и N=2, то 2 работают, 1 в резерве.">
           N (рабочих):<input type="number" min="1" max="20" step="1" data-cf="redundancyN" value="${t.redundancyN}">
         </label>
-        <label title="M — количество чиллеров в резерве (готовы включиться при отказе одного из активных). N+M = общее число чиллеров в системе. M=0 — без резервирования.">
-          M (резерв):<input type="number" min="0" max="10" step="1" data-cf="redundancyM" value="${t.redundancyM}">
+        <label title="R — количество чиллеров в резерве (готовы включиться при отказе одного из активных). N+R = общее число чиллеров в системе. R=0 — без резервирования.">
+          R (резерв):<input type="number" min="0" max="10" step="1" data-cf="redundancyM" value="${t.redundancyM}">
         </label>
         <label title="Режим резерва (по требованию Пользователя 2026-05-02):
 • Холодный резерв — резервные чиллеры ПОЛНОСТЬЮ ОТКЛЮЧЕНЫ, ждут failover. Energy = 0. Активны только N. Каждый берёт load/N.
-• Горячий резерв — резервные работают параллельно с активными, делят нагрузку. Активны все N+M. Каждый берёт load/(N+M) — ниже part-load на каждом + быстрый failover без ramp-up. Энергопотребление в нашей упрощённой модели аналогичное (т.к. linear power-load), но в реальности горячий резерв ВЫГОДНЕЕ при низкой нагрузке (улучшенный IPLV) и ХУЖЕ при максимальной (overhead на параллельных насосах).">
+• Горячий резерв — резервные работают параллельно с активными, делят нагрузку. Активны все N+R. Каждый берёт load/(N+R) — ниже part-load на каждом + быстрый failover без ramp-up. Энергопотребление в нашей упрощённой модели аналогичное (т.к. linear power-load), но в реальности горячий резерв ВЫГОДНЕЕ при низкой нагрузке (улучшенный IPLV) и ХУЖЕ при максимальной (overhead на параллельных насосах).">
           Режим резерва:
           <select data-cf="standbyMode">
             <option value="cold"${t.standbyMode === 'cold' ? ' selected' : ''}>Холодный (off, ждёт failover)</option>
@@ -82,7 +82,7 @@ export function renderTopologyConfig(topoConfig, onChange, sel) {
         </label>
       </div>
       <p class="muted" style="font-size:11px;margin:4px 0 0">
-        Σ N + M = ${(t.redundancyN || 0) + (t.redundancyM || 0)} чиллеров в системе. ${
+        Σ N + R = ${(t.redundancyN || 0) + (t.redundancyM || 0)} чиллеров в системе. ${
           t.standbyMode === 'hot'
             ? `Все ${(t.redundancyN || 0) + (t.redundancyM || 0)} работают параллельно (горячий резерв).`
             : `Активны ${t.redundancyN || 0}, в холодном резерве ${t.redundancyM || 0}.`

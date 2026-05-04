@@ -54,12 +54,12 @@ export const DEFAULT_TOPOLOGY = {
   cracs: [],
   loopMode: 'common-loop',
   redundancyN: 1,        // штатно работающих чиллеров
-  redundancyM: 0,        // в резерве (всего N+M в системе)
+  redundancyM: 0,        // в резерве (всего N+R в системе)
   // v0.60.1: режим резерва (по требованию Пользователя):
   //   'cold' — резерв полностью отключён, energy=0, ждёт failover.
   //            Активные = N, каждый берёт load/N.
   //   'hot'  — резерв работает параллельно с активными, делит нагрузку.
-  //            Активные = N+M, каждый берёт load/(N+M) → ниже part-load
+  //            Активные = N+R, каждый берёт load/(N+R) → ниже part-load
   //            на каждом + быстрый failover без ramp-up.
   standbyMode: 'cold',
 };
@@ -84,11 +84,11 @@ export function buildTopologyFromOptions(options, loopMode = 'common-loop', redu
  * v0.60.15 (Phase 22.10.1, refined): Симуляция option-комплекса.
  *
  * По уточнению Пользователя: redundancy now per-EQUIPMENT-GROUP (не per-option).
- * Каждая equipment-группа имеет свои qty + N + M + standbyMode.
+ * Каждая equipment-группа имеет свои qty + N + R + standbyMode.
  *
  * Алгоритм:
  *   Для каждой equipment-группы:
- *     • activeUnits = N (cold) или N+M (hot); coldStandby = qty - activeUnits
+ *     • activeUnits = N (cold) или N+R (hot); coldStandby = qty - activeUnits
  *     • Если group.role='crac' (или crac-type spec) → CRACs: каждая активная
  *       единица даёт нагрузку на upstream chillers
  *     • Если group.role='chiller'|'dx' → активные распределяют общую chiller-load
@@ -252,7 +252,7 @@ export function simulateTopology(topo, hourly) {
   const M = Math.max(0, topo.redundancyM || 0);
   const standbyMode = topo.standbyMode || 'cold';
   // v0.60.1: горячий резерв = резервы работают параллельно с активными,
-  //   делят нагрузку (всего N+M активных). Холодный = только N.
+  //   делят нагрузку (всего N+R активных). Холодный = только N.
   const ACTIVE_COUNT = standbyMode === 'hot' ? (N + M) : N;
 
   // Сначала считаем bin-данные для CRAC (чтобы получить cracCoolingLoadKw на чиллер).
@@ -282,7 +282,7 @@ export function simulateTopology(topo, hourly) {
   // Теперь для каждого чиллера: распределяем нагрузку (equally между N штатных).
   // Важно: сохраняем оригинальную capacity-долю в каждом интервале через scaling.
   const chillersList = (topo.chillers || []);
-  // v0.60.1: при горячем резерве работают все N+M; при холодном — только N.
+  // v0.60.1: при горячем резерве работают все N+R; при холодном — только N.
   const workingChillers = chillersList.slice(0, ACTIVE_COUNT);
   const coldStandbyChillers = chillersList.slice(ACTIVE_COUNT);
 

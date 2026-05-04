@@ -41,7 +41,7 @@ import { fetchAndSaveMeteoForProject } from '../shared/meteo-fetch.js';
 import { createServiceOrderForProject } from '../shared/service-bridge.js';
 import { renderComparisonTable } from './ui/comparison-view.js';
 // v0.60.17: stale-imports убраны (buildTopologyFromOptions / simulateTopology
-// — legacy путь, не используется в новой модели per-equipment N+M).
+// — legacy путь, не используется в новой модели per-equipment N+R).
 import { simulateOptionTopology } from './calc/topology.js';
 // v0.60.17: renderTopologyConfig больше не используется (Topology-tab
 // inlined в renderActiveTab). Оставлен только renderTopologyResults.
@@ -1071,14 +1071,14 @@ function renderActiveTab() {
         <div class="cl-chiller-section">
           <div class="cl-chiller-section-title">Auto-расчёт количества по вариантам</div>
           <p class="muted" style="font-size:11.5px;margin:0 0 6px">
-            В каждом варианте задаётся ОДИН агрегат + уровень резервирования. Количество (N+M) считается автоматически из целевой мощности и rated одного агрегата:
-            <b>N = ceil(${targetKw.toFixed(0)} / rated)</b>; M по выбранному режиму (N+1 → M=1, N+2 → M=2, 2N → M=N).
+            В каждом варианте задаётся ОДИН агрегат + уровень резервирования. Количество (N+R) считается автоматически из целевой мощности и rated одного агрегата:
+            <b>N = ceil(${targetKw.toFixed(0)} / rated)</b>; R по выбранному режиму (N+1 → R=1, N+2 → R=2, 2N → R=N).
           </p>
           <table class="cl-annual-table" style="font-size:12px">
             <thead><tr>
               <th>Вариант</th><th>Тип</th><th>Rated 1шт</th><th>Резерв</th>
-              <th title="Рабочих">N</th><th title="В резерве">M</th>
-              <th title="Всего шт = N+M">Σ qty</th>
+              <th title="Рабочих">N</th><th title="В резерве">R</th>
+              <th title="Всего шт = N+R">Σ qty</th>
               <th title="Установленная мощность активных = N × rated. Должна ≥ целевой.">Установлено</th>
             </tr></thead>
             <tbody>${variantsHtml}</tbody>
@@ -1192,8 +1192,8 @@ function renderActiveTab() {
       }));
     }
   } else if (_activeTab === 'energy') {
-    // v0.60.18: используем simulateOptionTopology для учёта qty + N+M.
-    // Per-unit spec → суммарная установленная мощность × N (active) или N+M (hot).
+    // v0.60.18: используем simulateOptionTopology для учёта qty + N+R.
+    // Per-unit spec → суммарная установленная мощность × N (active) или N+R (hot).
     const pSpec = primarySpec(opt);
     const tMetrics = simulateOptionTopology(opt, hourly, requiredCoolingKwOf(sel));
     const annualEnergyKwh = tMetrics.totalEnergyKwh;
@@ -1269,7 +1269,7 @@ function renderActiveTab() {
           <td><input type="number" min="1" max="20" data-eq-i="${i}" data-eq-f="redundancyN" value="${eq.redundancyN || 1}" style="width:60px"
                      title="N — штатно работающих в этой группе"></td>
           <td><input type="number" min="0" max="10" data-eq-i="${i}" data-eq-f="redundancyM" value="${eq.redundancyM || 0}" style="width:60px"
-                     title="M — в резерве в этой группе. N+M ≤ qty."></td>
+                     title="R — в резерве в этой группе. N+R ≤ qty."></td>
           <td><select data-eq-i="${i}" data-eq-f="standbyMode" title="Холодный — резерв off, energy=0. Горячий — резервы работают параллельно с активными.">
                 <option value="cold"${eq.standbyMode === 'cold' ? ' selected' : ''}>❄ Холодный</option>
                 <option value="hot"${eq.standbyMode === 'hot' ? ' selected' : ''}>🔥 Горячий</option>
@@ -1302,7 +1302,7 @@ function renderActiveTab() {
           ${(opt.equipment || []).length === 0
             ? '<p class="muted">Нет оборудования. Задайте параметры в табе Spec или добавьте группу ниже.</p>'
             : `<table class="cl-annual-table" style="font-size:12px">
-                <thead><tr><th>Имя</th><th>Тип</th><th class="num" title="Rated capacity одной единицы">Rated</th><th title="Количество одинаковых единиц в группе">Qty</th><th title="N — рабочих">N</th><th title="M — в резерве">M</th><th title="Режим резерва">Резерв</th><th></th></tr></thead>
+                <thead><tr><th>Имя</th><th>Тип</th><th class="num" title="Rated capacity одной единицы">Rated</th><th title="Количество одинаковых единиц в группе">Qty</th><th title="N — рабочих">N</th><th title="R — в резерве">R</th><th title="Режим резерва">Резерв</th><th></th></tr></thead>
                 <tbody>${eqRows}</tbody>
               </table>`}
           <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
@@ -1334,7 +1334,7 @@ function renderActiveTab() {
           <p class="muted" style="font-size:11.5px;margin:8px 0 0;padding:6px 10px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:3px" title="Принцип расчёта при нескольких CRAC, подключённых к чиллерам:
 1. Каждый CRAC рассчитывается отдельно — energy_CRAC_i = power_per_unit × hours × activeUnits.
 2. Тепловая нагрузка на upstream чиллер = Σ cracCoolingLoadKw × activeUnits по всем CRAC-группам (для каждого bin температуры).
-3. Эта суммарная нагрузка распределяется РАВНОМЕРНО между всеми активными чиллерами всех групп: load_per_chiller = total_load / Σ activeChillerUnits. Каждый чиллер видит часть нагрузки = load/N (или load/(N+M) для hot-резерва).
+3. Эта суммарная нагрузка распределяется РАВНОМЕРНО между всеми активными чиллерами всех групп: load_per_chiller = total_load / Σ activeChillerUnits. Каждый чиллер видит часть нагрузки = load/N (или load/(N+R) для hot-резерва).
 4. energy_chiller_i = (load_per_chiller / COP_chiller) × hours × activeUnits.
 5. Σ energy системы = Σ energy_CRAC + Σ energy_chiller (cold-резерв = 0).
 Так считаются и chiller-only системы (без CRAC) — нагрузка берётся из «Требуемая мощн.» подбора и распределяется на активные чиллеры.">
@@ -1350,7 +1350,7 @@ function renderActiveTab() {
           const eq = opt.equipment[i]; if (!eq) return;
           const v = inp.type === 'number' ? Number(inp.value) || 0 : inp.value;
           eq[f] = v;
-          // Гарантируем N+M ≤ qty
+          // Гарантируем N+R ≤ qty
           if (f === 'qty') {
             if (eq.redundancyN > eq.qty) eq.redundancyN = eq.qty;
             if (eq.redundancyN + eq.redundancyM > eq.qty) eq.redundancyM = Math.max(0, eq.qty - eq.redundancyN);

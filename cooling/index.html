@@ -208,7 +208,7 @@
           <button type="button" class="cl-tab" data-tab="capex" data-scope="option"
                   title="ОПЦИЯ-уровень. CAPEX-входные данные этой опции: состав оборудования (статьи затрат) + срок и финансовые параметры. TCO chart и сравнение — на ПОДБОР-уровне (вкладка «📈 TCO / Payback»).">💰 CAPEX (входные)</button>
           <button type="button" class="cl-tab" data-tab="topology" data-scope="option"
-                  title="ОПЦИЯ-уровень. Топология холодоснабжения этой опции: распределение нагрузки между несколькими чиллерами и CRAC. Резервирование (N+M), общий контур / точка-точка.">🔗 Топология</button>
+                  title="ОПЦИЯ-уровень. Топология холодоснабжения этой опции: распределение нагрузки между несколькими чиллерами и CRAC. Резервирование (N+R), общий контур / точка-точка.">🔗 Топология</button>
         </div>
 
         <div class="cl-tab-pane" data-pane="general">
@@ -263,14 +263,14 @@
             <div class="cl-chart-box"><canvas id="cl-tco-chart"></canvas></div>
           </div>
           <div class="cl-section-card">
-            <h3 title="Сводная таблица TCO/CAPEX/OPEX/Payback для всех вариантов подбора. Использует системные метрики (qty + N+M).">📊 Финансовая сводка по вариантам</h3>
+            <h3 title="Сводная таблица TCO/CAPEX/OPEX/Payback для всех вариантов подбора. Использует системные метрики (qty + N+R).">📊 Финансовая сводка по вариантам</h3>
             <div id="cl-tco-summary"></div>
           </div>
         </div>
 
         <div class="cl-tab-pane" data-pane="topology" hidden>
           <div class="cl-section-card" id="cl-topo-config-wrap">
-            <!-- topology-config форма (loop mode + N+M резервирование) -->
+            <!-- topology-config форма (loop mode + N+R резервирование) -->
           </div>
           <div class="cl-section-card">
             <h3 title="Per-equipment energy: годовое потребление по каждому блоку (чиллеры + CRAC) с долей в общей системе. Учитывает распределение нагрузки CRAC на чиллеры с учётом резервирования.">📊 По оборудованию</h3>

@@ -19,14 +19,14 @@ export function renderComparisonTable(metrics, currency = '₽') {
     return '<div class="muted">Добавьте конфигурации для сравнения.</div>';
   }
 
-  // v0.60.18: метрики СИСТЕМНЫЕ (с учётом qty + N+M резервирования).
+  // v0.60.18: метрики СИСТЕМНЫЕ (с учётом qty + N+R резервирования).
   // По требованию Пользователя 2026-05-02: «сравнивать нужно не отдельные
   // системы а системы на запрашиваемую мощность».
   const ROWS = [
     { id: 'sysType',   label: 'Тип системы',                tip: 'Тип основного агрегата опции (Чиллер / DX air-cooled / DX pumped FC / CRAC).',                  fmt: (m) => m.spec.systemType,                                  cmp: null },
     { id: 'fcMode',    label: 'FC mode',                     tip: 'Режим фрикулинга (только для чиллеров).',                                                       fmt: (m) => (m.spec.systemType || '').startsWith('chiller') ? (m.spec.freeCoolingMode || '—') : '—', cmp: null },
     { id: 'ratedUnit', label: 'Rated/единица, кВт',          tip: 'Номинальная холодопроизводительность ОДНОЙ единицы оборудования при ratedAmbient.',             fmt: (m) => `${Math.round(m.spec.ratedCapKw || 0)}`,             cmp: null },
-    { id: 'totalQty',  label: 'Кол-во в системе, шт',        tip: 'Σ qty по всем equipment-группам (N+M суммарно). Определяется из требуемой мощности и резервирования.', fmt: (m) => `${m.totalQty || 0}`,                                cmp: null },
+    { id: 'totalQty',  label: 'Кол-во в системе, шт',        tip: 'Σ qty по всем equipment-группам (N+R суммарно). Определяется из требуемой мощности и резервирования.', fmt: (m) => `${m.totalQty || 0}`,                                cmp: null },
     { id: 'installed', label: 'Установлено системой, кВт',   tip: 'Σ ratedCapKw × активные единицы (без cold-резерва). Должно покрывать требуемую мощность с запасом.', fmt: (m) => `${Math.round(m.installedKw || 0)}`,                cmp: 'higher', getter: (m) => m.installedKw || 0 },
     { id: 'ratedCOP',  label: 'Rated COP/единица',           tip: 'COP одной единицы при ratedAmbient.',                                                          fmt: (m) => (m.spec.ratedCOP || 0).toFixed(2),                   cmp: 'higher', getter: (m) => m.spec.ratedCOP || 0 },
     { id: 'fcHours',   label: 'FC часов/год',                 tip: 'Часы в году с partial/full free-cooling (нормализовано на 1 год: Σ fc_fraction × hours / N_лет в датасете). v0.60.64: фикс — раньше использовался несуществующий freeCoolingThresholdC и всегда показывалось 0.', fmt: (m) => `${(m.fc.fcHours || 0).toFixed(0)}`,                cmp: 'higher', getter: (m) => m.fc.fcHours || 0 },
@@ -58,7 +58,7 @@ export function renderComparisonTable(metrics, currency = '₽') {
     if (bestIdx >= 0) winnerByRow.set(row.id, bestIdx);
   }
 
-  return `<div class="cl-cmp-banner" title="Все денежные и энергетические метрики посчитаны на ВСЮ систему: per-unit-spec × Σ qty (количество единиц по группам с учётом N+M резервирования). По требованию: «сравнивать нужно не отдельные системы а системы на запрашиваемую мощность».">
+  return `<div class="cl-cmp-banner" title="Все денежные и энергетические метрики посчитаны на ВСЮ систему: per-unit-spec × Σ qty (количество единиц по группам с учётом N+R резервирования). По требованию: «сравнивать нужно не отдельные системы а системы на запрашиваемую мощность».">
     📊 <b>Сравнение СИСТЕМ на требуемую мощность</b> — energy/CAPEX/OPEX/TCO посчитаны на ВЕСЬ комплекс с учётом qty + резерва каждой опции.
   </div>
   <table class="cl-comparison-table">
