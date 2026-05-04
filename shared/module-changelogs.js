@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.107', date: '2026-05-04', items: [
+      '🐛 <b>Hotfix: TW SyntaxError на строке 1288</b>. По репорту Пользователя «не работает» (Chrome console: «Uncaught SyntaxError: Unexpected token \';\'» в tech-workspace.js:1288).',
+      '• <b>Корень бага</b>: в renderListRail модульная ternary <code>${... === \'modular\' ? \\`&lt;div...\\`</code> (введена в v0.60.90 для условного показа блока «🏢 МЦОД» только при dcType=modular) ОТКРЫВАЛА inner-template, но НЕ закрывала его — отсутствовал `\\` : \'\'}` после закрывающего <code>&lt;/div&gt;</code>. Парсер V8 продолжал поглощать всё следующее как раw template content до самого конца return-templа, и закрывающий <code>\\`;</code> оказывался внутри expression-context (откуда «;» = unexpected).',
+      '• <b>Fix</b>: добавлено <code>` : \'\'}</code> после <code>&lt;/div&gt;</code> на строке 1223 — ternary теперь корректно возвращает пустую строку при dcType ≠ modular и закрывает inner-template + ${...} expression.',
+      '• Это объясняет ВСЕ предыдущие регрессии TW (v0.60.101 на строке 1446, v0.60.106 на строке 1288 — одна и та же ternary, разные позиции из-за изменений выше). Bug жил с v0.60.90 (~v0.60.105 версий назад). Теперь полностью устранён.',
+      'Файлы: <code>tech-workspace/tech-workspace.js</code> (1 строка — закрывающий ternary паттерн).',
+    ] },
     { version: '0.60.106', date: '2026-05-04', items: [
       '🐛 <b>Hotfix: <code>ensureDefaultProject()</code> возвращал <code>arr[0]</code>, игнорируя активный проект</b>. По репорту Пользователя «не работает» (после переключения проекта через badge в Технологе ЦОД остался на старом проекте). Корень бага: при наличии нескольких проектов возвращался первый по списку, даже если <code>getActiveProjectId()</code> указывал на другой. Это скрывалось пока был один проект, но v0.60.103 (project-switcher через badge) этот баг проявил.',
       '• <b>Fix</b>: <code>ensureDefaultProject()</code> теперь сначала проверяет <code>getActiveProjectId()</code> → находит соответствующий проект в <code>listProjects()</code> → возвращает его. Только если active не задан или указывает на удалённый — fallback на arr[0].',

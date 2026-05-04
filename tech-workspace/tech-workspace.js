@@ -1220,7 +1220,7 @@ function renderListRail(c, ro) {
           </button>`;
         }).join('');
       })()}</div>
-    </div>
+    </div>` : ''}
 
     <div class="tw-rail-section">
       <div class="tw-rail-head">
