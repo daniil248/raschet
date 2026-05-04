@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.217', date: '2026-05-04', items: [
+      '📁 <b>Каталоги: продолжение split-а на подпапки by-vendor</b>. Продолжая v0.60.214 (dgu/ups/battery), сейчас разбиты:',
+      '• <code>shared/catalogs/racks/</code> — apc.js, cmo.js, rittal.js, hyperline.js, kehua.js + index.js (агрегатор + DOOR_LABEL/TOP_LABEL/... + listBuiltinRacks/getLiveKitCatalog/kitById).',
+      '• <code>shared/catalogs/drups/</code> — hitec.js, piller.js, euro-diesel.js + index.js.',
+      '• <code>shared/catalogs/pdus/</code> — apc.js, rittal.js, cmo.js, raritan.js, kehua.js + index.js.',
+      '• <code>shared/catalogs/rack-accessories/</code> — kehua.js, apc.js, rittal.js, raritan.js + index.js.',
+      '• Старые файлы <code>racks.js / drups.js / pdus.js / rack-accessories.js</code> остались как re-export shim для обратной совместимости импортов.',
+      '<b>NOT split</b>: <code>breakers.js</code> (только Типовой vendor — нет смысла дробить).',
+      'Файлы: 22 новых per-vendor + 4 переписанных shim.',
+    ] },
     { version: '0.60.216', date: '2026-05-04', items: [
       '🦶 <b>Двойной футер фикс — все модули</b>. По репорту Пользователя 2026-05-04 «да фикс примени для всех модулей». Найдены и исправлены: <code>panel-config</code>, <code>mv-config</code>, <code>logistics</code>, <code>elements</code>. В каждом удалены <code>import { mountFooter } from "../shared/app-footer.js"</code> и <code>window.addEventListener("DOMContentLoaded", () => mountFooter())</code>. Остался только <code>module-footer</code>.',
       '⚙ <b>ДГУ: margin теперь работает</b>. По репорту Пользователя «и маргин вроде не влияет ни на что». Баг: в state поле было <code>margin</code>, а калькулятор <code>calcDguRequired</code> ждёт <code>safetyMarginPct</code> — рассинхрон, margin молча игнорировался, бралось дефолтное 15%. Переименовано в <code>safetyMarginPct</code>, теперь margin=0 (валидный 0) тоже учитывается (раньше съедался <code>||</code>).',

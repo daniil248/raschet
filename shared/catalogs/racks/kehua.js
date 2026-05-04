@@ -1,0 +1,43 @@
+// =============================================================================
+// shared/catalogs/racks/kehua.js — Kehua Data IT Cabinet (H-series, welded high-end)
+// =============================================================================
+// v0.60.217 (split).
+
+export const KEHUA_RACK_KITS = [
+  { id: 'kehua-hser-61042-mf', sku: 'HSER-61042BK-MF',
+    name: 'Kehua H-series 42U 600×1000 (mesh/mesh)',
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base','cableEntryTop'],
+    preset: { manufacturer: 'Kehua', series: 'Data H-series', u: 42, width: 600, depth: 1000,
+      doorFront: 'mesh', doorRear: 'double-mesh', doorWithLock: true,
+      sides: 'pair-sku', top: 'vent', base: 'feet' } },
+  { id: 'kehua-hser-61242-mf', sku: 'HSER-61242BK-MF',
+    name: 'Kehua H-series 42U 600×1200 (mesh/mesh)',
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base','cableEntryTop'],
+    preset: { manufacturer: 'Kehua', series: 'Data H-series', u: 42, width: 600, depth: 1200,
+      doorFront: 'mesh', doorRear: 'double-mesh', doorWithLock: true,
+      sides: 'pair-sku', top: 'vent', base: 'feet' } },
+  { id: 'kehua-hser-81042-mf', sku: 'HSER-81042BK-MF',
+    name: 'Kehua H-series 42U 800×1000 (mesh/mesh)',
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base','cableEntryTop'],
+    preset: { manufacturer: 'Kehua', series: 'Data H-series', u: 42, width: 800, depth: 1000,
+      doorFront: 'mesh', doorRear: 'double-mesh', doorWithLock: true,
+      sides: 'pair-sku', top: 'vent', base: 'feet' } },
+  { id: 'kehua-hser-81242-mf', sku: 'HSER-81242BK-MF',
+    name: 'Kehua H-series 42U 800×1200 (mesh/mesh)',
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base','cableEntryTop'],
+    preset: { manufacturer: 'Kehua', series: 'Data H-series', u: 42, width: 800, depth: 1200,
+      doorFront: 'mesh', doorRear: 'double-mesh', doorWithLock: true,
+      sides: 'pair-sku', top: 'vent', base: 'feet' } },
+  { id: 'kehua-hser-61242-gf', sku: 'HSER-61242BK-GF',
+    name: 'Kehua H-series 42U 600×1200 (glass/mesh) — холодный коридор',
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base','cableEntryTop'],
+    preset: { manufacturer: 'Kehua', series: 'Data H-series', u: 42, width: 600, depth: 1200,
+      doorFront: 'glass', doorRear: 'double-mesh', doorWithLock: true,
+      sides: 'pair-sku', top: 'vent', base: 'feet' } },
+  { id: 'kehua-hser-61442-gm', sku: 'HSER-61442BK-GM',
+    name: 'Kehua H-series 42U 600×1400 (glass/metal-double) — hot+cold aisle',
+    includes: ['u','width','depth','doorFront','doorRear','doorWithLock','sides','top','base','cableEntryTop'],
+    preset: { manufacturer: 'Kehua', series: 'Data H-series', u: 42, width: 600, depth: 1400,
+      doorFront: 'glass', doorRear: 'double-metal', doorWithLock: true,
+      sides: 'pair-sku', top: 'solid', base: 'feet' } },
+];
