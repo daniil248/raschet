@@ -7,7 +7,7 @@ import { effectiveTag } from '../zones.js';
 import { snapshot, notifyChange } from '../history.js';
 import { render } from '../render.js';
 import { isTagUnique } from '../graph.js';
-import { consumerGroupItems, nodeVoltage } from '../electrical.js';
+import { consumerGroupItems, nodeVoltage, isThreePhase, computeCurrentA } from '../electrical.js';
 import { getTerm, getTermTooltip } from '../../methods/terms.js';
 import { rtmInfoBlock } from './rtm-block.js';
 // Фаза 1.19.7: panel-catalog / panel-picker больше не используются в
@@ -2380,13 +2380,26 @@ export function panelStatusBlock(n) {
     const _basis = (typeof GLOBAL.panelMaxBasis === 'string') ? GLOBAL.panelMaxBasis : 'nameplate';
     const _basisLbl = _basis === 'calculated' ? 'P<sub>расч</sub>' : 'P<sub>уст</sub>';
     parts.push(`<b>Максимум (${_basisLbl}):</b> ${fmt(n._maxLoadKw)} kW · ${fmt(n._maxLoadA || 0)} A`);
-    // Справочно — обе метрики (если они различаются).
-    if (Number.isFinite(n._maxLoadKwNameplate) && Number.isFinite(n._maxLoadKwCalculated)
-        && Math.abs(n._maxLoadKwNameplate - n._maxLoadKwCalculated) > 0.05) {
-      parts.push(`<span class="muted" style="font-size:11px"
-        title="P_уст — сумма паспортных мощностей (Σ P_ном) без К_и. Pном — консервативная оценка. P_расч — Σ (P_ном × К_и) согласно ПУЭ 1.3.13 / IEC 60364-3 §311.1. Активная для подбора: ${_basis === 'calculated' ? 'P_расч' : 'P_уст'} (см. Параметры расчёта).">
-        — справочно: P<sub>уст</sub> ${fmt(n._maxLoadKwNameplate)} kW · P<sub>расч</sub> ${fmt(n._maxLoadKwCalculated)} kW
-      </span>`);
+    // v0.60.308 (по запросу Пользователя 2026-05-06: «почему только максимум в
+    // кВт, давай добавь расчётные мощности и токи»): кроме активного «Максимум»
+    // показываем ОБЕ метрики (P_уст и P_расч) с парой kW + A для каждой.
+    // Раньше выводились только kW (без амперов) и только когда они различались.
+    if (Number.isFinite(n._maxLoadKwNameplate) && Number.isFinite(n._maxLoadKwCalculated)) {
+      const _U = nodeVoltage(n) || 0;
+      const _cos = n._cosPhi || GLOBAL.defaultCosPhi || 0.92;
+      const _ph3 = isThreePhase(n);
+      const _aNom = (_U > 0 && n._maxLoadKwNameplate > 0)
+        ? computeCurrentA(n._maxLoadKwNameplate, _U, _cos, _ph3) : 0;
+      const _aCalc = (_U > 0 && n._maxLoadKwCalculated > 0)
+        ? computeCurrentA(n._maxLoadKwCalculated, _U, _cos, _ph3) : 0;
+      const _diff = Math.abs(n._maxLoadKwNameplate - n._maxLoadKwCalculated) > 0.05;
+      const _activeMark = (kind) => (_basis === 'calculated' ? kind === 'calc' : kind === 'nom')
+        ? ' <span style="color:#15803d;font-weight:600" title="активная для подбора (см. Параметры расчёта)">●</span>' : '';
+      parts.push(`<div class="muted" style="font-size:11.5px;line-height:1.7;margin-top:2px"
+          title="P_уст — сумма паспортных мощностей (Σ P_ном) без К_и. Консервативная оценка для подбора кабеля/автомата. P_расч — Σ (P_ном × К_и) согласно ПУЭ 1.3.13 / IEC 60364-3 §311.1. Учитывает фактическую загрузку. Зелёная точка — активная метрика по настройке Параметры расчёта → База расчёта Макс.">
+          P<sub>уст</sub> (паспорт): <b>${fmt(n._maxLoadKwNameplate)} kW</b> · ${fmt(_aNom)} A${_activeMark('nom')}<br>
+          P<sub>расч</sub> (с К<sub>и</sub>): <b>${fmt(n._maxLoadKwCalculated)} kW</b> · ${fmt(_aCalc)} A${_activeMark('calc')}${_diff ? '' : ' <span class="muted" style="font-size:10.5px">(совпадают — все К<sub>и</sub>=1)</span>'}
+        </div>`);
     }
   }
   // Текущая нагрузка
