@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.356', date: '2026-05-06', items: [
+      '🐛 <b>CRITICAL fix: ReferenceError при открытии модалки группы</b>. По репорту Пользователя 2026-05-06: «модалка не открывается» + console-error «Uncaught ReferenceError: n is not defined at openContainerMembersModal (inspector.js:1732)».',
+      '<b>Корень</b>: в v0.60.352 при добавлении селектора «Порт группы» в карточку child\'а я использовал переменную <code>n.inputs</code>, но в scope <code>openContainerMembersModal(container)</code> переменная контейнера называется <code>container</code>, не <code>n</code>. Когда у child\'а 1 ввод (<code>inputs === 1</code>), JS пытался эвалуировать <code>Number(n.inputs)</code> и крашил всю функцию рендера → body.innerHTML не записывался → modal.classList.remove(\'hidden\') не вызывался → модалка не открывалась.',
+      '<b>Не упало раньше</b> у тех Пользователей, у кого все child\'ы были multi-input (короткое замыкание <code>&&</code> не доходило до <code>n.inputs</code>). У Пользователя в скриншоте — child с 1 input → bang.',
+      '<b>Fix</b>: <code>n.inputs</code> → <code>container.inputs</code> (2 места: condition + Array.from length).',
+      'Files: <code>js/engine/inspector.js</code> (cards-view template).',
+    ] },
     { version: '0.60.355', date: '2026-05-06', items: [
       '🏠 <b>Outdoor-блоки и cond внутри group считаются «размещёнными»</b>. По репорту Пользователя 2026-05-06: «размещенные в группе кондиционеры и наружные блоки которые входят в их состав, должны считаться размещенными на схеме, а не попадать в реестр неразмещенных».',
       '<b>Корень</b>: «Неразмещённые» (renderUnplacedList) и Реестр (renderProjectRegistry) фильтровали по <code>n.pageIds.length === 0</code>. Outdoor-блоки (<code>embedAsOutdoor=true</code>) с <code>linkedIndoorId</code> и cond внутри group (<code>containerId</code> есть, но <code>pageIds=[]</code>) попадали в счётчик неразмещённых, хотя логически размещены через parent.',

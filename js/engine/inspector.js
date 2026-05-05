@@ -1709,10 +1709,10 @@ export function openContainerMembersModal(container) {
             <b>${escHtml(phase)} · ${v} В</b>
             <span title="Количество входных портов (P1, P2…) и приоритеты их использования. Параллель = все приоритеты одинаковые. АВР = разные (1=primary, 2=standby).">Входы:</span>
             <b>${escHtml(portsTxt)}</b>
-            ${(inputs === 1 && (Number(n.inputs) || 1) > 1) ? `
+            ${(inputs === 1 && (Number(container.inputs) || 1) > 1) ? `
               <span title="Порт группы, к которому подключён этот блок. Используется для маршрутизации до соответствующего щита.">Порт группы:</span>
               <select data-cm-groupport="${escAttr(a.id)}" style="font:inherit;font-size:11px;padding:1px 4px;border:1px solid #cbd5e1;border-radius:3px" title="Этот блок имеет 1 ввод; выберите к какому порту контейнера (P1…) он подключён. От этого зависит, через какой щит (на верхнем уровне) он питается.">
-                ${Array.from({ length: Number(n.inputs) || 1 }, (_, _pi) =>
+                ${Array.from({ length: Number(container.inputs) || 1 }, (_, _pi) =>
                   `<option value="${_pi}"${(Number(a.assignedGroupPort) || 0) === _pi ? ' selected' : ''}>P${_pi + 1}</option>`
                 ).join('')}
               </select>
