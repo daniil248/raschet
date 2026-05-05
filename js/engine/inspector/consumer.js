@@ -812,6 +812,17 @@ export function openConsumerParamsModal(n) {
       const _ouId = _ouIds[i];
       const _ouNode = state.nodes.get(_ouId);
       if (!_ouNode) continue;
+      // v0.60.363 (по репорту Пользователя 2026-05-06: «это как? родитель
+      // Z1.ACU01 а ребенок Z1.ACU02.OU1???»): auto-fix stale outdoor tags
+      // ПРИ РЕНДЕРЕ модалки. Раньше rename делался только в apply-handler
+      // — если parent.tag поменялся в LS, но Пользователь не открывал/не
+      // применял cond-modal, outdoor оставался со старым тегом.
+      const _expectedOuTag = `${n.tag || ''}.OU${i + 1}`;
+      if (_ouNode.tag !== _expectedOuTag) {
+        _ouNode.tag = _expectedOuTag;
+        // Также чиним linkedIndoorId на случай миграций.
+        if (_ouNode.linkedIndoorId !== n.id) _ouNode.linkedIndoorId = n.id;
+      }
       const _ouTag = effectiveTag(_ouNode);
       const _ouKw = Number(_ouNode.demandKw) || 0;
       // v0.60.351: ищем conn cond→outdoor для отображения cable-info.

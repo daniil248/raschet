@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.363', date: '2026-05-06', items: [
+      '🔧 <b>Auto-fix stale outdoor tags при рендере</b>. По репорту Пользователя 2026-05-06: «это как? родитель Z1.ACU01 а ребенок Z1.ACU02.OU1???».',
+      '<b>Корень</b>: rename outdoor-блока (sync <code>ou.tag = cond.tag + ".OU" + (i+1)</code>) делался ТОЛЬКО в apply-handler карточки cond. Если parent.tag менялся через другие пути (LS-импорт, копирование, миграция, переименование cond без apply), outdoor оставался со старым тегом.',
+      '<b>Fix</b>: в loop рендера outdoor-блоков в карточке cond (consumer.js) — auto-correct тега при каждом открытии модалки. Если <code>ou.tag !== n.tag + ".OU" + (i+1)</code> → исправляем + чиним <code>linkedIndoorId</code> на случай миграций.',
+      'Files: <code>js/engine/inspector/consumer.js</code> (rendering loop with stale-tag fix).',
+    ] },
     { version: '0.60.362', date: '2026-05-06', items: [
       '🔧 <b>1-клик авто-подбор для перегруженной линии</b>. По репорту Пользователя 2026-05-06: «ты почему еще автоподбор кабеля и автомата не доделал, только оповещение????».',
       '<b>Корень</b>: при <code>c.manualCableSize</code> и/или <code>c.manualBreakerIn</code> авто-подбор отключён. Когда нагрузка вырастает до значения, не покрываемого ручной фиксацией (Iрасч > Iz), показывалась только yellow-warning плашка «⚠ Текущий выбор не покрывает Iрасч. Снимите фиксацию для корректного авто-подбора» — но кнопок было 2 (отдельно «снять сечение» и «снять автомат»).',
