@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.323', date: '2026-05-06', items: [
+      '🔧 <b>Dedup в project picker\'е (header chip menu)</b>. По репорту Пользователя 2026-05-06: на скриншоте picker\'а из header chip\'а тоже видны дубликаты (TBC Bank ×2, Qarmet Темиртау ×2, Тестовый ×2).',
+      '<b>Корень</b>: <code>_openStandaloneProjectMenu</code> читал список напрямую из <code>listProjects()</code> без dedup. Этот picker открывается из rs-proj-badge во ВСЕХ модулях.',
+      '<b>Fix</b>: dedup по <code>kind+name</code> (case-insensitive). Primary = с _cloudIds + свежее updatedAt. Лишние СКРЫВАЮТСЯ visually (LS не трогается). Для permanent cleanup — кнопка «🔧 Объединить дубликаты» в «Мои схемы» (v0.60.322).',
+      'Files: <code>shared/app-header.js</code> (filtered dedup pass).',
+    ] },
     { version: '0.60.322', date: '2026-05-06', items: [
       '🔧 <b>Merge dupes UI + derate profile в каталог ДГУ</b>. По 2 репортам Пользователя 2026-05-06.',
       '<b>1) Объединение существующих дубликатов проектов</b>: «нашёл вопрос с созданием новых проектов (дубли) при синхронизации с облаком???» — v0.60.298 предотвращает СОЗДАНИЕ дубликатов, но уже-существующие в LS оставались.',

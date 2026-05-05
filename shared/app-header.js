@@ -622,7 +622,36 @@ function _openStandaloneProjectMenu(currentModuleId, opts = {}) {
     if (p.kind === 'sketch' && (p.ownerModule === currentModuleId || p.ownerModule === 'tech-workspace')) return true;
     return false;
   };
-  const filtered = projects.filter(isRelevant);
+  let filtered = projects.filter(isRelevant);
+  // v0.60.323 (по репорту Пользователя 2026-05-06: дубликаты в picker'е тоже —
+  // там список читается из LS как есть): dedup по name+kind. Если есть
+  // дубликаты с одинаковым именем — оставляем primary (тот с _cloudIds /
+  // больше LS-data / свежее updatedAt). Это purely visual — данные в LS
+  // не трогаем (для cleanup есть кнопка в /index.html «Объединить»).
+  {
+    const _byName = new Map();
+    for (const p of filtered) {
+      const key = (p.kind || 'full') + ':' + String(p.name || '').trim().toLowerCase();
+      if (!key.endsWith(':')) {
+        if (!_byName.has(key)) _byName.set(key, []);
+        _byName.get(key).push(p);
+      }
+    }
+    const _hidden = new Set();
+    for (const [, arr] of _byName) {
+      if (arr.length <= 1) continue;
+      const sorted = arr.slice().sort((a, b) => {
+        const aCloud = Array.isArray(a._cloudIds) && a._cloudIds.length ? 1 : 0;
+        const bCloud = Array.isArray(b._cloudIds) && b._cloudIds.length ? 1 : 0;
+        if (aCloud !== bCloud) return bCloud - aCloud;
+        return (b.updatedAt || 0) - (a.updatedAt || 0);
+      });
+      for (let i = 1; i < sorted.length; i++) _hidden.add(sorted[i].id);
+    }
+    if (_hidden.size > 0) {
+      filtered = filtered.filter(p => !_hidden.has(p.id));
+    }
+  }
 
   const overlay = document.createElement('div');
   overlay.className = 'rs-proj-menu-overlay';
