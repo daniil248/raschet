@@ -1623,11 +1623,56 @@ function recalc() {
     // Дочерний потребитель в consumer-container
     if (n.containerId) {
       const c = state.nodes.get(n.containerId);
-      if (c && c.type === 'consumer-container' && c._powered) {
-        n._powered = true;
-        const kUse = Number(n.kUse) || 1;
-        const factor = effectiveLoadFactor(n) || 1;
-        n._loadKw = (Number(n.demandKw) || 0) * kUse * factor;
+      if (c && c.type === 'consumer-container') {
+        // v0.60.361 (по репорту Пользователя 2026-05-06: «А у меня было
+        // что кондиционер один с приоритетом от входа 1 а кондиционер 2 с
+        // приоритетом от входа 2»): per-child priorities. Если child имеет
+        // multi-input и собственные priorities — каждый child независимо
+        // выбирает порт контейнера, на котором upstream alive. Раньше все
+        // children наследовали один и тот же container._powered (через
+        // single ATS контейнера), и личные priorities игнорировались.
+        const childInputs = Math.max(1, Number(n.inputs) || 1);
+        const childPrios = Array.isArray(n.priorities) ? n.priorities : null;
+        const containerInputs = Math.max(1, Number(c.inputs) || 1);
+        if (childInputs > 1 && containerInputs > 1 && childPrios && childPrios.length > 0) {
+          // Find alive container input ports (passthrough mapping: child port i
+          // = container port i).
+          const aliveContainerPorts = new Set();
+          for (const inConn of (edgesIn.get(c.id) || [])) {
+            if (isConnLive(inConn)) aliveContainerPorts.add(inConn.to.port);
+          }
+          // Apply child's priorities to choose active port (lowest priority
+          // value with alive upstream wins).
+          const groups = new Map();
+          const limit = Math.min(childPrios.length, containerInputs);
+          for (let pi = 0; pi < limit; pi++) {
+            if (!aliveContainerPorts.has(pi)) continue;
+            const prio = Number(childPrios[pi]) || 1;
+            if (!groups.has(prio)) groups.set(prio, []);
+            groups.get(prio).push(pi);
+          }
+          const sorted = [...groups.keys()].sort((a, b) => a - b);
+          for (const p of sorted) {
+            const ports = groups.get(p);
+            if (ports.length) {
+              n._powered = true;
+              n._activeContainerPort = ports[0];
+              break;
+            }
+          }
+          if (n._powered) {
+            const kUse = Number(n.kUse) || 1;
+            const factor = effectiveLoadFactor(n) || 1;
+            n._loadKw = (Number(n.demandKw) || 0) * kUse * factor;
+          }
+        } else if (c._powered) {
+          // Fallback: single-input children или без своих priorities —
+          // наследуют container._powered как раньше.
+          n._powered = true;
+          const kUse = Number(n.kUse) || 1;
+          const factor = effectiveLoadFactor(n) || 1;
+          n._loadKw = (Number(n.demandKw) || 0) * kUse * factor;
+        }
       }
     }
     // Linked alias — копия master-узла (legacy 1.28.x mechanism)

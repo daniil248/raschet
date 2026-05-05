@@ -1370,38 +1370,14 @@ export function openContainerMembersModal(container) {
   // описал... группу как Сборка удаляем из программы»): kit-mode (Сборка)
   // удалён как UI-режим. Группы только однотипные. Outdoor-блоки делаются
   // через modal-button в карточке кондиционера (отдельный refactor).
+  // v0.60.361 (по репорту Пользователя 2026-05-06: «это не нужно. Нужно
+  // определять состояния АВР в групповых потребителях а не в группе, у
+  // группы убери»): UI селектор приоритетов контейнера (v0.60.360) удалён.
+  // АВР теперь работает per-член — recalc.js эвалуирует priorities каждого
+  // multi-input child'а независимо (см. v0.60.361 в recalc.js).
   h.push(`<div style="padding:8px 12px;border-bottom:1px solid #e0e7ee;background:#fff;font-size:12px;color:#64748b;font-style:italic">
-    Группа однотипных потребителей с общим питающим кабелем. Для cond+outdoor — открывайте карточку кондиционера, там кнопка «🔧 Наружный блок».
+    Группа однотипных потребителей с общим питающим кабелем. Для cond+outdoor — открывайте карточку кондиционера, там кнопка «🔧 Наружный блок». АВР работает <b>per-член</b>: каждый потребитель с multi-input независимо выбирает свой приоритетный вход (см. строку «Входы» в карточке члена).
   </div>`);
-  // v0.60.360 (по репорту Пользователя 2026-05-06: «не подключаются согласно
-  // приоритета входа. Почини. я уже жаловался на это»): explicit UI для
-  // container.priorities. Раньше container.priorities = undefined →
-  // наследовалось от ПЕРВОГО linked member'а; если члены имели конфликтующие
-  // приоритеты ([1,2] vs [2,1]), брался только первый. Теперь Пользователь
-  // может явно задать container.priorities (P1=primary / P2=primary / parallel).
-  const _ci = Number(container.inputs) || 1;
-  if (_ci > 1) {
-    const _cp = Array.isArray(container.priorities) ? container.priorities : null;
-    const _isDefault = !_cp || _cp.every((v, i) => Number(v) === i + 1);
-    const _isReverse = _cp && _cp.length === _ci && _cp.every((v, i) => Number(v) === _ci - i);
-    const _isParallel = _cp && _cp.length === _ci && _cp.every(v => Number(v) === 1);
-    let _curMode = 'default';
-    if (_isParallel) _curMode = 'parallel';
-    else if (_isReverse) _curMode = 'reverse';
-    else if (_cp && !_isDefault) _curMode = 'custom';
-    h.push(`<div style="padding:8px 12px;border-bottom:1px solid #e0e7ee;background:#f0f9ff;font-size:12px;color:#0c4a6e;display:flex;flex-wrap:wrap;align-items:center;gap:10px">
-      <span title="Приоритеты входов контейнера. Контролируют какой вход (P1, P2…) считается primary при работе АВР. По умолчанию = в порядке P1=1, P2=2 (P1 primary). Раньше наследовалось от первого члена группы — но если члены имели разные приоритеты, контейнер не мог быть согласован. Теперь Пользователь задаёт явно.">
-        <b>Приоритеты входов контейнера:</b>
-      </span>
-      <select id="cm-container-prio-mode" style="font:inherit;font-size:12px;padding:3px 6px;border:1px solid #cbd5e1;border-radius:3px">
-        <option value="default"${_curMode === 'default' ? ' selected' : ''}>P1=primary, P2=backup (по умолчанию)</option>
-        ${_ci === 2 ? `<option value="reverse"${_curMode === 'reverse' ? ' selected' : ''}>P2=primary, P1=backup (обратный)</option>` : ''}
-        <option value="parallel"${_curMode === 'parallel' ? ' selected' : ''}>Параллельная работа (все P=1)</option>
-        ${_curMode === 'custom' ? `<option value="custom" selected>Custom (${_cp.map((p, i) => 'P' + (i + 1) + '=' + p).join(', ')})</option>` : ''}
-      </select>
-      ${(!_cp) ? `<span style="font-size:10.5px;color:#64748b;font-style:italic" title="Сейчас container.priorities не задан явно — recalc наследует от первого linked member'а. Выберите явный режим выше.">⚠ авто-наследовано из первого члена</span>` : ''}
-    </div>`);
-  }
   if (!slots.length) {
     h.push('<div style="padding:24px;text-align:center;color:#778899">Контейнер пуст. Drop потребителя на канвасе сюда — добавится.</div>');
   } else {
@@ -1965,24 +1941,6 @@ function _wireContainerMembersModal(n, body, modal) {
   // (а не оставляем пользователя у пустого канваса). Пользователь:
   // «после открытия карточки потребителя из группы, нужно вернуться
   // обратно в группу а не просто закрыть окно».
-  // v0.60.360: change-handler для container.priorities mode-selector.
-  body.querySelector('#cm-container-prio-mode')?.addEventListener('change', (e) => {
-    const mode = e.target.value;
-    const cnt = Number(n.inputs) || 1;
-    let prios = null;
-    if (mode === 'default') prios = Array.from({ length: cnt }, (_, i) => i + 1);
-    else if (mode === 'reverse') prios = Array.from({ length: cnt }, (_, i) => cnt - i);
-    else if (mode === 'parallel') prios = Array.from({ length: cnt }, () => 1);
-    if (prios) {
-      n.priorities = prios;
-      try { snapshot('container-priorities:' + n.id + ':' + mode); } catch {}
-      try { notifyChange(); } catch {}
-      try { window.Raschet?.recalc?.(); } catch {}
-      try { window.Raschet?.render?.(); } catch {}
-      openContainerMembersModal(n);
-    }
-  });
-
   // v0.60.352: change-handler для группового порта single-input child'ов.
   body.querySelectorAll('[data-cm-groupport]').forEach(sel => {
     sel.addEventListener('change', () => {

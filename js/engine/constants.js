@@ -9,7 +9,7 @@
 // APP_VERSION — единая версия Raschet. Она же отображается в футере
 // каждой подпрограммы. Отдельной нумерации у модулей нет: любая правка
 // по любому модулю инкрементит эту версию.
-export const APP_VERSION = '0.60.360';
+export const APP_VERSION = '0.60.361';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -1019,17 +1019,69 @@ export const SOURCE_SUBTYPE_PREFIX = {
   other:       'SRC',
 };
 
-// v0.60.350: префиксы тегов по consumerSubtype. По репорту Пользователя
-// 2026-05-06: «для кондиционеров прими базовое обозначение ACU - Air
-// Cool Unit». Используется в graph.createNode для consumer'ов с
-// подтипом — даёт «ACU1, ACU2…» вместо общего «L1, L2…».
-//   ACU — Air Cool Unit (кондиционер) — IEC 81346-2 letter class «E»
-//         занят, ACU — индустриальное обозначение HVAC.
+// v0.60.350 + v0.60.361: префиксы тегов по consumerSubtype. По репортам
+// Пользователя:
+//   - 2026-05-06: «для кондиционеров прими базовое обозначение ACU»
+//   - 2026-05-06: «обозначения еще пока присваиваются L. Нужно добавить
+//     буквенные обозначения для разного типа потребителей, с записью в
+//     реестре настройки, чтобы пользователь мог задавать для проекта или
+//     для организации настройки по типам».
+// Используется в graph.createNode для consumer'ов с подтипом —
+// даёт «ACU1, M1, P1…» вместо общего «L1, L2…».
+//
+// Приоритет резолвинга (см. resolveConsumerPrefix ниже):
+//   (1) GLOBAL.consumerSubtypePrefixes[subtype]  — project override
+//   (2) CONSUMER_SUBTYPE_PREFIX[subtype]          — defaults (этот объект)
+//   (3) 'L'                                       — legacy fallback
+//
+// Префиксы выбраны по конвенции HVAC/MEP проектов в РФ/КЗ (где возможно
+// — по IEC 81346-2 letter class):
+//   ACU — Air Cool Unit  (кондиционер, IEC «E» занят)
+//   M   — Motor          (двигатель, IEC 81346-2 «M»)
+//   P   — Pump           (насос)
+//   F   — Fan            (вентилятор)
+//   H   — Heater         (электрообогрев)
+//   EL  — Electrical lighting (освещение)
+//   SO  — Socket Outlet  (розеточная группа)
+//   SR  — Server Rack    (IT)
+//   ELV — Elevator       (лифт, IEC 81346-2 «T»)
+//   FA  — Fire Alarm     (пожарная сигнализация)
+//   SCS — Structured Cabling System (СКС)
+//   CCTV — Closed-Circuit TV (видеонаблюдение)
+//   ACS — Access Control System (СКУД)
 //   OU  — Outdoor Unit (наружный блок) — суффикс через .OU<idx>,
-//         не используется как самостоятельный prefix (тег = parent.OUx).
+//         не используется как самостоятельный prefix.
 export const CONSUMER_SUBTYPE_PREFIX = {
-  conditioner: 'ACU',
+  conditioner:  'ACU',
+  motor:        'M',
+  pump:         'P',
+  fan:          'F',
+  heater:       'H',
+  lighting:     'EL',
+  socket:       'SO',
+  server:       'SR',
+  elevator:     'ELV',
+  'fire-alarm': 'FA',
+  sks:          'SCS',
+  cctv:         'CCTV',
+  access:       'ACS',
 };
+
+// v0.60.361: резолвер префикса consumer'а по подтипу с учётом
+// project-level override (GLOBAL.consumerSubtypePrefixes).
+export function resolveConsumerPrefix(subtype) {
+  if (!subtype) return null;
+  // (1) project override
+  try {
+    const proj = GLOBAL && GLOBAL.consumerSubtypePrefixes;
+    if (proj && typeof proj === 'object') {
+      const v = proj[subtype];
+      if (v && typeof v === 'string' && v.trim()) return v.trim();
+    }
+  } catch {}
+  // (2) defaults
+  return CONSUMER_SUBTYPE_PREFIX[subtype] || null;
+}
 
 // Палитра пастельных цветов для зон (24 цвета). Все — светлые, мягкие,
 // не перекрывают содержимое. Распределены по кругу HSL: 12 оттенков,
