@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.270', date: '2026-05-06', items: [
+      '🔄 <b>File-mode и Cloud-mode — взаимоисключающие транзишены</b>. Найденный edge-case без репорта: file-mode и cloud-проект могли быть «активными одновременно» — следующий save мог записать НЕ туда.',
+      '<b>Сценарий 1 (file → cloud)</b>: Пользователь работает с файлом → открывает cloud-проект через список → ',
+      '   • Раньше: scheme cloud-проекта загружался, но <code>window.Raschet._fileMode</code> оставался активным → следующая правка → autosave писал cloud-scheme в файл предыдущего файлового проекта (data corruption!).',
+      '   • Фикс: в начале <code>openProject()</code> проверяем <code>window.Raschet._fileMode</code> — если активен, выключаем + <code>forgetHandle()</code>. File-mode и cloud-mode теперь не пересекаются.',
+      '<b>Сценарий 2 (cloud → file)</b>: Пользователь в cloud-проекте → открывает файл (Ctrl+O / 📁) → ',
+      '   • Раньше: file-mode активировался, но <code>state.currentProject</code> оставался cloud-проектом → шапка показывала cloud-имя, collab продолжал писать heartbeat (квота утекала впустую).',
+      '   • Фикс: новый helper <code>window.Raschet.exitCloudMode()</code> (определён в main.js): <code>_stopCollab()</code> + чистка <code>state.currentProject</code> + скрытие cloud-кнопок в шапке. Вызывается из <code>btn-file-open</code> / <code>btn-file-open-readonly</code> handlers.',
+      '• Закрывает обе direction\'а: cloud → file и file → cloud.',
+      'Files: <code>js/main.js</code> (openProject + exitCloudMode), <code>js/engine/export.js</code> (file-open handlers).',
+    ] },
     { version: '0.60.269', date: '2026-05-06', items: [
       '🧹 <b>Auto-cleanup данных utility-источника</b>. Завершение трилогии фиксов v0.60.267/268 — теперь чистим stale-поля в данных, чтобы баг не вернулся в будущем.',
       '• В save-handler\'е <code>imp-apply</code> для utility (sourceSubtype=\'utility\') чистим: <code>snomKva</code>, <code>ukPct</code>, <code>pkW</code>, <code>p0W</code>, <code>vectorGroup</code>. Эти поля для ЛЭП бессмысленны и могли остаться от subtype-switching (transformer→utility).',

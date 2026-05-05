@@ -1336,6 +1336,21 @@ async function openProject(id) {
       await refreshProjects();
       return;
     }
+    // v0.60.270 (по обнаруженному edge-case'у): если на момент открытия
+    // cloud-проекта активен file-mode (Пользователь работал с локальным
+    // файлом), его НУЖНО выключить — иначе следующее save'ы записали бы
+    // cloud-проект в файл предыдущего файлового проекта (data corruption!).
+    // FileMode и cloud-mode взаимоисключающие.
+    if (window.Raschet?._fileMode) {
+      console.info('[openProject] выключаю file-mode (был активен) — переходим в cloud-mode для', data.id);
+      window.Raschet._fileMode = null;
+      try { window.Raschet.updateFileModeBadge?.(); } catch {}
+      // Также форгет handle, чтобы auto-restore не предложил его обратно после reload.
+      try {
+        const m = await import('../shared/file-sync.js');
+        await m.forgetHandle();
+      } catch {}
+    }
     state.currentProject = data;
     // Phase 1.6.3: прокидываем project-id/name в window.Raschet, чтобы
     // export.js (handoff → логистика) и report-sections.js (фильтр
@@ -1519,6 +1534,31 @@ async function openProject(id) {
     }
   }
 }
+
+// v0.60.270: cleanup cloud-mode state без перехода на projects screen.
+// Используется при переходе cloud → file (открытие файла, когда был
+// cloud-проект): останавливает collab, чистит state.currentProject,
+// прячет cloud-кнопки в шапке. Без этого после file-open шапка показывала
+// бы старое cloud-имя проекта, а collab продолжал бы тратить writes.
+function exitCloudMode() {
+  if (state.autoSaveTimer) { clearTimeout(state.autoSaveTimer); state.autoSaveTimer = null; }
+  state.dirty = false;
+  state.saving = false;
+  _stopCollab();
+  if (state.currentProject) {
+    state.currentProject = null;
+    try { localStorage.removeItem('raschet.activeProject.v1'); } catch {}
+    try { if (window.Raschet) { window.Raschet.currentProjectId = null; window.Raschet.currentProjectName = null; } } catch {}
+    if (els.projectName) { els.projectName.textContent = ''; els.projectName.classList.add('hidden'); }
+    if (els.btnShare) els.btnShare.classList.add('hidden');
+    if (els.btnHistory) els.btnHistory.classList.add('hidden');
+    if (els.btnRequestAccess) els.btnRequestAccess.classList.add('hidden');
+    const url = new URL(location.href);
+    url.searchParams.delete('project');
+    history.replaceState({}, '', url);
+  }
+}
+try { window.Raschet = window.Raschet || {}; window.Raschet.exitCloudMode = exitCloudMode; } catch {}
 
 function backToProjects() {
   // Если есть несохранённые изменения — последний раз пытаемся сохранить синхронно

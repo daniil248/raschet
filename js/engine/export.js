@@ -279,6 +279,10 @@ export function initToolbar() {
       const result = await openProjectFile({ readOnly: false });
       // Если File System Access не поддерживается, handle=null → save будет
       // download. Но фактически открыли файл, scheme можно загрузить.
+      // v0.60.270: при переходе cloud→file останавливаем collab и чистим
+      // state.currentProject чтобы навигация / шапка не путали file-mode
+      // с cloud-проектом.
+      try { if (typeof window.Raschet?.exitCloudMode === 'function') window.Raschet.exitCloudMode(); } catch {}
       deserialize(result.payload.scheme);
       render(); renderInspector();
       window.Raschet = window.Raschet || {};
@@ -305,6 +309,8 @@ export function initToolbar() {
   bind('btn-file-open-readonly', async () => {
     try {
       const result = await openProjectFile({ readOnly: true });
+      // v0.60.270: cloud→file transition.
+      try { if (typeof window.Raschet?.exitCloudMode === 'function') window.Raschet.exitCloudMode(); } catch {}
       deserialize(result.payload.scheme);
       render(); renderInspector();
       window.Raschet = window.Raschet || {};
