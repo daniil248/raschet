@@ -249,3 +249,109 @@ export async function reloadFromHandle(handle) {
   payload.fileName = file.name;
   return { file, payload };
 }
+
+// =============================================================================
+// v0.60.260: персистентный handle через IndexedDB.
+// =============================================================================
+// File System Access API позволяет сохранять FileSystemFileHandle в IndexedDB
+// (structured clone), чтобы при следующей загрузке страницы handle оставался
+// «живым» — Пользователю не нужно заново выбирать файл. Permission, однако,
+// придётся подтвердить заново: браузеры не сохраняют readwrite-grant между
+// сессиями. Это запрос «requestPermission({ mode: 'readwrite' })».
+
+const IDB_NAME = 'raschet-file-sync';
+const IDB_VERSION = 1;
+const IDB_STORE = 'recent-handle';
+const IDB_KEY_LAST = 'last';
+
+/** Открыть IndexedDB с store для handle. */
+function _openIdb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+    };
+  });
+}
+
+/**
+ * Сохранить последний открытый handle для повторного использования.
+ * @param {FileSystemFileHandle|null} handle
+ * @param {object} [meta] — { fileName, readOnly }
+ */
+export async function rememberHandle(handle, meta = {}) {
+  if (!handle) return;
+  try {
+    const db = await _openIdb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      const st = tx.objectStore(IDB_STORE);
+      st.put({
+        handle,
+        fileName: meta.fileName || '',
+        readOnly: !!meta.readOnly,
+        savedAt: Date.now(),
+      }, IDB_KEY_LAST);
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { db.close(); reject(tx.error); };
+    });
+  } catch (e) {
+    console.warn('[file-sync] rememberHandle failed:', e.message);
+  }
+}
+
+/**
+ * Загрузить последний сохранённый handle. Возвращает null если нет.
+ * Permission НЕ запрашивается тут — это решает caller через requestPermission.
+ */
+export async function loadRememberedHandle() {
+  try {
+    if (!isFileSystemAccessSupported()) return null;
+    const db = await _openIdb();
+    return new Promise((resolve) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const st = tx.objectStore(IDB_STORE);
+      const req = st.get(IDB_KEY_LAST);
+      req.onsuccess = () => { db.close(); resolve(req.result || null); };
+      req.onerror   = () => { db.close(); resolve(null); };
+    });
+  } catch (e) {
+    console.warn('[file-sync] loadRememberedHandle failed:', e.message);
+    return null;
+  }
+}
+
+/** Очистить сохранённый handle (например при закрытии файла). */
+export async function forgetHandle() {
+  try {
+    const db = await _openIdb();
+    return new Promise((resolve) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).delete(IDB_KEY_LAST);
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { db.close(); resolve(); };
+    });
+  } catch {}
+}
+
+/**
+ * Проверить и при необходимости запросить разрешение на чтение/запись
+ * для сохранённого handle.
+ * @param {FileSystemFileHandle} handle
+ * @param {string} mode — 'read' или 'readwrite'
+ * @returns {Promise<'granted'|'denied'|'prompt'>}
+ */
+export async function ensurePermission(handle, mode = 'readwrite') {
+  if (!handle) return 'denied';
+  try {
+    const cur = await handle.queryPermission({ mode });
+    if (cur === 'granted') return 'granted';
+    const req = await handle.requestPermission({ mode });
+    return req;
+  } catch (e) {
+    return 'denied';
+  }
+}

@@ -125,15 +125,33 @@ const state = {
   remoteChangeToastShown: false,
 };
 
-const PRESENCE_HEARTBEAT_MS = 25_000;  // обновляем lastSeen каждые 25 сек (stale = 90с)
+// v0.60.260 (по репорту Пользователя 2026-05-06 «ты проверь что экономно
+// используешь firestore, а то квота стала уходить очень быстро»):
+// Все heartbeat / autosave интервалы увеличены ~2-3× для экономии writes.
+// Spark plan лимит 20K writes/day → presence на 25с = 3456 writes/day per user,
+// а на 60с = 1440 writes/day (-58%). С учётом lock heartbeat и autosave
+// итог снизился до приемлемого уровня для бесплатного плана.
+const PRESENCE_HEARTBEAT_MS = 60_000;  // обновляем lastSeen каждые 60 сек (stale = 180с)
+const PRESENCE_STALE_MS = 180_000;     // пользователь считается «отвалившимся» через 3 мин
+const LOCK_HEARTBEAT_MS = 45_000;      // было 20с → 45с
+const LOCK_STALE_MS = 120_000;         // было 60с → 120с (lock heartbeat 45с с margin)
 
-const AUTO_SAVE_DELAY = 1500; // мс после последнего изменения
+// AUTO_SAVE_DELAY: 1500 → 3000 мс. Объединяет больше изменений в один write.
+// При активной работе (множество quick-edit) выливается в save раз в 3с
+// вместо 1.5с — снижает write-нагрузку вдвое, не теряя UX-отзывчивости.
+const AUTO_SAVE_DELAY = 3000; // мс после последнего изменения
 
 // =============== Phase 1.20.51: Presence + Live Sync helpers ===============
 function _stopCollab() {
   if (state.presenceTimer) { clearInterval(state.presenceTimer); state.presenceTimer = null; }
   if (state.lockHeartbeatTimer) { clearInterval(state.lockHeartbeatTimer); state.lockHeartbeatTimer = null; }
   if (state.lockStalePruneTimer) { clearInterval(state.lockStalePruneTimer); state.lockStalePruneTimer = null; }
+  // v0.60.260: снять visibilitychange handler чтобы не вызвал beat для
+  // удалённого проекта.
+  if (state._beatOnVisible) {
+    try { document.removeEventListener('visibilitychange', state._beatOnVisible); } catch {}
+    state._beatOnVisible = null;
+  }
   if (typeof state.unsubPresence === 'function') { try { state.unsubPresence(); } catch {} state.unsubPresence = null; }
   if (typeof state.unsubProjectDoc === 'function') { try { state.unsubProjectDoc(); } catch {} state.unsubProjectDoc = null; }
   if (typeof state.unsubLocks === 'function') { try { state.unsubLocks(); } catch {} state.unsubLocks = null; }
@@ -175,10 +193,19 @@ function _startCollab(project, initialUpdatedAtMs) {
     email: state.currentUser.email || '',
     photo: state.currentUser.photo || null,
   };
-  // Немедленный heartbeat + периодический
-  const beat = () => window.Storage.presenceHeartbeat(project.id, uid, info, state.sessionId);
+  // Немедленный heartbeat + периодический.
+  // v0.60.260: skipим heartbeat когда вкладка скрыта (document.hidden=true) —
+  // если Пользователь не смотрит на проект, его присутствие никому не
+  // нужно, не нужно тратить writes. Когда вкладка снова видна — beat() сразу.
+  const beat = () => {
+    if (document.hidden) return;
+    window.Storage.presenceHeartbeat(project.id, uid, info, state.sessionId);
+  };
   beat();
   state.presenceTimer = setInterval(beat, PRESENCE_HEARTBEAT_MS);
+  // v0.60.260: при возврате на вкладку — немедленный heartbeat (не ждём 60с).
+  state._beatOnVisible = () => { if (!document.hidden) beat(); };
+  document.addEventListener('visibilitychange', state._beatOnVisible);
 
   // Hook выделения — захват/освобождение лока на узле или связи.
   // v0.57.76: lock расширен с node-only до (node | conn). Ключ документа
@@ -220,7 +247,8 @@ function _startCollab(project, initialUpdatedAtMs) {
       const _isLockStale = (lock) => {
         if (!lock) return true;
         const age = Date.now() - (Number(lock.lastSeen) || 0);
-        return age >= 60_000;
+        // v0.60.260: совпадает с LOCK_STALE_MS (120с).
+        return age >= LOCK_STALE_MS;
       };
       // Берём новый лок для node или conn
       if (newKey) {
@@ -242,12 +270,15 @@ function _startCollab(project, initialUpdatedAtMs) {
       return true;
     });
   }
-  // Периодический heartbeat лока
+  // Периодический heartbeat лока.
+  // v0.60.260: skip когда tab hidden (lock без heartbeat → expire через
+  // LOCK_STALE_MS, освобождая объект для других — это правильно).
   state.lockHeartbeatTimer = setInterval(() => {
+    if (document.hidden) return;
     if (state.myLockNodeId) {
       window.Storage.heartbeatLock(project.id, state.myLockNodeId, uid);
     }
-  }, 20_000);
+  }, LOCK_HEARTBEAT_MS);
 
   // v0.59.740: периодическая локальная чистка устаревших чужих локов.
   // subscribeLocks-snapshot не приходит, если у другого пользователя нет
@@ -262,7 +293,8 @@ function _startCollab(project, initialUpdatedAtMs) {
     for (const [k, lock] of Object.entries(cur)) {
       if (!lock) { changed = true; continue; }
       const age = now - (Number(lock.lastSeen) || 0);
-      if (age >= 60_000) { changed = true; continue; }
+      // v0.60.260: согласовано с LOCK_STALE_MS.
+      if (age >= LOCK_STALE_MS) { changed = true; continue; }
       fresh[k] = lock;
     }
     if (changed) {
@@ -270,7 +302,7 @@ function _startCollab(project, initialUpdatedAtMs) {
       window.__remoteLocks = fresh;
       try { window.Raschet?.rerender?.(); } catch {}
     }
-  }, 15_000);
+  }, 30_000); /* было 15с — local-only, не Firestore-нагрузка, но всё же */
 
   // Подписка на presence — рисуем аватары + обновляем карту курсоров (C.6)
   state.unsubPresence = window.Storage.subscribePresence(project.id, (list) => {
@@ -649,7 +681,9 @@ async function _onRemoteProjectChange(doc) {
 }
 
 // =============== v0.57.79 (Collaboration C.8): revisions =================
-const REVISION_AUTO_MIN_INTERVAL_MS = 5 * 60_000;  // не чаще 1 авто-версии в 5 минут
+// v0.60.260: было 5 мин → 15 мин для экономии writes (Firestore Spark plan).
+// Per-user активный день ~6ч = 24 авто-версии вместо 72.
+const REVISION_AUTO_MIN_INTERVAL_MS = 15 * 60_000;  // не чаще 1 авто-версии в 15 минут
 const REVISION_KEEP_LIMIT = 50;  // чистим хвост после этого количества
 
 async function _maybeAutoSnapshotRevision(project, scheme) {

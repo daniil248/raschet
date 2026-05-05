@@ -11,7 +11,8 @@ import { exportBomXlsx, exportBomCsv, buildBOM } from './bom.js';
 import { rsToast, rsConfirm, rsPrompt } from '../../shared/dialog.js';
 import { getActiveProjectId, ensureDefaultProject, listProjects } from '../../shared/project-storage.js';
 // v0.60.258: file-based storage (drawio-style).
-import { openProjectFile, saveProjectAsFile, writeProjectToHandle, buildFilePayload, isFileSystemAccessSupported } from '../../shared/file-sync.js';
+// v0.60.260: + persistent handle через IndexedDB + reload helper.
+import { openProjectFile, saveProjectAsFile, writeProjectToHandle, buildFilePayload, isFileSystemAccessSupported, reloadFromHandle, rememberHandle, loadRememberedHandle, forgetHandle, ensurePermission } from '../../shared/file-sync.js';
 
 /* ---------- Фаза 1.27.2: save/load главной схемы в неймспейс активного
    проекта. Если активного проекта нет (edge-case) — падаем на глобальный
@@ -160,18 +161,57 @@ export function initToolbar() {
       return;
     }
     badge.classList.remove('hidden');
-    const accessNote = fm.supportedAccess ? ' (in-place save)' : ' (download-only)';
+    const accessNote = fm.supportedAccess ? ' (auto-save)' : ' (download)';
+    // v0.60.260: timestamp последнего save / reload для UX-clarity.
+    const tsStr = fm.lastSavedAtMs
+      ? ` · ${new Date(fm.lastSavedAtMs).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
+      : '';
+    // Кнопки в badge: ↻ Перечитать (всегда), ✕ Закрыть файл (всегда).
+    const btns = `
+      <span style="display:inline-flex;gap:4px;margin-left:6px">
+        <button type="button" id="btn-file-reload" title="Перечитать содержимое файла с диска (например, если коллега в режиме «писатель» сохранил свежие правки)." style="padding:1px 6px;font-size:10px;border:1px solid currentColor;background:transparent;color:inherit;border-radius:3px;cursor:pointer;opacity:0.85">↻ Перечитать</button>
+        <button type="button" id="btn-file-close" title="Закрыть файл (выйти из file-mode). Schема в браузере остаётся, но автосохранение в файл прекращается." style="padding:1px 6px;font-size:10px;border:1px solid currentColor;background:transparent;color:inherit;border-radius:3px;cursor:pointer;opacity:0.85">✕ Закрыть файл</button>
+      </span>`;
     if (fm.readOnly) {
       badge.style.background = '#fef3c7';
       badge.style.borderLeftColor = '#d97706';
       badge.style.color = '#92400e';
-      badge.innerHTML = `👁 <b>${escapeHtml(fm.fileName)}</b> · только чтение`;
+      badge.innerHTML = `👁 <b>${escapeHtml(fm.fileName)}</b> · только чтение${tsStr}${btns}`;
     } else {
       badge.style.background = '#f0fdf4';
       badge.style.borderLeftColor = '#15803d';
       badge.style.color = '#15803d';
-      badge.innerHTML = `📁 <b>${escapeHtml(fm.fileName)}</b>${accessNote}`;
+      badge.innerHTML = `📁 <b>${escapeHtml(fm.fileName)}</b>${accessNote}${tsStr}${btns}`;
     }
+    // Привязка кнопок (после innerHTML).
+    const reloadBtn = document.getElementById('btn-file-reload');
+    if (reloadBtn) reloadBtn.onclick = async () => {
+      const fm2 = window.Raschet?._fileMode;
+      if (!fm2 || !fm2.handle) {
+        flash('Reload недоступен — файл открывался не через File System Access API. Откройте заново.', 'warn');
+        return;
+      }
+      try {
+        // Запрашиваем read-permission на случай если оно отозвано.
+        const perm = await ensurePermission(fm2.handle, 'read');
+        if (perm !== 'granted') { flash('Нет прав на чтение файла', 'error'); return; }
+        const r = await reloadFromHandle(fm2.handle);
+        deserialize(r.payload.scheme);
+        render(); renderInspector();
+        fm2.lastSavedAtMs = Date.now();
+        _updateFileModeBadge();
+        flash(`↻ Перечитан: ${r.payload.fileName}`, 'success');
+      } catch (e) {
+        flash('Ошибка чтения: ' + (e.message || e), 'error');
+      }
+    };
+    const closeBtn = document.getElementById('btn-file-close');
+    if (closeBtn) closeBtn.onclick = async () => {
+      window.Raschet._fileMode = null;
+      try { await forgetHandle(); } catch {}
+      _updateFileModeBadge();
+      flash('Файл закрыт. Автосохранение в файл выключено.', 'success');
+    };
   };
   function escapeHtml(s) { return String(s || '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
 
@@ -188,8 +228,11 @@ export function initToolbar() {
         fileName: result.payload.fileName || result.file?.name || 'project.raschet.json',
         readOnly: !!result.readOnly && !result.handle,
         supportedAccess: !!result.handle,
+        lastSavedAtMs: Date.now(),
       };
       _updateFileModeBadge();
+      // v0.60.260: запоминаем handle в IndexedDB для авто-восстановления при reload.
+      if (result.handle) await rememberHandle(result.handle, { fileName: window.Raschet._fileMode.fileName, readOnly: false });
       const acc = result.handle ? 'авто-save в тот же файл' : 'без авто-save (старый браузер) — используйте «Сохранить в файл»';
       flash(`📁 Открыт: ${result.payload.fileName} · ${acc}`, 'success');
     } catch (e) {
@@ -208,8 +251,10 @@ export function initToolbar() {
         fileName: result.payload.fileName || result.file?.name || 'project.raschet.json',
         readOnly: true,
         supportedAccess: !!result.handle,
+        lastSavedAtMs: Date.now(),
       };
       _updateFileModeBadge();
+      if (result.handle) await rememberHandle(result.handle, { fileName: window.Raschet._fileMode.fileName, readOnly: true });
       flash(`👁 Открыт только для чтения: ${result.payload.fileName}. Изменения локально, в файл не сохраняются.`, 'success');
     } catch (e) {
       if (e.name !== 'AbortError') flash('Ошибка открытия файла: ' + (e.message || e), 'error');
@@ -230,8 +275,10 @@ export function initToolbar() {
         fileName: result.fileName,
         readOnly: false,
         supportedAccess: !!result.handle,
+        lastSavedAtMs: Date.now(),
       };
       _updateFileModeBadge();
+      if (result.handle) await rememberHandle(result.handle, { fileName: result.fileName, readOnly: false });
       const acc = result.handle ? ' Дальнейшие изменения авто-сохраняются в этот файл.' : '';
       flash(`💾 Сохранено: ${result.fileName}.${acc}`, 'success');
     } catch (e) {
@@ -250,6 +297,9 @@ export function initToolbar() {
       || 'Project';
     const payload = buildFilePayload(scheme, { name: projName });
     const r = await writeProjectToHandle(fm.handle, payload);
+    // v0.60.260: refresh badge timestamp.
+    fm.lastSavedAtMs = Date.now();
+    _updateFileModeBadge();
     return r;
   };
   window.Raschet.isFileMode = () => {
@@ -266,6 +316,70 @@ export function initToolbar() {
     const btnOpen = document.getElementById('btn-file-open');
     if (btnOpen) btnOpen.title = btnOpen.title + ' ⚠ В этом браузере (Firefox/Safari) автосохранение в файл недоступно. Будет fallback: при сохранении файл скачается заново.';
   }
+  // v0.60.260: auto-restore последнего открытого файла. handle хранится в
+  // IndexedDB и переживает reload страницы. Permission, правда, не
+  // переносится — Пользователь должен подтвердить заново. Чтобы не дёргать
+  // Пользователя автоматически, показываем НЕНАВЯЗЧИВЫЙ promo-чип «↻ Открыть
+  // последний файл» в badge'е (если активного file-mode пока нет).
+  (async () => {
+    try {
+      const remembered = await loadRememberedHandle();
+      if (!remembered || !remembered.handle) return;
+      // Не надоедаем если уже в file-mode (например, сразу-после createWriter).
+      if (window.Raschet?._fileMode?.handle) return;
+      const badge = document.getElementById('file-mode-badge');
+      if (!badge) return;
+      badge.classList.remove('hidden');
+      badge.style.background = '#f1f5f9';
+      badge.style.borderLeftColor = '#64748b';
+      badge.style.color = '#475569';
+      const fname = remembered.fileName || 'project.raschet.json';
+      const ageMin = Math.round((Date.now() - (remembered.savedAt || 0)) / 60000);
+      const ageStr = ageMin < 60 ? `${ageMin} мин назад`
+        : ageMin < 1440 ? `${Math.round(ageMin / 60)} ч назад`
+        : `${Math.round(ageMin / 1440)} дн назад`;
+      badge.innerHTML = `📁 Последний файл: <b>${escapeHtml(fname)}</b> · ${ageStr}
+        <button type="button" id="btn-file-reopen-last" style="margin-left:8px;padding:1px 8px;font-size:10px;border:1px solid #1e40af;background:#dbeafe;color:#1e40af;border-radius:3px;cursor:pointer;font-weight:600">↻ Открыть снова</button>
+        <button type="button" id="btn-file-forget-last" title="Забыть этот файл (badge исчезнет)" style="margin-left:4px;padding:1px 6px;font-size:10px;border:1px solid #cbd5e1;background:#fff;color:#64748b;border-radius:3px;cursor:pointer">✕</button>`;
+      const reopenBtn = document.getElementById('btn-file-reopen-last');
+      if (reopenBtn) reopenBtn.onclick = async () => {
+        try {
+          // Запрос permission — это пользовательский жест (click), браузер разрешит.
+          const mode = remembered.readOnly ? 'read' : 'readwrite';
+          const perm = await ensurePermission(remembered.handle, mode);
+          if (perm !== 'granted') {
+            flash(`Нет ${remembered.readOnly ? 'чтения' : 'записи'} — Пользователь отменил permission`, 'warn');
+            return;
+          }
+          const r = await reloadFromHandle(remembered.handle);
+          deserialize(r.payload.scheme);
+          render(); renderInspector();
+          window.Raschet = window.Raschet || {};
+          window.Raschet._fileMode = {
+            handle: remembered.handle,
+            fileName: r.payload.fileName || fname,
+            readOnly: !!remembered.readOnly,
+            supportedAccess: true,
+            lastSavedAtMs: Date.now(),
+          };
+          _updateFileModeBadge();
+          flash(`📁 Восстановлен: ${r.payload.fileName || fname}`, 'success');
+        } catch (e) {
+          // Handle мог быть невалиден (файл удалён, permission отозвано постоянно).
+          await forgetHandle();
+          _updateFileModeBadge();
+          flash('Не удалось восстановить файл: ' + (e.message || e) + '. Откройте через кнопку «📁 Открыть файл проекта…».', 'error');
+        }
+      };
+      const forgetBtn = document.getElementById('btn-file-forget-last');
+      if (forgetBtn) forgetBtn.onclick = async () => {
+        await forgetHandle();
+        _updateFileModeBadge();
+      };
+    } catch (e) {
+      console.warn('[file-sync] auto-restore failed:', e.message);
+    }
+  })();
   bind('btn-export-svg-side', () => exportSVG());
   bind('btn-export-png-side', () => exportPNG());
 

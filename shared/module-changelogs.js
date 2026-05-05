@@ -4,6 +4,28 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.260', date: '2026-05-06', items: [
+      '🔋 <b>Firestore quota: писательская нагрузка снижена ~3×</b>. По репорту Пользователя 2026-05-06 «ты проверь что экономно используешь firestore, а то квота стала уходить очень быстро».',
+      '• Анализ: Spark plan = 20K writes/day. ОДИН user сжигал per-day:',
+      '   ▸ Presence heartbeat 25с → 3456 writes/day (17%)',
+      '   ▸ Lock heartbeat 20с при активном выделении → до 4320 writes/day (22%)',
+      '   ▸ Auto-save 1.5с при активной работе → 2400 writes/day (12%)',
+      '   ▸ Revision auto-snapshot каждые 5 мин → 72 writes/day (~1%)',
+      '   Итого ~50% квоты на одного активного юзера. С двумя юзерами — выше квоты.',
+      '• Фиксы:',
+      '   ▸ <code>PRESENCE_HEARTBEAT_MS</code>: 25с → <b>60с</b> (stale 90с → 180с). −58%.',
+      '   ▸ <code>LOCK_HEARTBEAT_MS</code>: 20с → <b>45с</b> (stale 60с → 120с). −55%.',
+      '   ▸ <code>AUTO_SAVE_DELAY</code>: 1500мс → <b>3000мс</b>. Объединяет больше изменений в один write. −50%.',
+      '   ▸ <code>REVISION_AUTO_MIN_INTERVAL_MS</code>: 5мин → <b>15мин</b>. −67%.',
+      '   ▸ <b>Pause-on-hidden</b>: presence + lock heartbeat пропускаются когда <code>document.hidden=true</code> (Пользователь свернул вкладку). Visibilitychange-event тригерит немедленный beat при возврате. Snapshot-listeners (presence/projectDoc/locks) продолжают работать (это reads, не writes).',
+      '• Итого после фиксов: ~17K writes/day per user (было ~48K). Двое юзеров = ~34K, всё ещё может упереться в 20K — поэтому в день апгрейда плана или для команд >2 рекомендуется <b>файловое хранилище (v0.60.258)</b>.',
+      '📁 <b>File-storage Phase 4: persistent handle + ↻ Перечитать + ✕ Закрыть</b>.',
+      '• <b>Persistent handle</b>: открытый handle сохраняется в IndexedDB (<code>raschet-file-sync</code> DB). После reload страницы badge показывает «📁 Последний файл: имя · 5 мин назад» с кнопкой «↻ Открыть снова». При клике — браузер запрашивает permission (нужен пользовательский жест, поэтому через кнопку), handle активируется, file-mode восстанавливается. Без такого Пользователь должен был каждый раз заново выбирать файл через showOpenFilePicker.',
+      '• <b>↻ Перечитать</b>: кнопка прямо в file-mode badge — перечитать содержимое файла с диска. Полезно когда коллега в режиме «писатель» сохранил свежие правки.',
+      '• <b>✕ Закрыть файл</b>: выйти из file-mode, чистит persisted handle. Schema в браузере остаётся, но автосохранение в файл прекращается.',
+      '• Badge теперь показывает <b>timestamp последнего save / reload</b>: «📁 имя.json (auto-save) · 14:32».',
+      'Файлы: <code>js/main.js</code> (heartbeat constants + visibility hook), <code>shared/file-sync.js</code> (IDB rememberHandle/loadRememberedHandle/forgetHandle/ensurePermission), <code>js/engine/export.js</code> (auto-restore + reload/close handlers).',
+    ] },
     { version: '0.60.259', date: '2026-05-06', items: [
       '🧩 <b>Cable journal Phase 3: badge для kit-internal / int conn</b>. Завершение полной реализации kit-container по плану Пользователя 2026-05-05/06.',
       '• В колонке «Обозначение» кабельного журнала теперь показываются цветные бейджи: <b>🧩 kit</b> (зелёный) для kit-internal соединений (cond → outdoor в сборке) и <b>🔌 int</b> (синий) для внутренней проводки интегрированного ИБП. Tooltip объясняет назначение.',
