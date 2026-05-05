@@ -3693,6 +3693,50 @@ function recalc() {
       }
       if (group.length > 1) groups.push(group);
     }
+    // v0.60.287 (по репорту Пользователя 2026-05-06 «два щита питающих одну
+    // нагрузку показывают разную максимальную мощность» — JB1 max=114.2 kW,
+    // JB2 max=56.2 kW при том что оба питают UPS.IN одного integrated UPS):
+    // ДОПОЛНИТЕЛЬНОЕ shared-hop detection.
+    // Jaccard-критерий не срабатывал т.к. _walkConsumers пропускает
+    // _isInternalIntegrated conn-ы (UPS.IN→UPS-core внутренние шины), и
+    // panelDownstream(JB1)=panelDownstream(JB2)=∅. Jaccard 0/0=0 → не siblings.
+    // Структурный критерий: 2+ panel'ов с outgoing к одному узлу = siblings.
+    // Покрывает: AVR-pair (JB1+JB2 → UPS.IN), parallel feeders (PDM-IT1+IT2 →
+    // common bus), criss-cross AVR (PDC1+PDC2 → ACU.P1+ACU.P2 same target).
+    {
+      const sharedHopMap = new Map(); // hopNodeId → Set<panelId>
+      for (const c of state.conns.values()) {
+        if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+        // v0.60.287: НЕ skipаем _isInternalIntegrated — UPS.IN (integrated)
+        // — валидный shared hop для AVR-входов.
+        const fromN = state.nodes.get(c.from.nodeId);
+        if (!fromN || fromN.type !== 'panel') continue;
+        const hop = c.to.nodeId;
+        if (!sharedHopMap.has(hop)) sharedHopMap.set(hop, new Set());
+        sharedHopMap.get(hop).add(fromN.id);
+      }
+      for (const [hopId, panelSet] of sharedHopMap) {
+        if (panelSet.size < 2) continue;
+        // Zone-check (как в Jaccard): все в одной зоне.
+        const zSet = new Set();
+        for (const pid of panelSet) zSet.add(panelZoneId.get(pid) || null);
+        if (zSet.size > 1) continue;
+        // Все panel'ы добавляем в существующую группу (если есть с одной из них)
+        // или создаём новую.
+        const arr = [...panelSet];
+        let attachedToExisting = null;
+        for (const grp of groups) {
+          if (arr.some(p => grp.includes(p))) { attachedToExisting = grp; break; }
+        }
+        if (attachedToExisting) {
+          for (const p of arr) {
+            if (!attachedToExisting.includes(p)) attachedToExisting.push(p);
+          }
+        } else {
+          groups.push(arr);
+        }
+      }
+    }
     // Для каждой группы — пересчёт «union max» и выравнивание.
     for (const grp of groups) {
       const unionConsumers = new Set();
@@ -3706,6 +3750,17 @@ function recalc() {
         if (!c) continue;
         // v0.60.232: учёт GLOBAL.panelMaxBasis (nameplate vs calculated).
         unionKw += consumerMaxDemandKw(c);
+      }
+      // v0.60.287: для shared-hop siblings (JB1/JB2 → UPS.IN integrated)
+      // panelDownstream пустой (walk пропускает _isInternalIntegrated), но
+      // у каждой panel свой _maxLoadKw из BFS (который НЕ skipает internal).
+      // Берём max уже-посчитанных _maxLoadKw членов группы — это покрывает
+      // случай, когда consumer-set нельзя пройти через _isInternalIntegrated.
+      for (const id of grp) {
+        const n = state.nodes.get(id);
+        if (!n) continue;
+        const m = Number(n._maxLoadKw) || 0;
+        if (m > unionKw) unionKw = m;
       }
       // Применяем clamp ко всем sibling-ам.
       for (const id of grp) {

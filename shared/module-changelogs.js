@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.287', date: '2026-05-06', items: [
+      '🔁 <b>Sibling-clamp: shared-hop detection (JB1/JB2 → UPS.IN integrated)</b>. По репорту Пользователя 2026-05-06 «два щита питающих одну нагрузку показывают разную максимальную мощность» (скриншот: JB1 max=114.2 kW, JB2 max=56.2 kW при том что оба питают UPS.IN integrated UPS).',
+      '<b>Корень:</b> Jaccard-критерий sibling-clamp использует <code>_walkConsumers</code>, который пропускает <code>_isInternalIntegrated</code> connections (фабричные шины UPS.IN→UPS-core). Для JB1/JB2 walk обрывается на UPS.IN → panelDownstream пустые → Jaccard = 0/0 = 0 < 0.7 → не siblings → нет clamp.',
+      '<b>Фикс:</b> добавлен СТРУКТУРНЫЙ критерий — shared-hop. Если 2+ panel\'ов имеют outgoing conn к ОДНОМУ узлу (например JB1→UPS.IN и JB2→UPS.IN), они автоматически становятся siblings (zone-check по-прежнему применяется).',
+      '• Покрывает: AVR-pair (JB1/JB2 → UPS.IN integrated), parallel feeders (PDM-IT1/IT2 → common bus), criss-cross AVR (PDC1/PDC2 → ACU.P1/P2 same target).',
+      '• Не дублирует Jaccard — добавляется поверх. Если оба критерия сработали для тех же panel\'ов, attachToExisting объединяет в одну группу.',
+      '• unionKw расчёт расширен: если consumer-set пустой (внутренние шины не проходимы), берём <b>max(member._maxLoadKw)</b> — каждая panel\'a уже имеет свой <code>_maxLoadKw</code> от <code>maxDownstreamLoad</code> (которая walk\'ает через _isInternalIntegrated).',
+      '• Diagnostic поля: <code>_maxLoadKwOwn</code>, <code>_maxLoadKwSiblingGroup</code>, <code>_maxLoadKwClampedToSiblings</code>.',
+      'File: <code>js/engine/recalc.js</code> (sibling-clamp shared-hop block + unionKw fallback).',
+    ] },
     { version: '0.60.286', date: '2026-05-06', items: [
       '🔗 <b>Force-sync local-active project с cloud (фикс «схемы бегают между проектами»)</b>. По репорту Пользователя 2026-05-06: «почему у тебя схемы как проститутки опять бегают по проектам» (скриншот: header «Qarmet», sidebar-badge «TBC Bank»).',
       '<b>Корень:</b> в <code>openProject()</code> код v0.59.742 синхронизировал local-active с cloud porPid <b>только если</b> local-entry с тем же id уже существует в LS (<code>matchedLocal</code> condition). Если cloud-проект НЕ был ранее импортирован локально — синхронизация пропускалась, показывалось только warning. Результат: header показывал Qarmet (cloud), но local-active оставался TBC Bank (предыдущий) → данные модулей (catalog / scs-config / cooling / suppression / mv-config) писались в namespace TBC Bank. Схемы «бегали».',
