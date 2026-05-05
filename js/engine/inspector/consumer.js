@@ -677,9 +677,28 @@ export function openConsumerParamsModal(n) {
     h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Наружные блоки</summary>');
     // v0.60.345: outdoorCount — 1 или 2 (для двухконтурных VRF / dual-circuit DX)
     const _ouCount = Math.max(1, Math.min(2, Number(n.outdoorCount) || 1));
-    h.push(field('Количество наружных блоков', `<select id="cp-outdoorCount">
-      <option value="1"${_ouCount === 1 ? ' selected' : ''}>1 (стандарт сплит)</option>
+    h.push(field('Количество наружных блоков', `<select id="cp-outdoorCount" title="Количество выносных наружных блоков. 1 — стандарт; 2 — двухконтурная схема (резервирование контуров или dual-circuit DX).">
+      <option value="1"${_ouCount === 1 ? ' selected' : ''}>1 (один блок)</option>
       <option value="2"${_ouCount === 2 ? ' selected' : ''}>2 (двухконтурный)</option>
+    </select>`));
+    // v0.60.350 (по репорту Пользователя 2026-05-06: «сплит это когда
+    // компрессор снаружи, а у нас обычно с наружи только конденсатор,
+    // так что можно добавить типы»):
+    //   - condenser: только конденсатор снаружи (компрессор в indoor —
+    //     характерно для прецизионных DC-кондиционеров) — DEFAULT
+    //   - split: классический сплит (компрессор + конденсатор снаружи)
+    //   - dry-cooler: драй-кулер (free-cooling, glycol-loop)
+    //   - cooling-tower: градирня (water-cooled chillers)
+    //   - vrf: VRF-блок (компрессор + конденсатор + EEV для multi-zone)
+    //   - heat-exchanger: теплообменник (для glycol-loop, без активного охлаждения)
+    const _ouType = String(n.outdoorType || 'condenser');
+    h.push(field('Тип наружного блока', `<select id="cp-outdoorType" title="Тип выносного оборудования. От типа зависит мощность, потребление и BOM-позиция: конденсатор потребляет только вентиляторы, сплит/VRF — компрессор + вентиляторы.">
+      <option value="condenser"${_ouType === 'condenser' ? ' selected' : ''}>🌀 Конденсатор (компрессор внутри)</option>
+      <option value="split"${_ouType === 'split' ? ' selected' : ''}>❄ Сплит-блок (компрессор снаружи)</option>
+      <option value="dry-cooler"${_ouType === 'dry-cooler' ? ' selected' : ''}>🔁 Драй-кулер (free-cooling)</option>
+      <option value="cooling-tower"${_ouType === 'cooling-tower' ? ' selected' : ''}>💧 Градирня (water-cooled)</option>
+      <option value="vrf"${_ouType === 'vrf' ? ' selected' : ''}>🏭 VRF-блок (multi-zone)</option>
+      <option value="heat-exchanger"${_ouType === 'heat-exchanger' ? ' selected' : ''}>🌡 Теплообменник (glycol)</option>
     </select>`));
     // Список существующих outdoor-узлов, привязанных через linkedOutdoorIds[].
     const _ouIds = Array.isArray(n.linkedOutdoorIds) ? n.linkedOutdoorIds
@@ -1106,14 +1125,29 @@ export function openConsumerParamsModal(n) {
         const acTag = (n.tag || '').trim() || effectiveTag(n);
         const ouTag = `${acTag}.OU${idx + 1}`;
         const newId = uid();
+        // v0.60.350: тип наружного блока определяет дефолтное имя
+        // и потребление. Конденсатор — только вентилятор (~0.3 кВт);
+        // сплит/VRF — компрессор + вентилятор (несколько кВт);
+        // драй-кулер — массив вентиляторов (несколько кВт);
+        // градирня — насос + вентилятор; теплообменник — пассивный (0).
+        const _ouType = String(n.outdoorType || 'condenser');
+        const _typeMeta = {
+          'condenser':      { name: 'Конденсатор',   kw: 0.3 },
+          'split':          { name: 'Сплит-блок',    kw: 1.5 },
+          'dry-cooler':     { name: 'Драй-кулер',    kw: 2.0 },
+          'cooling-tower':  { name: 'Градирня',      kw: 3.0 },
+          'vrf':            { name: 'VRF-блок',      kw: 4.0 },
+          'heat-exchanger': { name: 'Теплообменник', kw: 0.05 },
+        }[_ouType] || { name: 'Наруж. блок', kw: 0.6 };
         ouNode = {
           id: newId, type: 'consumer',
           x: n.x, y: n.y + NODE_H + 80 + idx * 40,
           ...(window.DEFAULTS && window.DEFAULTS.consumer ? window.DEFAULTS.consumer() : {}),
           tag: ouTag,
-          name: 'Наруж. блок',
+          name: _typeMeta.name,
           consumerSubtype: 'outdoor_unit',
-          demandKw: Number(n.outdoorKw) || 0.6,
+          outdoorType: _ouType,
+          demandKw: Number(n.outdoorKw) || _typeMeta.kw,
           cosPhi: Number(n.outdoorCosPhi) || 0.85,
           linkedIndoorId: n.id,
           inputs: 1, outputs: 0, count: 1,
@@ -2324,58 +2358,35 @@ export function openConsumerParamsModal(n) {
     if (catId === 'conditioner') {
       n.outdoorKw = readNum('cp-outdoorKw', n.outdoorKw ?? 0.3);
       n.outdoorCosPhi = readNum('cp-outdoorCosPhi', n.outdoorCosPhi ?? 0.85);
+      // v0.60.350: outdoorCount + outdoorType из новых селекторов.
+      const _ocEl = document.getElementById('cp-outdoorCount');
+      if (_ocEl) n.outdoorCount = Math.max(1, Math.min(2, Number(_ocEl.value) || 1));
+      const _otEl = document.getElementById('cp-outdoorType');
+      if (_otEl && _otEl.value) n.outdoorType = String(_otEl.value);
       n.outputs = 1;
-      if (n.id !== '__preset_edit__' && (!n.linkedOutdoorId || !state.nodes.get(n.linkedOutdoorId))) {
-        const outId = uid();
-        const outdoor = {
-          id: outId, type: 'consumer',
-          x: n.x,
-          y: n.y + NODE_H + 80,
-          ...DEFAULTS.consumer(),
-          name: 'Наруж. блок',
-          consumerSubtype: 'outdoor_unit',
-          demandKw: n.outdoorKw,
-          cosPhi: n.outdoorCosPhi,
-          linkedIndoorId: n.id,
-          inputs: 1, outputs: 0, count: n.count || 1,
-          // v0.60.252 (по репорту Пользователя 2026-05-06 «авторазмещенный
-          // наружный блок отображается как неразмещенный и только при
-          // повторном перетаскивании на холст он считается как
-          // размещенный»): наследуем pageIds от parent-кондиционера, чтобы
-          // outdoor сразу был «размещён» на той же странице. Без этого
-          // pageIds=undefined → попадал в «Неразмещённые».
-          pageIds: Array.isArray(n.pageIds) ? n.pageIds.slice() : (state.currentPageId ? [state.currentPageId] : []),
-        };
-        outdoor.tag = nextFreeTag('consumer');
-        state.nodes.set(outId, outdoor);
-        n.linkedOutdoorId = outId;
-        const connId = uid('c');
-        state.conns.set(connId, {
-          id: connId,
-          from: { nodeId: n.id, port: 0 },
-          to: { nodeId: outId, port: 0 },
-          material: GLOBAL.defaultMaterial,
-          insulation: GLOBAL.defaultInsulation,
-          installMethod: GLOBAL.defaultInstallMethod,
-          ambientC: GLOBAL.defaultAmbient,
-          grouping: GLOBAL.defaultGrouping,
-          bundling: 'touching',
-          lengthM: 5,
-          // v0.60.253 (по репорту Пользователя 2026-05-06 «есть кабель по
-          // умолчанию, но для размещенного наружного блока кабель не
-          // выбрался автоматически»): наследуем основную марку проекта
-          // (GLOBAL.projectMainCableLv — выставляется в «Параметры проекта»).
-          cableMark: GLOBAL.projectMainCableLv || null,
-        });
-      } else {
-        const outdoor = state.nodes.get(n.linkedOutdoorId);
-        if (outdoor) {
-          outdoor.demandKw = n.outdoorKw;
-          outdoor.cosPhi = n.outdoorCosPhi;
-          outdoor.count = n.count || 1;
-        }
+      // v0.60.350 (по репорту Пользователя 2026-05-06: «при изменении
+      // базового обозначения, обозначение наружного блока должно
+      // изменится автоматически»): синхронизируем теги linkedOutdoorIds[]
+      // на каждом apply'е. Outdoor-tag = parent.tag + '.OU' + (idx+1).
+      const _ouIds = Array.isArray(n.linkedOutdoorIds) ? n.linkedOutdoorIds
+        : (n.linkedOutdoorId ? [n.linkedOutdoorId] : []);
+      for (let i = 0; i < _ouIds.length; i++) {
+        const ou = state.nodes.get(_ouIds[i]);
+        if (!ou) continue;
+        const expectedTag = `${n.tag || ''}.OU${i + 1}`;
+        if (ou.tag !== expectedTag) ou.tag = expectedTag;
+        // outdoorType из родителя пропагируется тоже — Пользователь меняет
+        // тип в карточке cond, тип отражается на outdoor-узле.
+        if (n.outdoorType) ou.outdoorType = n.outdoorType;
       }
+      // OLD auto-outdoor-creation удалён в v0.60.350: outdoor создаётся
+      // ТОЛЬКО через modal-button «🔧 ACU.OU1» в карточке кондиционера
+      // (см. cp-outdoor-open-btn handler ниже). Раньше apply-handler
+      // создавал outdoor с тегом nextFreeTag('consumer') = «L<n>», что
+      // давало неверный тег вроде «Z1.L14» вместо «ACU1.OU1».
     } else if (n.id !== '__preset_edit__') {
+      // Удаляем legacy single-outdoor если subtype больше не conditioner.
+      // Multi-outdoor (linkedOutdoorIds[]) удаляются в delete-node logic.
       if (n.linkedOutdoorId) {
         const outId = n.linkedOutdoorId;
         for (const c of Array.from(state.conns.values())) {

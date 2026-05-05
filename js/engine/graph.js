@@ -1,5 +1,5 @@
 import { state, uid } from './state.js';
-import { GLOBAL, DEFAULTS, TAG_PREFIX, SOURCE_SUBTYPE_PREFIX, NODE_H } from './constants.js';
+import { GLOBAL, DEFAULTS, TAG_PREFIX, SOURCE_SUBTYPE_PREFIX, CONSUMER_SUBTYPE_PREFIX, NODE_H } from './constants.js';
 import { nodeWidth, nodeInputCount } from './geometry.js';
 import { effectiveTag } from './zones.js';
 
@@ -105,10 +105,14 @@ export function createNode(type, x, y, opts) {
     ? DEFAULTS[type](subtype)
     : {};
   const base = { id, type, x, y, ...defaults };
-  // Префикс тега — для source с подтипом берём SOURCE_SUBTYPE_PREFIX
+  // Префикс тега — для source с подтипом берём SOURCE_SUBTYPE_PREFIX,
+  // для consumer с подтипом — CONSUMER_SUBTYPE_PREFIX (v0.60.350: ACU
+  // для conditioner).
   let tagPrefix = null;
   if (type === 'source' && subtype && SOURCE_SUBTYPE_PREFIX[subtype]) {
     tagPrefix = SOURCE_SUBTYPE_PREFIX[subtype];
+  } else if (type === 'consumer' && subtype && CONSUMER_SUBTYPE_PREFIX[subtype]) {
+    tagPrefix = CONSUMER_SUBTYPE_PREFIX[subtype];
   }
   base.tag = tagPrefix ? nextFreeTagWithPrefix(tagPrefix) : nextFreeTag(type);
   base.x = x - nodeWidth(base) / 2;

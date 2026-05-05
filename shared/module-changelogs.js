@@ -4,6 +4,24 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.350', date: '2026-05-06', items: [
+      '🌀 <b>ACU prefix + типы наружного блока + auto-rename outdoor при смене tag\'а</b>. По трём репортам Пользователя 2026-05-06: (1) «сплит это когда компрессор снаружи, а у нас обычно с наружи только конденсатор, так что можно добавить типы», (2) «и я просил добавлять OU и номер это типа Outdor unit. Полный номер для этого кондиционера должен быть L12.OU1. Вообще для кондиционеров прими базовое обозначение ACU - Air cool Unit», (3) «при изменении базового обозначения, обозначение наружного блока должно изменится автоматически».',
+      '<b>1. ACU prefix для кондиционеров</b>:',
+      '• Новый <code>CONSUMER_SUBTYPE_PREFIX = { conditioner: \'ACU\' }</code> в constants.js',
+      '• <code>graph.createNode</code> использует префикс при <code>type===\'consumer\' && subtype===\'conditioner\'</code> — даёт <b>ACU1, ACU2, ACU3…</b> вместо общего L1/L2',
+      '• Outdoor-tag = parent.tag + ".OU" + (idx+1). Пример: <code>ACU1.OU1</code>, <code>ACU1.OU2</code> для двухконтурного.',
+      '<b>2. Типы наружного блока</b> (новый селектор «Тип наружного блока» в карточке cond):',
+      '• <b>🌀 Конденсатор</b> (компрессор внутри indoor) — DEFAULT, типично для прецизионных DC-кондиционеров. ≈ 0.3 кВт (только вентилятор).',
+      '• <b>❄ Сплит-блок</b> (компрессор + конденсатор снаружи) — классический сплит. ≈ 1.5 кВт.',
+      '• <b>🔁 Драй-кулер</b> (free-cooling, glycol-loop). ≈ 2 кВт.',
+      '• <b>💧 Градирня</b> (water-cooled chillers). ≈ 3 кВт.',
+      '• <b>🏭 VRF-блок</b> (multi-zone). ≈ 4 кВт.',
+      '• <b>🌡 Теплообменник</b> (glycol-loop, без активного охлаждения). ≈ 0.05 кВт.',
+      '<b>3. Auto-rename outdoor при смене cond.tag</b>: apply-handler в consumer.js на каждом apply\'е синкует <code>linkedOutdoorIds[i].tag = n.tag + ".OU" + (i+1)</code>. Меняешь cond.tag «ACU1» → «ACU5», outdoor автоматически становится «ACU5.OU1». outdoorType пропагируется тоже.',
+      '<b>4. Удалена legacy auto-outdoor-creation</b> в apply-handler: раньше автогенерировала outdoor с тегом <code>nextFreeTag(\'consumer\')</code> = «L14», давая некорректный «Z1.L14» вместо «ACU1.OU1». Теперь outdoor создаётся ТОЛЬКО через modal-button.',
+      'Селектор «Количество наружных блоков»: «1 (стандарт сплит)» → «1 (один блок)» (формулировка была неточной).',
+      'Files: <code>js/engine/constants.js</code> (CONSUMER_SUBTYPE_PREFIX), <code>js/engine/graph.js</code> (createNode tagPrefix branch), <code>js/engine/inspector/consumer.js</code> (selector outdoorType + apply-handler outdoorCount/Type + auto-rename loop + удалена legacy creation + _typeMeta map в modal-button handler).',
+    ] },
     { version: '0.60.349', date: '2026-05-06', items: [
       '🗑 <b>Tombstone для удалённых проектов + sketch скрыт из global-picker\'а</b>. По двум репортам Пользователя 2026-05-06: «тестовый проект не удаляется» + «что за проект Вариант 1 — схемы, если это схема в проекте, она не должна быть как проект, тоже самое и с проектами СКС».',
       '<b>Часть A: Tombstone для удалённых проектов</b>',

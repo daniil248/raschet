@@ -9,7 +9,7 @@
 // APP_VERSION — единая версия Raschet. Она же отображается в футере
 // каждой подпрограммы. Отдельной нумерации у модулей нет: любая правка
 // по любому модулю инкрементит эту версию.
-export const APP_VERSION = '0.60.349';
+export const APP_VERSION = '0.60.350';
 
 // ================= Константы =================
 export const NODE_H = 120;      // 3 × 40px grid
@@ -1017,6 +1017,18 @@ export const SOURCE_SUBTYPE_PREFIX = {
   generator:   'G',
   utility:     'W',
   other:       'SRC',
+};
+
+// v0.60.350: префиксы тегов по consumerSubtype. По репорту Пользователя
+// 2026-05-06: «для кондиционеров прими базовое обозначение ACU - Air
+// Cool Unit». Используется в graph.createNode для consumer'ов с
+// подтипом — даёт «ACU1, ACU2…» вместо общего «L1, L2…».
+//   ACU — Air Cool Unit (кондиционер) — IEC 81346-2 letter class «E»
+//         занят, ACU — индустриальное обозначение HVAC.
+//   OU  — Outdoor Unit (наружный блок) — суффикс через .OU<idx>,
+//         не используется как самостоятельный prefix (тег = parent.OUx).
+export const CONSUMER_SUBTYPE_PREFIX = {
+  conditioner: 'ACU',
 };
 
 // Палитра пастельных цветов для зон (24 цвета). Все — светлые, мягкие,
