@@ -302,16 +302,19 @@ export function deduplicateProjectRacks(pid) {
   const racks = getObjects(pid, { type: 'rack' });
   if (!racks.length) return { removed: 0, kept: 0, groups: 0 };
 
-  // Группировка по (tag + ключевые мех./электр. параметры).
-  const groupKey = (o) => {
-    const m = (o.domains && o.domains.mechanical) || {};
-    const e = (o.domains && o.domains.electrical) || {};
-    return [o.tag || '', e.demandKw || 0, m.widthMm || 0, m.depthMm || 0, m.rackUnits || 0].join('|');
-  };
+  // v0.60.331 (по репорту Пользователя 2026-05-06: «и вновь дубликаты, когда
+  // это прекратится??? а можно их не удалять а найти корень и не создавать???»):
+  // Раньше группировка была по [tag + demandKw + widthMm + depthMm + rackUnits]
+  // — Технолог-rack (kW=8.2) и Конструктор-rack (kW=0) с одним тегом имели
+  // РАЗНЫЕ группы → не дедуплицировались. Теперь группируем ПО ОДНОМУ ТЕГУ.
+  // Перед удалением сливаем domains всех дубликатов в победителя — Электрик
+  // domain.electrical + Технолог domain.mechanical сохраняются вместе.
+  const groupKey = (o) => String(o.tag || '').trim().toUpperCase();
 
   const groups = new Map();
   for (const r of racks) {
     const k = groupKey(r);
+    if (!k) continue; // без тега не дедуплицируем
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(r);
   }
@@ -319,15 +322,41 @@ export function deduplicateProjectRacks(pid) {
   let removed = 0, kept = 0;
   for (const [, arr] of groups.entries()) {
     if (arr.length === 1) { kept++; continue; }
-    // Выбираем «победителя»:
-    // 1. Детерминистический legacy-id (id начинается с por_legacy_).
-    // 2. Иначе — самый старый (createdAt).
+    // Выбираем «победителя»: legacy-id первым, затем — с большим demandKw
+    // (приоритет «полная информация»), затем — самый старый.
     arr.sort((a, b) => {
       const aL = String(a.id || '').startsWith('por_legacy_') ? 0 : 1;
       const bL = String(b.id || '').startsWith('por_legacy_') ? 0 : 1;
       if (aL !== bL) return aL - bL;
+      const aKw = Number((a.domains && a.domains.electrical && a.domains.electrical.demandKw) || 0);
+      const bKw = Number((b.domains && b.domains.electrical && b.domains.electrical.demandKw) || 0);
+      if (aKw !== bKw) return bKw - aKw;
       return (a.createdAt || 0) - (b.createdAt || 0);
     });
+    const winner = arr[0];
+    // Merge domains из остальных в победителя (заполняем пустые поля).
+    for (let i = 1; i < arr.length; i++) {
+      const dup = arr[i];
+      const dupDomains = (dup && dup.domains) || {};
+      if (!winner.domains) winner.domains = {};
+      for (const [d, dData] of Object.entries(dupDomains)) {
+        if (!winner.domains[d]) winner.domains[d] = {};
+        for (const [k, v] of Object.entries(dData || {})) {
+          // Пустые/нулевые поля у победителя заполняем из dup.
+          const wv = winner.domains[d][k];
+          const isEmpty = wv == null || wv === '' || wv === 0 || (Array.isArray(wv) && wv.length === 0);
+          if (isEmpty && v != null && v !== '' && v !== 0) {
+            winner.domains[d][k] = v;
+          }
+        }
+      }
+      // Сохраняем имя/manufacturer/model если у победителя пусто.
+      for (const f of ['name', 'manufacturer', 'model', 'serialNo', 'assetId']) {
+        if (!winner[f] && dup[f]) winner[f] = dup[f];
+      }
+    }
+    // Persist merged winner (если изменился).
+    try { addObject(pid, winner); } catch {}
     kept++;
     for (let i = 1; i < arr.length; i++) {
       try {

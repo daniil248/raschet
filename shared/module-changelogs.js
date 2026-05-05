@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.331', date: '2026-05-06', items: [
+      '🔀 <b>POR dedup: merge доменов + tag-only grouping для существующих дубликатов</b>. Дополнение к v0.60.330 для cleanup\'а уже-существующих дублей.',
+      '<b>Корень</b>: <code>deduplicateProjectRacks</code> группировал по [tag + demandKw + widthMm + depthMm + rackUnits] → Технолог-rack (kW=8.2) и Конструктор-rack (kW=0) с одним тегом имели РАЗНЫЕ ключи группы → не дедуплицировались.',
+      '<b>Fix #1</b>: groupKey = только <code>tag.toUpperCase()</code>. Объекты без тега не дедуплицируются (сохраняются как есть).',
+      '<b>Fix #2 (merge доменов)</b>: перед удалением дубликатов сливаем их domains в победителя — пустые поля у победителя заполняются из dup\'ов. Электрик domain.electrical (demandKw, panelDesignation) + Технолог domain.mechanical (widthMm, rackUnits) теперь сохраняются вместе в одном объекте, ничего не теряется.',
+      '<b>Победитель</b>: legacy-id первым, затем — с большим demandKw (приоритет «полная информация»), затем — самый старый.',
+      '<b>Кнопка «🧹 Удалить дубликаты»</b> в POR Playground теперь сольёт 16 racks (8 + 8) → 8 объектов с обогащёнными доменами.',
+      'Files: <code>shared/legacy-rack-migration.js</code> (deduplicateProjectRacks — relaxed groupKey + merge domains).',
+    ] },
     { version: '0.60.330', date: '2026-05-06', items: [
       '🔧 <b>POR: dedup по тегу при создании (root-cause fix)</b>. По репорту Пользователя 2026-05-06: «и вновь дубликаты, когда это прекратится??? а можно их не удалять а найти корень и не создавать???»',
       '<b>Корень</b>: cross-discipline POR-дубликаты возникают когда Технолог создаёт rack-объекты (с tag SR01..SR08, kW=8.2), а Конструктор создаёт свои consumer-rack узлы с теми же тегами (kW=0.0). Каждый модуль вызывает <code>addObject(pid, {tag, type})</code> с auto-generated id → 2 POR-объекта на одну физическую стойку. Кнопка «Удалить дубликаты» убирала только id-дубли.',
