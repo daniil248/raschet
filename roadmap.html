@@ -132,5 +132,12 @@
       toggle();
     })();
   </script>
+  <script type="module">
+    // v0.60.341: standard module-footer.
+    import { mountFooter as mountModuleFooter } from './shared/module-footer.js';
+    import { APP_VERSION } from './js/engine/constants.js';
+    import { CHANGELOGS } from './shared/module-changelogs.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'roadmap', moduleTitle: 'Roadmap', entries: CHANGELOGS['engine'] || [] });
+  </script>
 </body>
 </html>
