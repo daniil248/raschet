@@ -654,10 +654,15 @@ function recalcAndRender() {
     if (!_probable) {
       _probable = _candidates.find(d => _modeKw(d).kw >= _genericReq);
     }
-    if (_probable && _probable.engineModel) {
-      _calcInput.engineName = _probable.engineModel;
-      _calcInput.modelName = _probable.model;
-      _autoDetectedFromEngine = _probable.engineModel;
+    if (_probable) {
+      // v0.60.322: profile id из datasheet'а (catalog as source of truth).
+      // Если не задан — fallback к regex-detect по engineModel.
+      if (_probable.derateProfile) _calcInput.engineProfile = _probable.derateProfile;
+      if (_probable.engineModel) {
+        _calcInput.engineName = _probable.engineModel;
+        _calcInput.modelName = _probable.model;
+        _autoDetectedFromEngine = _probable.engineModel;
+      }
     }
   }
   const res = calcDgu(_calcInput);

@@ -13,12 +13,16 @@
 // =============================================================================
 
 export const AJ_POWER_DGUS = [
+  // v0.60.322: derateProfile — id профиля derate (см.
+  // dgu-config/calc/dgu-calc.js ENGINE_DERATE_PROFILES). Прописывается
+  // прямо в datasheet — каталог = source of truth для подбора и derate.
   {
     vendor: 'AJ Power', model: 'DA3-AJ110-P1 (110 kVA)',
     nameplateKw: 88, espKw: 88, prpKw: 80, copKw: 72,
     voltage: 400, phase: 3, freq: 50, rpm: 1500,
     engineModel: 'Volvo Penta TAD531GE', cylinders: 4, displacement: 5.1,
     fuelType: 'diesel', sfcLkWh: 0.230,
+    derateProfile: 'volvo-tad-twd',
     physical: { lengthMm: 2700, widthMm: 1050, heightMm: 1750, weightKg: 1500 },
     notes: '110 кВА open-frame (P1). Volvo Penta engine. Малый коммерческий объект.',
   },
@@ -28,6 +32,7 @@ export const AJ_POWER_DGUS = [
     voltage: 400, phase: 3, freq: 50, rpm: 1500,
     engineModel: 'Volvo Penta TAD732GE', cylinders: 6, displacement: 7.2,
     fuelType: 'diesel', sfcLkWh: 0.227,
+    derateProfile: 'volvo-tad-twd',
     physical: { lengthMm: 3000, widthMm: 1100, heightMm: 1850, weightKg: 1850 },
     notes: '165 кВА open-frame (P1). Volvo Penta TAD732GE 6-cyl. Средний коммерческий объект.',
   },
@@ -37,6 +42,7 @@ export const AJ_POWER_DGUS = [
     voltage: 400, phase: 3, freq: 50, rpm: 1500,
     engineModel: 'Volvo Penta TAD732GE', cylinders: 6, displacement: 7.2,
     fuelType: 'diesel', sfcLkWh: 0.227,
+    derateProfile: 'volvo-tad-twd',
     physical: { lengthMm: 3500, widthMm: 1200, heightMm: 2050, weightKg: 2200 },
     notes: '165 кВА в canopy (P2) ~75 dB@7m. Volvo Penta TAD732GE.',
   },
@@ -46,6 +52,7 @@ export const AJ_POWER_DGUS = [
     voltage: 400, phase: 3, freq: 50, rpm: 1500,
     engineModel: 'Volvo Penta TAD941GE', cylinders: 6, displacement: 9.4,
     fuelType: 'diesel', sfcLkWh: 0.222,
+    derateProfile: 'volvo-tad-twd',
     physical: { lengthMm: 3500, widthMm: 1200, heightMm: 1950, weightKg: 2400 },
     notes: '250 кВА open-frame (P1). Volvo Penta TAD941GE 9.4L.',
   },
@@ -55,6 +62,7 @@ export const AJ_POWER_DGUS = [
     voltage: 400, phase: 3, freq: 50, rpm: 1500,
     engineModel: 'Volvo Penta TAD1342GE', cylinders: 6, displacement: 13,
     fuelType: 'diesel', sfcLkWh: 0.218,
+    derateProfile: 'volvo-tad-twd',
     physical: { lengthMm: 4200, widthMm: 1400, heightMm: 2150, weightKg: 3400 },
     notes: '400 кВА open-frame (P1). Volvo Penta TAD1342GE 13L. Средний/большой ЦОД.',
   },
@@ -64,6 +72,7 @@ export const AJ_POWER_DGUS = [
     voltage: 400, phase: 3, freq: 50, rpm: 1500,
     engineModel: 'Volvo Penta TWD1683GE', cylinders: 6, displacement: 16.1,
     fuelType: 'diesel', sfcLkWh: 0.213,
+    derateProfile: 'volvo-tad-twd',
     physical: { lengthMm: 4800, widthMm: 1700, heightMm: 2300, weightKg: 5200 },
     notes: '650 кВА open-frame (P1). Volvo Penta TWD1683GE 16.1L. Большой ЦОД.',
   },
@@ -73,6 +82,7 @@ export const AJ_POWER_DGUS = [
     voltage: 400, phase: 3, freq: 50, rpm: 1500,
     engineModel: 'Perkins 4006-23TAG3A', cylinders: 6, displacement: 23,
     fuelType: 'diesel', sfcLkWh: 0.210,
+    derateProfile: 'perkins-4000-series',
     physical: { lengthMm: 6100, widthMm: 2440, heightMm: 2800, weightKg: 9500 },
     notes: '1000 кВА в контейнере (P3, 20-ft). Perkins 4006 engine. Mission-critical.',
   },

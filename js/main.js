@@ -1134,6 +1134,90 @@ function renderCurrentTab() {
   const ctxProjectsAll = (() => { try { return _listProjectCtx() || []; } catch { return []; } })();
   const ctxProjects = ctxProjectsAll.filter(p => p.kind !== 'sketch');
   const ctxMap = new Map(ctxProjects.map(p => [p.id, p]));
+  // v0.60.322 (по репорту Пользователя 2026-05-06: «нашёл вопрос с созданием
+  // новых проектов (дубли) при синхронизации с облаком???»): detect existing
+  // duplicates по имени (case-insensitive). v0.60.298 фикс предотвращает
+  // СОЗДАНИЕ дубликатов, но уже существующие в LS остаются. Показываем
+  // banner с кнопкой объединения.
+  const _byName = new Map();
+  for (const cp of ctxProjects) {
+    const key = String(cp.name || '').trim().toLowerCase();
+    if (!key) continue;
+    if (!_byName.has(key)) _byName.set(key, []);
+    _byName.get(key).push(cp);
+  }
+  const _duplicates = [...(_byName.entries())].filter(([k, arr]) => arr.length > 1);
+  if (_duplicates.length > 0) {
+    const dedupeBanner = document.createElement('div');
+    dedupeBanner.style.cssText = 'grid-column:1/-1;background:#fef3c7;border:2px solid #f59e0b;border-radius:6px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:#78350f';
+    const totalDupes = _duplicates.reduce((s, [, arr]) => s + (arr.length - 1), 0);
+    dedupeBanner.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:18px">⚠</span>
+        <div style="flex:1;min-width:200px">
+          <b>Найдено ${_duplicates.length} дубликат${_duplicates.length === 1 ? '' : (_duplicates.length < 5 ? 'а' : 'ов')} по имени</b> (всего лишних контекстов: ${totalDupes}).
+          Возникли при предыдущей синхронизации с облаком до v0.60.298.
+          <details style="margin-top:6px"><summary style="cursor:pointer;font-size:12px">Показать список</summary>
+            <div style="margin-top:6px;padding:6px 10px;background:#fff;border-radius:3px;font-size:12px">
+              ${_duplicates.map(([k, arr]) => `<div>• <b>${escHtml(arr[0].name)}</b>: ${arr.length} контекстов (${arr.map(p => p.id.slice(0, 10)).join(', ')})</div>`).join('')}
+            </div>
+          </details>
+        </div>
+        <button type="button" id="ds-merge-dupes" style="padding:7px 14px;background:#d97706;color:#fff;border:0;border-radius:4px;cursor:pointer;font:inherit;font-size:13px;font-weight:500">🔧 Объединить дубликаты</button>
+      </div>
+    `;
+    els.projectsList.appendChild(dedupeBanner);
+    document.getElementById('ds-merge-dupes')?.addEventListener('click', async () => {
+      if (!await rsConfirm('Объединить дубликаты?',
+        `Все схемы будут перенесены в один контекст по имени, лишние удалены. Это безопасно — данные модулей (по ID проекта) останутся, но активный ID может измениться. Продолжить?`,
+        { okLabel: 'Объединить', cancelLabel: 'Отмена' })) return;
+      try {
+        const ps = await import('../shared/project-storage.js');
+        const arr = ps.listProjects() || [];
+        let mergedCount = 0;
+        for (const [, dupArr] of _duplicates) {
+          // Primary: тот, у которого больше схем И есть _cloudIds (cloud-linked).
+          // Иначе — самый свежий по updatedAt.
+          const sortedDups = dupArr.slice().sort((a, b) => {
+            const aSchemes = data.filter(s => s.projectId === a.id).length;
+            const bSchemes = data.filter(s => s.projectId === b.id).length;
+            if (aSchemes !== bSchemes) return bSchemes - aSchemes;
+            const aCloud = Array.isArray(a._cloudIds) && a._cloudIds.length ? 1 : 0;
+            const bCloud = Array.isArray(b._cloudIds) && b._cloudIds.length ? 1 : 0;
+            if (aCloud !== bCloud) return bCloud - aCloud;
+            return (b.updatedAt || 0) - (a.updatedAt || 0);
+          });
+          const primary = sortedDups[0];
+          const others = sortedDups.slice(1);
+          // Перепривязываем все schemes от others к primary
+          for (const sc of data) {
+            if (others.some(o => o.id === sc.id || sc.projectId === o.id)) {
+              try { await window.Storage.saveProject(sc.id, { projectId: primary.id }); } catch {}
+            }
+          }
+          // Сохраняем cloud-id'ы лишних в primary._cloudIds для grouping fix
+          if (!Array.isArray(primary._cloudIds)) primary._cloudIds = [];
+          for (const o of others) {
+            if (!primary._cloudIds.includes(o.id)) primary._cloudIds.push(o.id);
+          }
+          // Удаляем лишние contexts
+          const arrIdx = arr.findIndex(p => p.id === primary.id);
+          if (arrIdx >= 0) {
+            arr[arrIdx] = primary;
+          }
+          for (const o of others) {
+            const i = arr.findIndex(p => p.id === o.id);
+            if (i >= 0) arr.splice(i, 1);
+            mergedCount++;
+          }
+        }
+        localStorage.setItem('raschet.projects.v1', JSON.stringify(arr));
+        flash(`✔ Объединено ${mergedCount} дубликат${mergedCount === 1 ? '' : (mergedCount < 5 ? 'а' : 'ов')}`, 'info');
+        _invalidateProjectsCache();
+        refreshProjects({ force: true });
+      } catch (e) { flash(e.message || 'Ошибка', 'error'); }
+    });
+  }
   // v0.60.298: cloud-id → local-id mapping (когда dedup перенаправил
   // импорт на существующий local context). Схема, у которой projectId =
   // cloud-id, всё равно должна группироваться под местным контекстом.

@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.322', date: '2026-05-06', items: [
+      '🔧 <b>Merge dupes UI + derate profile в каталог ДГУ</b>. По 2 репортам Пользователя 2026-05-06.',
+      '<b>1) Объединение существующих дубликатов проектов</b>: «нашёл вопрос с созданием новых проектов (дубли) при синхронизации с облаком???» — v0.60.298 предотвращает СОЗДАНИЕ дубликатов, но уже-существующие в LS оставались.',
+      '<b>Detect+merge banner</b> в «Мои схемы»: при наличии 2+ ctxProjects с одинаковым именем — жёлтый banner со списком дублей и кнопкой «🔧 Объединить дубликаты».',
+      '<b>Логика merge</b>: primary = тот у кого больше схем + cloud-link + свежее updatedAt. Все schemes от others перепривязываются к primary через <code>saveProject({projectId: primary.id})</code>. Cloud-id\'ы лишних добавляются в <code>primary._cloudIds</code> (для grouping fix v0.60.298). Лишние contexts удаляются из LS.',
+      '<b>2) derateProfile в каталог ДГУ</b>: «профили добавляй прям в каталог».',
+      'Раньше profile определялся через <code>detectEngineProfile()</code> regex по engineModel string. Теперь — поле <code>derateProfile</code> прямо в каждой записи datasheet (caталог = source of truth). Regex остаётся как fallback для engines не в базе.',
+      'Добавлено для всех 7 моделей AJ Power: 6× volvo-tad-twd + 1× perkins-4000-series.',
+      'Files: <code>js/main.js</code> (merge dupes banner + handler), <code>shared/catalogs/dgu/aj-power.js</code> (+derateProfile), <code>dgu-config/dgu-config.js</code> (catalog precedence over regex).',
+    ] },
     { version: '0.60.321', date: '2026-05-06', items: [
       '🐛 <b>CRITICAL: cable._maxA меньше cable._loadA (недогруз кабеля)</b>. По репорту Пользователя 2026-05-06: «текущий ток 158.1А а расчетный по макс нагрузке 70.8А?????»',
       '<b>Корень</b>: <code>c._maxKw</code> / <code>c._maxA</code> для кабеля вычислялись в conn-loop ЧЕРЕЗ <code>maxDownstreamLoad(panel.id)</code> — это PRE-clamp BFS-сумма. После conn-loop'а в node-loop работает sanity-clamp (если <code>n._loadKw > n._maxLoadKw</code> — bump до loadKw, и нода показывает корректные значения 107 кВт/158А). НО cable.max остаётся pre-clamp (48 кВт/70.8А) — кабель подбирается под недостаточную нагрузку.',
