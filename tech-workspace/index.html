@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Raschet · Рабочее место технолога ЦОД</title>
+  <title>Raschet · Технолог объекта</title>
   <link rel="stylesheet" href="../shared/styles/base.css">
   <link rel="stylesheet" href="../shared/app-header.css">
   <link rel="stylesheet" href="tech-workspace.css">
@@ -18,13 +18,13 @@
   <script type="module">
     import { mountHeader } from '../shared/app-header.js';
     import { mountHelp } from '../shared/help-panel.js';
-    mountHeader({ title: 'Технолог ЦОД', home: '../hub.html', moduleId: 'tech-workspace', moduleTitle: 'Технолог ЦОД' });
+    mountHeader({ title: 'Технолог объекта', home: '../hub.html', moduleId: 'tech-workspace', moduleTitle: 'Технолог объекта' });
     mountHelp({
       module: 'tech-workspace',
-      title: 'Рабочее место технолога ЦОД',
+      title: 'Технолог объекта (универсальный)',
       usage: `
         <h4>Назначение модуля</h4>
-        <p>Предпроектная стадия ЦОД: формирование <b>концепции объекта</b> до углубления в детальное проектирование. Технолог определяет количество стоек, мощности, резервирование, площади помещений, мощности ТП/ДГУ — без выбора конкретных моделей оборудования (это делают электрик / СКС / климатик на следующем этапе).</p>
+        <p>Предпроектная стадия объекта проектирования: формирование <b>концепции объекта</b> до углубления в детальное проектирование. Поддерживает разные типы объектов (ЦОД, завод, насосная станция, офис, своё) — состав активных разделов адаптируется по типу. Технолог определяет основные параметры (количество стоек / линий / насосов / помещений), мощности, резервирование, площади.</p>
         <h4>Два режима входа</h4>
         <ul>
           <li><b>📋 Список компонентов</b> — заполнить параметры по разделам (стойки → ИБП → климат → ввод → площади). Подходит когда есть готовые ТЗ от заказчика и нужно быстро посчитать мощности.</li>
@@ -139,7 +139,7 @@
     import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
     import { APP_VERSION } from '../js/engine/constants.js';
     import { CHANGELOGS } from '../shared/module-changelogs.js';
-    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'tech-workspace', moduleTitle: 'Технолог ЦОД', entries: CHANGELOGS['engine'] || [] });
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'tech-workspace', moduleTitle: 'Технолог объекта', entries: CHANGELOGS['engine'] || [] });
   </script>
 </body>
 </html>

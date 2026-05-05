@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · ГИП</title>
+  <link rel="stylesheet" href="../shared/styles/base.css">
+  <link rel="stylesheet" href="../shared/app-header.css">
+  <script src="../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="../shared/auth.js"></script>
+  <script src="../shared/auth-gate.js" defer></script>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #1f2937; background: #f3f4f6; }
+    .chief-stub { max-width: 880px; margin: 40px auto; padding: 32px 36px; background: #fff; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
+    .chief-stub h1 { margin: 0 0 8px; font-size: 24px; font-weight: 700; color: #1e3a8a; }
+    .chief-stub h2 { margin: 24px 0 8px; font-size: 16px; font-weight: 600; color: #374151; }
+    .chief-stub p { color: #4b5563; line-height: 1.6; margin: 6px 0; }
+    .chief-stub ul { margin: 6px 0; padding-left: 22px; color: #4b5563; line-height: 1.7; }
+    .chief-stub .stub-banner { padding: 14px 18px; background: linear-gradient(120deg, #fef3c7, #fde68a); border-radius: 8px; border: 1px solid #f59e0b; color: #78350f; font-weight: 600; margin-bottom: 18px; }
+    .chief-stub a { color: #1565c0; text-decoration: none; }
+    .chief-stub a:hover { text-decoration: underline; }
+    .gip-section { padding: 14px 16px; background: #f9fafb; border-left: 3px solid #94a3b8; border-radius: 4px; margin-top: 12px; }
+    .gip-section h3 { margin: 0 0 6px; font-size: 14px; font-weight: 600; color: #1f2937; }
+  </style>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="module">
+    import { mountHeader } from '../shared/app-header.js';
+    mountHeader({ title: 'ГИП', home: '../hub.html', moduleId: 'chief', moduleTitle: 'ГИП — сводная проверка проекта' });
+  </script>
+
+  <main class="chief-stub">
+    <div class="stub-banner">🚧 Модуль в разработке — заглушка для будущей фазы.</div>
+
+    <h1>🧐 ГИП — Главный инженер проекта</h1>
+    <p>Сводный view <b>всех дисциплин</b> проекта в одном месте. Read-mostly, кросс-дисциплинарный — для согласования разделов и проверки целостности проекта.</p>
+
+    <h2>Что будет в модуле</h2>
+
+    <div class="gip-section">
+      <h3>📊 Сводка по проекту</h3>
+      <ul>
+        <li>Тип объекта (ЦОД / завод / насосная / офис / своё) и активные дисциплины</li>
+        <li>Стадия проекта, дата ревизии, версии разделов</li>
+        <li>Команда: участники, роли (electrician, mechanic, technologist, ...)</li>
+      </ul>
+    </div>
+
+    <div class="gip-section">
+      <h3>🗂 Перечень оборудования (cross-discipline)</h3>
+      <ul>
+        <li>Все единицы оборудования проекта со всеми возможными портами по системам (⚡ электрика, 🌊 трубы, 💨 ОВК, 📊 данные, 🔥 пожарка, 🔐 СКУД)</li>
+        <li>Привязка модели / каталог / артикул (или явный «не выбрано»)</li>
+        <li>Расширенный <a href="../tech-workspace/">Перечень из Технолога объекта</a> + объединение с Конструктором схем</li>
+      </ul>
+    </div>
+
+    <div class="gip-section">
+      <h3>🔌 Корректность схем</h3>
+      <ul>
+        <li>Электрические схемы: висячие связи, нет источника, перегруз, недостаток автоматов</li>
+        <li>Механические схемы (после появления модуля механика)</li>
+        <li>СКС-связи: дубли портов, орфаны</li>
+      </ul>
+    </div>
+
+    <div class="gip-section">
+      <h3>🧮 Проверка расчётов</h3>
+      <ul>
+        <li>Электрика: ΔU в норме, токи, селективность защит</li>
+        <li>Cooling: производительность ≥ IT-нагрузки + резерв</li>
+        <li>UPS: ёмкость ≥ IT-нагрузки + autonomy</li>
+        <li>ТП/ДГУ: запас по ТУ ≥ потребление</li>
+        <li>Cross-discipline: общая мощность ⇄ TP ⇄ DGU</li>
+      </ul>
+    </div>
+
+    <div class="gip-section">
+      <h3>✓ Согласование разделов</h3>
+      <ul>
+        <li>Кнопка «✓ Согласовано» на каждом разделе с timestamp / подписью</li>
+        <li>История ревизий разделов</li>
+        <li>Замечания / комментарии к разделам</li>
+      </ul>
+    </div>
+
+    <h2>Архитектура</h2>
+    <p>Модуль ГИП — отдельный URL <code>/gip/</code>, аналогично tech-workspace. Все данные проекта (схема, концепция, BOM, отчёты) уже хранятся в project-storage / Firestore — модуль ГИП их read-only агрегирует.</p>
+    <p>Не дублирует функционал других модулей. Технолог объекта остаётся для своей работы (предпроектная концепция); электрик / механик — в своих Конструкторах. ГИП = сводный читатель + согласователь.</p>
+
+    <h2>Связанные модули</h2>
+    <ul>
+      <li><a href="../tech-workspace/">🏗 Технолог объекта</a> — концепция объекта (ЦОД / завод / насосная / офис / своё)</li>
+      <li><a href="../index.html">⚡ Конструктор электрических схем</a> — детальное проектирование электрики</li>
+      <li><a href="../projects/">📁 Проекты</a> — управление проектами</li>
+      <li><a href="../catalog/">📚 Каталог</a> — справочные данные оборудования</li>
+    </ul>
+
+    <p style="margin-top: 28px; padding-top: 16px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #6b7280;">
+      Модуль будет реализован в Phase 47 (см. <a href="../ROADMAP.md">ROADMAP</a>). До этого все сводные view доступны в Технологе объекта (Перечень оборудования) и Конструкторе электрических схем (Перечень электротехнического оборудования, Ctrl+Shift+E).
+    </p>
+  </main>
+
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
+    import { APP_VERSION } from '../js/engine/constants.js';
+    import { CHANGELOGS } from '../shared/module-changelogs.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'chief', moduleTitle: 'ГИП', entries: CHANGELOGS['engine'] || [] });
+  </script>
+</body>
+</html>

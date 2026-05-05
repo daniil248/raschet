@@ -1487,6 +1487,27 @@ function renderListRail(c, ro) {
           <span class="tw-rail-sub muted">${STAGE_LABEL[pd.stage] || pd.stage || ''}</span>
           <span class="tw-rail-chip">${escHtml(projectChip)}</span>
         </button>
+        <!-- v0.60.283: Тип объекта (project-bound) — определяет состав активных
+             разделов. Сейчас полноценно работает только 'datacenter'; для остальных —
+             stub-banner. Phase 47 расширит шаблоны. -->
+        ${(() => {
+          const proj = _pid ? getProject(_pid) : null;
+          const ok = proj?.objectKind || 'datacenter';
+          const KIND_LABEL = {
+            'datacenter': '🏢 ЦОД',
+            'factory': '🏭 Завод (производство)',
+            'pump-station': '💧 Насосная станция',
+            'office': '🏢 Офис',
+            'custom': '✏ Свой шаблон',
+          };
+          const lbl = KIND_LABEL[ok] || ok;
+          return `<div class="tw-rail-item" style="background:#f0f9ff;border-color:#0ea5e9;cursor:default" title="Тип объекта определяет какие разделы активны. Сейчас полноценно работает только «🏢 ЦОД». Для остальных типов разделы появятся в Phase 47.">
+            <span class="tw-rail-name" style="display:flex;align-items:center;gap:6px">Тип: <b>${escHtml(lbl)}</b>
+              <button type="button" id="tw-objectkind-edit" ${ro ? 'disabled' : ''} style="margin-left:auto;padding:2px 6px;font-size:10px;border:1px solid #0ea5e9;background:#fff;color:#0369a1;border-radius:3px;cursor:pointer">↪ изменить</button>
+            </span>
+            ${ok !== 'datacenter' ? '<span class="tw-rail-sub" style="color:#b45309">⚠ Для этого типа разделы пока в разработке (Phase 47). Сейчас отображаются разделы ЦОД.</span>' : ''}
+          </div>`;
+        })()}
       </div>
     </div>
 
@@ -3016,6 +3037,52 @@ function bindListEvents() {
     const cur = _variants.find(x => x.id === _activeId);
     if (!cur) return;
 
+    // v0.60.283: смена «Тип объекта» через mini-modal.
+    if (e.target.id === 'tw-objectkind-edit') {
+      if (!_pid) { twToast('Нет активного проекта.', 'warn'); return; }
+      const proj = getProject(_pid);
+      const cur = proj?.objectKind || 'datacenter';
+      const KIND_OPTS = [
+        { id: 'datacenter', lbl: '🏢 ЦОД', desc: 'Стойки IT, ИБП, климат, ТП/ДГУ, площади. Полноценно работает сейчас.' },
+        { id: 'factory', lbl: '🏭 Завод (производство)', desc: 'Технологические линии, силовые трансформаторы, мех-оборудование. Phase 47.' },
+        { id: 'pump-station', lbl: '💧 Насосная станция', desc: 'Насосные группы, ёмкости, КИПиА. Phase 47.' },
+        { id: 'office', lbl: '🏢 Офис', desc: 'Розеточные сети, освещение, СКС, кондиционирование. Phase 47.' },
+        { id: 'custom', lbl: '✏ Свой шаблон', desc: 'Пользовательский набор разделов. Phase 47.' },
+      ];
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center';
+      overlay.innerHTML = `<div style="background:#fff;border-radius:8px;padding:18px 22px;min-width:420px;max-width:540px;box-shadow:0 10px 40px rgba(0,0,0,0.3);font:13px/1.5 system-ui,sans-serif">
+        <h3 style="margin:0 0 12px;font-size:16px;color:#0f172a">Тип объекта</h3>
+        <p class="muted" style="margin:0 0 14px;font-size:12px;color:#64748b">Определяет состав активных разделов в Технологе объекта. Изменяется в свойствах проекта (project-bound).</p>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${KIND_OPTS.map(o => `<label style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border:1px solid ${o.id === cur ? '#0ea5e9' : '#cbd5e1'};border-radius:5px;cursor:pointer;background:${o.id === cur ? '#f0f9ff' : '#fff'}">
+            <input type="radio" name="tw-okind" value="${o.id}"${o.id === cur ? ' checked' : ''} style="margin-top:2px">
+            <div>
+              <div style="font-weight:600">${o.lbl}</div>
+              <div class="muted" style="font-size:11px;color:#64748b">${o.desc}</div>
+            </div>
+          </label>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+          <button type="button" id="tw-okind-cancel" style="padding:6px 14px;border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer">Отмена</button>
+          <button type="button" id="tw-okind-ok" style="padding:6px 14px;border:1px solid #2563eb;background:#2563eb;color:#fff;border-radius:4px;cursor:pointer;font-weight:500">Применить</button>
+        </div>
+      </div>`;
+      const close = () => overlay.remove();
+      overlay.addEventListener('click', ev => { if (ev.target === overlay) close(); });
+      document.body.appendChild(overlay);
+      overlay.querySelector('#tw-okind-cancel').addEventListener('click', close);
+      overlay.querySelector('#tw-okind-ok').addEventListener('click', () => {
+        const sel = overlay.querySelector('input[name="tw-okind"]:checked');
+        if (sel) {
+          updateProject(_pid, { objectKind: sel.value });
+          twToast(`Тип объекта: ${KIND_OPTS.find(o => o.id === sel.value).lbl}`, 'ok');
+          renderActiveVariant();
+        }
+        close();
+      });
+      return;
+    }
     // v0.60.282: CSV / TSV экспорт Перечня оборудования.
     if (e.target.id === 'tw-eq-export-csv' || e.target.id === 'tw-eq-export-tsv') {
       const data = window.__twEquipmentExport;

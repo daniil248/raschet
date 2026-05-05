@@ -4,6 +4,19 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.283', date: '2026-05-06', items: [
+      '🏗 <b>Phase 47 Этап А: «Технолог ЦОД» → «Технолог объекта» (универсальный) + ГИП-модуль (stub)</b>. По запросу Пользователя 2026-05-06: «давай сделаем просто модуль технолога в котором по назначению объекта будет соответствующие разделы ... Для ГИПа нужен отдельный модуль».',
+      '<b>Технолог объекта</b> (бывший Технолог ЦОД):',
+      '• Заголовок страницы / mountHeader / mountHelp / hub-card / modules-card обновлены: «Технолог ЦОД» → «Технолог объекта». Папка <code>tech-workspace/</code> оставлена как path для обратной совместимости (без рисков регрессий).',
+      '• Поле <code>proj.objectKind</code> в project-storage с 5 значениями: <code>datacenter</code> (default) / <code>factory</code> / <code>pump-station</code> / <code>office</code> / <code>custom</code>.',
+      '• В sidebar TW под секцией «Объект» появился chip «Тип: 🏢 ЦОД» с кнопкой «↪ изменить». Modal со списком 5 опций. Для не-datacenter показывается warning «⚠ Для этого типа разделы пока в разработке (Phase 47)».',
+      '• Существующие проекты получают defaultа <code>objectKind=\'datacenter\'</code> — поведение TW для них не меняется.',
+      '<b>ГИП-модуль</b> (URL <code>/chief/</code> — Chief Engineer):',
+      '• Stub-страница с описанием будущей функциональности: сводка по проекту, cross-discipline перечень оборудования, проверка корректности схем, проверка расчётов, согласование разделов.',
+      '• Карточка в <code>hub.html</code> (категория «Концепция и проектирование») и в <code>/modules/index.html</code> (раздел «Инфраструктура ЦОД»). Обе с пометкой «Планируется».',
+      '<b>ROADMAP Phase 47</b> добавлен с детализацией 47.1.1-47.1.6 (Технолог объекта расширения) и 47.2.1-47.2.6 (ГИП-модуль фазы). 47.1.1-47.1.3 и 47.2.1 = ✅ выполнено.',
+      'Files: <code>tech-workspace/index.html</code> (заголовки), <code>tech-workspace/tech-workspace.js</code> (objectKind chip + modal handler), <code>hub.html</code> (карточки), <code>modules/index.html</code> (карточки), <code>chief/index.html</code> (новый stub), <code>ROADMAP.md</code>.',
+    ] },
     { version: '0.60.282', date: '2026-05-06', items: [
       '📥 <b>CSV / TSV экспорт Перечня оборудования</b>. Дополнение к v0.60.281: чтобы Технолог ЦОД / ГИП мог пересылать список subcontractor\'ам и заказчику.',
       '• Кнопка <b>📥 Экспорт в CSV</b> — скачивает <code>equipment-list_YYYY-MM-DD.csv</code>. UTF-8 BOM, разделитель «;» — открывается в Excel / Google Sheets / LibreOffice без дополнительных настроек.',
