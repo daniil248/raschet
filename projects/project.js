@@ -2398,8 +2398,31 @@ function render() {
       { id: 'discoverable', icon: '👁', label: 'Discoverable', desc: 'Виден в общем каталоге проектов; для входа нужен запрос доступа (owner одобряет).' },
       { id: 'public', icon: '🌐', label: 'Public', desc: 'Виден всем; любой залогиненный может присоединиться без подтверждения.' },
     ];
+    // v0.60.294 (по архитектурному уточнению Пользователя 2026-05-06: «здесь о
+    // каком конструкторе идет речь? если о конструкторе схем, то подход не
+    // правильный. Мы в проект добавляем участников и назначаем им роли, и
+    // тогда электрик может открыть или создать схему в конструкторе»):
+    // Полное управление участниками прямо в карточке проекта. Роли —
+    // дисциплинарные (admin / gip / electrician / mechanic / technologist /
+    // scs / viewer). После назначения участник открывает СВОЙ модуль
+    // (Конструктор схем для электрика, Технолог объекта для технолога и т.п.).
+    const ROLE_OPTS = [
+      { id: 'admin',        icon: '⚙', label: 'Admin (полный доступ)', desc: 'Может всё: настройки проекта, члены, все дисциплины' },
+      { id: 'gip',          icon: '🧐', label: 'ГИП', desc: 'Главный инженер: согласование, проверка, координация дисциплин' },
+      { id: 'electrician',  icon: '⚡', label: 'Электрик', desc: 'Конструктор электрических схем, BOM электрики' },
+      { id: 'mechanic',     icon: '🔧', label: 'Механик', desc: 'Механика, гидравлика, ОВК (когда модуль появится)' },
+      { id: 'technologist', icon: '🏗', label: 'Технолог', desc: 'Технолог объекта (концепция, варианты, рестрировки)' },
+      { id: 'scs',          icon: '🔗', label: 'СКС', desc: 'СКС-design, межстоечные связи, кабель-журнал слаботочки' },
+      { id: 'viewer',       icon: '👁', label: 'Viewer (только просмотр)', desc: 'Read-only во всех модулях' },
+    ];
+    const ROLE_LABEL = Object.fromEntries(ROLE_OPTS.map(r => [r.id, r.icon + ' ' + r.label]));
+    const members = p.members || {};
+    const memberRows = Object.entries(members);
+    const ownerUid = p.ownerId;
+    const accessRequests = Array.isArray(p._accessRequests) ? p._accessRequests : [];
+
     teamHost.innerHTML = `
-      <div style="margin-bottom:18px">
+      <div style="margin-bottom:22px">
         <h4 style="margin:0 0 10px;font-size:14px;color:#0f172a">🔐 Видимость проекта</h4>
         ${!isCloud
           ? `<p class="muted" style="font-size:12px;margin:0 0 8px">Доступно только в облачном режиме (Firebase). В локальном режиме все проекты — private.</p>`
@@ -2416,26 +2439,95 @@ function render() {
             </label>
           `).join('')}
         </div>
-        ${!isOwner ? `<p class="muted" style="font-size:11px;margin:8px 0 0;color:#92400e">⚠ Только владелец проекта может менять видимость (текущая роль: <b>${esc(role)}</b>). Этап 1.3 — пока owner-only; роли (electrician/mechanic/technologist/GIP/admin) — Этап 1.4.</p>` : ''}
+        ${!isOwner ? `<p class="muted" style="font-size:11px;margin:8px 0 0;color:#92400e">⚠ Только владелец проекта может менять видимость. Текущая роль: <b>${esc(role)}</b>.</p>` : ''}
       </div>
-      <div>
-        <h4 style="margin:0 0 10px;font-size:14px;color:#0f172a">👥 Участники проекта</h4>
-        <p class="muted" style="font-size:12.5px;margin:0 0 10px;line-height:1.5">
-          Управление участниками (приглашение по email, удаление, изменение ролей) пока — через
-          стандартный <b>«Поделиться»</b> в шапке Конструктора схем при открытом проекте.
-          Интеграция в эту карточку — <b>Этап 1.4</b>.
+
+      <div style="margin-bottom:18px">
+        <h4 style="margin:0 0 10px;font-size:14px;color:#0f172a">👥 Команда проекта</h4>
+        <p class="muted" style="font-size:12px;margin:0 0 12px;line-height:1.5">
+          Owner / ГИП проекта добавляет участников по email и назначает дисциплинарную роль.
+          После добавления участник открывает СВОЙ модуль (электрик → Конструктор схем,
+          технолог → Технолог объекта, СКС → СКС-design и т.п.). Доступ контролируется через Firebase rules.
         </p>
-        ${Array.isArray(p.memberUids) && p.memberUids.length > 0
-          ? `<div style="padding:10px 12px;background:#f0fdf4;border-left:3px solid #15803d;border-radius:4px;font-size:12.5px">
-              ✓ В команде <b>${p.memberUids.length}</b> участник(ов) (включая owner).
-              ${p.members && Object.keys(p.members || {}).length
-                ? `<div style="margin-top:6px;font-size:11.5px;color:#475569">${Object.entries(p.members).map(([uid, m]) => `<div>• ${esc(m.email || uid.slice(0, 8))} <span style="color:#64748b">(${m.role || 'viewer'})</span></div>`).join('')}</div>`
-                : ''
-              }
+
+        ${!isCloud
+          ? `<div style="padding:10px 12px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:4px;font-size:12.5px;color:#78350f">
+              ⚠ Команда — только в облачном режиме (Firebase). В local-mode проект работает single-user.
             </div>`
-          : `<div style="padding:10px 12px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:4px;font-size:12.5px;color:#78350f">
-              👤 В команде только владелец. Чтобы добавить участников — откройте проект в Конструкторе и нажмите «Поделиться».
-            </div>`
+          : `
+            <!-- Список participants -->
+            <div style="margin-bottom:12px">
+              <table style="width:100%;border-collapse:collapse;font-size:12.5px;background:#fff;border:1px solid #e5e7eb;border-radius:5px;overflow:hidden">
+                <thead style="background:#f8fafc">
+                  <tr>
+                    <th style="text-align:left;padding:8px 10px;border-bottom:1px solid #cbd5e1;font-weight:600;color:#475569">Email / UID</th>
+                    <th style="text-align:left;padding:8px 10px;border-bottom:1px solid #cbd5e1;font-weight:600;color:#475569;width:240px">Роль</th>
+                    <th style="text-align:right;padding:8px 10px;border-bottom:1px solid #cbd5e1;width:80px"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${ownerUid
+                    ? `<tr>
+                        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9">⭐ <b>${esc(p.ownerEmail || ownerUid.slice(0, 12))}</b> <span class="muted" style="font-size:11px">(владелец)</span></td>
+                        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9">⚙ Admin (всегда)</td>
+                        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;text-align:right">—</td>
+                      </tr>`
+                    : ''
+                  }
+                  ${memberRows.length > 0
+                    ? memberRows.map(([uid, m]) => `<tr>
+                        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9">${esc(m.email || uid.slice(0, 12))}</td>
+                        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9">
+                          ${isOwner
+                            ? `<select data-team-role="${esc(uid)}" style="font:inherit;font-size:12px;padding:3px 6px;border:1px solid #cbd5e1;border-radius:3px;width:100%">
+                                ${ROLE_OPTS.map(r => `<option value="${esc(r.id)}"${r.id === (m.role || 'viewer') ? ' selected' : ''}>${r.icon} ${esc(r.label)}</option>`).join('')}
+                              </select>`
+                            : esc(ROLE_LABEL[m.role] || m.role || 'viewer')
+                          }
+                        </td>
+                        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;text-align:right">
+                          ${isOwner ? `<button type="button" data-team-remove="${esc(uid)}" style="padding:3px 10px;font-size:11px;border:1px solid #fecaca;background:#fff;color:#b91c1c;border-radius:3px;cursor:pointer">Удалить</button>` : ''}
+                        </td>
+                      </tr>`).join('')
+                    : (!ownerUid ? `<tr><td colspan="3" style="padding:14px;text-align:center;color:#94a3b8;font-style:italic">Команда пуста</td></tr>` : '')
+                  }
+                </tbody>
+              </table>
+            </div>
+
+            ${isOwner ? `
+              <!-- Invite form -->
+              <div style="padding:12px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:5px">
+                <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">
+                  <label style="flex:1;min-width:200px">
+                    <div style="font-size:11.5px;color:#475569;margin-bottom:3px">Email участника:</div>
+                    <input type="email" id="pr-team-invite-email" placeholder="user@example.com" style="width:100%;padding:6px 8px;border:1px solid #0ea5e9;border-radius:3px;font:inherit;font-size:13px">
+                  </label>
+                  <label style="min-width:200px">
+                    <div style="font-size:11.5px;color:#475569;margin-bottom:3px">Роль:</div>
+                    <select id="pr-team-invite-role" style="width:100%;padding:6px 8px;border:1px solid #0ea5e9;border-radius:3px;font:inherit;font-size:13px">
+                      ${ROLE_OPTS.map(r => `<option value="${esc(r.id)}"${r.id === 'electrician' ? ' selected' : ''}>${r.icon} ${esc(r.label)}</option>`).join('')}
+                    </select>
+                  </label>
+                  <button type="button" id="pr-team-invite-btn" style="padding:6px 14px;background:#0ea5e9;color:#fff;border:0;border-radius:3px;cursor:pointer;font:inherit;font-size:13px;font-weight:500">+ Пригласить</button>
+                </div>
+              </div>
+            ` : `<p class="muted" style="font-size:11px;margin:8px 0 0;color:#92400e">⚠ Только владелец может приглашать и менять роли.</p>`}
+
+            ${accessRequests.length > 0 && isOwner ? `
+              <!-- Pending access requests -->
+              <div style="margin-top:14px;padding:12px 14px;background:#fef3c7;border:1px solid #f59e0b;border-radius:5px">
+                <div style="font-weight:600;color:#78350f;margin-bottom:8px">📩 Запросы доступа (${accessRequests.length})</div>
+                ${accessRequests.map(r => `
+                  <div style="display:flex;gap:8px;align-items:center;padding:6px 0;font-size:12.5px;border-top:1px solid #fde68a">
+                    <span style="flex:1">${esc(r.email || r.uid)}</span>
+                    <button type="button" data-team-approve="${esc(r.id)}" data-role="electrician" style="padding:3px 10px;font-size:11px;border:1px solid #15803d;background:#dcfce7;color:#15803d;border-radius:3px;cursor:pointer">✓ Принять</button>
+                    <button type="button" data-team-deny="${esc(r.id)}" style="padding:3px 10px;font-size:11px;border:1px solid #fecaca;background:#fff;color:#b91c1c;border-radius:3px;cursor:pointer">✕ Отклонить</button>
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
+          `
         }
       </div>
     `;
@@ -2447,12 +2539,81 @@ function render() {
           if (v === p.visibility) return;
           try {
             await window.Storage.setVisibility(p.id, v);
-            p.visibility = v; // local update
+            p.visibility = v;
             prToast(`✔ Видимость: ${VIS_OPTS.find(o => o.id === v)?.label || v}`, 'ok');
             render();
-          } catch (e) {
-            prToast('Ошибка: ' + (e.message || e), 'err');
-          }
+          } catch (e) { prToast('Ошибка: ' + (e.message || e), 'err'); }
+        });
+      });
+    }
+    // v0.60.294: invite / remove / role-change / approve / deny handlers.
+    if (isOwner && isCloud) {
+      const inviteBtn = teamHost.querySelector('#pr-team-invite-btn');
+      if (inviteBtn) {
+        inviteBtn.addEventListener('click', async () => {
+          const email = (teamHost.querySelector('#pr-team-invite-email')?.value || '').trim().toLowerCase();
+          const role = teamHost.querySelector('#pr-team-invite-role')?.value || 'electrician';
+          if (!email) { prToast('Введите email', 'warn'); return; }
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { prToast('Неверный формат email', 'err'); return; }
+          try {
+            await window.Storage.shareProject(p.id, email, role);
+            prToast(`✔ Приглашён: ${email} (${ROLE_LABEL[role] || role})`, 'ok');
+            // Reload project meta to get updated members.
+            const fresh = await window.Storage.getProject(p.id);
+            if (fresh) Object.assign(p, fresh);
+            render();
+          } catch (e) { prToast('Ошибка: ' + (e.message || e), 'err'); }
+        });
+      }
+      teamHost.querySelectorAll('[data-team-remove]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const uid = btn.getAttribute('data-team-remove');
+          if (!await prConfirm('Удалить участника?', 'Участник потеряет доступ к проекту во всех модулях.')) return;
+          try {
+            await window.Storage.unshareMember(p.id, uid);
+            prToast('✔ Участник удалён', 'ok');
+            const fresh = await window.Storage.getProject(p.id);
+            if (fresh) Object.assign(p, fresh);
+            render();
+          } catch (e) { prToast('Ошибка: ' + (e.message || e), 'err'); }
+        });
+      });
+      teamHost.querySelectorAll('[data-team-role]').forEach(sel => {
+        sel.addEventListener('change', async () => {
+          const uid = sel.getAttribute('data-team-role');
+          const newRole = sel.value;
+          // Существующий API shareProject принимает (pid, email, role) — для смены роли
+          // нужен email. Достаём из members[uid].email.
+          const m = (p.members || {})[uid];
+          if (!m || !m.email) { prToast('Email участника не найден — переоткройте проект', 'warn'); return; }
+          try {
+            await window.Storage.shareProject(p.id, m.email, newRole);
+            prToast(`✔ Роль изменена: ${ROLE_LABEL[newRole] || newRole}`, 'ok');
+            const fresh = await window.Storage.getProject(p.id);
+            if (fresh) Object.assign(p, fresh);
+            render();
+          } catch (e) { prToast('Ошибка: ' + (e.message || e), 'err'); }
+        });
+      });
+      teamHost.querySelectorAll('[data-team-approve]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const reqId = btn.getAttribute('data-team-approve');
+          const role = btn.getAttribute('data-role') || 'electrician';
+          try {
+            await window.Storage.approveRequest(reqId, role);
+            prToast('✔ Доступ выдан', 'ok');
+            render();
+          } catch (e) { prToast('Ошибка: ' + (e.message || e), 'err'); }
+        });
+      });
+      teamHost.querySelectorAll('[data-team-deny]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const reqId = btn.getAttribute('data-team-deny');
+          try {
+            await window.Storage.denyRequest(reqId);
+            prToast('Запрос отклонён', 'ok');
+            render();
+          } catch (e) { prToast('Ошибка: ' + (e.message || e), 'err'); }
         });
       });
     }
