@@ -4,6 +4,19 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.326', date: '2026-05-06', items: [
+      '⚙ <b>derateProfile во всех ДГУ-vendor каталогах</b>. Завершение v0.60.322 (только AJ Power было сделано).',
+      '<b>Покрытие</b> (всего 30 моделей в 7 vendor-файлах):',
+      '• <b>Caterpillar</b> (7 моделей C18/C32/3516/3520/C175) → <code>cat-c-series</code>',
+      '• <b>Cummins</b> (7 моделей QSL9/QSX15/QSK23/QSK60/QSK78) → <code>cummins-qs-series</code>',
+      '• <b>Volvo Penta</b> (3 модели TAD/TWD) → <code>volvo-tad-twd</code>',
+      '• <b>FG Wilson</b> (3 модели Perkins-engined): P200H → <code>perkins-1106a-70tag2</code>, P400P3/P800P3 → <code>perkins-4000-series</code>',
+      '• <b>MTU</b> (2 модели Series 4000) → <code>mtu-large</code>',
+      '• <b>AKSA</b> (7 моделей mixed engines): per-engine профиль (Cummins/Doosan/Perkins-2506/Baudouin/MTU)',
+      '• <b>AJ Power</b> (7 моделей) — уже сделано в v0.60.322',
+      '<b>Эффект</b>: при auto-pick любой модели — derate profile берётся напрямую из datasheet entry, без regex-fallback. Каталог = single source of truth.',
+      'Files: <code>shared/catalogs/dgu/{caterpillar,cummins,volvo-penta,fg-wilson,mtu,aksa}.js</code> (+derateProfile).',
+    ] },
     { version: '0.60.325', date: '2026-05-06', items: [
       '👁 <b>PDF preview перед сохранением</b>. По запросу Пользователя 2026-05-06: «перед экспортом в PDF не плохо было бы показать превью пользователю, чтобы он не выводил не завершённый документ или документ с неправильным шаблоном».',
       '<b>Новая функция <code>previewPDF(tpl, filename)</code></b> в shared/report/. Показывает PDF в modal с iframe (родной браузерный PDF viewer), кнопками «💾 Скачать» / «✕ Закрыть». Резолвится <code>\'saved\'</code> или <code>\'cancelled\'</code>.',
