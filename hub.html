@@ -226,17 +226,35 @@
        в «контекстный hub» где все модули работают в рамках этого проекта,
        а не общий generic-hub. -->
   <script type="module">
-    import { getProject, getActiveProjectId } from './shared/project-storage.js';
+    import { getProject, getActiveProjectId, setActiveProjectId } from './shared/project-storage.js';
     document.addEventListener('DOMContentLoaded', () => {
       let pid = null;
+      let pidFromUrl = false;
       try {
         const url = new URL(location.href);
-        pid = url.searchParams.get('project') || (typeof getActiveProjectId === 'function' ? getActiveProjectId() : null);
+        const urlPid = url.searchParams.get('project');
+        if (urlPid) { pid = urlPid; pidFromUrl = true; }
+        else if (typeof getActiveProjectId === 'function') pid = getActiveProjectId();
       } catch (e) { /* noop */ }
       if (!pid) return;
       let proj = null;
       try { proj = typeof getProject === 'function' ? getProject(pid) : null; } catch (e) { /* noop */ }
       if (!proj) return;
+      // v0.60.316 (по репорту Пользователя 2026-05-06: «чему верить? без проекта
+      // или Qarmet???» — header chip показывал 'Без проекта' при banner с
+      // именем проекта): синхронизируем LS active с URL ?project=X. Source of
+      // truth — URL когда задан, иначе LS. Header chip rs-proj-badge тогда
+      // покажет тот же проект что и banner.
+      if (pidFromUrl) {
+        try {
+          const currentActive = getActiveProjectId();
+          if (currentActive !== pid) {
+            setActiveProjectId(pid);
+            // Перерисуем header chip если он уже смонтирован.
+            try { window.dispatchEvent(new Event('rs:active-project-changed')); } catch {}
+          }
+        } catch (e) { console.warn('[hub] active-project sync failed:', e); }
+      }
       const KIND_LABEL = { datacenter: '🏢 ЦОД', factory: '🏭 Завод', 'pump-station': '💧 Насосная', office: '🏢 Офис', custom: '✏ Свой' };
       const objKind = proj.objectKind || 'datacenter';
       const kindLabel = KIND_LABEL[objKind] || '🏢 ЦОД';
@@ -313,7 +331,7 @@
         </div>
         ${filterChip}
         <a href="projects/project.html?project=${pidSafe}" style="padding:6px 12px;background:#1e40af;color:#fff;border-radius:4px;text-decoration:none;font-size:12px;font-weight:500" title="Открыть карточку проекта (общее, команда, экономика, проверки, согласование)">📋 Карточка проекта</a>
-        <a href="hub.html" style="padding:6px 12px;background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:4px;text-decoration:none;font-size:12px" title="Выйти из контекста проекта (показать все модули как generic hub)">✕ Без проекта</a>
+        <button type="button" id="rs-exit-project" style="padding:6px 12px;background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:4px;cursor:pointer;font-size:12px;font-family:inherit" title="Выйти из контекста проекта: сбрасывает активный проект и URL, header chip покажет «Без проекта»">✕ Без проекта</button>
       `;
       const headerMount = document.getElementById('rs-header-mount');
       if (headerMount && headerMount.parentNode) {
@@ -324,6 +342,12 @@
       document.getElementById('rs-toggle-allkinds')?.addEventListener('click', () => {
         localStorage.setItem(_showAllKey, _showAll ? '0' : '1');
         location.reload();
+      });
+      // v0.60.316: exit-project очищает LS active И URL. Иначе header chip
+      // снова найдёт проект через getActiveProjectId() и banner re-появится.
+      document.getElementById('rs-exit-project')?.addEventListener('click', () => {
+        try { setActiveProjectId(null); } catch {}
+        location.href = 'hub.html';
       });
       // Rewrite all hub-card hrefs to include ?project=X.
       // Skip external links (http/https) и уже несущие ?project=.

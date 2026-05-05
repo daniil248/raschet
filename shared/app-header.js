@@ -110,7 +110,11 @@ export function mountHeader(opts = {}) {
   const ctx = (() => { try { return getProjectContext(); } catch { return {}; } })();
   const isHub = moduleId === 'hub';
   const isProjectsList = moduleId === 'projects';
-  const inProjectMode = !!ctx.projectId && !isHub;
+  // v0.60.316 (по репорту Пользователя 2026-05-06: «чему верить? без проекта
+  // или Qarmet???» — header chip на hub показывал «Без проекта» при banner
+  // с именем проекта): на hub при URL `?project=X` — это project-scoped hub,
+  // header chip должен показывать тот же проект что и banner.
+  const inProjectMode = !!ctx.projectId && (!isHub || ctx.hasProjectFromUrl);
 
   // Push в back-stack только в project-mode и не для самого /projects/.
   if (moduleId && !isHub && !isProjectsList && inProjectMode) {

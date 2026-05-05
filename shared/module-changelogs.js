@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.316', date: '2026-05-06', items: [
+      '🔧 <b>Fix: header chip vs banner на hub</b>. По репорту Пользователя 2026-05-06: «чему верить? без проекта или Qarmet???» — header chip показывал «📂 Без проекта» при banner с именем проекта.',
+      '<b>Корень</b>: app-header treated <code>isHub</code> как «всегда без проекта» (<code>inProjectMode = !!ctx.projectId && !isHub</code>). Из-за этого на <code>hub.html?project=X</code> banner показывал проект (новая логика 47.3.1), а chip — «Без проекта» (старая логика).',
+      '<b>Fix #1 (app-header.js)</b>: <code>inProjectMode = !!ctx.projectId && (!isHub || ctx.hasProjectFromUrl)</code>. На hub с URL <code>?project=X</code> теперь показывается project-scoped chip как в banner.',
+      '<b>Fix #2 (hub.html)</b>: при URL <code>?project=X</code> синхронизируем LS active project через <code>setActiveProjectId(pid)</code>. Header chip и getActiveProjectId возвращают одно и то же значение.',
+      '<b>Fix #3 (hub.html)</b>: «✕ Без проекта» теперь не просто <code>&lt;a href=hub.html&gt;</code>, а button с явным <code>setActiveProjectId(null)</code> + reload. Иначе после клика URL чистый, но LS active остаётся → banner re-появляется.',
+      'Files: <code>shared/app-header.js</code> (inProjectMode condition), <code>hub.html</code> (LS sync + exit-button).',
+    ] },
     { version: '0.60.315', date: '2026-05-06', items: [
       '🔌 <b>ДГУ-конфигуратор: ручной выбор модели + расширенный список + reorder ISO 8528</b>. По 3 пунктам Пользователя 2026-05-06.',
       '<b>Ручной выбор модели</b>: каждая строка таблицы подбора кликабельна. Radio-button + клик по строке = ручной выбор. Auto-recommend по-прежнему отмечен зелёным; ручной выбор — синий с border-left. Кнопка «↺ авто» возвращает auto-pick. <code>_state.selectedDguId</code> сохраняется в project state.',
