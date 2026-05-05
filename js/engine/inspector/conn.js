@@ -287,14 +287,37 @@ export function renderInspectorConn(c) {
         const _items = [];
         if (_isManualCable) _items.push(`сечение <b>${c.manualCableSize} мм²</b>`);
         if (_isManualBrk) _items.push(`автомат <b>${c.manualBreakerIn} A</b>`);
-        h.push(`<div style="margin-top:6px;padding:8px 10px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:3px;font-size:11.5px;color:#78350f">
-          🔒 <b>Ручная фиксация:</b> ${_items.join(' и ')}. Авто-подбор отключён.
-          ${(!inLeIz || c._breakerUndersize) ? '<br><span style="color:#b91c1c;font-weight:600">⚠ Текущий выбор не покрывает Iрасч. Снимите фиксацию для корректного авто-подбора.</span>' : ''}
-          <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
-            ${_isManualCable ? `<button type="button" data-conn-clear-manual="cableSize" style="padding:3px 10px;font-size:11px;background:#fff;border:1px solid #cbd5e1;border-radius:3px;cursor:pointer;font-family:inherit">↺ Снять фиксацию сечения</button>` : ''}
-            ${_isManualBrk ? `<button type="button" data-conn-clear-manual="breakerIn" style="padding:3px 10px;font-size:11px;background:#fff;border:1px solid #cbd5e1;border-radius:3px;cursor:pointer;font-family:inherit">↺ Снять фиксацию автомата</button>` : ''}
-          </div>
-        </div>`);
+        // v0.60.362 (по репорту Пользователя 2026-05-06: «ты почему еще
+        // автоподбор кабеля и автомата не доделал, только оповещение????»):
+        // при перегрузе показываем КРАСНУЮ панель с одной кнопкой «Применить
+        // авто-подбор» которая ОДНОВРЕМЕННО снимает manualCableSize и
+        // manualBreakerIn → recalc подбирает корректные значения.
+        const _isOverloaded = !inLeIz || c._breakerUndersize;
+        if (_isOverloaded) {
+          h.push(`<div style="margin-top:6px;padding:10px 12px;background:#fee2e2;border-left:3px solid #dc2626;border-radius:3px;font-size:11.5px;color:#7f1d1d">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+              <span style="font-size:14px">🚨</span>
+              <b>Линия перегружена при ручной фиксации</b>
+            </div>
+            <div style="margin-bottom:6px">Текущая фиксация: ${_items.join(' и ')}. <b>Не покрывает Iрасч ${(c._maxA || 0).toFixed(1)} A</b> при Iz ${(c._cableTotalIz || 0).toFixed(1)} A.</div>
+            <button type="button" data-conn-clear-manual="all" style="padding:6px 14px;font-size:12px;background:#dc2626;color:#fff;border:0;border-radius:4px;cursor:pointer;font-family:inherit;font-weight:600;width:100%" title="Сбросить фиксацию сечения И автомата → recalc подберёт корректные значения по Iрасч линии">🔧 Применить авто-подбор (одной кнопкой)</button>
+            <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;font-size:10.5px">
+              <span style="color:#991b1b">или по отдельности:</span>
+              ${_isManualCable ? `<button type="button" data-conn-clear-manual="cableSize" style="padding:2px 8px;font-size:10.5px;background:#fff;border:1px solid #fca5a5;border-radius:3px;cursor:pointer;font-family:inherit;color:#7f1d1d">↺ снять сечение</button>` : ''}
+              ${_isManualBrk ? `<button type="button" data-conn-clear-manual="breakerIn" style="padding:2px 8px;font-size:10.5px;background:#fff;border:1px solid #fca5a5;border-radius:3px;cursor:pointer;font-family:inherit;color:#7f1d1d">↺ снять автомат</button>` : ''}
+            </div>
+          </div>`);
+        } else {
+          // Норма — стандартная жёлтая плашка.
+          h.push(`<div style="margin-top:6px;padding:8px 10px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:3px;font-size:11.5px;color:#78350f">
+            🔒 <b>Ручная фиксация:</b> ${_items.join(' и ')}. Авто-подбор отключён.
+            <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+              ${_isManualCable ? `<button type="button" data-conn-clear-manual="cableSize" style="padding:3px 10px;font-size:11px;background:#fff;border:1px solid #cbd5e1;border-radius:3px;cursor:pointer;font-family:inherit">↺ Снять фиксацию сечения</button>` : ''}
+              ${_isManualBrk ? `<button type="button" data-conn-clear-manual="breakerIn" style="padding:3px 10px;font-size:11px;background:#fff;border:1px solid #cbd5e1;border-radius:3px;cursor:pointer;font-family:inherit">↺ Снять фиксацию автомата</button>` : ''}
+              ${(_isManualCable && _isManualBrk) ? `<button type="button" data-conn-clear-manual="all" style="padding:3px 10px;font-size:11px;background:#fff;border:1px solid #cbd5e1;border-radius:3px;cursor:pointer;font-family:inherit">↺ Снять обе фиксации</button>` : ''}
+            </div>
+          </div>`);
+        }
       }
 
       // v0.60.333: метод-специфичное название правила (по уточнению Пользователя
@@ -1146,6 +1169,13 @@ export function renderInspectorConn(c) {
         delete c.manualBreakerIn;
       } else if (field === 'fuseIn') {
         delete c.manualFuseIn;
+      } else if (field === 'all') {
+        // v0.60.362: одной кнопкой снимаем ВСЕ ручные фиксации (cable + breaker + fuse)
+        delete c.manualCableSize;
+        delete c.manualCableParallel;
+        delete c.manualBreakerIn;
+        delete c.manualFuseIn;
+        try { flash('Авто-подбор активирован — recalc подберёт сечение и автомат по Iрасч'); } catch {}
       }
       render();
       notifyChange();
