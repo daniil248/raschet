@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.338', date: '2026-05-06', items: [
+      '🔍 <b>Real rule checks в оставшихся blue field в conn-инспекторе</b>. Дополнение к v0.60.337 для других веток.',
+      '<b>Покрыты ещё 2 template-claim места</b>:',
+      '• «Рекомендация (авто)» блок (line 829): «Правило: Iрасч ≤ In ≤ Iz. Выбран ближайший стандартный» → real check с ✓/⛔',
+      '• Group-per-line блок (line 906): «Правило per-line: Iрасч/n ≤ In ≤ Iz» → real check для per-line breaker vs Iz жилы',
+      'Теперь все 4 blue field варианта в conn-инспекторе (cable rule, breaker auto, breaker manual, group-per-line) показывают реальную оценку правила с ✓/⛔ и подстановкой фактических значений.',
+      'Files: <code>js/engine/inspector/conn.js</code> (real check в обеих ветках).',
+    ] },
     { version: '0.60.337', date: '2026-05-06', items: [
       '🐛 <b>CRITICAL: breaker auto-pick для junction-box passthrough</b>. По репорту Пользователя 2026-05-06: «опять автоматом не подобрал кабель и автомат» — для Iрасч=158А выбран In=100А (-36.8% запас).',
       '<b>Корень</b>: breaker-loop в recalc использовал <code>c._maxA</code> напрямую. Если cable-loop не учёл BFS-target (race с post-clamp\'ом), <code>c._maxA</code> мог быть занижен → breaker подобран на меньшее значение.',

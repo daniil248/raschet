@@ -822,11 +822,18 @@ export function renderInspectorConn(c) {
         h.push(`<div style="background:#fff8e1;border:1px solid #ffd54f;border-radius:4px;padding:6px;font-size:11px;margin-top:4px">Рекомендация (авто): <b>${autoIn} А</b>${_minMarginPct > 0 ? ` <span class="muted">(с запасом ≥${_minMarginPct}%)</span>` : ''}</div>`);
         if (_showHelp) {
           const parText = _parBrk > 1 ? ` × ${_parBrk} ветви = ${fmt(_IzTotal)} А суммарно` : '';
+          // v0.60.338: real rule check для рекомендации auto-In.
+          const _IzCalcAuto = (c._cableIz || 0) * (_parBrk > 1 ? _parBrk : 1);
+          const _r1OkA = _Imax <= autoIn;
+          const _r2OkA = autoIn <= _IzCalcAuto;
+          const _ruleColorA = (_r1OkA && _r2OkA) ? '#15803d' : '#b91c1c';
+          const _ruleIconA = (_r1OkA && _r2OkA) ? '✓' : '⛔';
+          const _ruleLineA = `Iрасч ${fmt(_Imax)} А ${_r1OkA ? '≤' : '>'} In ${autoIn} А ${_r2OkA ? '≤' : '>'} Iz ${fmt(_IzCalcAuto)} А`;
           h.push(`<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:6px;font-size:11px;margin-top:4px;color:#1565c0;line-height:1.5">
             <b>Как получено:</b><br>
             Iрасч линии = <b>${fmt(_Imax)} А</b>${_parBrk > 1 ? ` (на жилу ${fmt(_IperLine)} А)` : ''}<br>
             Iz кабеля = <b>${fmt(c._cableIz || 0)} А</b>${parText}<br>
-            Правило: Iрасч ≤ In ≤ Iz. Выбран ближайший стандартный номинал из ряда.
+            <b style="color:${_ruleColorA}">${_ruleIconA} ${_ruleLineA}</b>${(!_r1OkA || !_r2OkA) ? ' <span style="color:#b91c1c;font-weight:600">— рекомендация не покрывает Iрасч</span>' : ' — правило выполнено'}.
           </div>`);
         }
       }
@@ -892,11 +899,18 @@ export function renderInspectorConn(c) {
       if (_showHelp && effectiveIn) {
         const parText = _parBrk > 1 ? ` × ${_parBrk} ветви = ${fmt(_IzTotal)} А суммарно` : '';
         if (_isGroupBrk) {
+          // v0.60.338: real rule check для group-per-line.
+          const _IzPerJila = c._cableIz || 0;
+          const _r1OkG = _IperLine <= effectiveIn;
+          const _r2OkG = effectiveIn <= _IzPerJila;
+          const _ruleColorG = (_r1OkG && _r2OkG) ? '#15803d' : '#b91c1c';
+          const _ruleIconG = (_r1OkG && _r2OkG) ? '✓' : '⛔';
+          const _ruleLineG = `Iрасч/n ${fmt(_IperLine)} А ${_r1OkG ? '≤' : '>'} In ${effectiveIn} А ${_r2OkG ? '≤' : '>'} Iz ${fmt(_IzPerJila)} А`;
           h.push(`<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:6px;font-size:11px;margin-top:6px;color:#1565c0;line-height:1.5">
             <b>Как получено (групповая нагрузка):</b><br>
             ${_parBrk} приборов × собственный кабель + собственный автомат.<br>
             На жилу Iрасч/n = <b>${fmt(_IperLine)} А</b>, Iz жилы = <b>${fmt(c._cableIz || 0)} А</b>.<br>
-            Правило per-line: Iрасч/n ≤ In ≤ Iz. Номинал <b>${effectiveIn} А</b> — ближайший стандартный ≥ ${fmt(_IperLine)} А.
+            <b style="color:${_ruleColorG}">${_ruleIconG} ${_ruleLineG}</b>${(!_r1OkG || !_r2OkG) ? ' <span style="color:#b91c1c;font-weight:600">— перегруз на жиле</span>' : ' — правило per-line выполнено'}.
           </div>`);
         } else {
           // v0.60.337: реальная проверка правила Iрасч ≤ In ≤ Iz вместо
