@@ -296,9 +296,26 @@ export function renderInspectorConn(c) {
             : '';
           // v0.59.741: пометка о бампе по ΔU — показывает, что сечение увеличено
           // выше требуемого ампасити, чтобы уложиться в IEC 60364-5-525 (≤5%).
-          const _vdNote = c._cableSizeBumpedByVdrop && c._cableSizeBumpedFromS
-            ? `<br>6) <b>Падение напряжения:</b> при ампасити-сечении <b>${c._cableSizeBumpedFromS} мм²</b> ΔU превышало норму, поэтому сечение увеличено до <b>${c._cableSize} мм²</b> (ΔU=<b>${(c._cableVdropPct||0).toFixed(2)}%</b> ≤ ${Number(c.maxVdropPct) || Number(GLOBAL.maxVdropPct) || 5}% по IEC 60364-5-525).`
-            : (Number.isFinite(c._cableVdropPct) ? `<br>6) Падение напряжения на сегменте: ΔU=<b>${c._cableVdropPct.toFixed(2)}%</b> (норма ≤ ${Number(c.maxVdropPct) || Number(GLOBAL.maxVdropPct) || 5}%).` : '');
+          const _vdNote = (() => {
+            if (!Number.isFinite(c._cableVdropPct)) return '';
+            const _vd = c._cableVdropPct;
+            const _norm = Number(c.maxVdropPct) || Number(GLOBAL.maxVdropPct) || 5;
+            const _ok = _vd <= _norm;
+            const _col = _ok ? '#15803d' : '#b91c1c';
+            const _check = `<b style="color:${_col}">${_ok ? '✓' : '⛔'} ΔU=${_vd.toFixed(2)}% ${_ok ? '≤' : '>'} ${_norm}%</b>`;
+            if (c._cableSizeBumpedByVdrop && c._cableSizeBumpedFromS) {
+              return `<br>6) <b>Падение напряжения:</b> при ампасити-сечении <b>${c._cableSizeBumpedFromS} мм²</b> ΔU превышало норму, поэтому сечение увеличено до <b>${c._cableSize} мм²</b> (${_check} по IEC 60364-5-525).`;
+            }
+            return `<br>6) Падение напряжения на сегменте: ${_check} (норматив IEC 60364-5-525).`;
+          })();
+          // v0.60.328: реальная проверка правила Iрасч ≤ Iz и In ≤ Iz.
+          // Раньше — просто template "Правило: Iрасч ≤ Iz·n", без сравнения
+          // фактических цифр. Теперь — оцениваем и показываем ✓/⛔.
+          const _ruleCableOk = (Number(_IperLine) || 0) <= (Number(Iz) || 0);
+          const _ruleBrkOk = brkRef ? (Number(brkRef) || 0) <= (Number(Iz) || 0) : true;
+          const _ruleColor = (_ruleCableOk && _ruleBrkOk) ? '#15803d' : '#b91c1c';
+          const _ruleIcon = (_ruleCableOk && _ruleBrkOk) ? '✓' : '⛔';
+          const _ruleText = `Iрасч ${fmt(_IperLine)} А ${_ruleCableOk ? '≤' : '>'} Iz ${fmt(Iz)} А${brkRef ? `, In ${fmt(brkRef)} А ${_ruleBrkOk ? '≤' : '>'} Iz` : ''}`;
           h.push(`<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:6px;font-size:11px;margin-top:6px;color:#1565c0;line-height:1.5">
             <b>Как подбирался кабель:</b><br>
             1) Линий — <b>${par}</b> (по одной на потребитель, у каждой свой автомат)<br>
@@ -306,7 +323,7 @@ export function renderInspectorConn(c) {
             ${brkRef ? `3) Координация с автоматом линии: Iz ≥ In, требуется Iz ≥ <b>${brkRef} А</b><br>` : ''}
             4) Коэффициенты условий прокладки: Kt=${(c._cableKt||1).toFixed(2)}, Kg=${(c._cableKg||1).toFixed(2)}, K=${(c._cableKtotal||1).toFixed(3)}<br>
             5) Для ${methodLabel} выбрано ближайшее стандартное сечение одной линии <b>${c._cableSize} мм²</b>, дающее Iz=<b>${fmt(Iz)} А</b><br>
-            Правило: Iрасч_линии ≤ Iz и In_линии ≤ Iz.${_vdNote}${_freeNote.replace(/^<br>6\)/, '<br>7)')}
+            <b style="color:${_ruleColor}">${_ruleIcon} ${_ruleText}</b>${(!_ruleCableOk || !_ruleBrkOk) ? ' <span style="color:#b91c1c;font-weight:600">— перегруз, увеличьте сечение</span>' : ''}${_vdNote}${_freeNote.replace(/^<br>6\)/, '<br>7)')}
           </div>`);
         } else {
           // v0.59.679: симметричная строка про «Свободно» для одиночной /
@@ -322,9 +339,27 @@ export function renderInspectorConn(c) {
             : '';
           // v0.59.741: пометка о бампе по ΔU — показывает, что сечение увеличено
           // выше требуемого ампасити, чтобы уложиться в IEC 60364-5-525 (≤5%).
-          const _vdNote = c._cableSizeBumpedByVdrop && c._cableSizeBumpedFromS
-            ? `<br>6) <b>Падение напряжения:</b> при ампасити-сечении <b>${c._cableSizeBumpedFromS} мм²</b> ΔU превышало норму, поэтому сечение увеличено до <b>${c._cableSize} мм²</b> (ΔU=<b>${(c._cableVdropPct||0).toFixed(2)}%</b> ≤ ${Number(c.maxVdropPct) || Number(GLOBAL.maxVdropPct) || 5}% по IEC 60364-5-525).`
-            : (Number.isFinite(c._cableVdropPct) ? `<br>6) Падение напряжения на сегменте: ΔU=<b>${c._cableVdropPct.toFixed(2)}%</b> (норма ≤ ${Number(c.maxVdropPct) || Number(GLOBAL.maxVdropPct) || 5}%).` : '');
+          const _vdNote = (() => {
+            if (!Number.isFinite(c._cableVdropPct)) return '';
+            const _vd = c._cableVdropPct;
+            const _norm = Number(c.maxVdropPct) || Number(GLOBAL.maxVdropPct) || 5;
+            const _ok = _vd <= _norm;
+            const _col = _ok ? '#15803d' : '#b91c1c';
+            const _check = `<b style="color:${_col}">${_ok ? '✓' : '⛔'} ΔU=${_vd.toFixed(2)}% ${_ok ? '≤' : '>'} ${_norm}%</b>`;
+            if (c._cableSizeBumpedByVdrop && c._cableSizeBumpedFromS) {
+              return `<br>6) <b>Падение напряжения:</b> при ампасити-сечении <b>${c._cableSizeBumpedFromS} мм²</b> ΔU превышало норму, поэтому сечение увеличено до <b>${c._cableSize} мм²</b> (${_check} по IEC 60364-5-525).`;
+            }
+            return `<br>6) Падение напряжения на сегменте: ${_check} (норматив IEC 60364-5-525).`;
+          })();
+          // v0.60.328: реальная проверка Iрасч ≤ Iz·n и In ≤ Iz·n.
+          // _IzCheck — сечение пропускной способности с учётом параллельности.
+          const _IzCheck = (par > 1 && Number.isFinite(IzTotal)) ? IzTotal : Iz;
+          const _ruleCableOk = (Number(Iraw) || 0) <= (Number(_IzCheck) || 0);
+          const _ruleBrkOk = effectiveBrkIn ? (Number(effectiveBrkIn) || 0) <= (Number(_IzCheck) || 0) : true;
+          const _ruleColor = (_ruleCableOk && _ruleBrkOk) ? '#15803d' : '#b91c1c';
+          const _ruleIcon = (_ruleCableOk && _ruleBrkOk) ? '✓' : '⛔';
+          const _IzLabel = par > 1 ? `Iz·n ${fmt(_IzCheck)} А` : `Iz ${fmt(_IzCheck)} А`;
+          const _ruleText = `Iрасч ${fmt(Iraw)} А ${_ruleCableOk ? '≤' : '>'} ${_IzLabel}${effectiveBrkIn ? `, In ${fmt(effectiveBrkIn)} А ${_ruleBrkOk ? '≤' : '>'} ${_IzLabel}` : ''}`;
           h.push(`<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:6px;font-size:11px;margin-top:6px;color:#1565c0;line-height:1.5">
             <b>Как подбирался кабель:</b><br>
             1) Расчётный ток линии Iрасч = <b>${fmt(Iraw)} А</b><br>
@@ -332,7 +367,7 @@ export function renderInspectorConn(c) {
             ${effectiveBrkIn ? `3) Координация с автоматом: Iz·n ≥ In, требуется Iz·n ≥ <b>${effectiveBrkIn} А</b><br>` : ''}
             4) Коэффициенты условий прокладки: Kt=${(c._cableKt||1).toFixed(2)}, Kg=${(c._cableKg||1).toFixed(2)}, K=${(c._cableKtotal||1).toFixed(3)}<br>
             5) Для ${methodLabel} выбрано ближайшее стандартное сечение <b>${c._cableSize} мм²</b>${par > 1 ? ` × ${par}` : ''}, дающее Iz=<b>${fmt(Iz)} А</b>${par > 1 ? ` (суммарно ${fmt(IzTotal)} А)` : ''}<br>
-            Правило: Iрасч ≤ Iz·n и In ≤ Iz·n.${_vdNote}${_freeNote}
+            <b style="color:${_ruleColor}">${_ruleIcon} ${_ruleText}</b>${(!_ruleCableOk || !_ruleBrkOk) ? ' <span style="color:#b91c1c;font-weight:600">— перегруз, увеличьте сечение</span>' : ''}${_vdNote}${_freeNote}
           </div>`);
         }
       }
