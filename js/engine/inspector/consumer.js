@@ -10,11 +10,107 @@ import { setEffectiveLoadFactor } from '../modes.js';
 import { render } from '../render.js';
 import { formatVoltageLevelLabel } from '../electrical.js';
 import { rsPrompt, rsConfirm } from '../../../shared/dialog.js';
+import { listCableTypes, getCableType } from '../../../shared/cable-types-catalog.js';
 import { getTerm, getTermTooltip, isTermUsed } from '../../methods/terms.js';
 
 let _renderInspector = null;
 export function bindInspectorConsumerDeps({ renderInspector }) {
   _renderInspector = renderInspector;
+}
+
+// v0.60.359 (по репорту Пользователя 2026-05-06: «ты про тип кабеля на
+// наружный блок забыл»): мини-модалка для редактирования параметров
+// виртуального кабеля cond→outdoor. Длина + марка + опциональное
+// ручное сечение. Возвращает { lengthM, cableMark, sectionMm2 } или null
+// при отмене.
+function _openOutdoorCableModal(conn) {
+  return new Promise((resolve) => {
+    // Сборка списка совместимых марок (категория 'power' для AC).
+    let cableTypes = [];
+    try { cableTypes = listCableTypes() || []; } catch {}
+    const allowedCats = ['power'];
+    const byCat = {};
+    for (const ct of cableTypes) {
+      const cat = ct.category || 'power';
+      if (!allowedCats.includes(cat)) continue;
+      (byCat[cat] = byCat[cat] || []).push(ct);
+    }
+    let markOpts = '<option value="">— не выбрано (указать вручную) —</option>';
+    const curMark = conn.cableMark || '';
+    for (const cat of allowedCats) {
+      const items = byCat[cat] || [];
+      if (!items.length) continue;
+      markOpts += `<optgroup label="Силовые">`;
+      for (const m of items) {
+        markOpts += `<option value="${escAttr(m.id)}"${m.id === curMark ? ' selected' : ''}>${escHtml(m.brand || m.id)}</option>`;
+      }
+      markOpts += '</optgroup>';
+    }
+    if (curMark) {
+      const sel = getCableType(curMark);
+      if (sel && !allowedCats.includes(sel.category || 'power')) {
+        markOpts += `<optgroup label="⚠ Несоответствие">`;
+        markOpts += `<option value="${escAttr(sel.id)}" selected>${escHtml(sel.brand || sel.id)} (${escHtml(sel.category)})</option>`;
+        markOpts += '</optgroup>';
+      }
+    }
+    const overlay = document.createElement('div');
+    overlay.className = 'rs-outdoor-cable-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:10000;display:flex;align-items:center;justify-content:center;font:13px/1.4 system-ui,sans-serif';
+    const _curSection = Number(conn._manualSectionMm2) || 0;
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,0.3);width:480px;max-width:92vw;display:flex;flex-direction:column;overflow:hidden">
+        <div style="padding:12px 16px;border-bottom:1px solid #e0e7ee;background:#f0f9ff;display:flex;align-items:center;gap:10px">
+          <span style="font-size:18px">🔌</span>
+          <div style="flex:1">
+            <div style="font-weight:700;font-size:14px;color:#0c4a6e">Кабель cond→outdoor</div>
+            <div style="font-size:11.5px;color:#0369a1">Виртуальный кабель для подключения наружного блока. Попадает в общую спецификацию.</div>
+          </div>
+          <button type="button" class="oc-close" style="background:transparent;border:0;font-size:20px;cursor:pointer;color:#64748b" title="Отмена">×</button>
+        </div>
+        <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+          <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:3px">Длина, м</label>
+            <input id="oc-length" type="number" min="0" step="0.5" value="${Number(conn.lengthM) || 0}" style="width:100%;padding:6px 9px;border:1px solid #cbd5e1;border-radius:4px;font:inherit;font-size:13px" autofocus>
+          </div>
+          <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:3px">Марка кабеля</label>
+            <select id="oc-mark" style="width:100%;padding:6px 9px;border:1px solid #cbd5e1;border-radius:4px;font:inherit;font-size:13px;background:#fff">${markOpts}</select>
+            <div class="muted" style="font-size:10.5px;color:#64748b;margin-top:3px">Если «не выбрано» — параметры (материал, изоляция) задаются вручную в свойствах conn'а через инспектор.</div>
+          </div>
+          <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:3px">Сечение, мм² (override)</label>
+            <input id="oc-section" type="number" min="0" step="0.5" value="${_curSection || ''}" placeholder="авто (по току нагрузки)" style="width:100%;padding:6px 9px;border:1px solid #cbd5e1;border-radius:4px;font:inherit;font-size:13px">
+            <div class="muted" style="font-size:10.5px;color:#64748b;margin-top:3px">Пусто или 0 — автоподбор по току нагрузки. Введите значение, чтобы зафиксировать сечение вручную.</div>
+          </div>
+        </div>
+        <div style="padding:10px 16px;border-top:1px solid #e0e7ee;background:#f8fafc;display:flex;justify-content:flex-end;gap:8px">
+          <button type="button" class="oc-cancel" style="padding:6px 14px;font-size:12px;border:1px solid #cbd5e1;background:#fff;border-radius:5px;cursor:pointer">Отмена</button>
+          <button type="button" class="oc-ok" style="padding:6px 14px;font-size:12px;background:#0ea5e9;color:#fff;border:0;border-radius:5px;cursor:pointer;font-weight:600">Сохранить</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const close = (val) => { overlay.remove(); resolve(val); };
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+    overlay.querySelector('.oc-close').addEventListener('click', () => close(null));
+    overlay.querySelector('.oc-cancel').addEventListener('click', () => close(null));
+    overlay.querySelector('.oc-ok').addEventListener('click', () => {
+      const lenVal = Number(overlay.querySelector('#oc-length').value);
+      const markVal = overlay.querySelector('#oc-mark').value;
+      const secVal = Number(overlay.querySelector('#oc-section').value);
+      if (!Number.isFinite(lenVal) || lenVal < 0) {
+        try { window.scToast?.('Длина должна быть ≥ 0', 'warn'); } catch {}
+        return;
+      }
+      close({
+        lengthM: lenVal,
+        cableMark: markVal || null,
+        sectionMm2: Number.isFinite(secVal) && secVal >= 0 ? secVal : 0,
+      });
+    });
+    setTimeout(() => overlay.querySelector('#oc-length')?.focus(), 0);
+  });
 }
 
 export function openConsumerParamsModal(n) {
@@ -1338,18 +1434,21 @@ export function openConsumerParamsModal(n) {
         };
         state.conns.set(connId, conn);
       }
-      const newLen = await rsPrompt('Длина кабеля cond→outdoor (м)', String(conn.lengthM ?? 5));
-      if (newLen == null) return;
-      const num = Number(newLen);
-      if (Number.isFinite(num) && num >= 0) {
-        conn.lengthM = num;
-        // Сбрасываем флаг lengthFrozen=false → авто-пересчёт по плану
-        // снова работает (см. plan-bridge для cable-length).
-        conn.lengthFrozen = true; // ручной ввод заморозит auto-recalc
-        snapshot('outdoor-cable-edit:' + n.id);
-        notifyChange();
-        openConsumerParamsModal(n);
+      // v0.60.359 (по репорту Пользователя 2026-05-06: «ты про тип кабеля
+      // на наружный блок забыл»): полноценная мини-модалка с длиной + маркой
+      // кабеля + сечением. До этого rsPrompt брал только длину.
+      const _result = await _openOutdoorCableModal(conn);
+      if (!_result) return;
+      conn.lengthM = _result.lengthM;
+      if (_result.cableMark !== undefined) conn.cableMark = _result.cableMark || null;
+      if (_result.sectionMm2 !== undefined) {
+        if (_result.sectionMm2 > 0) conn._manualSectionMm2 = _result.sectionMm2;
+        else delete conn._manualSectionMm2;
       }
+      conn.lengthFrozen = true; // ручной ввод заморозит auto-recalc по плану
+      snapshot('outdoor-cable-edit:' + n.id);
+      notifyChange();
+      openConsumerParamsModal(n);
     });
   });
 

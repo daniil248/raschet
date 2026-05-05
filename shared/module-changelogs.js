@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.359', date: '2026-05-06', items: [
+      '🔌 <b>Полноценная мини-модалка для кабеля cond→outdoor</b>. По репорту Пользователя 2026-05-06: «ты про тип кабеля на наружный блок забыл».',
+      '<b>До этого</b>: кнопка «⚙ Кабель» в карточке cond открывала только <code>rsPrompt</code> для длины. Марка кабеля и сечение редактировались только через стандартный conn-inspector — но conn для outdoor скрыт на схеме (<code>embedAsOutdoor</code> делает узел невидимым → conn тоже не отображается → юзер не может его выделить).',
+      '<b>Теперь</b>: <code>_openOutdoorCableModal()</code> — кастомная mini-модалка с тремя полями:',
+      '• <b>Длина, м</b>',
+      '• <b>Марка кабеля</b> — select из <code>listCableTypes()</code> категории <code>power</code> (силовые)',
+      '• <b>Сечение, мм² (override)</b> — пусто = авто, число = ручной зафиксированный размер (<code>conn._manualSectionMm2</code>)',
+      '<b>UI</b>: bluish theme (как остальные outdoor-блоки), кнопки Сохранить/Отмена, click-outside закрытие, autofocus на поле длины.',
+      'Files: <code>js/engine/inspector/consumer.js</code> (helper <code>_openOutdoorCableModal</code> + использование в cable-button handler + import <code>listCableTypes/getCableType</code>).',
+    ] },
     { version: '0.60.358', date: '2026-05-06', items: [
       '🔍 <b>Debug-кнопка «Показать ВСЕ объекты»</b> в Реестре. По запросу Пользователя 2026-05-06: «сделай кнопку (временно) отобразить все объекты, так как мне кажется что есть куча объектов которые не отображаются но которые мешают разместить объекты».',
       '<b>Где</b>: жёлтая кнопка <code>🔍 Показать ВСЕ объекты</code> в боковой панели «Реестр» (под селектором типа + кнопкой «Создать»).',
