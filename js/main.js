@@ -1407,26 +1407,49 @@ async function openProject(id) {
           const prevActive = ps.getActiveProjectId();
           const localProjects = ps.listProjects() || [];
           const matchedLocal = localProjects.find(p => p && p.id === porPid);
-          if (matchedLocal) {
-            if (prevActive !== porPid) {
-              ps.setActiveProjectId(porPid);
-              // v0.59.748: убран синтетический dispatchEvent('storage') —
-              // он мог фриться внутри той же вкладки с непредсказуемыми
-              // side-effect'ами (re-init scs-config / catalog re-sync).
-              // Кросс-таб synchronization обеспечивается естественным
-              // storage-event'ом из localStorage.setItem в setActiveProjectId.
-              const prev = localProjects.find(p => p.id === prevActive);
-              const prevName = prev?.name || (prevActive ? prevActive.slice(0, 8) : '— нет —');
-              flash(`Активный проект синхронизирован со схемой: «${matchedLocal.name}» (был: ${prevName})`, 'info');
+          // v0.60.286 (по репорту Пользователя 2026-05-06: «почему у тебя
+          // схемы как проститутки опять бегают по проектам» — скриншот
+          // показал header «Qarmet» при sidebar-badge «TBC Bank»):
+          // ВСЕГДА синхронизируем local active с cloud porPid. Раньше
+          // только когда matchedLocal был — иначе только warning. Это
+          // приводило к рассинхрону: cloud-схема Qarmet, локальный контекст
+          // TBC Bank → данные модулей (catalog/scs/cooling) уходили в
+          // другой проект.
+          //
+          // Если local entry для cloud-id отсутствует — создаём stub-entry
+          // с тем же id, name, чтобы:
+          //   • setActiveProjectId работал
+          //   • sidebar-badge показывал правильное имя
+          //   • module data писалось в правильный namespace
+          //     raschet.project.<pid>.<module>.<key>
+          if (prevActive !== porPid) {
+            if (!matchedLocal) {
+              // Импортируем cloud-проект как local stub (id сохраняется!).
+              // Прямой write в LS-массив, минуя createProject (который
+              // генерирует свой id).
+              try {
+                const arr = ps.listProjects() || [];
+                arr.push({
+                  id: porPid,
+                  name: data.name || '(импорт из облака)',
+                  description: data.description || '',
+                  status: 'draft',
+                  kind: 'full',
+                  ownerModule: null,
+                  parentProjectId: null,
+                  designation: '',
+                  createdAt: Date.now(),
+                  updatedAt: Date.now(),
+                  _importedFromCloud: true,
+                });
+                localStorage.setItem('raschet.projects.v1', JSON.stringify(arr));
+              } catch (e) { console.warn('[main] cloud-project import to local failed:', e); }
             }
-          } else if (prevActive) {
+            ps.setActiveProjectId(porPid);
             const prev = localProjects.find(p => p.id === prevActive);
-            const prevName = prev?.name || prevActive.slice(0, 8);
-            const prevKind = prev?.kind || 'full';
-            // Mismatch: local active project ≠ cloud scheme's projectId.
-            // Не подменяем локальный активный (cloud-id может не быть в
-            // локальной БД), но предупреждаем юзера и предлагаем действие.
-            flash(`⚠ Контекст: схема «${data.name || ''}» (cloud), локальный активный — «${prevName}»${prevKind === 'sketch' ? ' (мини-проект)' : ''}. Если нужно сводить — Файл → выбрать полноценный.`, 'warn');
+            const prevName = prev?.name || (prevActive ? prevActive.slice(0, 8) : '— нет —');
+            const newName = matchedLocal?.name || data.name || porPid.slice(0, 8);
+            flash(`📁 Активный проект: «${newName}» (был: ${prevName})${!matchedLocal ? ' · импорт из облака' : ''}`, 'info');
           }
         } catch (eSync) { console.warn('[main] active-project sync failed:', eSync); }
       }

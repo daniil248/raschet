@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.286', date: '2026-05-06', items: [
+      '🔗 <b>Force-sync local-active project с cloud (фикс «схемы бегают между проектами»)</b>. По репорту Пользователя 2026-05-06: «почему у тебя схемы как проститутки опять бегают по проектам» (скриншот: header «Qarmet», sidebar-badge «TBC Bank»).',
+      '<b>Корень:</b> в <code>openProject()</code> код v0.59.742 синхронизировал local-active с cloud porPid <b>только если</b> local-entry с тем же id уже существует в LS (<code>matchedLocal</code> condition). Если cloud-проект НЕ был ранее импортирован локально — синхронизация пропускалась, показывалось только warning. Результат: header показывал Qarmet (cloud), но local-active оставался TBC Bank (предыдущий) → данные модулей (catalog / scs-config / cooling / suppression / mv-config) писались в namespace TBC Bank. Схемы «бегали».',
+      '<b>Фикс:</b> убрана зависимость от <code>matchedLocal</code>. Теперь:',
+      '• Если <code>matchedLocal</code> найден — обычный <code>setActiveProjectId(porPid)</code>.',
+      '• Если НЕ найден — auto-import cloud-проекта в local-storage как stub-entry (id, name, status, kind, флаг <code>_importedFromCloud: true</code>) + <code>setActiveProjectId(porPid)</code>.',
+      '• Toast «📁 Активный проект: «Qarmet»... (был: TBC Bank · импорт из облака)».',
+      '• Module data теперь правильно идёт в namespace cloud-проекта: <code>raschet.project.&lt;cloudPid&gt;.&lt;module&gt;.&lt;key&gt;</code>.',
+      '• <code>setActiveProjectId</code> срабатывает кросс-таб через storage-event — другие открытые вкладки (catalog, scs-config) автоматически перевключаются на новый активный проект.',
+      'File: <code>js/main.js</code> (openProject local-active sync).',
+    ] },
     { version: '0.60.285', date: '2026-05-06', items: [
       '🔋 <b>Generator status — иконка под G-circle вместо строки в карточке</b>. По запросу Пользователя 2026-05-06: «дежурство покажи как иконку под иконкой генератора, а общий блок на 4 строки как у всех».',
       '• Раньше: 5 строк (Текущая / Макс / Свободно / Snom / <b>Дежурство</b> текстом). У других карточек 4 строки — расхождение в визуальном паттерне.',
