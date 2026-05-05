@@ -1958,6 +1958,18 @@ async function addShare() {
     flash('Пользователь добавлен');
     await reloadCurrentProjectMeta();
     renderShareMembers();
+    // v0.60.264 (по продолжению solo-skip фикса v0.60.261): после share
+    // проект больше не solo. Если collab ещё не запущен — стартуем,
+    // чтобы Пользователь сразу увидел нового коллегу через presence.
+    try {
+      if (!state.unsubProjectDoc && window.Storage?.isCloud && state.currentProject) {
+        const initUpdatedAtMs = state.currentProject.updatedAt?.toMillis
+          ? state.currentProject.updatedAt.toMillis()
+          : (state.currentProject.updatedAt || Date.now());
+        _startCollab(state.currentProject, initUpdatedAtMs);
+        console.info('[main] collab запущен после share (solo → shared)');
+      }
+    } catch (e) { console.warn('[main] startCollab после share failed:', e); }
   } catch (e) {
     console.error('[addShare]', e);
     flash(e.message || 'Ошибка при добавлении', 'error');
@@ -6522,6 +6534,21 @@ document.addEventListener('keydown', (e) => {
     if (key === 'l') { e.preventDefault(); openCableTableModal(); return; }
     if (key === 'u') { e.preventDefault(); openConsumersTableModal(); return; }
     if (key === 'e') { e.preventDefault(); openEquipmentTableModal(); return; }
+    // v0.60.264: Ctrl+Shift+S — сохранить в файл (drawio-style file-storage).
+    if (key === 's') {
+      e.preventDefault();
+      const btn = document.getElementById('btn-file-save-as');
+      if (btn) btn.click();
+      return;
+    }
+  }
+  // v0.60.264: Ctrl+O — открыть файл проекта (drawio-style).
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'o') {
+    if (inField) return;
+    e.preventDefault();
+    const btn = document.getElementById('btn-file-open');
+    if (btn) btn.click();
+    return;
   }
   // v0.57.75: Escape — закрывает верхнюю открытую модалку (самую последнюю
   // в DOM, т.е. у которой наибольший z-index/порядок). Многие модалки уже
@@ -8388,6 +8415,8 @@ async function init() {
         <tr><td>🔌 Перечень кабелей (Lines)</td><td><code>Ctrl+Shift+L</code></td></tr>
         <tr><td>💡 Перечень потребителей (Users)</td><td><code>Ctrl+Shift+U</code></td></tr>
         <tr><td>🗄 Перечень электротехнического оборудования (Equipment)</td><td><code>Ctrl+Shift+E</code></td></tr>
+        <tr><td>📁 Открыть файл проекта (drawio-style)</td><td><code>Ctrl+O</code></td></tr>
+        <tr><td>💾 Сохранить в файл</td><td><code>Ctrl+Shift+S</code></td></tr>
         <tr><td>📐 Вместить всё (fit-to-view)</td><td><code>Пробел</code></td></tr>
         <tr><td>📏 Показать/скрыть сетку</td><td><code>G</code></td></tr>
         <tr><td>✕ Закрыть верхнюю модалку</td><td><code>Escape</code></td></tr>

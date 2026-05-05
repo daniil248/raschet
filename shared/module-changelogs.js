@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.264', date: '2026-05-06', items: [
+      '🤝 <b>Solo→Shared collab transition</b>. Edge-case фикс после v0.60.261 solo-skip.',
+      '• Корень: после v0.60.261 проекты без member\'ов открывались без collab (write-экономия). Но если потом Пользователь делился через share-modal, collab всё равно не запускался — и хост не видел нового коллегу через presence.',
+      '• Фикс: в <code>addShare()</code> после успешного <code>shareProject()</code> проверяем — если <code>state.unsubProjectDoc</code> не установлен (collab не активен), запускаем <code>_startCollab(currentProject, ...)</code>. Один раз, не каждый share.',
+      '⌨ <b>Хоткеи Ctrl+O и Ctrl+Shift+S для file-storage</b>.',
+      '• <code>Ctrl+O</code> — открыть файл проекта (drawio-style file-storage). Симулирует клик по «📁 Открыть файл проекта…».',
+      '• <code>Ctrl+Shift+S</code> — сохранить в файл (Save As). Симулирует клик по «💾 Сохранить в файл…».',
+      '• Добавлены в help-модалку «Сочетания клавиш». Стандарт editorов (Ctrl+O = Open, Ctrl+S/Ctrl+Shift+S = Save/Save As).',
+      'Files: <code>js/main.js</code> (addShare collab + keyboard shortcuts + help-table), <code>js/engine/constants.js</code> (APP_VERSION).',
+    ] },
     { version: '0.60.263', date: '2026-05-06', items: [
       '🔋🔋🔋 <b>Firestore reads -10×: offline persistence + refreshProjects cache</b>. Продолжение оптимизации после v0.60.260/261.',
       '<b>Firestore offline persistence</b>: <code>firebase.firestore().enablePersistence({ synchronizeTabs: true })</code> вызвается сразу после <code>initializeApp()</code> в shared/auth.js. Кэширует reads в IndexedDB. Последующие .get() и onSnapshot отдают данные из кэша мгновенно, server-reads считаются ТОЛЬКО за дельтой документа (а не за полный документ). Снижает read-cost в 5-10× для повторных reads.',
