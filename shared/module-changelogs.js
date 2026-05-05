@@ -4,6 +4,19 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.337', date: '2026-05-06', items: [
+      '🐛 <b>CRITICAL: breaker auto-pick для junction-box passthrough</b>. По репорту Пользователя 2026-05-06: «опять автоматом не подобрал кабель и автомат» — для Iрасч=158А выбран In=100А (-36.8% запас).',
+      '<b>Корень</b>: breaker-loop в recalc использовал <code>c._maxA</code> напрямую. Если cable-loop не учёл BFS-target (race с post-clamp\'ом), <code>c._maxA</code> мог быть занижен → breaker подобран на меньшее значение.',
+      '<b>Fix #1 (recalc breaker-loop)</b>: sanity-clamp на <code>Itotal</code>:',
+      '• <code>Itotal = max(c._maxA, c._loadA)</code>',
+      '• Plus BFS fallback: для panel/junction-box/channel target — <code>computeCurrentA(maxDownstreamLoad(toN), U, cos, ph)</code>',
+      'Гарантирует что breaker подбирается под реальный Iрасч, не пред-clamp\'ный.',
+      '<b>Fix #2 (inspector blue field — реальная проверка правила)</b>: текст «Iрасч ≤ In ≤ Iz. Номинал X — ближайший стандартный, удовлетворяющий условию» был template\'ом без проверки. При перегрузе (158А Iрасч → 100А In) лживо утверждал «удовлетворяющий».',
+      '<b>Теперь</b>:',
+      '• ✓ зелёный когда оба условия выполнены: «Iрасч ≤ In ≤ Iz»',
+      '• ⛔ красный когда нарушено: «Iрасч 158 А > In 100 А ≤ Iz 107 А — перегруз, увеличьте номинал автомата и/или сечение»',
+      'Files: <code>js/engine/recalc.js</code> (breaker-loop sanity-clamp), <code>js/engine/inspector/conn.js</code> (real rule check).',
+    ] },
     { version: '0.60.335', date: '2026-05-06', items: [
       '🔧 <b>Fix регрессии v0.60.330 — POR tag-dedup перезаписывал prev данные</b>.',
       '<b>Регрессия</b>: при tag-dedup в <code>addObject</code> существующий объект (например, TW-rack с <code>domain.mechanical</code>) перезаписывался partial\'ом от Конструктора (с <code>domain.electrical</code>) — данные TW терялись.',

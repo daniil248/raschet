@@ -2944,7 +2944,29 @@ function recalc() {
     }
 
     const parallel = Math.max(1, c._cableParallel || 1);
-    const Itotal = c._maxA || 0;
+    // v0.60.337 (по репорту Пользователя 2026-05-06: «опять автоматом не
+    // подобрал кабель и автомат» — авто-pick дал In=100А для Iрасч=158А):
+    // breaker-loop использовал c._maxA напрямую, но если cable-loop был
+    // обработан ДО полной BFS-оценки target panel/junction-box, c._maxA
+    // мог быть занижен. Sanity-clamp: Itotal ≥ max(c._maxA, c._loadA,
+    // BFS-target-load если cable target — passthrough).
+    let Itotal = c._maxA || 0;
+    const _loadActual = c._loadA || 0;
+    if (_loadActual > Itotal) Itotal = _loadActual;
+    // BFS fallback для panel/junction-box/channel target (если ещё не учтено).
+    const _toNodeForBrk = state.nodes.get(c.to.nodeId);
+    if (_toNodeForBrk && (_toNodeForBrk.type === 'panel' || _toNodeForBrk.type === 'junction-box' || _toNodeForBrk.type === 'channel')) {
+      const _bfsKw = maxDownstreamLoad(_toNodeForBrk.id);
+      if (_bfsKw > 0) {
+        const _U = nodeCalcVoltage(_toNodeForBrk) || 0;
+        const _cos = Number(c._cosPhi) || Number(_toNodeForBrk._cosPhi) || GLOBAL.defaultCosPhi || 0.92;
+        const _ph3 = isThreePhase(_toNodeForBrk);
+        if (_U > 0) {
+          const _bfsA = computeCurrentA(_bfsKw, _U, _cos, _ph3, false);
+          if (_bfsA > Itotal) Itotal = _bfsA;
+        }
+      }
+    }
     // v0.59.97: для individual-группы Iper — ток самого нагруженного прибора,
     // а не среднее Itotal/parallel. Значение вычислено и сохранено в фазе
     // подбора кабеля как c._groupMaxMemberA.

@@ -899,11 +899,20 @@ export function renderInspectorConn(c) {
             Правило per-line: Iрасч/n ≤ In ≤ Iz. Номинал <b>${effectiveIn} А</b> — ближайший стандартный ≥ ${fmt(_IperLine)} А.
           </div>`);
         } else {
+          // v0.60.337: реальная проверка правила Iрасч ≤ In ≤ Iz вместо
+          // template-строки. Раньше при перегрузе (158А Iрасч → In=100А
+          // выбран) текст лживо писал «удовлетворяющий условию».
+          const _IzCalc = (c._cableIz || 0) * (_parBrk > 1 ? _parBrk : 1);
+          const _r1Ok = _Imax <= effectiveIn;  // Iрасч ≤ In
+          const _r2Ok = effectiveIn <= _IzCalc;  // In ≤ Iz
+          const _ruleColor = (_r1Ok && _r2Ok) ? '#15803d' : '#b91c1c';
+          const _ruleIcon = (_r1Ok && _r2Ok) ? '✓' : '⛔';
+          const _ruleLine = `Iрасч ${fmt(_Imax)} А ${_r1Ok ? '≤' : '>'} In ${effectiveIn} А ${_r2Ok ? '≤' : '>'} Iz ${fmt(_IzCalc)} А`;
           h.push(`<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:6px;font-size:11px;margin-top:6px;color:#1565c0;line-height:1.5">
             <b>Как получено:</b><br>
             Iрасч линии = <b>${fmt(_Imax)} А</b>${_parBrk > 1 ? ` (на жилу ${fmt(_IperLine)} А)` : ''}<br>
             Iz кабеля = <b>${fmt(c._cableIz || 0)} А</b>${parText}<br>
-            Правило: Iрасч ≤ In ≤ Iz. Номинал <b>${effectiveIn} А</b> — ближайший стандартный из ряда, удовлетворяющий условию.
+            <b style="color:${_ruleColor}">${_ruleIcon} ${_ruleLine}</b>${(!_r1Ok || !_r2Ok) ? ' <span style="color:#b91c1c;font-weight:600">— перегруз, увеличьте номинал автомата и/или сечение</span>' : ' — правило выполнено'}.
           </div>`);
         }
       }
