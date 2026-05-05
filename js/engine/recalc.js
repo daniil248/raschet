@@ -3441,18 +3441,34 @@ function recalc() {
       let upsShare = 1;
       let parallelInvalidReason = '';
       let parallelPeerCount = 1;
+      let parallelTotalModules = 0;
+      let parallelMyModules = 0;
+      let parallelPeerIds = null;
       for (const c2 of state.conns.values()) {
         if (c2.from.nodeId !== n.id || c2.lineMode === 'damaged' || c2.lineMode === 'disabled') continue;
         const dest = state.nodes.get(c2.to.nodeId);
         if (!dest || dest.type !== 'panel') continue;
         const grp = _classifyUpsPeers(dest.id);
-        upsShare = grp.share;
+        // v0.60.303: для модульных параллельных групп share берём per-peer
+        // (proportional-to-modules), не среднее 1/N.
+        if (grp.valid && grp.sharesByPeer && grp.sharesByPeer.has(n.id)) {
+          upsShare = grp.sharesByPeer.get(n.id);
+          parallelTotalModules = grp.totalModules || 0;
+          parallelMyModules = Number(n.moduleInstalled) || 0;
+        } else {
+          upsShare = grp.share;
+        }
         parallelPeerCount = (grp.peers && grp.peers.length) || 1;
         if (parallelPeerCount > 1 && !grp.valid) parallelInvalidReason = grp.reason;
+        if (parallelPeerCount > 1) parallelPeerIds = (grp.peers || []).map(p => p.id);
         break;
       }
       n._parallelPeerCount = parallelPeerCount;
       n._parallelInvalidReason = parallelInvalidReason; // '' если valid
+      n._parallelShare = upsShare; // 1 если single, иначе доля этого ИБП
+      n._parallelTotalModules = parallelTotalModules; // 0 если не modular-параллель
+      n._parallelMyModules = parallelMyModules;
+      n._parallelPeerIds = parallelPeerIds;
       const sharedMax = rawMax * upsShare;
       // Физический лимит ИБП: нельзя отдать больше номинала.
       // Если downstream-share > cap → перегруз.

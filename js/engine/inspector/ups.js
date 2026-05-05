@@ -515,16 +515,46 @@ export function openUpsParamsModal(n) {
   // ================= Параллельная работа =================
   // v0.59.628: флаг «конструкция поддерживает параллельный режим». Без него
   // ИБП считается одиночным даже если выходом подключён к общей шине с другим.
-  const _parallelTip = 'Параллельные ИБП должны быть ИДЕНТИЧНЫХ моделей (одинаковые мощность, производитель, тип, kind) и иметь parallel kit + шину связи. Если флаг снят или модели разные — каждый ИБП считается несущим ПОЛНУЮ нагрузку (overload-сценарий). Применяется в схемах N+1 / 2N для повышения надёжности.';
+  // v0.60.303: уточнено по подтверждению производителя (Kehua MR series) —
+  // достаточно идентичности FRAME (модель/корпус/тип модуля), а moduleInstalled
+  // может отличаться. Это позволяет N+1 на уровне модуля для всей системы
+  // (UPS1=6 + UPS2=6 = 12 модулей, 11 нужно → 1 в резерве на всю систему).
+  const _parallelTip = 'Параллельные ИБП должны иметь ИДЕНТИЧНЫЙ FRAME (производитель, модель, корпус, тип силового модуля) и parallel kit + шину связи. Количество УСТАНОВЛЕННЫХ модулей может отличаться (UPS1=6 + UPS2=4 — допустимо), нагрузка делится пропорционально кол-ву модулей. Если флаг снят или фреймы разные — каждый ИБП считается несущим ПОЛНУЮ нагрузку (overload-сценарий).';
   h.push(`<h4 style="margin:16px 0 8px">Параллельная работа${helpIcon(_parallelTip)}</h4>`);
   h.push(`<div class="field check"><input type="checkbox" id="up-canParallel"${n.canParallel !== false ? ' checked' : ''}><label>Конструкция поддерживает параллельный режим${helpIcon('Установите флаг если ИБП заводски оснащён parallel kit (модулем синхронизации между несколькими ИБП). Без этого флага ИБП считается одиночным даже если выходом подключён к общей шине с другими ИБП.')}</label></div>`);
   // Информация о текущей группе параллельных пиров (если есть).
-  if (Array.isArray(n._parallelPeerCount !== undefined ? [] : null)) { /* placeholder */ }
   if (n._parallelPeerCount && n._parallelPeerCount > 1) {
     if (n._parallelInvalidReason) {
       h.push(`<div style="margin-top:6px;padding:6px 10px;background:#fef2f2;border-left:3px solid #b91c1c;border-radius:3px;font-size:11px;line-height:1.5;color:#991b1b">⛔ <b>Параллель не валидна:</b> ${escHtml(n._parallelInvalidReason)}.<br>Каждый ИБП считается несущим полную downstream-нагрузку (overload-сценарий).</div>`);
     } else {
-      h.push(`<div style="margin-top:6px;padding:6px 10px;background:#f0fdf4;border-left:3px solid #15803d;border-radius:3px;font-size:11px;line-height:1.5;color:#14532d">✓ Валидная параллель: <b>${n._parallelPeerCount}</b> идентичных ИБП на общей шине. Нагрузка делится 1/${n._parallelPeerCount}.</div>`);
+      // v0.60.303: для модульных групп показываем per-peer breakdown:
+      // total modules / my modules / share / system-level redundancy.
+      const totalMod = Number(n._parallelTotalModules) || 0;
+      const myMod = Number(n._parallelMyModules) || 0;
+      const sharePct = (Number(n._parallelShare) || 0) * 100;
+      const peerIds = Array.isArray(n._parallelPeerIds) ? n._parallelPeerIds : [];
+      let breakdown = '';
+      if (totalMod > 0 && peerIds.length) {
+        const modKw = Number(n.moduleKwRated || n.moduleKw) || 0;
+        const peerInfo = peerIds.map(pid => {
+          const peer = state.nodes.get(pid);
+          if (!peer) return null;
+          const mod = Number(peer.moduleInstalled) || 0;
+          const cap = Math.min(Number(peer.frameKw) || 0, mod * modKw);
+          const isMe = pid === n.id;
+          return `${isMe ? '<b>' : ''}${escHtml(peer.name || peer.tag || pid.slice(0, 8))}: ${mod} мод. × ${modKw} kW = ${cap.toFixed(0)} kW${isMe ? ' (этот ИБП)</b>' : ''}`;
+        }).filter(Boolean).join('<br>');
+        const totalCapKw = totalMod * modKw;
+        // System-level redundancy: total > working_required → запас в модулях
+        // Для информации показываем total capacity vs typical N+1.
+        breakdown = `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed #15803d40">
+          <b>Состав параллельной системы:</b><br>
+          ${peerInfo}<br>
+          <b>Итого:</b> ${totalMod} модулей × ${modKw} kW = <b>${totalCapKw.toFixed(0)} kW</b>${(Number(n.frameKw) || 0) > 0 ? ` (frame-лимит каждого: ${n.frameKw} kW)` : ''}<br>
+          <b>Доля этого ИБП:</b> ${myMod}/${totalMod} = ${sharePct.toFixed(1)}% нагрузки${myMod !== Math.round(totalMod / peerIds.length) ? ' <span style="color:#92400e">(пропорц. модулям, не 1/N)</span>' : ''}
+        </div>`;
+      }
+      h.push(`<div style="margin-top:6px;padding:8px 10px;background:#f0fdf4;border-left:3px solid #15803d;border-radius:3px;font-size:11px;line-height:1.6;color:#14532d">✓ Валидная параллель: <b>${n._parallelPeerCount}</b> ИБП с одинаковым frame.${breakdown}</div>`);
     }
   }
 
