@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.348', date: '2026-05-06', items: [
+      '🐛 <b>CRITICAL: SyntaxError в module-changelogs.js — сбрасывался состав шкафов scs-config</b>. По репорту Пользователя 2026-05-06: «у меня постоянно сбрасывается состав моих телеком/серверных шкафов» + console-error «SyntaxError: Unexpected identifier \'a\' module-changelogs.js:224».',
+      '<b>Корень</b>: в записях changelog\'а v0.60.321 и v0.59.967 присутствовали неэкранированные одинарные кавычки внутри JS-string\'ов в составе русских слов: <code>conn-loop\'а</code>, <code>badge\'е</code>. JS-парсер обрывал строку на этом апострофе → <code>Unexpected identifier \'а\'</code> (русская «а» после кавычки) → <code>module-changelogs.js</code> не парсился целиком.',
+      '<b>Каскадный эффект</b>: импорт CHANGELOGS падал в module-footer.js → footer не рендерился, но критичнее — глобальный <code>window.error</code> handler в scs-config.js (5175) срабатывал ПОСЛЕ инициализации, и любой последующий silent-fail в LS-save → откат состава rack\'ов при следующей перезагрузке.',
+      '<b>Fix</b>: <code>conn-loop\'а</code> → <code>conn-loop\\\'а</code>, <code>badge\'е</code> → <code>badge\\\'е</code>. Линтер-проверка (D:\\tmp\\check_quotes.py) прогнан по всему файлу — других нечётных кавычек нет.',
+      'Files: <code>shared/module-changelogs.js</code> (L249, L872 — escape).',
+    ] },
     { version: '0.60.347', date: '2026-05-06', items: [
       '🧊 <b>Cooling picker контекста — упрощён до «Проекты» / «Разовый подбор»</b>. По репорту Пользователя 2026-05-06: «здесь не должно быть надписей типа С подбором холода и без подбора холода, просто Проекты и разовый подбор, больше ни чего, локальные проекты, которые сформированы в СКС, не должны здесь отображаться».',
       '<b>Удалено</b>:',
@@ -246,7 +253,7 @@ export const CHANGELOGS = {
     ] },
     { version: '0.60.321', date: '2026-05-06', items: [
       '🐛 <b>CRITICAL: cable._maxA меньше cable._loadA (недогруз кабеля)</b>. По репорту Пользователя 2026-05-06: «текущий ток 158.1А а расчетный по макс нагрузке 70.8А?????»',
-      '<b>Корень</b>: <code>c._maxKw</code> / <code>c._maxA</code> для кабеля вычислялись в conn-loop ЧЕРЕЗ <code>maxDownstreamLoad(panel.id)</code> — это PRE-clamp BFS-сумма. После conn-loop'а в node-loop работает sanity-clamp (если <code>n._loadKw > n._maxLoadKw</code> — bump до loadKw, и нода показывает корректные значения 107 кВт/158А). НО cable.max остаётся pre-clamp (48 кВт/70.8А) — кабель подбирается под недостаточную нагрузку.',
+      '<b>Корень</b>: <code>c._maxKw</code> / <code>c._maxA</code> для кабеля вычислялись в conn-loop ЧЕРЕЗ <code>maxDownstreamLoad(panel.id)</code> — это PRE-clamp BFS-сумма. После conn-loop\'а в node-loop работает sanity-clamp (если <code>n._loadKw > n._maxLoadKw</code> — bump до loadKw, и нода показывает корректные значения 107 кВт/158А). НО cable.max остаётся pre-clamp (48 кВт/70.8А) — кабель подбирается под недостаточную нагрузку.',
       '<b>Эффект bug\'а</b>: 5×35мм² кабель Iдоп=122.4А подобран для 70.8А, но фактически течёт 158А — <b>перегруз +30%</b>, недогрев изоляции, риск возгорания.',
       '<b>Fix</b>: post-pass на все conns после всех node-clamp\'ов. Для каждого <code>c</code>: <code>c._maxKw = max(c._maxKw, c._loadKw, target-node._maxLoadKw)</code>. <code>c._maxA</code> пересчитывается при clamp\'е. Помечается <code>c._maxKwClampedFromLoad</code> / <code>c._maxKwClampedFromTarget</code> для отладки.',
       '<b>Также — Engine derate profiles + R-резерв из TW</b> (см. v0.60.320 рядом):',
@@ -869,7 +876,7 @@ export const CHANGELOGS = {
       '• Каждые 30с в file-mode опрашиваем mtime файла через <code>handle.getFile().lastModified</code>.',
       '• Если mtime > stored + 1с (с 1.5с tolerance под наш собственный write) — флаг <code>externalChangeDetected=true</code>.',
       '• Toast: для read-only — «⚠ Файл изменён извне. Нажмите ↻ Перечитать»; для writer — красный warning «⚠ Следующее автосохранение перезапишет внешние правки».',
-      '• Badge подсвечивается красным если writer-mode + externalChange. Indicator «⚠ изменён извне» в badge'е.',
+      '• Badge подсвечивается красным если writer-mode + externalChange. Indicator «⚠ изменён извне» в badge\'е.',
       '• «↻ Перечитать» сбрасывает флаг и обновляет mtime baseline.',
       '• Watcher останавливается при «✕ Закрыть файл» / `_stopExternalChangeWatcher`.',
       '• Watcher только локальный — никаких Firestore-операций. Не нагружает квоту.',
