@@ -1047,7 +1047,14 @@ function recalc() {
 
           if (!firedGroup) {
             n._activeTriggerGroup = null;
-            res = null; // дежурство
+            // v0.60.291 (по репорту Пользователя 2026-05-06: «когда у
+            // генератора работает таймер отключения, на его выходе ещё
+            // должно быть напряжение»):
+            // Во время stop-countdown триггеры уже alive (поэтому firedGroup=null),
+            // НО генератор всё ещё крутится — n._running=true до конца cooling.
+            // Должен продолжать выдавать напряжение (load=0 если downstream
+            // отключён, но напряжение есть).
+            res = n._running ? [] : null;
           } else {
             n._activeTriggerGroup = firedGroup;
             res = (n._running || (Number(n.startDelaySec) || 0) === 0) ? [] : null;
