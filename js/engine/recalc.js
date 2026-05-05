@@ -2126,6 +2126,19 @@ function recalc() {
     // v0.59.604: для прямой линии к consumer берём _nominalA (установочный
     // ток без kUse / loadFactor) — он уже учитывает individual-режим и
     // правильный U. Не пересчитываем заново.
+    // v0.60.327 (по репорту Пользователя 2026-05-06: «нагрузка макс 107 кВт
+    // 158.1 А а кабель 35мм² Iдоп=122.4 А?????» — кабель подобран по старому
+    // c._maxA до post-clamp'а v0.60.321):
+    // По определению Макс ≥ Текущая. walkUp уже посчитал c._loadKw к моменту
+    // conn-loop'а. Если walkUp дал больше чем BFS-оценка (UPS efficiency,
+    // sibling cross-feed, charge) — Макс должен соответствовать walkUp.
+    // Применяем clamp ЗДЕСЬ, ДО cable-selection — иначе кабель подбирается
+    // по заниженной нагрузке и получается недогруженным.
+    const _loadKwActual = Number(c._loadKw) || 0;
+    if (_loadKwActual > maxKwDownstream) {
+      c._maxKwClampedFromLoad = true;
+      maxKwDownstream = _loadKwActual;
+    }
     const maxCurrent = (toN.type === 'consumer')
       ? consumerNominalCurrent(toN)
       : (toN.type === 'consumer-container')

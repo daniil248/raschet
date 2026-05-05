@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.327', date: '2026-05-06', items: [
+      '🐛 <b>CRITICAL: cable selection использовал pre-clamp _maxA</b>. По репорту Пользователя 2026-05-06: «нагрузка макс 107 кВт 158.1 А а кабель 35мм² Iдоп=122.4 А?????».',
+      '<b>Корень</b>: v0.60.321 добавила post-pass clamp на c._maxKw (после всех node clamp\'ов). Но cable selection (выбор сечения по Iрасч) происходит ВНУТРИ conn-loop\'а ДО post-pass\'а. Поэтому: c._maxA вычислялся правильно (158А) ПОСЛЕ clamp\'а, но кабель уже был выбран по старому 70.8А → 35мм² Iz=122.4А (перегруз).',
+      '<b>Эффект bug\'а</b>: cable Iдоп=122.4А при факт 158А → перегруз +30%, кабель не выдержит реальной нагрузки.',
+      '<b>Fix</b>: clamp применяется ВНУТРИ conn-loop\'а ДО cable selection. <code>maxKwDownstream = max(maxKwDownstream, c._loadKw)</code> — где c._loadKw уже посчитан walkUp\'ом перед conn-loop\'ом. Cable selection теперь видит правильное Iрасч=158А → подбирает 70мм² или больше с Iz≥158А.',
+      '<b>v0.60.321 post-pass</b> остаётся как safety net для случаев когда node._maxLoadKw обновился ПОСЛЕ conn-loop\'а (sibling-clamp).',
+      'Files: <code>js/engine/recalc.js</code> (in-loop clamp перед cable selection).',
+    ] },
     { version: '0.60.326', date: '2026-05-06', items: [
       '⚙ <b>derateProfile во всех ДГУ-vendor каталогах</b>. Завершение v0.60.322 (только AJ Power было сделано).',
       '<b>Покрытие</b> (всего 30 моделей в 7 vendor-файлах):',
