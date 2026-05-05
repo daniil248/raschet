@@ -29,7 +29,7 @@
 //   }
 // =========================================================================
 
-import { ensureDefaultProject, projectKey, listSubProjects, createSubProject, listProjects, getProject, setActiveProjectId, createProject } from '../shared/project-storage.js';
+import { ensureDefaultProject, projectKey, listSubProjects, createSubProject, listProjects, getProject, setActiveProjectId, createProject, updateProject } from '../shared/project-storage.js';
 import { buildModuleHref } from '../shared/project-context.js';
 import { idbGet, idbAvailable } from '../shared/idb-store.js';
 import { pricesForElement } from '../shared/price-records.js';
@@ -2129,6 +2129,16 @@ function _renderBomDetails(c, ro) {
   const dateStr = c.bomDate || new Date().toISOString().slice(0, 10);
   const dateMs = new Date(dateStr + 'T23:59:59').getTime();
 
+  // v0.60.280 (по репорту Пользователя 2026-05-06 «опять же валюты нет для
+  // цены ... никакого хардкода, позже будет интернационализация и
+  // локализация»): валюта BOM привязана к проекту, без хардкода 'RUB'.
+  // Selector добавлен в toolbar; default — null (Пользователь обязан выбрать
+  // явно в первый раз). Хранится в proj.currency в project-storage.
+  const proj = _pid ? getProject(_pid) : null;
+  const projCurrency = proj?.currency || '';
+  // Список валют — типичные. Когда придёт i18n, расширится из локали.
+  const CURRENCY_OPTIONS = ['', 'RUB', 'USD', 'EUR', 'KZT', 'BYN', 'UAH', 'CNY', 'KGS', 'AMD', 'AZN', 'GEL'];
+
   const items = _collectBomItems(c);
   // overrides: { [bomKey]: { unitPrice, currency } }
   if (!c.bomOverrides || typeof c.bomOverrides !== 'object') c.bomOverrides = {};
@@ -2140,7 +2150,8 @@ function _renderBomDetails(c, ro) {
     let unitPrice = null, currency = null, source = '';
     if (ovr && Number.isFinite(Number(ovr.unitPrice))) {
       unitPrice = Number(ovr.unitPrice);
-      currency = ovr.currency || 'RUB';
+      // v0.60.280: ручной override наследует валюту проекта, без хардкода.
+      currency = ovr.currency || projCurrency || '';
       source = '✏ ручной';
     } else if (it.elementId) {
       const r = pricesForElement(it.elementId, { recordedBefore: dateMs });
@@ -2167,9 +2178,16 @@ function _renderBomDetails(c, ro) {
     <div class="tw-details-body">
       <div class="tw-bom-toolbar">
         <label>Дата для цен:<input type="date" data-field="bomDate" value="${escAttr(dateStr)}" ${ro ? 'disabled' : ''}></label>
+        <!-- v0.60.280: валюта проекта (без хардкода) -->
+        <label title="Валюта по умолчанию для всех цен проекта. Не путать с валютой конкретного price-record в каталоге цен — там хранится в каком фиксировалась цена. Эта настройка — то, в какой валюте проект ведётся.">Валюта проекта:
+          <select id="tw-bom-currency" ${ro ? 'disabled' : ''} style="margin-left:4px">
+            ${CURRENCY_OPTIONS.map(c2 => `<option value="${escAttr(c2)}"${c2 === projCurrency ? ' selected' : ''}>${c2 === '' ? '— не выбрана —' : c2}</option>`).join('')}
+          </select>
+        </label>
         <span class="muted tw-bom-hint">Цена для каждой позиции — самая поздняя из price-records на эту дату. Если цены нет — введите вручную.</span>
         <a class="tw-bom-link" href="../catalog/" target="_blank">📚 Открыть каталог цен →</a>
       </div>
+      ${!projCurrency ? `<p class="tw-pue-warning" style="background:#fef3c7;border-left:3px solid #f59e0b">⚠ Валюта проекта не выбрана. Выберите выше — без неё ручные цены не запоминаются. Project-bound: одна валюта на весь проект (вариант 1, вариант 2 и т.п. используют ту же).</p>` : ''}
       <table class="tw-bom-table">
         <thead><tr>
           <th>Позиция</th>
@@ -2181,9 +2199,9 @@ function _renderBomDetails(c, ro) {
         <tbody>${rows.map(r => `<tr data-bom-key="${escAttr(r.key)}">
           <td>${escHtml(r.label)}<br><span class="muted">${escHtml(r.subLabel || '')}</span></td>
           <td class="num">${r.qty}</td>
-          <td class="num"><input type="number" step="0.01" min="0" class="tw-bom-price" data-bom-key="${escAttr(r.key)}" value="${r.unitPrice != null ? r.unitPrice : ''}" placeholder="—" ${ro ? 'disabled' : ''}> ${r.currency || 'RUB'}</td>
+          <td class="num"><input type="number" step="0.01" min="0" class="tw-bom-price" data-bom-key="${escAttr(r.key)}" value="${r.unitPrice != null ? r.unitPrice : ''}" placeholder="—" ${ro ? 'disabled' : ''}> ${r.currency || (projCurrency || '<span class="muted" title="Валюта не выбрана">—</span>')}</td>
           <td><span class="tw-bom-src">${escHtml(r.source || '<i>нет</i>')}</span></td>
-          <td class="num">${r.total != null ? `<b>${r.total.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</b> ${r.currency}` : '—'}</td>
+          <td class="num">${r.total != null ? `<b>${r.total.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</b> ${r.currency || projCurrency || ''}` : '—'}</td>
         </tr>`).join('')}</tbody>
         <tfoot><tr>
           <td colspan="4"><b>Σ Итого:</b></td>
@@ -2531,14 +2549,32 @@ function bindListEvents() {
     if (!field && !target.classList.contains('tw-bom-price')) return;
     const value = (target.type === 'checkbox') ? target.checked
       : (target.type === 'number' ? Number(target.value) || 0 : target.value);
-    // Early-handle BOM price overrides (изолировано от card-kind branching)
+    // Early-handle BOM price overrides (изолировано от card-kind branching).
+    // v0.60.280: валюта НЕ хардкодим — берём из proj.currency. Если не выбрана,
+    // override записывается с currency='' (Пользователь увидит warning сверху
+    // BOM и сможет выбрать).
     if (target.classList.contains('tw-bom-price')) {
       const key = target.dataset.bomKey;
       if (!key) return;
       if (!cur.concept.bomOverrides) cur.concept.bomOverrides = {};
       if (target.value === '') delete cur.concept.bomOverrides[key];
-      else cur.concept.bomOverrides[key] = { unitPrice: Number(target.value) || 0, currency: 'RUB' };
+      else {
+        const proj = _pid ? getProject(_pid) : null;
+        const projCurrency = proj?.currency || '';
+        cur.concept.bomOverrides[key] = { unitPrice: Number(target.value) || 0, currency: projCurrency };
+      }
       persistVariants(); renderActiveVariant();
+      return;
+    }
+    // v0.60.280: смена валюты проекта — пишем в project-storage и
+    // перерисовываем все варианты. Project-bound: одна валюта на весь проект.
+    if (target.id === 'tw-bom-currency') {
+      try {
+        if (_pid) {
+          updateProject(_pid, { currency: target.value || '' });
+          renderActiveVariant();
+        }
+      } catch (e) { console.warn('[tw] currency save failed:', e); }
       return;
     }
     if (card) {

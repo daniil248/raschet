@@ -4,6 +4,18 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.280', date: '2026-05-06', items: [
+      '💱 <b>Валюта BOM привязана к проекту, без хардкода</b>. По репортам Пользователя 2026-05-06: «опять же валюты нет для цены» + «никакого хардкода, позже будет интернационализация и локализация».',
+      '<b>Корень:</b> в <code>tech-workspace/tech-workspace.js _renderBomDetails</code> валюта была захардкожена как <code>\'RUB\'</code> в 4 местах: fallback ovr.currency, hardcoded RUB рядом с input, save-handler bomOverrides[key].currency=\'RUB\'. Это ломает i18n/локализацию (пользователи в KZT/USD получали бы RUB на ровном месте).',
+      '<b>Фикс:</b>',
+      '• Валюта хранится в <code>proj.currency</code> (project-level через <code>updateProject</code>) — одна на весь проект, общая для всех вариантов.',
+      '• Selector «Валюта проекта» в toolbar BOM (12 опций: RUB, USD, EUR, KZT, BYN, UAH, CNY, KGS, AMD, AZN, GEL + «не выбрана»). При смене — <code>updateProject(_pid, { currency })</code> + re-render.',
+      '• Если валюта не выбрана — yellow warning над таблицей «⚠ Валюта проекта не выбрана. Выберите выше — без неё ручные цены не запоминаются».',
+      '• Все хардкоды <code>\'RUB\'</code> заменены на <code>projCurrency || \'\'</code> (или fallback на запись из price-record для каталожных цен).',
+      '• Save-handler bomOverrides пишет <code>currency: projCurrency</code> вместо <code>\'RUB\'</code>.',
+      '• На i18n-этапе список валют будет расширяться из локали — текущий список это transitional хард-fallback.',
+      'Files: <code>tech-workspace/tech-workspace.js</code> (импорт updateProject + _renderBomDetails + change-handler).',
+    ] },
     { version: '0.60.279', date: '2026-05-06', items: [
       '🏷 <b>Subtitle Конструктора: «универсальный редактор» → «Конструктор электрических схем»</b>. Завершение discipline-clean-up из v0.60.277/278.',
       '• Старый subtitle декларировал: «Универсальный редактор: электрика, СКС, гидравлика, механика — переключается видом страницы». Это было верно когда было 7 page-kinds (mechanical/low-voltage/data/scs/3d). Но в v0.60.154 их сократили до 2 (schematic + layout), а в v0.60.277/278 убрали Системы-tab → редактор стал чисто электрическим.',
