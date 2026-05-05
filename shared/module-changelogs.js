@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.266', date: '2026-05-06', items: [
+      '🔁 <b>Shared→Solo: collab автоматически останавливается при unshare</b>. Завершение цикла solo-shared transitions из v0.60.261/264.',
+      '• Сценарий: Пользователь открывает shared-проект → collab активен (presence + locks + sync). Удаляет всех member-ов через share-modal → проект снова solo, но collab продолжал работать, тратя writes на heartbeat.',
+      '• Фикс: в onclick для <code>.share-remove</code> кнопок после <code>unshareMember()</code> и обновления <code>state.currentProject</code> — если в <code>memberUids</code> не осталось НИКОГО, кроме самого user\'а, вызываем <code>_stopCollab()</code>. Парный к v0.60.264 (start-on-share) — теперь оба direction\'а транзишена обрабатываются.',
+      '• На последующий <code>addShare()</code> collab автоматически запустится снова (см. v0.60.264).',
+      '✓ Sanity-check всех изменений сегодня (v0.60.254-265): brace/paren баланс совпадает с pre-change baseline для всех затронутых файлов (main.js, render.js, export.js, inspector.js, recalc.js). False-positives parser\'а от template-literals не индикативны для реальных bug\'ов.',
+      'Files: <code>js/main.js</code> (unshare → maybe stop collab), <code>js/engine/constants.js</code> (APP_VERSION).',
+    ] },
     { version: '0.60.265', date: '2026-05-06', items: [
       '🎨 <b>Sidebar «Файл» — реорганизация: file-mode на первом плане</b>. После добавления drawio-style file-storage (v0.60.258) три кнопки «💾 Сохр. локально / 💾 Сохранить как / 💾 Сохранить в файл» путались между собой — три разных «save» в одном разделе.',
       '• <b>Раздел 1: «📁 Локальный файл (drawio-style)»</b> (новые модерн-кнопки):',

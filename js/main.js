@@ -1912,6 +1912,16 @@ function renderShareMembers() {
         await window.Storage.unshareMember(p.id, btn.dataset.uid);
         await reloadCurrentProjectMeta();
         renderShareMembers();
+        // v0.60.266 (продолжение solo-skip из v0.60.261/264): если после
+        // unshare member'ов не осталось — проект снова solo. Останавливаем
+        // collab, чтобы экономить writes/reads. На следующем addShare
+        // collab автоматически запустится снова (см. addShare в v0.60.264).
+        const remainingMembers = (state.currentProject?.memberUids || [])
+          .filter(m => m && m !== state.currentUser?.uid);
+        if (remainingMembers.length === 0 && state.unsubProjectDoc) {
+          _stopCollab();
+          console.info('[main] collab остановлен после unshare (shared → solo)');
+        }
       } catch (e) { flash(e.message || 'Ошибка', 'error'); }
     };
   });
