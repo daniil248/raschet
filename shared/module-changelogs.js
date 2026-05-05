@@ -4,6 +4,19 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.366', date: '2026-05-06', items: [
+      '🔌 <b>Outdoor блоки наследуют _powered от parent cond</b> + <b>декомпозиция Номинала cond (indoor+outdoor)</b>.',
+      '<b>1. Outdoor _powered fix</b> (по репорту Пользователя 2026-05-06: «почему у меня внутренни блок [outdoor], входящий в стосав кондиционера, числится не подключенным»).',
+      '<b>Корень</b>: outdoor имеет <code>linkedIndoorId</code> (не <code>containerId</code>), conn cond→outdoor не «проводник питания» в обычной модели recalc (consumer→consumer relay не поддерживается). Outdoor оставался без _powered → попадал в счётчик «Без питания».',
+      '<b>Fix</b>: новая ветка в consumer-loop recalc — если <code>n.consumerSubtype===\'outdoor_unit\'</code> и есть <code>linkedIndoorId</code>, и parent._powered → outdoor._powered=true, _loadKw считается. Активирует conn cond→outdoor для кабельного журнала и BOM.',
+      '<b>2. Декомпозиция Номинала</b> (по репорту Пользователя: «помнишь я просил оставить общую мощность и в скобках отдельно наружный + внутренний блок»).',
+      'В render.js для cond с outdoor-блоками теперь показывается:',
+      '• <b>Номинал</b>: <code>total (indoor+outdoor)</code> — например, «12 (10+2) кВт»',
+      '• <b>Номинальный ток</b>: <code>I_total (I_indoor+I_outdoor)</code>',
+      'Раньше Номинал показывал только indoor.demand; outdoor вычитался из общей мощности.',
+      'Декомпозиция «Расчёт» (Pcalc) с (own+downstream) уже была в v0.60.255.',
+      'Files: <code>js/engine/recalc.js</code> (outdoor _powered inheritance + conn activation), <code>js/engine/render.js</code> (consumer valueMap nominalKw/capacityA с декомпозицией).',
+    ] },
     { version: '0.60.365', date: '2026-05-06', items: [
       '🅰 <b>UI редактирования letter-prefixes по типам в «Параметры проекта»</b>. Завершение запроса Пользователя 2026-05-06: «с записью в реестре настройки, чтобы пользователь мог задавать для проекта или для организации настройки по типам».',
       '<b>Где</b>: модалка «Параметры проекта» (🔧 в хедере) → новая секция «<b>Буквенные обозначения потребителей (по типам)</b>» внизу.',

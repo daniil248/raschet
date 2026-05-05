@@ -1688,6 +1688,30 @@ function recalc() {
         n._loadKw = dKw * kUse * factor;
       }
     }
+    // v0.60.366 (по репорту Пользователя 2026-05-06: «почему у меня
+    // внутренни блок, входящий в стосав кондиционера, числится не
+    // подключенным»): outdoor-блоки кондиционера наследуют _powered
+    // от parent indoor cond через linkedIndoorId. Раньше recalc не
+    // распространял мощность от consumer к consumer (cond→outdoor conn
+    // не «проводник питания» в обычной модели). Outdoor висел без _powered.
+    if (!n._powered && n.consumerSubtype === 'outdoor_unit' && n.linkedIndoorId) {
+      const parent = state.nodes.get(n.linkedIndoorId);
+      if (parent && parent._powered) {
+        n._powered = true;
+        const kUse = Number(n.kUse) || 1;
+        const factor = effectiveLoadFactor(n) || 1;
+        n._loadKw = (Number(n.demandKw) || 0) * kUse * factor;
+        // Активируем conn cond→outdoor (для кабельного журнала и BOM).
+        for (const c of state.conns.values()) {
+          if (c.from?.nodeId === parent.id && c.to?.nodeId === n.id) {
+            c._active = true;
+            c._loadKw = (c._loadKw || 0) + n._loadKw;
+            c._state = 'active';
+            break;
+          }
+        }
+      }
+    }
   }
 
   // Собственные нужды генераторов (auxInput)

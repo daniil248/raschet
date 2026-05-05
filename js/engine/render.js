@@ -2745,8 +2745,25 @@ export function renderNodes() {
         const cosC = Math.max(0.1, Math.min(1, Number(n.cosPhi) || 0.92));
         const PnomTotal = consumerTotalDemandKw(n);
         const Pnom = _isUniformGroup ? (PnomTotal / cnt) : PnomTotal;
-        const Inom = (Pnom > 0 && Ucalc) ? computeCurrentA(Pnom, Ucalc, cosC, isThreePhase(n)) : 0;
-        const Snom = Pnom > 0 ? Pnom / cosC : 0;
+        // v0.60.366 (по репорту Пользователя 2026-05-06: «помнишь я просил
+        // оставить общую мощность и в скобках отдельно наружный + внутренний
+        // блок»): для cond с outdoor-блоками показываем декомпозицию
+        // «total (indoor+outdoor)» в Номинале и Номинальном токе.
+        let _PnomOutdoor = 0;
+        const _ouIds = Array.isArray(n.linkedOutdoorIds) ? n.linkedOutdoorIds
+          : (n.linkedOutdoorId ? [n.linkedOutdoorId] : []);
+        for (const _ouId of _ouIds) {
+          const _ouNode = state.nodes.get(_ouId);
+          if (_ouNode) _PnomOutdoor += (Number(_ouNode.demandKw) || 0) * (Math.max(1, Number(_ouNode.count) || 1));
+        }
+        const _hasOutdoor = _PnomOutdoor > 0.05;
+        const PnomTotalWithOu = Pnom + _PnomOutdoor;
+        const Inom = (PnomTotalWithOu > 0 && Ucalc) ? computeCurrentA(PnomTotalWithOu, Ucalc, cosC, isThreePhase(n)) : 0;
+        const _InomIndoor = (Pnom > 0 && Ucalc) ? computeCurrentA(Pnom, Ucalc, cosC, isThreePhase(n)) : 0;
+        const _InomOutdoor = (_PnomOutdoor > 0 && Ucalc) ? computeCurrentA(_PnomOutdoor, Ucalc, cosC, isThreePhase(n)) : 0;
+        const _PnomDecomp = _hasOutdoor ? ` (${fmtDigits(Pnom)}+${fmtDigits(_PnomOutdoor)})` : '';
+        const _InomDecomp = _hasOutdoor ? ` (${fmtDigits(_InomIndoor)}+${fmtDigits(_InomOutdoor)})` : '';
+        const Snom = PnomTotalWithOu > 0 ? PnomTotalWithOu / cosC : 0;
         // v0.60.255 (по уточнению Пользователя 2026-05-06 «давай после
         // суммарной мощности добавим в скобках X+Y и туда уже укажем каждый
         // компонент, то же и для тока»):
@@ -2782,8 +2799,9 @@ export function renderNodes() {
         valueMap = {
           demandKw:   { v: fmtDigits(Pcalc) + _kwDecomp },  // Расчёт P + декомпозиция
           currentA:   { v: fmtDigits(Icalc) + _aDecomp },   // Расчёт I + декомпозиция
-          nominalKw:  { v: fmtDigits(Pnom)  },           // Номинал P
-          capacityA:  { v: fmtDigits(Inom)  },           // Номинал I
+          // v0.60.366: total nominal (indoor+outdoor) с декомпозицией в скобках.
+          nominalKw:  { v: fmtDigits(PnomTotalWithOu) + _PnomDecomp },  // Номинал P (total + decomp)
+          capacityA:  { v: fmtDigits(Inom) + _InomDecomp },              // Номинал I (total + decomp)
           kvAOrVA:    { v: fmtDigits(Snom)  },
           maxKw:      { v: null },                        // Макс — только для щитов
           maxA:       { v: null },
