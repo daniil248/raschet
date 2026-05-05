@@ -146,6 +146,12 @@ export function isOnCurrentPage(obj) {
     const _c = state.nodes.get(obj.containerId);
     if (_c && _c.type === 'consumer-container') return false;
   }
+  // v0.60.345 (по запросу Пользователя 2026-05-06: «откажемся от отдельного
+  // отображения наружного блока»): outdoor-узлы кондиционеров с флагом
+  // embedAsOutdoor скрыты на схематике (доступ через modal в карточке cond).
+  // На плане / в реестре / BOM остаются видимыми (отдельные обходы не
+  // используют isOnCurrentPage).
+  if (obj.embedAsOutdoor) return false;
   const pids = obj.pageIds;
   // v0.59.331: разделяем два случая:
   //  - pageIds === undefined — legacy-узел, в миграции до pages, показываем везде;

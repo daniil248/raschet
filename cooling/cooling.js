@@ -22,7 +22,7 @@
 //   raschet.project.<pid>.cooling.cols.v1
 //   raschet.project.<pid>.cooling.tariff.v1
 
-import { ensureDefaultProject, projectKey, listProjects, getProject, setActiveProjectId, createProject } from '../shared/project-storage.js';
+import { ensureDefaultProject, projectKey, listProjects, getProject, setActiveProjectId } from '../shared/project-storage.js';
 import * as util from '../meteo/util.js';
 
 import { DEFAULT_CHILLER, COLUMNS, DEFAULT_COLS, CHILLER_COLS, isCracType as isCracTypeLocal } from './calc/chiller-defaults.js';
@@ -650,49 +650,35 @@ function renderStorageMode() {
     el.innerHTML = `<span title="Embed-режим: модуль вызван из «${util.escAttr(_navReturn.label)}». Сделайте подбор и нажмите «✓ Применить и вернуться» в правом верхнем углу.">🔗 Embed: вернуться в <b>${util.escHtml(_navReturn.label)}</b></span>`;
     return;
   }
-  // v0.60.20: picker «Контекст подбора» с группировкой по релевантности cooling.
-  // По требованию Пользователя 2026-05-02: «здесь не может быть проектов СКС;
-  // нет кнопки добавить локальный (подбор холода) проект, не связанного с
-  // проектами». Решено:
-  //   1. Опция «➕ Создать новый локальный подбор холода…» — создаёт sketch-
-  //      проект (ownerModule='cooling'), не зависящий от electrical-проектов.
-  //   2. Группировка: «Локальные подборы холода» (sketch:cooling) → «Проекты с
-  //      подборами холода» (LS уже содержит cooling-данные) → «Прочие проекты»
-  //      (без cooling-данных, можно добавить если нужно).
+  // v0.60.347: picker «Контекст подбора» — упрощённый по требованию
+  // Пользователя 2026-05-05: «просто Проекты и разовый подбор, больше ни чего,
+  // локальные проекты, которые сформированы в СКС, не должны здесь
+  // отображаться». Раньше было 4 категории (Локальные подборы холода / Проекты
+  // с подборами / Прочие проекты / Без проекта). Сейчас:
+  //   - 🔓 Разовый подбор (standalone)
+  //   - 📁 Проекты — только full-проекты (kind='full'); SCS-sketch и другие
+  //     локальные sketch'и НЕ показываются.
   let projects = [];
   try { projects = listProjects() || []; } catch {}
   const currentVal = _standalone ? '__standalone__' : ((_pid && _pid.id) || '__standalone__');
 
-  // v0.60.46 (feedback_module_scope_pickers.md): фильтр — sketch ДРУГИХ
-  // модулей не должны появляться в cooling-picker (например СКС-sketch
-  // не имеет отношения к холоду). Full-проекты видны всегда.
-  const relevant = projects.filter(p => {
-    if (p.kind === 'full') return true;
-    if (p.kind === 'sketch') return p.ownerModule === 'cooling';
-    return true;  // другие kinds (если появятся) — пропускаем
-  });
+  // Только реальные full-проекты. Sketch-проекты (включая СКС-локальные и
+  // cooling-локальные) исключены — Пользователь явно запросил «больше ничего»,
+  // и СКС-sketch здесь не место.
+  const fullProjects = projects.filter(p => p.kind === 'full');
 
-  const groups = { coolingLocal: [], withCooling: [], others: [] };
-  for (const p of relevant) {
-    if (p.kind === 'sketch' && p.ownerModule === 'cooling') groups.coolingLocal.push(p);
-    else if (projectHasCoolingData(p.id)) groups.withCooling.push(p);
-    else groups.others.push(p);
-  }
-  const optEl = (p, icon) =>
-    `<option value="${util.escAttr(p.id)}"${currentVal === p.id ? ' selected' : ''} title="Подборы будут сохранены в проекте «${util.escAttr(p.name || p.id)}»">${icon} ${util.escHtml(p.name || p.id)}</option>`;
+  const optEl = (p) =>
+    `<option value="${util.escAttr(p.id)}"${currentVal === p.id ? ' selected' : ''} title="Подборы будут сохранены в проекте «${util.escAttr(p.name || p.id)}»">📁 ${util.escHtml(p.name || p.id)}</option>`;
   const grpHtml = (label, opts) => opts.length
     ? `<optgroup label="${util.escAttr(label)}">${opts.join('')}</optgroup>`
     : '';
   const optsHtml = `
-    <option value="__standalone__"${currentVal === '__standalone__' ? ' selected' : ''} title="Разовый подбор — данные хранятся в общем LocalStorage без привязки к проекту. Не попадёт в отчёт по проекту.">🔓 Без проекта (разовый)</option>
-    <option value="__new_local__" title="Создать новый ЛОКАЛЬНЫЙ подбор холода (sketch-проект). Это отдельный контейнер для cooling-подборов, не зависящий от ЭЛ-проектов СКС.">➕ Создать новый локальный подбор холода…</option>
-    ${grpHtml('🌡 Локальные подборы холода',     groups.coolingLocal.map(p => optEl(p, '🌡')))}
-    ${grpHtml('💼 Проекты с подборами холода',   groups.withCooling.map(p => optEl(p, '💼')))}
-    ${grpHtml('📁 Прочие проекты (без cooling)', groups.others.map(p => optEl(p, '📁')))}
+    <option value="__standalone__"${currentVal === '__standalone__' ? ' selected' : ''} title="Разовый подбор — данные хранятся в общем LocalStorage без привязки к проекту. Не попадёт в отчёт по проекту.">🔓 Разовый подбор</option>
+    ${grpHtml('Проекты', fullProjects.map(p => optEl(p)))}
   `;
   el.innerHTML = `
-    <label style="display:block;font-size:11px;font-weight:600;color:#475569;margin-bottom:3px" title="Контекст хранения подборов. Поменяйте здесь, чтобы переключиться на другой проект, разовый подбор или создать локальный подбор холода.">КОНТЕКСТ ПОДБОРА</label>
-    <select id="cl-context-sel" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px;font:inherit;font-size:12px;background:#fff;cursor:pointer" title="🔓 Без проекта — данные в общем LS. 🌡 Локальный подбор холода — отдельный sketch-проект только для cooling. 💼 Проект с подборами холода — уже содержит cooling-данные. 📁 Прочие — ЭЛ/СКС-проекты, добавите cooling-данные если выберете.">${optsHtml}</select>
+    <label style="display:block;font-size:11px;font-weight:600;color:#475569;margin-bottom:3px" title="Контекст хранения подборов. Выберите проект для привязки или «Разовый подбор» — данные в общем LocalStorage.">КОНТЕКСТ ПОДБОРА</label>
+    <select id="cl-context-sel" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px;font:inherit;font-size:12px;background:#fff;cursor:pointer" title="🔓 Разовый подбор — данные в общем LS, не привязаны к проекту. 📁 Проект — подбор сохраняется в выбранном проекте.">${optsHtml}</select>
     ${_standalone && projects.length
       ? `<button type="button" id="cl-save-to-project" style="display:block;width:100%;margin-top:6px;padding:5px 8px;font-size:11.5px;background:#1e40af;color:#fff;border:none;border-radius:3px;cursor:pointer" title="Скопировать активный подбор в выбранный проект. После сохранения вы можете перейти в проект и продолжить работу там.">📤 Сохранить активный подбор в проект</button>`
       : ''}
@@ -707,28 +693,6 @@ function renderStorageMode() {
       location.href = url.toString();
       return;
     }
-    if (v === '__new_local__') {
-      // Возвращаем select обратно к текущему значению на случай отмены prompt'а
-      sel.value = currentVal;
-      const name = await clPrompt('Название локального подбора холода', `Подбор холода ${new Date().toLocaleDateString('ru-RU')}`);
-      if (!name || !name.trim()) return;
-      try {
-        const newProj = createProject({
-          name: name.trim(),
-          description: 'Локальный подбор холодильных систем (создан из модуля Cooling, не привязан к ЭЛ-проекту).',
-          kind: 'sketch',
-          ownerModule: 'cooling',
-          status: 'draft',
-        });
-        const url = new URL(location.href);
-        url.searchParams.delete('standalone');
-        url.searchParams.set('pid', newProj.id);
-        location.href = url.toString();
-      } catch (e) {
-        util.toast(`Не удалось создать локальный подбор: ${e.message}`, 'err');
-      }
-      return;
-    }
     // Обычный проект
     const url = new URL(location.href);
     url.searchParams.delete('standalone');
@@ -739,8 +703,6 @@ function renderStorageMode() {
   if (btn) btn.addEventListener('click', saveActiveSelectionToProject);
 }
 
-/* v0.60.20: проверить, есть ли у проекта данные cooling-модуля в LS.
-   Используется для группировки picker'а контекста подбора. */
 /* v0.60.32: 1-кликовая загрузка meteo-датасета через Open-Meteo
    по координатам проекта. Используется в renderMeteoStatus при пустом
    списке датасетов.
@@ -774,21 +736,6 @@ async function autoFetchMeteoForProject(projLoc, years = 1) {
   } finally {
     allBtns.forEach(b => { b.disabled = false; b.style.opacity = ''; b.style.cursor = ''; });
   }
-}
-
-function projectHasCoolingData(pid) {
-  if (!pid) return false;
-  const prefix = `raschet.project.${pid}.cooling.`;
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith(prefix)) {
-        const v = localStorage.getItem(k);
-        if (v && v !== 'null' && v !== '[]' && v !== '""') return true;
-      }
-    }
-  } catch {}
-  return false;
 }
 
 /* v0.59.997: копирование активного standalone-подбора в выбранный проект.

@@ -4,6 +4,31 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.347', date: '2026-05-06', items: [
+      '🧊 <b>Cooling picker контекста — упрощён до «Проекты» / «Разовый подбор»</b>. По репорту Пользователя 2026-05-06: «здесь не должно быть надписей типа С подбором холода и без подбора холода, просто Проекты и разовый подбор, больше ни чего, локальные проекты, которые сформированы в СКС, не должны здесь отображаться».',
+      '<b>Удалено</b>:',
+      '• Группа «🌡 Локальные подборы холода» (sketch:cooling)',
+      '• Группа «💼 Проекты с подборами холода» (LS already has cooling-data)',
+      '• Группа «📁 Прочие проекты (без cooling)»',
+      '• Опция «➕ Создать новый локальный подбор холода…»',
+      '• Иконка «🔓» и приставка «(разовый)» у standalone-опции',
+      '<b>Осталось</b>:',
+      '• Опция <b>🔓 Разовый подбор</b> (standalone, общий LS)',
+      '• Optgroup <b>«Проекты»</b> с full-проектами (kind===\'full\'). Sketch-проекты ВСЕХ типов (СКС, cooling, и прочие) — больше не показываются.',
+      'Files: <code>cooling/cooling.js</code> (renderStorageMode упрощён + удалён __new_local__ handler + удалена unused projectHasCoolingData() + убран createProject из imports).',
+    ] },
+    { version: '0.60.346', date: '2026-05-06', items: [
+      '🌬 <b>Modal-button для outdoor-блоков кондиционера + .OU1/.OU2 tag</b>. По запросу Пользователя 2026-05-06: «откажемся от отдельного отображения наружного блока. В сам тип потребителя кондиционер... ставим кнопку на модалку. Наружный блок, и в модалке отображаем точно такую же форму как для всех потребителей».',
+      '<b>UI в инспекторе кондиционера</b>:',
+      '• Selector «Количество наружных блоков»: 1 (стандарт сплит) / 2 (двухконтурный VRF)',
+      '• Кнопки «🔧 AC.tag.OU1» / «🔧 AC.tag.OU2» — открывают consumer-modal для outdoor-узла',
+      '• Outdoor-tag = <code>AC.tag + ".OU" + index</code> (пример: Z1.L7.OU1, Z1.L7.OU2)',
+      '<b>State model</b>: <code>n.linkedOutdoorIds[]</code> — массив id outdoor-узлов (legacy <code>linkedOutdoorId</code> = первый). Outdoor — full consumer-узел с <code>embedAsOutdoor:true</code>.',
+      '<b>Скрытие на схеме</b>: <code>isOnCurrentPage</code> в state.js возвращает false для <code>embedAsOutdoor</code> — outdoor не отображается отдельным узлом на схематике.',
+      '<b>Видимость остаётся</b> в плане, реестре, BOM, кабельном журнале — обходы там не используют isOnCurrentPage. Outdoor — это полноценный consumer-узел с самостоятельной carрткой (мощность, К<sub>и</sub>, cos φ, фазы, ATS).',
+      '<b>Модалка outdoor</b>: <code>openConsumerParamsModal(ouNode)</code> — та же форма что для любого consumer\'а. Параметры кабеля cond→outdoor (длина, сечение) — через инспектор conn-связи как обычно.',
+      'Files: <code>js/engine/inspector/consumer.js</code> (button + handler + create-outdoor logic), <code>js/engine/state.js</code> (isOnCurrentPage skip embedAsOutdoor).',
+    ] },
     { version: '0.60.345', date: '2026-05-06', items: [
       '🗑 <b>Удалён режим «Сборка» (kit-container)</b>. По репорту Пользователя 2026-05-06: «не сработала твоя идея, связей между элементами нет, подключение не работает, лучше как я описал» + «группу как Сборка удаляем из программы».',
       '<b>Удалено в инспекторе контейнера</b>:',

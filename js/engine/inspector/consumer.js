@@ -667,16 +667,40 @@ export function openConsumerParamsModal(n) {
   }
 
   if (!isOutdoor && (n.consumerSubtype === 'conditioner')) {
+    // v0.60.345 (по запросу Пользователя 2026-05-06: «вместо мощности наружного
+    // блока ставим кнопку на модалку. Наружный блок, и в модалке отображаем
+    // точно такую же форму как для всех потребителей»):
+    // Сами поля power+cosPhi outdoor больше не редактируются inline. Outdoor —
+    // отдельный consumer-узел с tag "AC.tag.OU1" / ".OU2", доступ через кнопку
+    // которая открывает модалку consumer-form для outdoor.
     h.push('<details class="inspector-section" open>');
-    h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Наружный блок</summary>');
-    h.push(field('Мощность наружного блока, kW', `<input type="number" id="cp-outdoorKw" min="0" step="0.1" value="${n.outdoorKw || 0.3}">`));
-    h.push(field('cos φ наружного блока', `<input type="number" id="cp-outdoorCosPhi" min="0.1" max="1" step="0.01" value="${n.outdoorCosPhi || 0.85}">`));
-    if (n.linkedOutdoorId) {
-      const outdoor = state.nodes.get(n.linkedOutdoorId);
-      if (outdoor) {
-        h.push(`<div class="muted" style="font-size:11px">Наружный блок: ${escHtml(effectiveTag(outdoor))} ${escHtml(outdoor.name)}</div>`);
-      }
+    h.push('<summary style="cursor:pointer;font-size:12px;font-weight:600;padding:4px 0">Наружные блоки</summary>');
+    // v0.60.345: outdoorCount — 1 или 2 (для двухконтурных VRF / dual-circuit DX)
+    const _ouCount = Math.max(1, Math.min(2, Number(n.outdoorCount) || 1));
+    h.push(field('Количество наружных блоков', `<select id="cp-outdoorCount">
+      <option value="1"${_ouCount === 1 ? ' selected' : ''}>1 (стандарт сплит)</option>
+      <option value="2"${_ouCount === 2 ? ' selected' : ''}>2 (двухконтурный)</option>
+    </select>`));
+    // Список существующих outdoor-узлов, привязанных через linkedOutdoorIds[].
+    const _ouIds = Array.isArray(n.linkedOutdoorIds) ? n.linkedOutdoorIds
+      : (n.linkedOutdoorId ? [n.linkedOutdoorId] : []);
+    h.push('<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">');
+    for (let i = 0; i < _ouCount; i++) {
+      const _ouId = _ouIds[i];
+      const _ouNode = _ouId ? state.nodes.get(_ouId) : null;
+      const _ouTag = _ouNode ? effectiveTag(_ouNode) : `${effectiveTag(n)}.OU${i + 1}`;
+      const _ouKw = _ouNode ? (Number(_ouNode.demandKw) || 0) : (Number(n.outdoorKw) || 0.3);
+      h.push(`<button type="button" class="cp-outdoor-open-btn" data-ou-idx="${i}" style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f0f9ff;border:1px solid #0ea5e9;border-radius:5px;cursor:pointer;font:inherit;font-size:12px;text-align:left;color:#0c4a6e">
+        <span style="font-size:16px">🔧</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600">${escHtml(_ouTag)}</div>
+          <div style="font-size:10.5px;color:#075985;margin-top:1px">${_ouNode ? `${_ouKw} кВт · ${_ouNode.name || 'Наруж. блок'}` : 'Создать карточку'}</div>
+        </div>
+        <span style="color:#0ea5e9">→</span>
+      </button>`);
     }
+    h.push('</div>');
+    h.push('<div class="muted" style="font-size:10.5px;margin-top:6px;line-height:1.5">Карточка наружного блока — полная consumer-форма (мощность, К<sub>и</sub>, cos φ, фазы, ATS) + кабель cond→outdoor (длина, сечение). На схеме не отображается отдельным узлом, но появляется в плане, реестре и BOM.</div>');
     h.push('</details>');
   }
 
@@ -1068,6 +1092,45 @@ export function openConsumerParamsModal(n) {
       flash('Каталог открыт в новой вкладке — отфильтруйте и выберите изделие.');
     });
   }
+
+  // v0.60.345: button-handler для outdoor-блоков. Открывает consumer-modal
+  // для существующего outdoor-узла или создаёт новый.
+  document.querySelectorAll('.cp-outdoor-open-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.getAttribute('data-ou-idx')) || 0;
+      const ouIds = Array.isArray(n.linkedOutdoorIds) ? n.linkedOutdoorIds.slice()
+        : (n.linkedOutdoorId ? [n.linkedOutdoorId] : []);
+      let ouNode = ouIds[idx] ? state.nodes.get(ouIds[idx]) : null;
+      if (!ouNode) {
+        // Создаём новый outdoor-узел с тегом AC.tag.OUx.
+        const acTag = (n.tag || '').trim() || effectiveTag(n);
+        const ouTag = `${acTag}.OU${idx + 1}`;
+        const newId = uid();
+        ouNode = {
+          id: newId, type: 'consumer',
+          x: n.x, y: n.y + NODE_H + 80 + idx * 40,
+          ...(window.DEFAULTS && window.DEFAULTS.consumer ? window.DEFAULTS.consumer() : {}),
+          tag: ouTag,
+          name: 'Наруж. блок',
+          consumerSubtype: 'outdoor_unit',
+          demandKw: Number(n.outdoorKw) || 0.6,
+          cosPhi: Number(n.outdoorCosPhi) || 0.85,
+          linkedIndoorId: n.id,
+          inputs: 1, outputs: 0, count: 1,
+          // v0.60.345: флаг embed — не отображать на схеме как отдельный узел.
+          embedAsOutdoor: true,
+          pageIds: Array.isArray(n.pageIds) ? n.pageIds.slice() : (state.currentPageId ? [state.currentPageId] : []),
+        };
+        state.nodes.set(newId, ouNode);
+        ouIds[idx] = newId;
+        n.linkedOutdoorIds = ouIds;
+        n.linkedOutdoorId = ouIds[0]; // legacy alias for first outdoor
+        snapshot('outdoor-create:' + n.id + ':OU' + (idx + 1));
+        notifyChange();
+      }
+      openConsumerParamsModal(ouNode);
+    });
+  });
 
   const saveBtn = document.getElementById('cp-save-catalog');
   if (saveBtn) {
