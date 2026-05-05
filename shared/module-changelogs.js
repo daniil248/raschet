@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.250', date: '2026-05-05', items: [
+      '🧩 <b>Kit-container Phase 1: schema + auto-mark internal conns + BFS skip</b>. По запросу Пользователя 2026-05-05 «нужно сделать тоже самое только с потребителем типа кондиционер + наружный блок».',
+      '• На <code>consumer-container</code> добавлен флаг <code>kitMode: boolean</code> — режим «сборка» вместо «группа».',
+      '• Topology переменная: один cond (water-cooled, без outdoor) / cond+1 outdoor / cond+2 outdoor (двухконтурные) — любая комбинация slot-узлов с conns между ними.',
+      '• Новая функция <code>_markKitInternalConns()</code> в recalc — автоматически маркирует conns между slot-членами одного kit-mode container как <code>_isKitInternal</code> (similar to <code>_isInternalIntegrated</code> для UPS).',
+      '• Все три BFS-walk (<code>_bfsDownstreamWithActiveTies</code>, <code>_walkBoth</code>, <code>_walkConsumers</code>) пропускают kit-internal conns. Sub-loads уже учтены через consumerCalcDemandKw kit-контейнера, чтобы не считать дважды.',
+      '• Существующие схемы не затронуты — kitMode default false. Phase 2 (UI toggle + кнопки «+ пара») и Phase 3 (cable journal expansion + compact render) — отдельными версиями.',
+      'Файл: <code>js/engine/recalc.js</code>.',
+    ] },
     { version: '0.60.249', date: '2026-05-05', items: [
       '🌐 <b>Sibling-detection: разные zones — НЕ siblings</b>. По уточнению Пользователя 2026-05-05 «у нас есть полное обозначение и оно включает зоны, панелей PDC1 но они в разных зонах».',
       '• Корень: в TBC-проекте 8 PDC панелей (PDC1-PDC8) разбросаны по разным зонам, но cross-zone shared consumer (АГПТ/слаботочка для резервирования) приводил к Jaccard ≥0.7 в некоторых случаях, или старый min-ratio ≥0.5 склеивал ВСЕ 25 в одну группу.',

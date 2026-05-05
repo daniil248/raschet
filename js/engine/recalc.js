@@ -447,6 +447,9 @@ function _bfsDownstreamWithActiveTies(startId, activeTieKeys) {
       for (const c of state.conns.values()) {
         if (c.from.nodeId !== curId) continue;
         if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+        // v0.60.250: skip kit-internal (cond↔outdoor внутри сборки —
+        // sub-loads уже учтены через consumerCalcDemandKw kit-контейнера).
+        if (c._isKitInternal) continue;
         const to = state.nodes.get(c.to.nodeId);
         if (!to) continue;
         if (to.type !== 'consumer' && to.type !== 'consumer-container') continue;
@@ -801,6 +804,28 @@ function _markInternalIntegratedConns() {
   }
 }
 
+// v0.60.250 (по запросу Пользователя 2026-05-05 — kit-container с парами
+// типа «Кондиционер + Наружный блок»): пометить conns между slot-членами
+// одного kit-mode consumer-container как _isKitInternal. Эти conns — это
+// «внутренние» кабели сборки (cond → outdoor) и НЕ должны учитываться
+// в walks как переход к downstream sub-consumer (двойной счёт), но могут
+// показываться в кабельном журнале как отдельные строки kit-сборки.
+function _markKitInternalConns() {
+  const memberToKit = new Map();
+  for (const n of state.nodes.values()) {
+    if (n.type !== 'consumer-container' || !n.kitMode) continue;
+    if (!Array.isArray(n.slots)) continue;
+    for (const s of n.slots) {
+      if (s && s.kind === 'linked' && s.nodeId) memberToKit.set(s.nodeId, n.id);
+    }
+  }
+  for (const c of state.conns.values()) {
+    const fromKit = memberToKit.get(c.from.nodeId);
+    const toKit   = memberToKit.get(c.to.nodeId);
+    c._isKitInternal = !!(fromKit && toKit && fromKit === toKit);
+  }
+}
+
 function recalc() {
   // Сброс кэша maxDownstreamLoad на каждый проход — топология ties / tieStates
   // могла измениться с прошлого recalc.
@@ -815,6 +840,7 @@ function recalc() {
   } catch {}
 
   _markInternalIntegratedConns();
+  _markKitInternalConns();
 
   // Нормализация мощности модульного ИБП: единственный источник истины —
   // modulesActive + redundancyScheme + moduleKwRated + frameKw.
@@ -3164,6 +3190,8 @@ function recalc() {
             const _curIsConsumer = _curNode && _curNode.type === 'consumer';
             for (const c2 of state.conns.values()) {
               if (c2.from.nodeId !== cur || c2.lineMode === 'damaged' || c2.lineMode === 'disabled') continue;
+              // v0.60.250: skip kit-internal conns.
+              if (c2._isKitInternal) continue;
               const to = state.nodes.get(c2.to.nodeId);
               if (!to) continue;
               // v0.60.247: restrict для consumer-исходящих.
@@ -3541,6 +3569,8 @@ function recalc() {
           // v0.60.236: пропускаем internal integrated conns (фабричные
           // шины внутри ИБП Kehua MR33 между PDM-IT/PDM-AC/UPS-core).
           if (c._isInternalIntegrated) continue;
+          // v0.60.250: skip kit-internal (cond↔outdoor внутри сборки).
+          if (c._isKitInternal) continue;
           const to = state.nodes.get(c.to.nodeId);
           if (!to) continue;
           // v0.60.247: restrict для consumer-исходящих.
