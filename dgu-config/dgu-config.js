@@ -276,6 +276,21 @@ function readUrlParams() {
     const v = Number(qp.get('capacityKw'));
     if (Number.isFinite(v)) { _state.loadKw = v; _stateMeta.loadKw = 'url'; }
   }
+  // v0.60.310: kVA и cosPhi из схемы — справочно для подбора ДГУ.
+  if (qp.get('capacityKva')) {
+    const v = Number(qp.get('capacityKva'));
+    if (Number.isFinite(v)) _state.loadKva = v;
+  }
+  if (qp.get('cosPhi')) {
+    const v = Number(qp.get('cosPhi'));
+    if (Number.isFinite(v) && v > 0 && v <= 1) _state.cosPhiFromScheme = v;
+  }
+  // v0.60.309: breakdown — JSON с источниками reqKw для отображения в hint.
+  if (qp.get('breakdown')) {
+    try {
+      _state._reqBreakdown = JSON.parse(qp.get('breakdown'));
+    } catch (e) { _state._reqBreakdown = null; }
+  }
   if (qp.get('mode')) _state.mode = qp.get('mode');
   if (qp.get('redundancy')) _state.redundancy = qp.get('redundancy');
   if (qp.get('altitude')) {
@@ -735,9 +750,43 @@ function _lockLoadKwToSchema() {
     hint.style.cssText = 'font-size:11px;margin-top:4px;color:#1e40af;line-height:1.4';
     inp.parentElement?.appendChild(hint);
   }
-  hint.innerHTML = `🔗 <b>Из схемы:</b> ${_state.loadKw} кВт (требуемая мощность узла).
+  // v0.60.309-310: разбор формулы. Конструктор передаёт TREBUEMOE
+  // (max из downstream demand), а не уже стоящий nameplate. cos φ и кВА —
+  // дополнительно для критериев подбора (S [kVA] = P [kW] / cos φ).
+  let breakdownHtml = '';
+  const bd = _state._reqBreakdown;
+  if (bd && (bd.maxLoadKw != null || bd.uncapped != null || bd.cosPhi != null)) {
+    const items = [];
+    if (Number.isFinite(bd.maxLoadKw) && bd.maxLoadKw > 0) {
+      const isMax = bd.maxLoadKw === _state.loadKw;
+      items.push(`• <b>Макс. расчётная нагрузка узла</b> (downstream consumers ИБП/PDU/IT): <b>${bd.maxLoadKw}</b> кВт${isMax ? ' ●' : ''}`);
+    }
+    if (Number.isFinite(bd.uncapped) && bd.uncapped > 0 && bd.uncapped !== bd.maxLoadKw) {
+      const isMax = bd.uncapped === _state.loadKw;
+      items.push(`• <b>Uncapped raw demand</b> (без physical limit ДГУ — что хотят downstream consumers): <b>${bd.uncapped}</b> кВт${isMax ? ' ●' : ''}`);
+    }
+    if (Number.isFinite(bd.cosPhi) && bd.cosPhi > 0 && Number.isFinite(bd.reqKva) && bd.reqKva > 0) {
+      items.push(`• <b>cos φ узла</b>: ${bd.cosPhi} → <b>S = ${bd.reqKva} кВА</b> (для подбора Snom ДГУ)`);
+    }
+    if (items.length) {
+      breakdownHtml = `<details style="margin-top:6px;font-size:11px;color:#1e3a8a;line-height:1.6">
+        <summary style="cursor:pointer;font-weight:500" title="Как Конструктор схем рассчитал требуемую мощность ДГУ">📐 как получено ${_state.loadKw} кВт?</summary>
+        <div style="margin:4px 0 0 10px;padding:6px 10px;background:#f8fafc;border-left:2px solid #cbd5e1;border-radius:0 3px 3px 0">
+          Конструктор передал ТРЕБУЕМУЮ мощность (downstream demand), не «что уже стоит»:<br>
+          ${items.join('<br>')}<br>
+          <span style="color:#64748b;font-size:10.5px">● — выбранное значение</span><br>
+          <span style="color:#64748b;font-size:10.5px">Расчёт ДГУ — это <b>что нужно</b>, а не «сколько уже есть». Если ДГУ был раньше задан с большим nameplate — это не должно фиксировать выбор. Конфигуратор подбирает по реальной нагрузке + margin + load factor + climate derate.</span>
+        </div>
+      </details>`;
+    }
+  }
+  // Дополнительная сводка кВА справочно рядом с кВт (для подбора Snom ДГУ).
+  const kvaInline = (Number.isFinite(_state.loadKva) && _state.loadKva > 0)
+    ? ` <span class="muted" style="font-size:11px" title="S полная (кВА) для подбора Snom ДГУ. Расчёт: P [кВт] / cos φ узла">· ${_state.loadKva} кВА${Number.isFinite(_state.cosPhiFromScheme) ? ` @ cos φ ${_state.cosPhiFromScheme}` : ''}</span>`
+    : '';
+  hint.innerHTML = `🔗 <b>Из схемы:</b> ${_state.loadKw} кВт${kvaInline} (требуемая мощность узла).
     <button type="button" id="dg-loadKw-unlock" style="margin-left:6px;padding:1px 8px;font-size:11px;background:#fff;border:1px solid #cbd5e1;border-radius:3px;cursor:pointer"
-      title="Перейти в ручной режим: можно ввести любое значение для эксперимента. Подбор будет по введённой цифре, а не по схеме.">✏ ручной режим</button>`;
+      title="Перейти в ручной режим: можно ввести любое значение для эксперимента. Подбор будет по введённой цифре, а не по схеме.">✏ ручной режим</button>${breakdownHtml}`;
   document.getElementById('dg-loadKw-unlock')?.addEventListener('click', _unlockLoadKw);
 }
 function _unlockLoadKw() {

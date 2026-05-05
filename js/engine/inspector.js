@@ -3111,21 +3111,34 @@ export function renderGeneralPanel(n) {
         const pid = _activeProjectId();
         if (pid) qp.set('project', pid);
       } catch {}
-      // v0.60.212 (по репорту Пользователя 2026-05-04 «максимальная нагрузка
-      // 72.7 кВт, а в конфигуратор передается 160 кВт»):
-      // _maxLoadKw для генератора с triggerGroups сценариями = max-scenario
-      // (что покрывает гарантированно при выборочном запуске нагрузок).
-      // Но пользователь обычно хочет, чтобы ДГУ был размером со ВСЮ
-      // возможную нагрузку, а не только выбранного сценария. Берём MAX
-      // из (_maxLoadKw, capacityKw, _maxDownstreamUncapped) — учитываем
-      // все три источника. capacityKw = paper rating (что пользователь
-      // выставил), _maxDownstreamUncapped = uncapped raw demand (если есть).
-      const reqKw = Math.max(
-        Number(n._maxLoadKw) || 0,
-        Number(n._maxDownstreamUncapped) || 0,
-        Number(n.capacityKw) || 0,
-      );
+      // v0.60.309 (по уточнению Пользователя 2026-05-06: «расчет он для того
+      // и расчет, что мы задаём сколько нужно, а не сколько есть»):
+      // Конфигуратор подбирает по ТРЕБУЕМОЙ (downstream) нагрузке, а не по
+      // ранее установленному nameplate ДГУ. Раньше брался MAX(maxLoadKw,
+      // n.capacityKw, _maxDownstreamUncapped) — это «фиксировало» прежний
+      // выбор и не давало уменьшить размер ДГУ при перепроектировании.
+      // Теперь — только из реального downstream demand.
+      const _maxLoadKw = Number(n._maxLoadKw) || 0;
+      const _uncapped = Number(n._maxDownstreamUncapped) || 0;
+      const reqKw = Math.max(_maxLoadKw, _uncapped);
       if (reqKw > 0) qp.set('capacityKw', String(Math.ceil(reqKw)));
+      // v0.60.310 (по уточнению Пользователя 2026-05-06: «но при этом забирай
+      // так же и кВА, так как это так же важно для подбора ДГУ»): передаём
+      // также S (полную мощность в кВА). cos φ узла-генератора берётся из
+      // n._cosPhi (downstream weighted), fallback — n.cosPhi (паспорт ДГУ),
+      // далее GLOBAL.defaultCosPhi. Snom (кВА) = P_кВт / cos φ.
+      const _cosPhiUsed = Number(n._cosPhi) || Number(n.cosPhi) || (window.__GLOBAL_cosPhi || 0.92);
+      const reqKva = _cosPhiUsed > 0 ? reqKw / _cosPhiUsed : reqKw / 0.92;
+      if (reqKva > 0) qp.set('capacityKva', String(Math.ceil(reqKva)));
+      qp.set('cosPhi', String(_cosPhiUsed.toFixed(3)));
+      // Breakdown — для отображения «📐 как получено» в dgu-config.
+      const breakdown = JSON.stringify({
+        maxLoadKw: Math.round(_maxLoadKw * 10) / 10,
+        uncapped: Math.round(_uncapped * 10) / 10,
+        cosPhi: Math.round(_cosPhiUsed * 1000) / 1000,
+        reqKva: Math.round(reqKva * 10) / 10,
+      });
+      qp.set('breakdown', breakdown);
       // Климат: из активного проекта project.location.{altitudeM, ambientTC,
       // humidityPct}.
       try {
