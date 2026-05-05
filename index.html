@@ -460,6 +460,7 @@
                 <option value="channel">Канал</option>
               </select>
               <button id="pal-registry-add" type="button" title="Создать элемент без размещения">+ Создать</button>
+              <button id="pal-registry-show-all" type="button" title="Отладка: показать ВСЕ объекты state.nodes без фильтров (включая скрытые outdoor-блоки, members контейнеров, узлы без pageIds). Полезно если кажется, что есть мусорные/невидимые объекты, мешающие размещению." style="flex:1 1 100%;background:#fef3c7;color:#92400e;border:1px solid #fbbf24">🔍 Показать ВСЕ объекты</button>
             </div>
             <div id="pal-registry-list"></div>
             <div class="muted" id="pal-registry-empty" style="font-size:11px;padding:6px;text-align:center" hidden>
@@ -1093,6 +1094,23 @@
       <div class="modal-foot">
         <button class="modal-close">Закрыть</button>
         <button id="consumer-params-apply" class="primary">Применить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- v0.60.358: отладочная модалка «Показать ВСЕ объекты» — без фильтров,
+       прямой dump state.nodes. Помогает обнаружить «мусорные» / скрытые
+       узлы (embedAsOutdoor, без pageIds, в container, без линий), которые
+       мешают размещению. -->
+  <div id="modal-debug-all-nodes" class="modal hidden">
+    <div class="modal-box modal-wide">
+      <div class="modal-head">
+        <h2>🔍 Все объекты проекта (debug)</h2>
+        <button class="modal-close" aria-label="Закрыть">×</button>
+      </div>
+      <div class="modal-body" id="debug-all-nodes-body"></div>
+      <div class="modal-foot">
+        <button class="modal-close">Закрыть</button>
       </div>
     </div>
   </div>

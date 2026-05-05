@@ -924,6 +924,140 @@ export function initInteraction() {
     });
   }
 
+  // v0.60.358 (по запросу Пользователя 2026-05-06: «сделай кнопку (временно)
+  // отобразить все объекты, так как мне кажется что есть куча объектов
+  // которые не отображаются но которые мешают разместить объекты»):
+  // отладочная кнопка — открывает modal со ВСЕМИ узлами state.nodes без
+  // фильтров. Каждая строка показывает ключевые поля + кнопку удалить.
+  const showAllBtn = document.getElementById('pal-registry-show-all');
+  if (showAllBtn) {
+    const _esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    const _renderDebugTable = () => {
+      const body = document.getElementById('debug-all-nodes-body');
+      if (!body) return;
+      const all = Array.from(state.nodes.values());
+      // Sort: hidden/orphan first (most suspicious), then by type+tag
+      const _isOrphan = (n) => {
+        const noPage = !Array.isArray(n.pageIds) || n.pageIds.length === 0;
+        const inContainer = n.containerId && state.nodes.get(n.containerId)?.type === 'consumer-container';
+        const hidden = !!n.embedAsOutdoor;
+        return noPage && !inContainer && !hidden && !n.linkedAlias;
+      };
+      all.sort((a, b) => {
+        const ao = _isOrphan(a) ? 0 : 1;
+        const bo = _isOrphan(b) ? 0 : 1;
+        if (ao !== bo) return ao - bo;
+        return ((a.type || '') + (a.tag || '')).localeCompare((b.type || '') + (b.tag || ''));
+      });
+      // Count connections per node
+      const connsBy = new Map();
+      for (const c of state.conns.values()) {
+        const f = c.from?.nodeId, t = c.to?.nodeId;
+        if (f) connsBy.set(f, (connsBy.get(f) || 0) + 1);
+        if (t) connsBy.set(t, (connsBy.get(t) || 0) + 1);
+      }
+      const rows = all.map(n => {
+        const noPage = !Array.isArray(n.pageIds) || n.pageIds.length === 0;
+        const inContainer = !!n.containerId;
+        const hidden = !!n.embedAsOutdoor;
+        const orphan = _isOrphan(n);
+        const flags = [];
+        if (hidden) flags.push('<span title="Скрыт (embedAsOutdoor — наружный блок кондиционера, не виден на схеме)" style="background:#dbeafe;color:#1e40af;padding:1px 5px;border-radius:3px;font-size:10px">embed-OU</span>');
+        if (inContainer) flags.push('<span title="Внутри группы-контейнера" style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px;font-size:10px">in-group</span>');
+        if (n.linkedAlias) flags.push('<span title="Алиас на другой узел" style="background:#f3e8ff;color:#6b21a8;padding:1px 5px;border-radius:3px;font-size:10px">alias</span>');
+        if (noPage && !inContainer && !hidden) flags.push('<span title="Без страниц И не в группе И не скрыт — потенциально orphan" style="background:#fee2e2;color:#991b1b;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600">⚠ orphan</span>');
+        const cc = connsBy.get(n.id) || 0;
+        const pageCnt = Array.isArray(n.pageIds) ? n.pageIds.length : 0;
+        return `<tr style="${orphan ? 'background:#fef2f2' : ''}">
+          <td style="padding:3px 6px;font-family:monospace;font-size:10px;color:#64748b">${_esc(n.id)}</td>
+          <td style="padding:3px 6px;font-size:11px"><b>${_esc(n.type || '')}</b>${n.consumerSubtype ? ' · <span style="color:#64748b">' + _esc(n.consumerSubtype) + '</span>' : ''}</td>
+          <td style="padding:3px 6px;font-size:11px;font-weight:600">${_esc(n.tag || '—')}</td>
+          <td style="padding:3px 6px;font-size:11px">${_esc(n.name || '')}</td>
+          <td style="padding:3px 6px;font-size:11px;text-align:center" title="Страниц: ${pageCnt}">${pageCnt}</td>
+          <td style="padding:3px 6px;font-size:11px;text-align:center" title="Связей: ${cc}">${cc}</td>
+          <td style="padding:3px 6px;font-size:11px;color:#64748b">${Math.round(n.x || 0)}, ${Math.round(n.y || 0)}</td>
+          <td style="padding:3px 6px">${flags.join(' ')}</td>
+          <td style="padding:3px 6px;text-align:right">
+            <button type="button" class="dbg-node-select" data-nid="${_esc(n.id)}" style="font-size:10px;padding:2px 6px;margin-right:3px;border:1px solid #2563eb;background:#dbeafe;color:#1e40af;border-radius:3px;cursor:pointer" title="Выделить узел в инспекторе">🔎</button>
+            <button type="button" class="dbg-node-del" data-nid="${_esc(n.id)}" style="font-size:10px;padding:2px 6px;border:1px solid #ef4444;background:#fff;color:#b91c1c;border-radius:3px;cursor:pointer" title="Удалить узел из state (без подтверждения!)">✕</button>
+          </td>
+        </tr>`;
+      }).join('');
+      const orphanCount = all.filter(_isOrphan).length;
+      body.innerHTML = `
+        <div style="padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e0e7ee;font-size:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+          <span><b>Всего узлов:</b> ${all.length}</span>
+          <span style="color:#b91c1c"><b>⚠ Orphan:</b> ${orphanCount}</span>
+          <span style="color:#64748b">(orphan = без pageIds + не в группе + не скрыт; такие могут «висеть» в state без визуала)</span>
+        </div>
+        <div style="overflow:auto;max-height:60vh">
+          <table style="width:100%;border-collapse:collapse;font:11px/1.4 system-ui">
+            <thead style="position:sticky;top:0;background:#f1f5f9;z-index:1">
+              <tr>
+                <th style="padding:5px 6px;text-align:left;border-bottom:1px solid #cbd5e1">id</th>
+                <th style="padding:5px 6px;text-align:left;border-bottom:1px solid #cbd5e1">type</th>
+                <th style="padding:5px 6px;text-align:left;border-bottom:1px solid #cbd5e1">tag</th>
+                <th style="padding:5px 6px;text-align:left;border-bottom:1px solid #cbd5e1">name</th>
+                <th style="padding:5px 6px;text-align:center;border-bottom:1px solid #cbd5e1" title="Количество страниц где узел размещён">📄</th>
+                <th style="padding:5px 6px;text-align:center;border-bottom:1px solid #cbd5e1" title="Количество связей (conns)">🔌</th>
+                <th style="padding:5px 6px;text-align:left;border-bottom:1px solid #cbd5e1">x, y</th>
+                <th style="padding:5px 6px;text-align:left;border-bottom:1px solid #cbd5e1">флаги</th>
+                <th style="padding:5px 6px;text-align:right;border-bottom:1px solid #cbd5e1">действия</th>
+              </tr>
+            </thead>
+            <tbody>${rows || '<tr><td colspan="9" style="padding:24px;text-align:center;color:#64748b">Нет узлов</td></tr>'}</tbody>
+          </table>
+        </div>
+      `;
+      // Wire actions
+      body.querySelectorAll('.dbg-node-select').forEach(b => {
+        b.addEventListener('click', () => {
+          const nid = b.getAttribute('data-nid');
+          if (!nid) return;
+          state.selectedKind = 'node';
+          state.selectedId = nid;
+          render();
+          // Scroll to selected
+          try { window.Raschet?.renderInspector?.(); } catch {}
+          flash('Узел выделен в инспекторе');
+        });
+      });
+      body.querySelectorAll('.dbg-node-del').forEach(b => {
+        b.addEventListener('click', () => {
+          const nid = b.getAttribute('data-nid');
+          if (!nid) return;
+          const node = state.nodes.get(nid);
+          if (!node) return;
+          snapshot('debug-delete:' + nid);
+          // Удалить связанные conns
+          for (const c of Array.from(state.conns.values())) {
+            if (c.from?.nodeId === nid || c.to?.nodeId === nid) state.conns.delete(c.id);
+          }
+          // Удалить узел
+          state.nodes.delete(nid);
+          // Очистить ссылки от других узлов
+          for (const m of state.nodes.values()) {
+            if (m.containerId === nid) delete m.containerId;
+            if (m.linkedIndoorId === nid) delete m.linkedIndoorId;
+            if (m.linkedAlias === nid) delete m.linkedAlias;
+            if (Array.isArray(m.linkedOutdoorIds)) m.linkedOutdoorIds = m.linkedOutdoorIds.filter(x => x !== nid);
+            if (m.linkedOutdoorId === nid) delete m.linkedOutdoorId;
+            if (Array.isArray(m.slots)) m.slots = m.slots.filter(s => !(s && s.kind === 'linked' && s.nodeId === nid));
+          }
+          notifyChange();
+          render();
+          _renderDebugTable(); // re-render
+        });
+      });
+    };
+    showAllBtn.addEventListener('click', () => {
+      const modal = document.getElementById('modal-debug-all-nodes');
+      if (!modal) { flash('Modal не найдена', 'error'); return; }
+      _renderDebugTable();
+      modal.classList.remove('hidden');
+    });
+  }
+
   // v0.59.143: patch-link для инфо-портов. Mousedown (capture) по кружку-
   // коннектору (.sys-port-connector) — первый клик ставит sysPending, второй
   // клик по другому кружку той же системы создаёт patch-link. Esc — отмена.

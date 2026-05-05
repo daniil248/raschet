@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.358', date: '2026-05-06', items: [
+      '🔍 <b>Debug-кнопка «Показать ВСЕ объекты»</b> в Реестре. По запросу Пользователя 2026-05-06: «сделай кнопку (временно) отобразить все объекты, так как мне кажется что есть куча объектов которые не отображаются но которые мешают разместить объекты».',
+      '<b>Где</b>: жёлтая кнопка <code>🔍 Показать ВСЕ объекты</code> в боковой панели «Реестр» (под селектором типа + кнопкой «Создать»).',
+      '<b>Что показывает</b>: модалка с таблицей <b>каждого узла</b> в <code>state.nodes</code> без фильтров — id, type, tag, name, количество страниц, количество связей, координаты, флаги (embed-OU / in-group / alias / ⚠ orphan).',
+      '<b>Orphan-detection</b>: «orphan» = pageIds=[] И не в группе И не embedAsOutdoor И не linkedAlias. Такие узлы «висят» в state без визуала. Подсвечиваются красным фоном + сортируются вверх таблицы.',
+      '<b>Действия</b>: 🔎 Выделить узел в инспекторе / ✕ Удалить узел из state (без подтверждения, со всеми связями + cleanup ссылок в других узлах).',
+      '<b>State cleanup при удалении</b>: чистится containerId, linkedIndoorId, linkedAlias, linkedOutdoorIds[], linkedOutdoorId, slots[] всех других узлов.',
+      'Files: <code>index.html</code> (modal + кнопка), <code>js/engine/interaction.js</code> (handler + render-таблица + удаление).',
+    ] },
     { version: '0.60.357', date: '2026-05-06', items: [
       '🐛 <b>CRITICAL fix follow-up: ещё один <code>n</code> в placeholder-branch модалки группы</b>. После v0.60.356 ошибка повторялась — на placeholder-слотах строка <code>const _futureTag = _suggestTagFromContainer(n)</code> также крашилась с тем же ReferenceError.',
       '<b>Корень</b>: при добавлении placeholder rendering ранее (v0.59.843) использовалась переменная <code>n</code> которая не существует в scope <code>openContainerMembersModal(container)</code>. Этот баг был ДО моих v0.60.352 изменений, но проявлялся только при наличии placeholder-слотов в группе. У Пользователя placeholder #3 / #4 видны в скриншоте → краш.',
