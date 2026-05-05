@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.325', date: '2026-05-06', items: [
+      '👁 <b>PDF preview перед сохранением</b>. По запросу Пользователя 2026-05-06: «перед экспортом в PDF не плохо было бы показать превью пользователю, чтобы он не выводил не завершённый документ или документ с неправильным шаблоном».',
+      '<b>Новая функция <code>previewPDF(tpl, filename)</code></b> в shared/report/. Показывает PDF в modal с iframe (родной браузерный PDF viewer), кнопками «💾 Скачать» / «✕ Закрыть». Резолвится <code>\'saved\'</code> или <code>\'cancelled\'</code>.',
+      '<b>Реализация</b>: рефакторинг exportPDF — выделена общая <code>buildPdfDoc(tpl)</code>. exportPDF делает <code>doc.save()</code>, previewPDF делает <code>doc.output(\'blob\')</code> → URL.createObjectURL → iframe. Blob URL revoke\'ится при close.',
+      '<b>Применено в reports.js</b>: кнопка «PDF» в каталоге шаблонов теперь вызывает previewPDF — Пользователь видит документ перед скачиванием. Toast «✔ PDF сохранён» при успехе.',
+      '<b>Контент modal\'а</b>: header с иконкой 📄, метаданными (название, страниц, имя файла), warning-плашкой внизу «Проверьте перед скачиванием: правильный шаблон, нет placeholder\'ов, шапка/подвал корректны».',
+      'Files: <code>shared/report/export-pdf.js</code> (buildPdfDoc + previewPDF), <code>shared/report/index.js</code> (export previewPDF), <code>reports/reports.js</code> (onPdf использует previewPDF).',
+    ] },
     { version: '0.60.324', date: '2026-05-06', items: [
       '📊 <b>Breakdown расчёта мощностей и токов панели в синем поле</b>. По запросу Пользователя 2026-05-06: «Пользователь должен знать, как получился расчётный ток или мощность, у нас же есть опция выводить расчёты (в синем поле) добавь».',
       '<b>Новый блок «📊 Как получены значения»</b> в инспекторе панели (виден когда GLOBAL.showHelp != false):',

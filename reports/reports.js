@@ -334,8 +334,12 @@ async function onPdf() {
   if (!rec) return;
   const tpl = Report.createTemplate(rec.template);
   if (!tpl.content || tpl.content.length === 0) tpl.content = demoContentFor(rec);
-  try { await Report.exportPDF(tpl, rec.name || 'report'); }
-  catch (e) { rsToast('Не удалось сформировать PDF: ' + e.message, 'err'); }
+  // v0.60.325: previewPDF показывает modal с iframe-предпросмотром.
+  // Кнопка «💾 Скачать» внутри сохраняет; «✕ Закрыть» — отмена.
+  try {
+    const result = await Report.previewPDF(tpl, rec.name || 'report');
+    if (result === 'saved') rsToast('✔ PDF сохранён', 'ok');
+  } catch (e) { rsToast('Не удалось сформировать PDF: ' + e.message, 'err'); }
 }
 
 async function onDocx() {

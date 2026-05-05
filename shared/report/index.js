@@ -61,5 +61,6 @@ export { pickTemplate } from './picker.js';
 
 // Экспортёры грузят тяжёлые CDN-зависимости лениво (jsPDF / docx.js),
 // поэтому их функции async.
-export { exportPDF }  from './export-pdf.js';
+// v0.60.325: previewPDF — показ в modal перед сохранением.
+export { exportPDF, previewPDF }  from './export-pdf.js';
 export { exportDOCX } from './export-docx.js';

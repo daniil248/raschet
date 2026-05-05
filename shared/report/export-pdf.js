@@ -87,8 +87,11 @@ function registerCyrillicFont(doc, fontCache) {
   doc.addFont('rpt-sans-bold.ttf', RPT_FONT_FAMILY, 'bold');
 }
 
-/** Главный экспорт. filename — имя файла (с .pdf или без). */
-export async function exportPDF(tpl, filename) {
+/**
+ * Сгенерировать PDF-документ из шаблона. Возвращает jspdf doc instance.
+ * Используется в exportPDF (save) и previewPDF (blob URL).
+ */
+async function buildPdfDoc(tpl) {
   const JsPDF = await loadJsPDF();
   const fontCache = await loadCyrillicFont();
   const { width, height } = pageSizeMm(tpl.page);
@@ -120,9 +123,66 @@ export async function exportPDF(tpl, filename) {
     drawBody(doc, tpl, isFirst, pageBlocks, { page: i + 1, pages: total });
     drawOverlays(doc, tpl, isFirst, i + 1, total);
   });
+  return doc;
+}
 
+/** Главный экспорт. filename — имя файла (с .pdf или без). */
+export async function exportPDF(tpl, filename) {
+  const doc = await buildPdfDoc(tpl);
   const name = filename || (tpl.meta && tpl.meta.title) || 'report';
   doc.save(name.endsWith('.pdf') ? name : name + '.pdf');
+}
+
+/**
+ * v0.60.325 (по запросу Пользователя 2026-05-06: «перед экспортом в PDF
+ * не плохо было бы показать превью пользователю, чтобы он не выводил
+ * не завершённый документ или документ с неправильным шаблоном»):
+ * Показывает PDF preview в modal-диалоге. Кнопки:
+ *   • «💾 Скачать PDF» — обычный save
+ *   • «✕ Закрыть» — отменить
+ * Возвращает Promise, который резолвится 'saved' / 'cancelled'.
+ */
+export async function previewPDF(tpl, filename) {
+  const doc = await buildPdfDoc(tpl);
+  const blob = doc.output('blob');
+  const blobUrl = URL.createObjectURL(blob);
+  const name = filename || (tpl.meta && tpl.meta.title) || 'report';
+  const fileName = name.endsWith('.pdf') ? name : name + '.pdf';
+  const totalPages = doc.internal?.getNumberOfPages?.() || 1;
+
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.65);z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;font:13px/1.4 system-ui,sans-serif';
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:8px;box-shadow:0 16px 48px rgba(0,0,0,0.35);width:min(1200px,96vw);height:min(900px,92vh);display:flex;flex-direction:column;overflow:hidden">
+        <div style="padding:14px 20px;border-bottom:1px solid #e2e8f0;background:#f8fafc;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span style="font-size:20px">📄</span>
+          <div style="flex:1;min-width:200px">
+            <div style="font-weight:700;font-size:15px;color:#0f172a">Превью PDF</div>
+            <div style="font-size:11.5px;color:#64748b">${(tpl.meta?.title || 'Документ')} · ${totalPages} стр. · файл: <code>${fileName}</code></div>
+          </div>
+          <button type="button" id="rs-pdf-save" style="padding:8px 16px;background:#16a34a;color:#fff;border:0;border-radius:5px;cursor:pointer;font:inherit;font-weight:600">💾 Скачать PDF</button>
+          <button type="button" id="rs-pdf-close" style="padding:8px 14px;background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:5px;cursor:pointer;font:inherit" title="Отменить — документ не будет сохранён">✕ Закрыть</button>
+        </div>
+        <iframe src="${blobUrl}" style="flex:1;border:0;width:100%;background:#525659"></iframe>
+        <div style="padding:8px 16px;background:#f1f5f9;border-top:1px solid #e2e8f0;font-size:11px;color:#64748b">
+          ⚠ Проверьте перед скачиванием: правильный шаблон, все блоки заполнены, нет «Lorem ipsum» / placeholder'ов, шапка/подвал корректны.
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const cleanup = (result) => {
+      try { URL.revokeObjectURL(blobUrl); } catch {}
+      overlay.remove();
+      resolve(result);
+    };
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup('cancelled'); });
+    overlay.querySelector('#rs-pdf-close').addEventListener('click', () => cleanup('cancelled'));
+    overlay.querySelector('#rs-pdf-save').addEventListener('click', () => {
+      doc.save(fileName);
+      cleanup('saved');
+    });
+  });
 }
 
 // ——————————————————————————————————————————————————————————————————————
