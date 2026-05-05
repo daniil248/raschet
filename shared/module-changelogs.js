@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.272', date: '2026-05-06', items: [
+      '🔍 <b>Discoverability file-storage с projects-страницы</b>. После добавления drawio-style file-storage (v0.60.258) функция была спрятана в sidebar Конструктора — Пользователь должен был сначала открыть какой-то проект, чтобы её увидеть.',
+      '• Кнопка «📁 Открыть файл (drawio)» добавлена в toolbar страницы /projects/index.html (рядом с «📤 Импортировать проект»). Зелёный outline — same color-cue что и file-mode badge в editor\'е.',
+      '• Click → переход на <code>../index.html?openFile=1</code>. Editor читает query-param и через 200мс кликает <code>#btn-file-open</code> → открывается showOpenFilePicker с правом записи.',
+      '• Параметр <code>?openFile</code> очищается из URL через <code>history.replaceState</code> сразу после срабатывания, чтобы reload не дублировал dialog.',
+      '• Пользовательский жест (click → navigation) считается chain в браузерах, поэтому permission-prompt FSA API срабатывает корректно.',
+      'Files: <code>projects/index.html</code>, <code>projects/projects.js</code>, <code>js/main.js</code> (init handler), <code>js/engine/constants.js</code> (APP_VERSION).',
+    ] },
     { version: '0.60.271', date: '2026-05-06', items: [
       '👀 <b>File-mode: instant external-change check on tab focus</b>. После v0.60.262 (mtime polling 30с) добавлен мгновенный check при возврате на вкладку.',
       '• Раньше: Пользователь свернул вкладку → коллега-писатель сохранил файл на сетевом ресурсе → Пользователь возвращается, но badge не обновляется до 30 секунд (следующий tick interval).',

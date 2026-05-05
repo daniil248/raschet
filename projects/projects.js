@@ -865,6 +865,14 @@ function _initAfterDom() {
   document.getElementById('pr-import-project')?.addEventListener('click', () => {
     document.getElementById('pr-import-project-file')?.click();
   });
+  // v0.60.272: «📁 Открыть файл (drawio)» — переход в Конструктор с авто-
+  // запуском file-open dialog. Discoverability file-storage прямо со
+  // страницы списка проектов, без необходимости сначала открывать какой-то
+  // другой проект.
+  document.getElementById('pr-open-file')?.addEventListener('click', () => {
+    // Editor читает ?openFile=1 при инициализации и кликает btn-file-open.
+    location.href = '../index.html?openFile=1';
+  });
   document.getElementById('pr-import-project-file')?.addEventListener('change', async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;

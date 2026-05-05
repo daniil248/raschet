@@ -8706,8 +8706,22 @@ async function init() {
   // Определяем начальный экран
   const url = new URL(location.href);
   const projectId = url.searchParams.get('project');
+  // v0.60.272: ?openFile=1 (из projects-page «📁 Открыть файл») —
+  // авто-кликаем btn-file-open после init. Permission-prompt браузера
+  // требует пользовательский жест, поэтому может не открыться без него
+  // — но в большинстве случаев navigation сразу за click-ом считается
+  // user-gesture chain. Очищаем параметр после обработки.
+  const openFile = url.searchParams.get('openFile');
   if (projectId) {
     openProject(projectId);
+  } else if (openFile === '1') {
+    showScreen('editor');
+    url.searchParams.delete('openFile');
+    history.replaceState({}, '', url);
+    setTimeout(() => {
+      const btn = document.getElementById('btn-file-open');
+      if (btn) btn.click();
+    }, 200);
   } else {
     showScreen('projects');
     await refreshProjects();
