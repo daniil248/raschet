@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.340', date: '2026-05-06', items: [
+      '🔌 <b>calcClimateDerate резолвит профиль из engines catalog</b>. Интеграция engines/index.js с расчётным слоем ДГУ.',
+      '<b>Resolver приоритет</b>:',
+      '1. <code>ENGINE_DERATE_PROFILES[id]</code> — legacy generic+series профили (iso-naturally-aspirated, modern-turbo-aftercooled, perkins-1106a-70tag2, etc.)',
+      '2. <code>getEngineDerateProfile(id)</code> из <code>shared/catalogs/engines/</code> — per-model exact профили (perkins-4008-30tag3, volvo-tad732ge, cummins-qsl9-g7, etc.)',
+      '3. Fallback: generic ISO 3046-1',
+      '<b>Эффект</b>: profileId может ссылаться на конкретную модель двигателя из каталога. <code>calcDgu({engineProfile: \'perkins-4008-30tag3\'})</code> теперь работает и возвращает exact-derate из datasheet того engine. Без миграции DGU-каталога (engineModel string по-прежнему работает через detectEngineProfile fallback).',
+      'Files: <code>dgu-config/calc/dgu-calc.js</code> (import getEngineDerateProfile + 2-уровневый resolver).',
+    ] },
     { version: '0.60.339', date: '2026-05-06', items: [
       '⚙ <b>Engines catalog (Phase 30.4 foundation)</b>. По запросу Пользователя 2026-05-06: «может двигатели вынесешь отдельно или это не целесообразно?» — да, целесообразно.',
       '<b>Структура</b> <code>shared/catalogs/engines/</code>:',

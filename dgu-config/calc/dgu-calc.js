@@ -1,6 +1,13 @@
 // =============================================================================
 // dgu-config/calc/dgu-calc.js — расчётный слой ДГУ
 // =============================================================================
+
+// v0.60.339: интеграция engines catalog как источник профилей derate.
+// Если engineId не находится в ENGINE_DERATE_PROFILES — пытаемся прочитать
+// из shared/catalogs/engines/. Это позволяет ссылаться на двигатели в
+// каталоге через id (perkins-4008-30tag3, volvo-tad732ge и т.п.).
+import { getEngineDerateProfile } from '../../shared/catalogs/engines/index.js';
+
 // Phase 30.3 (v0.60.70): По требованию Пользователя 2026-05-03 «надеюсь ты уже
 // проработал план интеграции модуля Технолог ЦОД с модулями климата, подбора
 // холода, подбора ИБП, ДГУ, расчёт PUE».
@@ -224,15 +231,29 @@ export function isaPressureKpa(altitudeM) {
 /**
  * Climate derate.
  *
+ * v0.60.339: profileId может быть:
+ *  - id из ENGINE_DERATE_PROFILES (legacy, e.g. 'iso-naturally-aspirated',
+ *    'modern-turbo-aftercooled', 'perkins-1106a-70tag2')
+ *  - id из shared/catalogs/engines/ (новый, e.g. 'perkins-4008-30tag3')
+ *  Resolver проверяет ENGINE_DERATE_PROFILES первым, затем engines catalog.
+ *
  * @param {object} climate — { altitudeM, ambientTC, humidityPct }
- * @param {string=} profileId — id из ENGINE_DERATE_PROFILES (default 'iso-naturally-aspirated')
+ * @param {string=} profileId
  * @returns {{ multiplier:number, breakdown:object, profile:object }}
  */
 export function calcClimateDerate(climate = {}, profileId) {
   const altM = Number(climate.altitudeM) || 0;
   const tAmb = Number(climate.ambientTC) || 25;
   const rh = Number(climate.humidityPct) || 60;
-  const profile = ENGINE_DERATE_PROFILES[profileId] || ENGINE_DERATE_PROFILES['iso-naturally-aspirated'];
+  // v0.60.339: resolve profile с приоритетом ENGINE_DERATE_PROFILES (legacy
+  // generic+series) → engines catalog (per-model exact). Если ничего не
+  // найдено — generic ISO 3046-1 fallback.
+  let profile = ENGINE_DERATE_PROFILES[profileId];
+  if (!profile && profileId) {
+    const fromCatalog = getEngineDerateProfile(profileId);
+    if (fromCatalog) profile = fromCatalog;
+  }
+  if (!profile) profile = ENGINE_DERATE_PROFILES['iso-naturally-aspirated'];
 
   // Effective altitude baseline: для perkins сдвигается на altShiftPerC × max(0, T-tempBaseline)
   const altShift = (profile.altShiftPerC || 0) * Math.max(0, tAmb - profile.tempBaselineC);
