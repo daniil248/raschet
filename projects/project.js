@@ -1742,6 +1742,7 @@ function render() {
   const teamHost = document.getElementById('pr-detail-team'); // v0.60.289
   const summaryHost = document.getElementById('pr-detail-summary'); // v0.60.292
   const equipmentHost = document.getElementById('pr-detail-equipment'); // v0.60.293
+  const validationHost = document.getElementById('pr-detail-validation'); // v0.60.296
 
   if (!p) {
     if (headHost) headHost.innerHTML = `
@@ -3036,6 +3037,172 @@ function render() {
         🚧 <b>В разработке (Phase 47.2.3+)</b>: автоматическое сведение позиций между дисциплинами
         (детект «один логический рак ID#42 в TW = consumer-container в Конструкторе»),
         порты по системам (⚡ электрика / 🌊 трубы / 💨 ОВК), пересечение с СКС-связями.
+      </div>
+    `;
+  }
+
+  // v0.60.296 (Этап 1.5.3 Phase 47): Проверки корректности схем + cross-discipline.
+  // Минимальный viable view: статические проверки на основе сохранённой схемы
+  // (без полного recalc). Полная валидация (с расчётом нагрузок, ΔU, селективности)
+  // — в Конструкторе схем через Ctrl+Shift+I (Project Issues modal).
+  if (validationHost) {
+    const _readJSON = (key, fallback) => {
+      try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); }
+      catch { return fallback; }
+    };
+    const pid = p.id;
+    const scheme = _readJSON(`raschet.project.${pid}.engine.scheme.v1`, null);
+    const twVariants = _readJSON(`raschet.project.${pid}.tech-workspace.variants.v1`, []);
+    const twActiveId = (() => { try { return JSON.parse(localStorage.getItem(`raschet.project.${pid}.tech-workspace.activeVariantId.v1`) || '""'); } catch { return null; } })();
+    const twActive = Array.isArray(twVariants) ? twVariants.find(v => v.id === twActiveId) || twVariants[0] : null;
+
+    const issues = []; // { level: 'error'|'warn'|'info', area, msg, hint }
+
+    // ── 1. Конструктор схем — статические проверки ──
+    let schemeNodes = [];
+    let schemeConns = [];
+    if (scheme?.nodes) {
+      schemeNodes = Array.isArray(scheme.nodes) ? scheme.nodes : Object.values(scheme.nodes);
+    }
+    if (scheme?.conns) {
+      schemeConns = Array.isArray(scheme.conns) ? scheme.conns : Object.values(scheme.conns);
+    }
+    if (schemeNodes.length === 0) {
+      issues.push({ level: 'info', area: '⚡ Конструктор', msg: 'Схема пустая', hint: 'Откройте Конструктор схем и создайте принципиальную схему.' });
+    } else {
+      // Дубли тегов
+      const tagMap = new Map();
+      for (const n of schemeNodes) {
+        if (!n || !n.tag) continue;
+        if (n.type === 'zone' || n.type === 'channel') continue;
+        const tag = String(n.tag);
+        if (!tagMap.has(tag)) tagMap.set(tag, []);
+        tagMap.get(tag).push(n);
+      }
+      for (const [tag, nodes] of tagMap) {
+        if (nodes.length > 1) {
+          issues.push({ level: 'error', area: '⚡ Конструктор', msg: `Дубль тега: ${tag} × ${nodes.length}`, hint: 'Тег должен быть уникален. Откройте Конструктор → Ctrl+F для поиска.' });
+        }
+      }
+      // Orphan consumers — без incoming conn (если type='consumer' и нет parent в conn.to)
+      const incomingMap = new Map();
+      for (const c of schemeConns) {
+        if (!c || !c.to?.nodeId) continue;
+        if (!incomingMap.has(c.to.nodeId)) incomingMap.set(c.to.nodeId, 0);
+        incomingMap.set(c.to.nodeId, incomingMap.get(c.to.nodeId) + 1);
+      }
+      let orphanConsumers = 0;
+      for (const n of schemeNodes) {
+        if (n.type !== 'consumer') continue;
+        if (!incomingMap.has(n.id) || incomingMap.get(n.id) === 0) {
+          orphanConsumers++;
+        }
+      }
+      if (orphanConsumers > 0) {
+        issues.push({ level: 'warn', area: '⚡ Конструктор', msg: `Orphan-потребителей: ${orphanConsumers}`, hint: 'Потребитель без питающего щита — проверьте что все consumer-узлы подключены.' });
+      }
+      // Sources count
+      const sources = schemeNodes.filter(n => n.type === 'source' || n.type === 'generator');
+      if (sources.length === 0) {
+        issues.push({ level: 'error', area: '⚡ Конструктор', msg: 'Нет источника питания', hint: 'Добавьте Source (городская сеть / ТП / автономный) или Generator (ДГУ).' });
+      }
+    }
+
+    // ── 2. Технолог объекта — статические проверки ──
+    if (!twActive) {
+      issues.push({ level: 'info', area: '🏗 Технолог', msg: 'Концепция не создана', hint: 'Откройте Технолог объекта и создайте вариант концепции.' });
+    } else {
+      const c = twActive.concept;
+      if (!c) {
+        issues.push({ level: 'error', area: '🏗 Технолог', msg: 'Активный вариант пустой (нет concept)', hint: 'Возможно, миграция данных. Откройте TW и пересоздайте вариант.' });
+      } else {
+        const racks = c.rackGroups?.reduce((s, rg) => s + (Number(rg.count) || 0), 0) || 0;
+        const itKw = c.rackGroups?.reduce((s, rg) => s + (Number(rg.count) || 0) * (Number(rg.kwPerRack) || 0), 0) || 0;
+        const upsKw = c.upsSystems?.filter(u => u.purpose === 'it' || u.purpose === 'mixed').reduce((s, u) => s + (Number(u.count) || 0) * (Number(u.ratedKva) || 0) * 0.95, 0) || 0;
+        const coolKw = c.coolingUnits?.reduce((s, cu) => s + (Number(cu.count) || 0) * (Number(cu.kwPerUnit) || 0), 0) || 0;
+        if (racks > 0 && upsKw < itKw && itKw > 0) {
+          issues.push({ level: 'warn', area: '🏗 Технолог', msg: `ИБП IT недостаточен`, hint: `IT-нагрузка ${itKw.toFixed(1)} кВт > доступной ИБП ${upsKw.toFixed(1)} кВт. Добавьте/увеличьте ИБП-систему purpose='it'.` });
+        }
+        if (racks > 0 && coolKw < itKw && itKw > 0) {
+          issues.push({ level: 'warn', area: '🏗 Технолог', msg: 'Холод недостаточен', hint: `IT-нагрузка ${itKw.toFixed(1)} кВт > холода ${coolKw.toFixed(1)} кВт. Добавьте кондиционеры или увеличьте мощность.` });
+        }
+        // Не привязаны модели — info
+        const noModels = (c.rackGroups || []).filter(rg => !rg.modelRef && rg.count > 0).length
+                       + (c.upsSystems || []).filter(us => !us.modelRef && us.count > 0).length
+                       + (c.coolingUnits || []).filter(cu => !cu.modelRef && cu.count > 0).length;
+        if (noModels > 0) {
+          issues.push({ level: 'info', area: '🏗 Технолог', msg: `${noModels} позиций без модели из каталога`, hint: 'На стадии концепции — нормально. На РД нужно привязать конкретные артикулы (📦 Привязать модель).' });
+        }
+      }
+    }
+
+    // ── 3. Cross-discipline — общие проверки ──
+    if (schemeNodes.length > 0 && twActive?.concept) {
+      const tagsConstr = new Set(schemeNodes.map(n => (n.tag || '').toUpperCase()).filter(Boolean));
+      const twRackTags = new Set();
+      for (const rg of (twActive.concept.rackGroups || [])) {
+        if (rg.tagPrefix) twRackTags.add(String(rg.tagPrefix).toUpperCase());
+      }
+      const matchedTags = [...twRackTags].filter(t => tagsConstr.has(t)).length;
+      if (twRackTags.size > 0 && matchedTags === 0) {
+        issues.push({ level: 'warn', area: '🔗 Cross', msg: 'Теги стоек TW и Конструктора не пересекаются', hint: 'Возможно, стойки в TW и в Конструкторе — разные сущности. Если они должны быть согласованы — приведите тэги в соответствие.' });
+      }
+    }
+
+    // Метаданные проекта — пустые поля
+    if (!p.location?.city && !p.location?.lat) {
+      issues.push({ level: 'info', area: '🏷 Проект', msg: 'Локация не задана', hint: 'Закладка «Общее» → задайте город / координаты. Используется в meteo / cooling расчётах.' });
+    }
+    if (!p.requisites?.code) {
+      issues.push({ level: 'info', area: '🏷 Проект', msg: 'Шифр проекта не задан', hint: 'Закладка «Общее» → реквизиты → «Обозначение / шифр». Печатается в шапке всех чертежей.' });
+    }
+
+    // Визуализация
+    const errors = issues.filter(i => i.level === 'error');
+    const warns = issues.filter(i => i.level === 'warn');
+    const infos = issues.filter(i => i.level === 'info');
+    const LEVEL_META = {
+      error: { icon: '❌', color: '#b91c1c', bg: '#fee2e2', label: 'Ошибка' },
+      warn:  { icon: '⚠', color: '#b45309', bg: '#fef3c7', label: 'Предупр.' },
+      info:  { icon: 'ℹ', color: '#1e40af', bg: '#dbeafe', label: 'Инфо' },
+    };
+    const renderIssue = (i) => {
+      const m = LEVEL_META[i.level];
+      return `<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 12px;background:${m.bg};border-left:3px solid ${m.color};border-radius:3px;font-size:12.5px">
+        <span style="font-size:14px;color:${m.color};flex:0 0 auto">${m.icon}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;color:${m.color}">${esc(i.area)} · ${esc(i.msg)}</div>
+          <div style="font-size:11.5px;color:#475569;margin-top:2px">${esc(i.hint)}</div>
+        </div>
+      </div>`;
+    };
+
+    validationHost.innerHTML = `
+      <p class="muted" style="font-size:12.5px;margin:0 0 14px;line-height:1.6">
+        Статические проверки проекта: дубли тегов, orphan-узлы, недостаточные мощности (ИБП vs IT,
+        холод vs IT), пустые поля метаданных. Это <b>быстрая</b> валидация без полного recalc.
+        Для глубокой проверки (ΔU, селективность защит, breaker-vs-cable) — откройте Конструктор схем
+        → <b>Ctrl+Shift+I</b> (полная Project Issues modal).
+      </p>
+
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px;font-size:13px">
+        <span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#fee2e2;color:#b91c1c;border-radius:4px;font-weight:600">❌ Ошибок: ${errors.length}</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#fef3c7;color:#b45309;border-radius:4px;font-weight:600">⚠ Предупр.: ${warns.length}</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:#dbeafe;color:#1e40af;border-radius:4px;font-weight:600">ℹ Инфо: ${infos.length}</span>
+        <a href="../index.html?project=${esc(pid)}#issues" target="_blank" style="margin-left:auto;font-size:12px;padding:5px 12px;background:#fff;border:1px solid #cbd5e1;color:#1e40af;border-radius:4px;text-decoration:none">↪ Полная проверка в Конструкторе (Ctrl+Shift+I)</a>
+      </div>
+
+      ${issues.length === 0
+        ? `<div style="padding:20px;background:#f0fdf4;border-left:3px solid #15803d;border-radius:4px;color:#15803d;font-size:14px;text-align:center">✅ <b>Все статические проверки пройдены</b><br><span class="muted" style="font-size:12px">Запустите полную проверку в Конструкторе для глубокого анализа.</span></div>`
+        : `<div style="display:flex;flex-direction:column;gap:6px">
+            ${[...errors, ...warns, ...infos].map(renderIssue).join('')}
+          </div>`
+      }
+
+      <div style="margin-top:18px;padding:14px 16px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:4px;color:#78350f;font-size:12.5px;line-height:1.7">
+        🚧 <b>В разработке (Phase 47.2.9-10)</b>: проверка расчётов (ΔU из источника в leaves,
+        cross-discipline баланс мощностей, селективность по графику TCC), согласование разделов
+        с подписью / timestamp / историей ревизий.
       </div>
     `;
   }

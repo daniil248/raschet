@@ -39,6 +39,7 @@
       <button type="button" class="pr-tab pr-tab-active" data-tab="general"  title="Реквизиты, тип объекта, локация, общие данные">📋 Общее</button>
       <button type="button" class="pr-tab" data-tab="summary" title="Cross-discipline сводка: метаданные проекта и обзор по дисциплинам (Этап 1.5.1)">🧐 Сводка ГИП</button>
       <button type="button" class="pr-tab" data-tab="equipment" title="Перечень всего оборудования проекта (Этап 1.5.2): объединение Конструктора схем и Технолога объекта">📦 Оборудование</button>
+      <button type="button" class="pr-tab" data-tab="validation" title="Проверка корректности схем и cross-discipline согласованности (Этап 1.5.3+1.5.4)">🛡 Проверки</button>
       <button type="button" class="pr-tab" data-tab="modules"  title="Модули проекта (Конструктор, Технолог, СКС, BOM) и sketch'и проекта">🔗 Модули и связи</button>
       <button type="button" class="pr-tab" data-tab="economics" title="Тариф, валюта, дата курса">💰 Экономика</button>
       <button type="button" class="pr-tab" data-tab="plan"     title="Этапы реализации + План-график задач (Phase 38)">📅 План</button>
@@ -56,6 +57,12 @@
     <section class="pr-card pr-tab-panel" data-tab-panel="equipment" hidden>
       <h3 style="margin:0 0 12px">📦 Перечень оборудования проекта</h3>
       <div id="pr-detail-equipment"></div>
+    </section>
+
+    <!-- v0.60.296 (Этап 1.5.3 Phase 47): Проверки корректности схем + cross-discipline. -->
+    <section class="pr-card pr-tab-panel" data-tab-panel="validation" hidden>
+      <h3 style="margin:0 0 12px">🛡 Проверки проекта</h3>
+      <div id="pr-detail-validation"></div>
     </section>
 
     <section class="pr-card pr-tab-panel" data-tab-panel="general">
