@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.284', date: '2026-05-06', items: [
+      '🔁 <b>Откат /chief/ как отдельного модуля. ГИП = роль, его функции в карточке проекта</b>. По уточнению Пользователя 2026-05-06: «модуль проекты — это часть модуля ГИП или наоборот ... нужно оптимизировать модули, не плодить лишнего».',
+      '• Удалён <code>/chief/index.html</code> (stub из v0.60.283).',
+      '• Убраны карточки «🧐 ГИП» из hub.html и /modules/.',
+      '• <b>Тип объекта (objectKind)</b> переехал в карточку проекта <code>/projects/project.html</code>: enum-selector «🏢 ЦОД / 🏭 Завод / 💧 Насосная / 🏢 Офис / ✏ Свой» в реквизитах. Сохраняется в <code>project.objectKind</code> через updateProject. Свободное «Тип (уточнение)» сохранено как text-input.',
+      '• В Tech-workspace chip «Тип объекта» теперь read-only display, кнопка «↪ карточка» открывает <code>/projects/project.html?id=X</code> для редактирования (вместо modal в TW).',
+      '• ROADMAP Phase 47.2 переписан: ГИП-функции — табы в карточке проекта (47.2.2-47.2.6 в будущем).',
+      'Files: <code>chief/</code> deleted, <code>hub.html</code>, <code>modules/index.html</code>, <code>projects/project.js</code> (objectKind selector + data-prop handler), <code>tech-workspace/tech-workspace.js</code> (chip упрощён), <code>ROADMAP.md</code>.',
+    ] },
     { version: '0.60.283', date: '2026-05-06', items: [
       '🏗 <b>Phase 47 Этап А: «Технолог ЦОД» → «Технолог объекта» (универсальный) + ГИП-модуль (stub)</b>. По запросу Пользователя 2026-05-06: «давай сделаем просто модуль технолога в котором по назначению объекта будет соответствующие разделы ... Для ГИПа нужен отдельный модуль».',
       '<b>Технолог объекта</b> (бывший Технолог ЦОД):',

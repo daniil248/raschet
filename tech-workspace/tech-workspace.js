@@ -1487,9 +1487,10 @@ function renderListRail(c, ro) {
           <span class="tw-rail-sub muted">${STAGE_LABEL[pd.stage] || pd.stage || ''}</span>
           <span class="tw-rail-chip">${escHtml(projectChip)}</span>
         </button>
-        <!-- v0.60.283: Тип объекта (project-bound) — определяет состав активных
-             разделов. Сейчас полноценно работает только 'datacenter'; для остальных —
-             stub-banner. Phase 47 расширит шаблоны. -->
+        <!-- v0.60.283/284: Тип объекта (project-bound) — определяет состав
+             активных разделов. Только display, редактируется в карточке проекта
+             /projects/project.html (единая точка для project-level полей —
+             объединение с ГИП-функциями, Phase 47.2.1). -->
         ${(() => {
           const proj = _pid ? getProject(_pid) : null;
           const ok = proj?.objectKind || 'datacenter';
@@ -1501,9 +1502,10 @@ function renderListRail(c, ro) {
             'custom': '✏ Свой шаблон',
           };
           const lbl = KIND_LABEL[ok] || ok;
-          return `<div class="tw-rail-item" style="background:#f0f9ff;border-color:#0ea5e9;cursor:default" title="Тип объекта определяет какие разделы активны. Сейчас полноценно работает только «🏢 ЦОД». Для остальных типов разделы появятся в Phase 47.">
+          const editUrl = _pid ? `../projects/project.html?id=${encodeURIComponent(_pid)}` : '../projects/';
+          return `<div class="tw-rail-item" style="background:#f0f9ff;border-color:#0ea5e9;cursor:default" title="Тип объекта определяет какие разделы активны. Полноценно работает «🏢 ЦОД». Для остальных типов разделы появятся в Phase 47.1.4. Редактируется в карточке проекта.">
             <span class="tw-rail-name" style="display:flex;align-items:center;gap:6px">Тип: <b>${escHtml(lbl)}</b>
-              <button type="button" id="tw-objectkind-edit" ${ro ? 'disabled' : ''} style="margin-left:auto;padding:2px 6px;font-size:10px;border:1px solid #0ea5e9;background:#fff;color:#0369a1;border-radius:3px;cursor:pointer">↪ изменить</button>
+              <a href="${editUrl}" target="_blank" style="margin-left:auto;padding:2px 6px;font-size:10px;border:1px solid #0ea5e9;background:#fff;color:#0369a1;border-radius:3px;cursor:pointer;text-decoration:none">↪ карточка</a>
             </span>
             ${ok !== 'datacenter' ? '<span class="tw-rail-sub" style="color:#b45309">⚠ Для этого типа разделы пока в разработке (Phase 47). Сейчас отображаются разделы ЦОД.</span>' : ''}
           </div>`;

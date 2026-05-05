@@ -299,10 +299,28 @@ function renderProjectProperties(p, host) {
         <span style="font-size:11.5px;color:#475569;display:block">ГИП / исполнитель:</span>
         <input type="text" data-req="gip" value="${esc(r.gip || '')}" placeholder="напр. Малыхин Д." style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px">
       </label>
-      <label title="Тип/категория объекта (ЦОД, серверная, диспетчерская, электрощитовая, и т.п.). Используется в отчётах для контекста.">
-        <span style="font-size:11.5px;color:#475569;display:block">Тип объекта:</span>
-        <input type="text" data-req="objectType" value="${esc(r.objectType || '')}" placeholder="напр. МЦОД / серверная" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px">
+      <label title="Уточнение / описание типа (например «МЦОД-50», «Серверная Stage 2», «Корпус B»). Свободный текст. Используется в отчётах для контекста.">
+        <span style="font-size:11.5px;color:#475569;display:block">Тип (уточнение):</span>
+        <input type="text" data-req="objectType" value="${esc(r.objectType || '')}" placeholder="напр. МЦОД-50, Корпус B" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px">
       </label>
+    </div>
+    <!-- v0.60.284: objectKind — enum-selector (категория объекта). Определяет
+         шаблон Технолога объекта (какие разделы активны). Project-bound.
+         Хранится в project.objectKind (не в requisites — это структурное поле). -->
+    <div style="margin:0 0 14px;padding:10px 12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:4px">
+      <label title="Категория объекта (enum) — определяет шаблон активных разделов в «Технологе объекта». Свободное описание типа — поле «Тип (уточнение)» выше.">
+        <span style="font-size:11.5px;color:#075985;font-weight:600;display:block;margin-bottom:4px">🏷 Категория объекта (тип):</span>
+        <select data-prop="objectKind" style="width:100%;padding:6px 8px;border:1px solid #0ea5e9;border-radius:3px;font:inherit;background:#fff">
+          <option value="datacenter"${(p.objectKind || 'datacenter') === 'datacenter' ? ' selected' : ''}>🏢 ЦОД (Дата-центр)</option>
+          <option value="factory"${p.objectKind === 'factory' ? ' selected' : ''}>🏭 Завод (производство)</option>
+          <option value="pump-station"${p.objectKind === 'pump-station' ? ' selected' : ''}>💧 Насосная станция</option>
+          <option value="office"${p.objectKind === 'office' ? ' selected' : ''}>🏢 Офис</option>
+          <option value="custom"${p.objectKind === 'custom' ? ' selected' : ''}>✏ Свой шаблон</option>
+        </select>
+      </label>
+      <p class="muted" style="font-size:11px;margin:6px 0 0;color:#475569">
+        Полноценно работает <b>«🏢 ЦОД»</b>. Для остальных категорий разделы Технолога объекта пока показывают warning «в разработке (Phase 47.1.4)».
+      </p>
     </div>
     <label title="Развёрнутое описание проекта: цель, особенности, ключевые требования. Выводится в общей шапке отчёта.">
       <span style="font-size:11.5px;color:#475569;display:block;margin-bottom:4px">Общее описание:</span>
@@ -401,6 +419,14 @@ function renderProjectProperties(p, host) {
       const val = inp.value;
       const requisites = { ...(p.requisites || {}), [field]: val };
       updateProject(p.id, { requisites });
+    });
+  });
+  // v0.60.284: data-prop для project-level полей (objectKind и т.п.).
+  host.querySelectorAll('[data-prop]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      const field = inp.dataset.prop;
+      const val = inp.value;
+      updateProject(p.id, { [field]: val });
     });
   });
 
