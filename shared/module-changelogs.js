@@ -4,6 +4,18 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.324', date: '2026-05-06', items: [
+      '📊 <b>Breakdown расчёта мощностей и токов панели в синем поле</b>. По запросу Пользователя 2026-05-06: «Пользователь должен знать, как получился расчётный ток или мощность, у нас же есть опция выводить расчёты (в синем поле) добавь».',
+      '<b>Новый блок «📊 Как получены значения»</b> в инспекторе панели (виден когда GLOBAL.showHelp != false):',
+      '• <b>1)</b> Downstream consumers (до 12 шт.) — список с tag\'ами, count×demandKw, отметкой N=count-R и Ku',
+      '• <b>2)</b> P<sub>уст</sub> = Σ(count-R)×demandKw + расчёт I = P/(√3×U×cosφ) с подстановкой',
+      '• <b>3)</b> P<sub>расч</sub> = Σ(count-R)×demandKw×К<sub>и</sub> + ток',
+      '• <b>4)</b> Активная для подбора: уст или расч (по «База расчёта Макс»)',
+      '• <b>5)</b> Текущая (walkUp с К<sub>и</sub> и режим-фактором)',
+      '• <b>6)</b> Макс. итог = max(active, Текущая) + отметки о sanity-clamp / sibling-clamp',
+      '• Подпись: формула тока + cos φ + U + фазность.',
+      'Files: <code>js/engine/inspector/panel.js</code> (+helpBlock с downstream BFS).',
+    ] },
     { version: '0.60.323', date: '2026-05-06', items: [
       '🔧 <b>Dedup в project picker\'е (header chip menu)</b>. По репорту Пользователя 2026-05-06: на скриншоте picker\'а из header chip\'а тоже видны дубликаты (TBC Bank ×2, Qarmet Темиртау ×2, Тестовый ×2).',
       '<b>Корень</b>: <code>_openStandaloneProjectMenu</code> читал список напрямую из <code>listProjects()</code> без dedup. Этот picker открывается из rs-proj-badge во ВСЕХ модулях.',

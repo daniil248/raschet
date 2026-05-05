@@ -2452,8 +2452,81 @@ export function panelStatusBlock(n) {
       }
     }
   }
+  // v0.60.324 (по запросу Пользователя 2026-05-06: «Пользователь должен знать,
+  // как получился расчётный ток или мощность, у нас же есть опция выводить
+  // расчёты (в синем поле) добавь»): breakdown расчёта мощностей и токов.
+  // Показывается под параметрами, когда GLOBAL.showHelp !== false.
+  let helpBlock = '';
+  if (GLOBAL.showHelp !== false) {
+    const _U = nodeVoltage(n) || 0;
+    const _cos = n._cosPhi || GLOBAL.defaultCosPhi || 0.92;
+    const _ph3 = isThreePhase(n);
+    const _phK = _ph3 ? '√3' : '1';
+    const _basis = (typeof GLOBAL.panelMaxBasis === 'string') ? GLOBAL.panelMaxBasis : 'nameplate';
+    // Pуст / Pрасч breakdown — собираем consumers downstream
+    const downstreamConsumers = [];
+    try {
+      const seen = new Set();
+      const stack = [n.id];
+      while (stack.length) {
+        const cur = stack.pop();
+        if (seen.has(cur)) continue;
+        seen.add(cur);
+        for (const c of state.conns.values()) {
+          if (c.from?.nodeId !== cur) continue;
+          if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+          if (c._isInternalIntegrated) continue;
+          const to = state.nodes.get(c.to?.nodeId);
+          if (!to) continue;
+          if (to.type === 'consumer' || to.type === 'consumer-container') {
+            if (!seen.has(to.id)) {
+              seen.add(to.id);
+              downstreamConsumers.push(to);
+            }
+          } else if (to.type === 'panel' || to.type === 'channel' || to.type === 'junction-box' || to.type === 'ups') {
+            stack.push(to.id);
+          }
+        }
+      }
+    } catch (e) { /* silent */ }
+    const consumerRows = downstreamConsumers.slice(0, 12).map(c => {
+      const cnt = Math.max(1, Number(c.count) || 1);
+      const r = Math.max(0, Number(c.consumerReserveR) || 0);
+      const active = cnt - r;
+      const dKw = Number(c.demandKw) || 0;
+      const ku = Number(c.kUse) || 1;
+      const tag = c.tag || c.id.slice(0, 8);
+      const rNote = r > 0 ? ` <span style="color:#92400e">(N=${active}, R=${r})</span>` : '';
+      return `<div style="margin-left:8px">• <b>${tag}</b>: ${cnt}×${dKw} kW${rNote}, К<sub>и</sub>=${ku}</div>`;
+    }).join('');
+    const _moreNote = downstreamConsumers.length > 12 ? `<div style="margin-left:8px;color:#64748b">… и ещё ${downstreamConsumers.length - 12} consumer'ов</div>` : '';
+    const _pNomTotal = Number(n._maxLoadKwNameplate) || 0;
+    const _pCalcTotal = Number(n._maxLoadKwCalculated) || 0;
+    const _pCurrent = Number(n._powerP) || 0;
+    const _pMax = Number(n._maxLoadKw) || 0;
+    const _aCurrent = Number(n._loadA) || 0;
+    const _aMax = Number(n._maxLoadA) || 0;
+    const _clampNote = n._maxLoadKwClampedToCurrent
+      ? `<br><b style="color:#b45309">⚠ Sanity-clamp:</b> Текущая нагрузка (walkUp) больше чем расчётная (BFS). По определению Макс ≥ Текущая, поэтому Макс поднят до Текущая.`
+      : '';
+    const _siblingNote = n._maxLoadKwClampedToSiblings
+      ? `<br><b style="color:#0369a1">🔄 Sibling-clamp:</b> щит входит в группу из ${n._maxLoadKwSiblingGroup?.length || '?'} sibling-щитов (parallel feed). Макс выровнен по union всех downstream consumer-ов группы.`
+      : '';
+    helpBlock = `<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:8px 10px;font-size:11px;margin-top:10px;color:#1565c0;line-height:1.6">
+      <b>📊 Как получены значения:</b><br>
+      <b>1) Downstream consumers</b> (${downstreamConsumers.length} шт., через panel/channel/JB/ups):<br>
+      ${consumerRows || '<div style="margin-left:8px;color:#64748b">— нет ниже</div>'}
+      ${_moreNote}
+      <br><b>2) P<sub>уст</sub> (паспорт):</b> Σ (count − R) × demandKw = <b>${_pNomTotal.toFixed(1)} kW</b> · I = P / (${_phK} × U × cosφ) = ${_pNomTotal.toFixed(1)} / (${_phK}×${_U}×${_cos.toFixed(2)}) = <b>${(_pNomTotal > 0 ? computeCurrentA(_pNomTotal, _U, _cos, _ph3) : 0).toFixed(1)} A</b>
+      <br><b>3) P<sub>расч</sub> (с К<sub>и</sub>):</b> Σ (count − R) × demandKw × К<sub>и</sub> = <b>${_pCalcTotal.toFixed(1)} kW</b> · <b>${(_pCalcTotal > 0 ? computeCurrentA(_pCalcTotal, _U, _cos, _ph3) : 0).toFixed(1)} A</b>
+      <br><b>4) Активная для подбора:</b> ${_basis === 'calculated' ? 'P<sub>расч</sub>' : 'P<sub>уст</sub>'} (Параметры расчёта → База расчёта Макс)
+      <br><b>5) Текущая</b> (walkUp от запитанных consumer\'ов с К<sub>и</sub> и режим-фактором): <b>${_pCurrent.toFixed(1)} kW · ${_aCurrent.toFixed(1)} A</b>
+      <br><b>6) Макс. итог</b>: max(active basis, Текущая) с учётом sibling-clamp = <b>${_pMax.toFixed(1)} kW · ${_aMax.toFixed(1)} A</b>${_clampNote}${_siblingNote}
+      <br><span style="color:#64748b;font-size:10.5px">Формула тока: <code>I [A] = P [kW] × 1000 / (${_phK} × U [V] × cos φ)</code>. cos φ итог = <b>${_cos.toFixed(2)}</b>, U = <b>${_U} В</b>${_ph3 ? ' (3ф)' : ' (1ф)'}.</span>
+    </div>`;
+  }
   // v0.59.667: справка по РТМ 36.18.32.4-92 — общий хелпер rtmInfoBlock
   // (см. inspector/rtm-block.js). Раньше HTML дублировался в 3 местах.
-  return `<div class="inspector-section"><div class="muted" style="font-size:11px;line-height:1.8">${parts.join('<br>')}</div></div>${rtmInfoBlock(n)}`;
+  return `<div class="inspector-section"><div class="muted" style="font-size:11px;line-height:1.8">${parts.join('<br>')}</div>${helpBlock}</div>${rtmInfoBlock(n)}`;
 }
 
