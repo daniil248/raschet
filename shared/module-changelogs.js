@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.313', date: '2026-05-06', items: [
+      '⚙ <b>Расширенная база engine-профилей derate + UI selector</b>. По уточнению Пользователя 2026-05-06: «учти это при расчёте, если нет данных, бери расчётные нормативные, если есть возможность найти конкретные данные на выбранную модель, используй паспортные».',
+      '<b>Логика 3-уровневая</b>:',
+      '<b>1.</b> Точная модель в базе (Perkins 1106A-70TAG2) → паспортные данные из datasheet ✓',
+      '<b>2.</b> Серия известна (Perkins 4000, Cummins QS, CAT C, Volvo TAD/TWD, MTU 2000/4000) → типовая кривая серии',
+      '<b>3.</b> Нет данных → generic ISO 3046-1 нормативная (fallback)',
+      '<b>Расширена база</b> до 8 профилей: iso-naturally-aspirated / modern-turbo-aftercooled / perkins-1106a-70tag2 / perkins-4000-series / cummins-qs-series / cat-c-series / volvo-tad-twd / mtu-large.',
+      '<b>UI</b>: новый селектор «Профиль derate» в сайдбаре конфигуратора. По умолчанию «Auto (по модели)» — auto-detect через <code>detectEngineProfile()</code>. Можно вручную override для эксперимента.',
+      '<b>Поле <code>source</code></b> в каждом профиле — ссылка на источник данных (datasheet модели / типовой datasheet серии).',
+      'Files: <code>dgu-config/calc/dgu-calc.js</code> (8 профилей + расширенный detectEngineProfile), <code>dgu-config/index.html</code> (selector), <code>dgu-config/dgu-config.js</code> (state.engineProfileOverride + sync).',
+    ] },
     { version: '0.60.312', date: '2026-05-06', items: [
       '🐛 <b>CRITICAL: ДГУ margin=0% давал больше чем margin=5%</b>. По репорту Пользователя 2026-05-06: «при margin 0% значение выше чем при 5%, 121 vs 132».',
       '<b>Корень</b>: <code>const margin = Number(input.safetyMarginPct) || 15;</code> — Number(0) || 15 даёт 15 (0 falsy в JS). Margin=0 интерпретировался как «не задано → дефолт 15%». Margin=5 работал корректно.',

@@ -80,6 +80,21 @@
           <input type="number" id="dg-rh" min="0" max="100" step="5" value="60">
         </label>
 
+        <label class="dg-lbl" title="Профиль дирейтинга двигателя. По умолчанию (auto) — определяется по выбранной модели: для Perkins 1106A-70TAG2 точные паспортные данные, для других известных серий — типовая кривая, иначе generic ISO 3046-1 (консервативный).">
+          <span>Профиль derate:</span>
+          <select id="dg-engine-profile">
+            <option value="">Auto (по модели)</option>
+            <option value="iso-naturally-aspirated">Generic ISO 3046-1 (нормативная)</option>
+            <option value="modern-turbo-aftercooled">Современный turbo+aftercooled</option>
+            <option value="perkins-1106a-70tag2">Perkins 1106A-70TAG2 (паспорт)</option>
+            <option value="perkins-4000-series">Perkins 4000-series (1306/4006/4008)</option>
+            <option value="cummins-qs-series">Cummins QSB/QSL/QSX</option>
+            <option value="cat-c-series">Caterpillar C-series</option>
+            <option value="volvo-tad-twd">Volvo Penta TAD/TWD</option>
+            <option value="mtu-large">MTU 12V/16V 2000/4000</option>
+          </select>
+        </label>
+
         <h4 class="dg-section-h4" title="Параметры топливной системы.">⛽ Топливо</h4>
 
         <label class="dg-lbl" title="Желаемое время автономной работы (часы). Tier IV ЦОД — обычно 72 ч (3 суток). Tier III — 12-24 ч.">

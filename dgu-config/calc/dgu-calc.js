@@ -114,15 +114,67 @@ export const ENGINE_DERATE_PROFILES = {
     note: 'Подходит для большинства современных Tier 4 / Stage IIIA двигателей. Подтверждён datasheet\'ами Perkins 1106A, Cummins QSB7, CAT C9.',
   },
   // Perkins 1106A-70TAG2 — точная аппроксимация официального derate chart.
-  // Per Perkins doc: baseline = 2300m@30°C, 2150m@40°C, 2050m@50°C.
+  // Per Perkins doc: baseline = 2400m@25°C, 2300m@30°C, 2150m@40°C, 2050m@50°C.
   'perkins-1106a-70tag2': {
     label: 'Perkins 1106A-70TAG2 (точный по datasheet)',
-    altBaselineM: 2300,           // при 25-30°C
+    altBaselineM: 2400,           // при 25°C
     altPerHundredPct: 1.1,        // ~1.1% per 100m above baseline
-    tempBaselineC: 30,            // tempBaseline сдвинут вверх (datasheet attribute)
+    tempBaselineC: 25,
     tempPer5Pct: 1.5,
-    altShiftPerC: 7.5,            // понижение altBaseline на 7.5м за каждый °C выше 30
-    note: 'Точные данные из Perkins datasheet. Дирейтинг отсутствует до 2300м при 30°C.',
+    altShiftPerC: 7.5,            // baseline понижается на 7.5м за каждый °C выше 25
+    source: 'Perkins datasheet 1106A-70TAG2 50Hz Prime Derate Chart',
+    note: 'Точные данные из Perkins datasheet. Дирейтинг отсутствует до 2400м при 25°C.',
+  },
+  // Perkins 4000 series (1306-E87, 4006-23TAG2A, 4008-30TAG3) — большие
+  // двигатели для 200-1100 кВт ДГУ. Аппроксимация типичной кривой.
+  'perkins-4000-series': {
+    label: 'Perkins 4000-series (1306, 4006, 4008)',
+    altBaselineM: 1800,
+    altPerHundredPct: 1.0,
+    tempBaselineC: 25,
+    tempPer5Pct: 2.0,
+    source: 'Perkins 4000-series typical datasheet',
+    note: 'Типовая кривая для серии 4000. Точная — в datasheet конкретной модели.',
+  },
+  // Cummins QSB / QSL / QSX series — типовая для 60-700 кВт.
+  'cummins-qs-series': {
+    label: 'Cummins QSB/QSL/QSX (Tier 3/4)',
+    altBaselineM: 1500,
+    altPerHundredPct: 1.0,
+    tempBaselineC: 25,
+    tempPer5Pct: 2.0,
+    source: 'Cummins QS-series typical datasheet',
+    note: 'Tier 3/4 turbocharged + aftercooled. Стандарт для большинства Cummins ДГУ.',
+  },
+  // Caterpillar C-series (C4.4, C7.1, C9, C13, C15, C18, C32).
+  'cat-c-series': {
+    label: 'Caterpillar C-series (C4.4 — C32)',
+    altBaselineM: 1500,
+    altPerHundredPct: 1.0,
+    tempBaselineC: 25,
+    tempPer5Pct: 2.0,
+    source: 'Cat C-series typical datasheet',
+    note: 'Типовая кривая. CAT публикует точные derate charts на каждую модель.',
+  },
+  // Volvo Penta TAD/TWD — индустриальные генераторные.
+  'volvo-tad-twd': {
+    label: 'Volvo Penta TAD/TWD',
+    altBaselineM: 1500,
+    altPerHundredPct: 1.0,
+    tempBaselineC: 25,
+    tempPer5Pct: 2.0,
+    source: 'Volvo Penta industrial gen-set datasheet',
+    note: 'Современные turbo+aftercooled. Ключевое преимущество — высокий допуск по T (до 50°C без значительного дирейтинга).',
+  },
+  // MTU 2000 / 4000 series — крупные ДГУ 1-3 МВт.
+  'mtu-large': {
+    label: 'MTU 12V/16V 2000 / 4000',
+    altBaselineM: 1500,
+    altPerHundredPct: 0.8,        // менее агрессивный slope для больших двигателей
+    tempBaselineC: 25,
+    tempPer5Pct: 1.5,
+    source: 'MTU industrial gen-set datasheet',
+    note: 'Для ЦОД-класса (1-3 МВт). Топ-класс по T-tolerance благодаря двойному охлаждению.',
   },
 };
 
@@ -178,17 +230,19 @@ export function calcClimateDerate(climate = {}, profileId) {
  */
 export function detectEngineProfile(engineName, modelName) {
   const s = ((engineName || '') + ' ' + (modelName || '')).toLowerCase();
-  // Точные совпадения сначала
+  // Точные совпадения по конкретной модели — паспортные данные.
   if (/1106a-70tag2|1106a-70/i.test(s)) return 'perkins-1106a-70tag2';
-  // Современные turbo-aftercooled engines
-  if (/perkins\s*(1[01]\d{2}|1[34]\d{2})/i.test(s)) return 'modern-turbo-aftercooled';
-  if (/cummins\s*(qsb|qsl|qst|qsx|qsk|6bt|6lt|nt855)/i.test(s)) return 'modern-turbo-aftercooled';
-  if (/(caterpillar|^cat\s)\s*c[0-9]{1,2}/i.test(s)) return 'modern-turbo-aftercooled';
-  if (/volvo\s*(twd|tad|tid)/i.test(s)) return 'modern-turbo-aftercooled';
+  // Серийные совпадения — типовые datasheet для серии.
+  if (/perkins\s*(4006|4008|1306-e87|2806)/i.test(s)) return 'perkins-4000-series';
+  if (/perkins\s*(1[01]\d{2}|1[234]\d{2})/i.test(s)) return 'modern-turbo-aftercooled';
+  if (/cummins\s*(qsb|qsl|qst|qsx|qsk)/i.test(s)) return 'cummins-qs-series';
+  if (/cummins\s*(6bt|6lt|nt855)/i.test(s)) return 'modern-turbo-aftercooled';
+  if (/(caterpillar|^cat\s)\s*c[0-9]{1,2}/i.test(s)) return 'cat-c-series';
+  if (/volvo\s*(tad|twd|tid)/i.test(s)) return 'volvo-tad-twd';
   if (/iveco\s*(n|c)[0-9]/i.test(s)) return 'modern-turbo-aftercooled';
-  if (/mtu\s*(2000|4000)/i.test(s)) return 'modern-turbo-aftercooled';
+  if (/mtu\s*(12v|16v)?\s*(2000|4000)/i.test(s)) return 'mtu-large';
   if (/john\s*deere\s*(4045|6068|6090|6135)/i.test(s)) return 'modern-turbo-aftercooled';
-  // Default: generic ISO
+  // Default: generic ISO 3046-1 (нет данных для модели → берём нормативные).
   return 'iso-naturally-aspirated';
 }
 

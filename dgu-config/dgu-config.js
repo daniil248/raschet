@@ -324,6 +324,9 @@ function syncStateFromInputs() {
   _state.humidityPct = Number($('dg-rh').value) || _state.humidityPct;
   _state.autonomyHours = Number($('dg-autonomy').value) || _state.autonomyHours;
   _state.vendor = $('dg-vendor').value || '';
+  // v0.60.313: engine profile manual override (пустая строка = auto-detect).
+  const _profEl = $('dg-engine-profile');
+  _state.engineProfileOverride = (_profEl && _profEl.value) ? _profEl.value : null;
 }
 
 function applyStateToInputs() {
@@ -336,6 +339,8 @@ function applyStateToInputs() {
   $('dg-rh').value = _state.humidityPct;
   $('dg-autonomy').value = _state.autonomyHours;
   $('dg-vendor').value = _state.vendor;
+  const _profEl = $('dg-engine-profile');
+  if (_profEl) _profEl.value = _state.engineProfileOverride || '';
 }
 
 function renderCalcResult(res) {
@@ -874,7 +879,7 @@ async function init() {
     'dg-tamb': 'ambientTC',
     'dg-rh': 'humidityPct',
   };
-  ['dg-loadKw', 'dg-mode', 'dg-redundancy', 'dg-margin', 'dg-altitude', 'dg-tamb', 'dg-rh', 'dg-autonomy', 'dg-vendor'].forEach(id => {
+  ['dg-loadKw', 'dg-mode', 'dg-redundancy', 'dg-margin', 'dg-altitude', 'dg-tamb', 'dg-rh', 'dg-autonomy', 'dg-vendor', 'dg-engine-profile'].forEach(id => {
     const el = $(id);
     if (!el) return;
     el.addEventListener('change', () => {
