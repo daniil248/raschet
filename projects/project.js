@@ -971,6 +971,17 @@ const IMPL_STATUS_META = {
   skipped: { label: 'пропущен', icon: '⊘', color: '#6b7280', bg: '#f3f4f6' },
 };
 function _newStageId() { return 's-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6); }
+
+// v0.60.292 (Этап 1.5.1): helper для метаданных в Сводке.
+function _summaryCard(icon, label, value, sub) {
+  return `<div style="padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:5px">
+    <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#64748b;margin-bottom:3px">
+      <span>${icon}</span><span>${label}</span>
+    </div>
+    <div style="font-size:13.5px;color:#0f172a;font-weight:600">${value}</div>
+    ${sub ? `<div style="font-size:11px;color:#64748b;margin-top:2px">${sub}</div>` : ''}
+  </div>`;
+}
 function _getImplStages(p) {
   if (Array.isArray(p.implStages)) return p.implStages;
   // На первом обращении создаём дефолтный набор (не сохраняем сразу — только при изменении).
@@ -1567,6 +1578,7 @@ function render() {
   const planHost = document.getElementById('pr-detail-plan'); // v0.60.97 Phase 38
   const metaHost = document.getElementById('pr-detail-meta');
   const teamHost = document.getElementById('pr-detail-team'); // v0.60.289
+  const summaryHost = document.getElementById('pr-detail-summary'); // v0.60.292
 
   if (!p) {
     if (headHost) headHost.innerHTML = `
@@ -2425,6 +2437,104 @@ function render() {
         });
       });
     }
+  }
+
+  // v0.60.292 (Этап 1.5.1 Phase 47): Cross-discipline сводка проекта.
+  // Минимальный viable view: метрики из existing modules. Будущие подэтапы
+  // (47.2.3-47.2.6): полный equipment list / validation / approval checklist.
+  if (summaryHost) {
+    const _readJSON = (key, fallback) => {
+      try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); }
+      catch { return fallback; }
+    };
+    const pid = p.id;
+    // ⚡ Конструктор схем
+    const scheme = _readJSON(`raschet.project.${pid}.engine.scheme.v1`, null);
+    const schemeNodes = scheme?.nodes ? (Array.isArray(scheme.nodes) ? scheme.nodes.length : Object.keys(scheme.nodes).length) : 0;
+    const schemeConns = scheme?.conns ? (Array.isArray(scheme.conns) ? scheme.conns.length : Object.keys(scheme.conns).length) : 0;
+    // 🏗 Технолог объекта
+    const twVariants = _readJSON(`raschet.project.${pid}.tech-workspace.variants.v1`, []);
+    const twActiveId = (() => { try { return JSON.parse(localStorage.getItem(`raschet.project.${pid}.tech-workspace.activeVariantId.v1`) || '""'); } catch { return null; } })();
+    const twActive = Array.isArray(twVariants) ? twVariants.find(v => v.id === twActiveId) || twVariants[0] : null;
+    const twRacks = twActive?.concept?.rackGroups ? twActive.concept.rackGroups.reduce((s, rg) => s + (Number(rg.count) || 0), 0) : 0;
+    const twUps = twActive?.concept?.upsSystems ? twActive.concept.upsSystems.reduce((s, u) => s + (Number(u.count) || 0), 0) : 0;
+    const twCool = twActive?.concept?.coolingUnits ? twActive.concept.coolingUnits.reduce((s, c) => s + (Number(c.count) || 0), 0) : 0;
+    // 🔗 СКС
+    const scsLinks = _readJSON(`raschet.project.${pid}.scs-design.snapshot`, null);
+    const scsCount = scsLinks?.links ? (Array.isArray(scsLinks.links) ? scsLinks.links.length : 0) : 0;
+    // Метаданные проекта
+    const ok = p.objectKind || 'datacenter';
+    const KIND_LABEL = { datacenter: '🏢 ЦОД', factory: '🏭 Завод', 'pump-station': '💧 Насосная', office: '🏢 Офис', custom: '✏ Свой' };
+    const stages = _getImplStages(p);
+    const stagesDone = stages.filter(s => s.status === 'done').length;
+    const stagesActive = stages.filter(s => s.status === 'active').length;
+
+    summaryHost.innerHTML = `
+      <p class="muted" style="font-size:12.5px;margin:0 0 14px;line-height:1.6">
+        Cross-discipline view проекта. Объединяет данные из <b>Конструктора схем</b>,
+        <b>Технолога объекта</b>, <b>СКС-design</b> и других модулей. Read-mostly view для
+        ГИП / Администратора проекта. Полная функциональность (валидация схем, проверка
+        расчётов, согласование разделов) — Этапы 1.5.2-1.5.5 Phase 47.
+      </p>
+
+      <h4 style="margin:0 0 8px;font-size:13px;color:#0f172a">Метаданные проекта</h4>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:18px">
+        ${_summaryCard('🏷', 'Категория', KIND_LABEL[ok] || ok, '')}
+        ${_summaryCard('🌍', 'Локация', p.location?.city || '<i>не задано</i>', p.location?.country || '')}
+        ${_summaryCard('🎯', 'Этапы реализации', `${stagesDone} / ${stages.length} завершено`, stagesActive > 0 ? `${stagesActive} в работе` : '')}
+        ${_summaryCard('🔐', 'Видимость', { private: '🔒 Private', discoverable: '👁 Discoverable', public: '🌐 Public', link: '🔗 Link' }[p.visibility || 'private'] || 'Private', '')}
+      </div>
+
+      <h4 style="margin:0 0 8px;font-size:13px;color:#0f172a">Дисциплины</h4>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-bottom:18px">
+        <div style="padding:14px 16px;background:#fff;border:1px solid #e0e7ee;border-left:4px solid #f59e0b;border-radius:6px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="font-size:18px">⚡</span>
+            <h5 style="margin:0;font-size:13.5px;color:#92400e">Конструктор электрических схем</h5>
+            <a href="../index.html?project=${esc(pid)}" target="_blank" style="margin-left:auto;font-size:11px;padding:3px 10px;border:1px solid #f59e0b;background:#fef3c7;color:#92400e;border-radius:3px;text-decoration:none">↪ открыть</a>
+          </div>
+          ${schemeNodes > 0 ? `
+            <div style="font-size:12px;color:#475569;line-height:1.7">
+              <b>${schemeNodes}</b> узлов · <b>${schemeConns}</b> кабелей
+            </div>
+          ` : '<div style="font-size:12px;color:#94a3b8;font-style:italic">Схема не создана</div>'}
+        </div>
+
+        <div style="padding:14px 16px;background:#fff;border:1px solid #e0e7ee;border-left:4px solid #7c3aed;border-radius:6px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="font-size:18px">🏗</span>
+            <h5 style="margin:0;font-size:13.5px;color:#5b21b6">Технолог объекта</h5>
+            <a href="../tech-workspace/?project=${esc(pid)}" target="_blank" style="margin-left:auto;font-size:11px;padding:3px 10px;border:1px solid #7c3aed;background:#ede9fe;color:#5b21b6;border-radius:3px;text-decoration:none">↪ открыть</a>
+          </div>
+          ${Array.isArray(twVariants) && twVariants.length > 0 ? `
+            <div style="font-size:12px;color:#475569;line-height:1.7">
+              <b>${twVariants.length}</b> вариант(ов) концепции · активный: <b>${esc(twActive?.name || '?')}</b>
+              <br>${twRacks} стоек · ${twUps} ИБП · ${twCool} кондиционеров
+            </div>
+          ` : '<div style="font-size:12px;color:#94a3b8;font-style:italic">Концепция не создана</div>'}
+        </div>
+
+        <div style="padding:14px 16px;background:#fff;border:1px solid #e0e7ee;border-left:4px solid #0891b2;border-radius:6px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="font-size:18px">🔗</span>
+            <h5 style="margin:0;font-size:13.5px;color:#155e75">СКС-design</h5>
+            <a href="../scs-design/?project=${esc(pid)}" target="_blank" style="margin-left:auto;font-size:11px;padding:3px 10px;border:1px solid #0891b2;background:#cffafe;color:#155e75;border-radius:3px;text-decoration:none">↪ открыть</a>
+          </div>
+          ${scsCount > 0 ? `
+            <div style="font-size:12px;color:#475569;line-height:1.7"><b>${scsCount}</b> межстоечных связей</div>
+          ` : '<div style="font-size:12px;color:#94a3b8;font-style:italic">СКС-связи не заданы</div>'}
+        </div>
+      </div>
+
+      <h4 style="margin:0 0 8px;font-size:13px;color:#0f172a">🚧 В разработке (Этап 1.5)</h4>
+      <div style="padding:14px 16px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:4px;color:#78350f;font-size:12.5px;line-height:1.7">
+        Будущие подэтапы:<br>
+        • <b>1.5.2</b>: cross-discipline equipment list (объединяет позиции из Конструктора и Технолога; все возможные порты по системам)<br>
+        • <b>1.5.3</b>: проверка корректности схем (висячие связи, перегруз, дубли портов)<br>
+        • <b>1.5.4</b>: проверка расчётов (ΔU, токи, селективность; cooling vs IT; cross-discipline баланс)<br>
+        • <b>1.5.5</b>: согласование разделов (✓ checklist с timestamp + подписью + историей ревизий)
+      </div>
+    `;
   }
 
   // v0.60.110: восстановить focused input после re-render. Делаем синхронно
