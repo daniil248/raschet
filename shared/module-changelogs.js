@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.261', date: '2026-05-06', items: [
+      '🔋🔋 <b>Firestore quota: solo-skip + lock debounce</b>. Дополнительная оптимизация после v0.60.260.',
+      '<b>Найден главный сжигатель квоты:</b> на КАЖДЫЙ клик по узлу/связи acquireLock + releaseLock = 2 writes. При активной работе с 30 кликами/мин = 86 400 writes/day только на локи. Покрывал ~4× Spark-квоту.',
+      '• <b>Solo-skip</b>: для проектов БЕЗ shared members <code>_startCollab</code> вообще не вызывается — нет presence-heartbeat, нет lock-acquire/release, нет subscribe на projectDoc/locks/presence. Detection: <code>memberUids.length === 0</code> или все member\'ы = текущий user. Solo = ~95% реальных юзкейсов.',
+      '• <b>Lock acquire debounce 800мс</b>: при rapid-clicking сквозь узлы (drag-select, shift+click) только последняя settled-выборка реально пишется в Firestore. Предыдущие подавляются через clearTimeout.',
+      '• <b>Inline-solo проверка</b>: даже если collab запущен, на каждом selection-click повторяем <code>_isSoloProject()</code> — если presence-list схлопнулся до меня одного (коллеги вышли), lock-write отменяется.',
+      '• Lock-CHECK (remote блокировка) остаётся синхронным — это локальная state-проверка, не Firestore-запрос.',
+      '• Итого: для соло-юзера (большинство) — 0 writes на presence/locks. Для парной работы — ~10× меньше lock-writes благодаря debounce.',
+      'Files: <code>js/engine/constants.js</code>, <code>js/main.js</code> (_isSoloProject + lock debounce + _startCollab guard), <code>shared/module-changelogs.js</code>.',
+    ] },
     { version: '0.60.260', date: '2026-05-06', items: [
       '🔋 <b>Firestore quota: писательская нагрузка снижена ~3×</b>. По репорту Пользователя 2026-05-06 «ты проверь что экономно используешь firestore, а то квота стала уходить очень быстро».',
       '• Анализ: Spark plan = 20K writes/day. ОДИН user сжигал per-day:',

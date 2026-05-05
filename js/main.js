@@ -214,8 +214,36 @@ function _startCollab(project, initialUpdatedAtMs) {
   state.myLockNodeId = null;  // устаревшее имя, теперь держит ЛЮБОЙ ключ лока (node id или 'conn:xxx')
   const _lockKey = (kind, id) => (kind === 'conn' ? `conn:${id}` : String(id));
   if (window.Raschet?.setSelectionHook) {
+    // v0.60.261: hasOtherMembers — определяем «соло» проект.
+    // Solo = у проекта НЕТ других участников (memberUids[]) и НЕТ других
+    // presence-юзеров онлайн. В solo-режиме lock acquire/release — пустая
+    // трата writes (некому показывать «🔒 редактирует другой»).
+    const _isSoloProject = () => {
+      // Project members (cached в state.currentProject).
+      const memberUids = state.currentProject?.memberUids || [];
+      const hasOtherMembers = memberUids.some(mid => mid && mid !== uid);
+      if (hasOtherMembers) return false;
+      // Live presence — если кто-то ещё онлайн (даже не в members), считаем не-solo.
+      const presence = state.presenceByUid || {};
+      const hasOtherPresence = Object.keys(presence).some(puid => puid !== uid);
+      return !hasOtherPresence;
+    };
+    // v0.60.261: debounce acquireLock — при rapid-clicking (drag через узлы)
+    // не дёргаем Firestore на каждый shift-клик. Lock берётся только когда
+    // selection «устаканилось» на 800мс.
+    let _lockDebounceTimer = null;
+    let _pendingLockKey = null;
     window.Raschet.setSelectionHook(async (kind, id, prevKind, prevId) => {
       const newKey = (kind === 'node' || kind === 'conn') && id != null ? _lockKey(kind, id) : null;
+      // v0.60.261: solo-проект — пропускаем все lock-операции.
+      if (_isSoloProject()) {
+        // Сбросим any pending lock-write.
+        if (_lockDebounceTimer) { clearTimeout(_lockDebounceTimer); _lockDebounceTimer = null; }
+        _pendingLockKey = null;
+        // Также не держим state.myLockNodeId — он не реальный.
+        state.myLockNodeId = null;
+        return true;
+      }
       // Отпускаем предыдущий лок, если был и отличается от нового
       if (state.myLockNodeId && state.myLockNodeId !== newKey) {
         const releaseKey = state.myLockNodeId;
@@ -250,22 +278,43 @@ function _startCollab(project, initialUpdatedAtMs) {
         // v0.60.260: совпадает с LOCK_STALE_MS (120с).
         return age >= LOCK_STALE_MS;
       };
-      // Берём новый лок для node или conn
+      // Берём новый лок для node или conn.
+      // v0.60.261: lock-check (remote блокировка) делаем синхронно — это
+      // local-state, не Firestore-write. Lock-WRITE (acquireLock) дебаунсим.
       if (newKey) {
-        // Проверка: не заблокирован ли кем-то другим (с учётом устаревания)
         const remote = state.remoteLocks?.[newKey];
         if (remote && remote.uid !== uid && !_isLockStale(remote)) {
           const owner = _ownerLabel(remote.uid, remote.name, remote.email);
           flash(`🔒 Объект редактирует ${owner}`, 'info');
-          return false; // отменить выделение
-        }
-        const r = await window.Storage.acquireLock(project.id, newKey, uid, info, state.sessionId);
-        if (r && r.ok === false && r.owner) {
-          const owner = _ownerLabel(r.owner.uid, r.owner.name, r.owner.email);
-          flash(`🔒 Объект редактирует ${owner}`, 'info');
           return false;
         }
-        state.myLockNodeId = newKey;
+        // Debounce acquireLock на 800мс. При rapid-clicking сквозь узлы
+        // (drag/shift-select) только последний выбор реально пишется в Firestore.
+        if (_lockDebounceTimer) clearTimeout(_lockDebounceTimer);
+        _pendingLockKey = newKey;
+        _lockDebounceTimer = setTimeout(async () => {
+          _lockDebounceTimer = null;
+          // Проверим что выбор не сменился за время задержки.
+          if (_pendingLockKey !== newKey) return;
+          // Также: solo-проверка ещё раз — если за 800мс никого не появилось,
+          // это всё ещё solo, не пишем.
+          if (_isSoloProject()) return;
+          try {
+            const r = await window.Storage.acquireLock(project.id, newKey, uid, info, state.sessionId);
+            if (r && r.ok === false && r.owner) {
+              const owner = _ownerLabel(r.owner.uid, r.owner.name, r.owner.email);
+              flash(`🔒 Объект редактирует ${owner}`, 'info');
+              // selection уже произошёл локально — поздно отменять. Просто
+              // оставим state.myLockNodeId=null (нам не дали лок).
+              return;
+            }
+            state.myLockNodeId = newKey;
+          } catch {}
+        }, 800);
+      } else {
+        // Снимаем pending lock-write если selection ушёл в null.
+        if (_lockDebounceTimer) { clearTimeout(_lockDebounceTimer); _lockDebounceTimer = null; }
+        _pendingLockKey = null;
       }
       return true;
     });
@@ -1403,10 +1452,23 @@ async function openProject(id) {
 
     showScreen('editor');
 
-    // Phase 1.20.51: старт presence + live-sync (только для Firestore)
+    // Phase 1.20.51: старт presence + live-sync (только для Firestore).
+    // v0.60.261: для solo-проектов (нет shared members) collab не стартуется
+    // — экономия Firestore quota. Если позже добавятся share-участники,
+    // user должен переоткрыть проект (или мы можем добавить watcher на
+    // memberUids change в будущем).
     _stopCollab();
-    const initUpdatedAtMs = data.updatedAt?.toMillis ? data.updatedAt.toMillis() : (data.updatedAt || Date.now());
-    _startCollab(data, initUpdatedAtMs);
+    const memberUids = Array.isArray(data?.memberUids) ? data.memberUids : [];
+    const ownerUid = data?.ownerId || '';
+    const meUid = state.currentUser?.uid || '';
+    const otherMembers = memberUids.filter(m => m && m !== meUid && m !== ownerUid).length;
+    const hasShares = otherMembers > 0 || (memberUids.length > 0 && memberUids.some(m => m && m !== meUid));
+    if (hasShares && window.Storage?.isCloud) {
+      const initUpdatedAtMs = data.updatedAt?.toMillis ? data.updatedAt.toMillis() : (data.updatedAt || Date.now());
+      _startCollab(data, initUpdatedAtMs);
+    } else {
+      console.info('[main] solo-project — collab пропущен (presence/locks/sync не подписаны для экономии Firestore quota)');
+    }
 
     // После отрисовки — fitAll (canvas теперь имеет размеры)
     requestAnimationFrame(() => window.Raschet.fit());
