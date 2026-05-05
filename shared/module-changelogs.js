@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.254', date: '2026-05-06', items: [
+      '🩹 <b>Hotfix: 404 на <code>shared/catalogs/dgu.js</code></b>. По репорту Пользователя 2026-05-06 (скриншот консоли «Failed to load resource: 404» + «[catalog-bridge] dgu-datasheets Failed to fetch dynamically imported module»).',
+      '• Корень: каталог DGU был разделён на per-vendor файлы в <code>shared/catalogs/dgu/</code> (v0.60.214), но re-export shim <code>shared/catalogs/dgu.js</code> не был создан. catalog-bridge.js пытался импортировать <code>./catalogs/dgu.js</code> и падал с 404.',
+      '• Фикс: добавлен shim <code>shared/catalogs/dgu.js</code> с re-export <code>{ DGU_DATASHEETS, listDgus, listDguVendors, suggestDgu }</code> из <code>./dgu/index.js</code>. Идентично shim\'у <code>drups.js</code>.',
+      'Файл: <code>shared/catalogs/dgu.js</code> (новый).',
+    ] },
     { version: '0.60.253', date: '2026-05-06', items: [
       '🔌 <b>Auto-cable cond→outdoor: наследуется проектная марка</b>. По репорту Пользователя 2026-05-06 «есть кабель по умолчанию, но для размещенного наружного блока кабель не выбрался автоматически».',
       '• Корень: при auto-create conn между cond и outdoor устанавливались material/insulation/installMethod/ambientC/grouping/bundling, но <code>cableMark</code> оставался null → инспектор показывал «не выбрано (указать вручную)».',
