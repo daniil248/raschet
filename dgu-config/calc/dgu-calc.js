@@ -74,10 +74,13 @@ export const DGU_MODES = {
           notes: 'Mission Critical Standby Power. Для Tier IV ЦОД и аналогичных критических объектов. Без лимита часов, синхронная параллельная работа с UPS bypass.' },
 };
 
-/** Список режимов сгруппированный по категории (для UI selector). */
+/** Список режимов сгруппированный по категории (для UI selector).
+ * v0.60.315: порядок от ПРОСТЫХ к ТРЕБОВАТЕЛЬНЫМ:
+ *   ESP (200ч/год) → LTP (500ч) → PRP (без лимита, 70%) → COP (24/7, 100%)
+ *   DCS (резерв ЦОД) → DCP (85%) → DCC (24/7) → MCSP (Tier IV) */
 export const DGU_MODE_GROUPS = [
-  { label: 'Общие (ISO 8528-1)', modes: ['ESP', 'PRP', 'LTP', 'COP'] },
-  { label: 'Дата-центры (ISO 8528-13)', modes: ['DCC', 'DCP', 'DCS', 'MCSP'] },
+  { label: 'Общие (ISO 8528-1)', modes: ['ESP', 'LTP', 'PRP', 'COP'] },
+  { label: 'Дата-центры (ISO 8528-13)', modes: ['DCS', 'DCP', 'DCC', 'MCSP'] },
 ];
 
 /**

@@ -34,17 +34,20 @@
         <label class="dg-lbl" title="Режимы по ISO 8528 (части 1 и 13). Подробное описание в tooltip каждой опции. Расчёт required_kW = load_kW / maxLoadFactor.">
           <span>Режим (ISO 8528):</span>
           <select id="dg-mode">
+            <!-- v0.60.315: порядок от ПРОСТЫХ к ТРЕБОВАТЕЛЬНЫМ режимам.
+                 По возрастанию суммы (часы работы × load factor): ESP (резерв 200ч)
+                 → LTP (500ч) → PRP (без лимита, 70%) → COP (24/7, 100%). -->
             <optgroup label="Общие (ISO 8528-1)">
-              <option value="ESP" title="Emergency Standby Power. До 200 ч/год, ≤25 ч непрерывно. Без перегрузки.">ESP — аварийный</option>
-              <option value="PRP" selected title="Prime Power. Постоянный режим. Средняя нагрузка ≤70% nameplate. 10% перегрузка 1ч из 12.">PRP — основной</option>
-              <option value="LTP" title="Limited-Time Prime. До 500 ч/год при 100% нагрузке. Без перегрузки.">LTP — ограниченный по времени</option>
-              <option value="COP" title="Continuous Operating Power. 24/7 при 100% постоянной нагрузке. Часто единственный источник на удалённых объектах.">COP — непрерывный 24/7</option>
+              <option value="ESP" selected title="Emergency Standby Power. До 200 ч/год, ≤25 ч непрерывно. Без перегрузки. САМЫЙ ПРОСТОЙ режим.">ESP — аварийный (200 ч/год)</option>
+              <option value="LTP" title="Limited-Time Prime. До 500 ч/год при 100% нагрузке. Без перегрузки.">LTP — ограниченный (500 ч/год)</option>
+              <option value="PRP" title="Prime Power. Постоянный режим без лимита часов. Средняя нагрузка ≤70% nameplate. 10% перегрузка 1ч из 12.">PRP — основной (без лимита, 70%)</option>
+              <option value="COP" title="Continuous Operating Power. 24/7 при 100% постоянной нагрузке. САМЫЙ ТРЕБОВАТЕЛЬНЫЙ режим.">COP — непрерывный 24/7, 100%</option>
             </optgroup>
             <optgroup label="ЦОД (ISO 8528-13)">
-              <option value="DCC" title="Data Centre Continuous Power. 24/7 для критической IT-нагрузки. Допуск 10% переменной + запуск ≤10 сек.">DCC — ЦОД непрерывный</option>
-              <option value="DCP" title="Data Centre Prime Power. Средняя нагрузка ≤85% (PRP-аналог для ЦОД).">DCP — ЦОД основной</option>
-              <option value="DCS" title="Data Centre Standby Power. Резерв ЦОД с запуском ≤10 сек (критично для UPS bypass).">DCS — ЦОД резервный</option>
-              <option value="MCSP" title="Mission Critical Standby Power. Tier IV ЦОД и критические объекты. Синхронная параллельная работа с UPS.">MCSP — критический резерв</option>
+              <option value="DCS" title="Data Centre Standby Power. Резерв ЦОД с запуском ≤10 сек (критично для UPS bypass). До 200 ч/год.">DCS — ЦОД резервный</option>
+              <option value="DCP" title="Data Centre Prime Power. Средняя нагрузка ≤85% (PRP-аналог для ЦОД). Без лимита часов.">DCP — ЦОД основной (85%)</option>
+              <option value="DCC" title="Data Centre Continuous Power. 24/7 для критической IT-нагрузки. Допуск 10% переменной + запуск ≤10 сек.">DCC — ЦОД непрерывный 24/7</option>
+              <option value="MCSP" title="Mission Critical Standby Power. Tier IV ЦОД и критические объекты. Синхронная параллельная работа с UPS bypass.">MCSP — Tier IV критический</option>
             </optgroup>
           </select>
         </label>

@@ -416,19 +416,31 @@ function renderSuggestResult(spec) {
     .filter(d => Number.isFinite(_modeKw(d).kw));
   const sorted = allDgus.slice().sort((a, b) => _modeKw(a).kw - _modeKw(b).kw);
 
-  // Best = ближайшая ≥ requiredKw
+  // Best = ближайшая ≥ requiredKw (auto-pick).
   const best = sorted.find(d => _modeKw(d).kw >= spec.nameplateKw);
-  const matches = sorted.filter(d => {
-    const k = _modeKw(d).kw;
-    return k >= spec.nameplateKw && k <= spec.nameplateKw * 1.5;
-  });
+  // v0.60.315 (по запросу Пользователя 2026-05-06: «не могу выбрать из найденных
+  // моделей, может для меня выбранная автоматически модель не доступна.
+  // Расширь выбор до более мощных моделей»):
+  // Раньше показывалось max 8 моделей в диапазоне [required..required×1.5].
+  // Теперь — ВСЕ модели ≥ required (до 30) с группировкой headroom.
+  const matches = sorted.filter(d => _modeKw(d).kw >= spec.nameplateKw);
 
   if (!matches.length) {
     return `<div class="dg-warn">⚠ Нет моделей в каталоге, покрывающих требуемые ${fmt(spec.nameplateKw)} кВт по режиму ${escHtml(_state.mode)}${_state.vendor ? ` (вендор: ${escHtml(_state.vendor)})` : ''}. Попробуйте другой режим или снимите фильтр вендора.</div>`;
   }
 
-  // v0.60.216: расчёт количества derived-значений в видимых строках.
-  const derivedCount = matches.slice(0, 8).filter(d => _isDerived(d)).length;
+  // v0.60.315: ручной выбор. Если Пользователь явно выбрал модель — она
+  // подсвечивается синим и используется как _lastBest для apply-bar.
+  // Если нет ручного выбора — auto-best (минимальный покрывающий) как раньше.
+  const userPick = _state.selectedDguId
+    ? matches.find(d => `${d.vendor}::${d.model}` === _state.selectedDguId)
+    : null;
+  const activePick = userPick || best;
+  // Записываем activePick в _lastBest чтобы apply-bar и fuel считались по нему.
+  _lastBest = activePick || null;
+
+  const visible = matches.slice(0, 30);
+  const derivedCount = visible.filter(d => _isDerived(d)).length;
   const derivedNote = derivedCount > 0
     ? `<div class="muted" style="font-size:11px;margin-top:6px;font-style:italic">
          <b>*</b> — мощность не задана в datasheet, выведена по типовым коэффициентам ISO 8528 (наведите на ячейку — формула в tooltip).
@@ -437,16 +449,20 @@ function renderSuggestResult(spec) {
 
   return `
     <p style="font-size:12px;margin-bottom:6px">
-      Найдено <b>${matches.length}</b> моделей с ${escHtml(_state.mode)}-мощностью ≥ <b>${fmt(spec.nameplateKw)} кВт</b>
-      ${_state.vendor ? `(вендор: <b>${escHtml(_state.vendor)}</b>)` : ''}.
-      Зелёным — оптимальный подбор (минимальный размер, покрывающий требование).
+      Найдено <b>${matches.length}</b> моделей с ${escHtml(_state.mode)}-мощностью ≥ <b>${fmt(spec.nameplateKw)} кВт</b>${matches.length > 30 ? ` (показаны первые 30, отсортированы по возрастанию)` : ''}
+      ${_state.vendor ? `<span class="muted">· вендор: <b>${escHtml(_state.vendor)}</b></span>` : ''}.
+      <span style="color:#15803d">Зелёный</span> — auto-подбор (минимальный покрывающий).
+      ${userPick ? `<span style="color:#1d4ed8">Синий</span> — выбрано вручную.` : 'Кликните строку чтобы выбрать вручную.'}
+      ${userPick ? '<button type="button" id="dg-clear-pick" style="margin-left:6px;padding:1px 8px;font-size:11px;background:#fff;border:1px solid #cbd5e1;border-radius:3px;cursor:pointer">↺ авто</button>' : ''}
     </p>
     <table class="dg-suggest-table">
       <thead>
         <tr>
+          <th></th>
           <th>Вендор</th>
           <th>Модель</th>
           <th class="num">${escHtml(_state.mode)}, кВт</th>
+          <th class="num">Запас</th>
           <th class="num">Все режимы (ESP/PRP/COP)</th>
           <th>Двигатель</th>
           <th class="num">Габариты Д×Ш×В, мм</th>
@@ -454,15 +470,25 @@ function renderSuggestResult(spec) {
         </tr>
       </thead>
       <tbody>
-        ${matches.slice(0, 8).map(d => {
+        ${visible.map(d => {
           const isBest = d === best;
+          const isPicked = d === userPick;
           const p = d.physical || {};
           const mp = _modeKw(d);
           const isDer = mp.source !== 'datasheet';
-          return `<tr class="${isBest ? 'dg-suggest-best' : ''}" title="${escAttr(d.notes || '')}">
+          const headroomPct = spec.nameplateKw > 0 ? ((mp.kw - spec.nameplateKw) / spec.nameplateKw * 100) : 0;
+          const headroomColor = headroomPct < 10 ? '#15803d' : (headroomPct < 30 ? '#0369a1' : (headroomPct < 60 ? '#ca8a04' : '#7c2d12'));
+          const id = `${d.vendor}::${d.model}`;
+          let rowClass = '';
+          let rowStyle = 'cursor:pointer';
+          if (isPicked) { rowClass = 'dg-suggest-picked'; rowStyle += ';background:#dbeafe;border-left:3px solid #1d4ed8'; }
+          else if (isBest && !userPick) { rowClass = 'dg-suggest-best'; }
+          return `<tr class="${rowClass}" data-pick="${escAttr(id)}" style="${rowStyle}" title="${escAttr(d.notes || '')}\nКлик — выбрать эту модель">
+            <td><input type="radio" name="dg-pick" ${isPicked || (isBest && !userPick) ? 'checked' : ''} data-pick="${escAttr(id)}"></td>
             <td>${escHtml(d.vendor)}</td>
             <td><b>${escHtml(d.model)}</b></td>
             <td class="num" title="${escAttr(mp.source)}"><b>${fmt(mp.kw)}</b>${isDer ? '<sup style="color:#dc2626" title="' + escAttr(mp.source) + '">*</sup>' : ''}</td>
+            <td class="num" style="color:${headroomColor};font-weight:600" title="${headroomPct < 10 ? 'минимальный — оптимально' : headroomPct < 30 ? 'хороший запас' : headroomPct < 60 ? 'избыточный запас' : 'значительно избыточный'}">+${headroomPct.toFixed(0)}%</td>
             <td class="num">${fmt(d.espKw)} / ${fmt(d.prpKw)} / ${fmt(d.copKw)}</td>
             <td>${escHtml(d.engineModel)} (${d.cylinders} цил., ${fmt(d.displacement, 1)} L)</td>
             <td class="num">${p.lengthMm || '—'} × ${p.widthMm || '—'} × ${p.heightMm || '—'}</td>
@@ -472,10 +498,11 @@ function renderSuggestResult(spec) {
       </tbody>
     </table>
     ${derivedNote}
-    ${best ? (() => {
-      const mp = _modeKw(best);
+    ${activePick ? (() => {
+      const mp = _modeKw(activePick);
       const srcNote = mp.source === 'datasheet' ? '' : ` <i title="${escAttr(mp.source)}">(*выведено)</i>`;
-      return `<div class="dg-success">✓ Рекомендация: <b>${escHtml(best.vendor)} ${escHtml(best.model)}</b> — ${fmt(mp.kw)} кВт по ${escHtml(_state.mode)}${srcNote}, ${best.cylinders}-цилиндровый ${escHtml(best.engineModel)}, SFC ${fmt(best.sfcLkWh, 3)} л/кВт·ч.</div>`;
+      const pickType = userPick ? '🔵 Выбрано вручную' : '✓ Авто-рекомендация';
+      return `<div class="dg-success" style="${userPick ? 'background:#eff6ff;border-color:#1d4ed8;color:#1e40af' : ''}">${pickType}: <b>${escHtml(activePick.vendor)} ${escHtml(activePick.model)}</b> — ${fmt(mp.kw)} кВт по ${escHtml(_state.mode)}${srcNote}, ${activePick.cylinders}-цилиндровый ${escHtml(activePick.engineModel)}, SFC ${fmt(activePick.sfcLkWh, 3)} л/кВт·ч.</div>`;
     })() : ''}
   `;
 }
@@ -884,6 +911,22 @@ async function init() {
     'dg-tamb': 'ambientTC',
     'dg-rh': 'humidityPct',
   };
+  // v0.60.315: ручной выбор модели через radio/click.
+  document.addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-pick]');
+    if (tr) {
+      const id = tr.getAttribute('data-pick');
+      _state.selectedDguId = id;
+      saveProjectState();
+      recalcAndRender();
+      return;
+    }
+    if (e.target.id === 'dg-clear-pick') {
+      _state.selectedDguId = null;
+      saveProjectState();
+      recalcAndRender();
+    }
+  });
   ['dg-loadKw', 'dg-mode', 'dg-redundancy', 'dg-margin', 'dg-altitude', 'dg-tamb', 'dg-rh', 'dg-autonomy', 'dg-vendor', 'dg-engine-profile'].forEach(id => {
     const el = $(id);
     if (!el) return;
