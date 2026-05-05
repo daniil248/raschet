@@ -1447,6 +1447,13 @@ function updateSaveButton() {
 }
 
 function markDirty() {
+  // v0.60.258: file-mode — auto-save в файл работает даже без currentProject.
+  if (window.Raschet && typeof window.Raschet.isFileMode === 'function' && window.Raschet.isFileMode()) {
+    state.dirty = true;
+    updateSaveButton();
+    scheduleAutoSave();
+    return;
+  }
   const p = state.currentProject;
   if (!p || p._role === 'viewer' || String(p.id || '').startsWith('_demo_')) return;
   state.dirty = true;
@@ -1463,6 +1470,32 @@ function scheduleAutoSave() {
 }
 
 async function saveCurrent(isAuto) {
+  // v0.60.258: file-mode (drawio-style) — если открыт файл с handle и не
+  // read-only, пишем напрямую в файл (вместо Firestore). Работает в т.ч.
+  // на сетевых ресурсах через mapped-drive.
+  if (window.Raschet && typeof window.Raschet.isFileMode === 'function' && window.Raschet.isFileMode()) {
+    if (state.saving) return;
+    state.saving = true;
+    updateSaveButton();
+    try {
+      const r = await window.Raschet.saveToFileHandle();
+      state.dirty = false;
+      state.saving = false;
+      updateSaveButton();
+      if (!isAuto) flash(`💾 Сохранено в файл (${r.bytes} байт)`, 'success');
+    } catch (e) {
+      console.error('[saveCurrent file-mode]', e);
+      state.saving = false;
+      els.btnSave.classList.remove('dirty', 'saving', 'saved');
+      els.btnSave.classList.add('save-error');
+      els.btnSave.textContent = 'Ошибка';
+      const raw = (e && (e.message || String(e))) || 'Ошибка записи в файл';
+      flash('Ошибка записи в файл: ' + raw + ' — возможно, отозвано разрешение или файл удалён. Попробуйте «📁 Открыть файл проекта…» заново.', 'error');
+      setTimeout(() => { if (!state.saving) updateSaveButton(); }, 3000);
+    }
+    return;
+  }
+
   const p = state.currentProject;
   if (!p) return;
   if (p._role === 'viewer') { if (!isAuto) flash('Только просмотр', 'error'); return; }

@@ -10,6 +10,8 @@ import { flash } from './utils.js';
 import { exportBomXlsx, exportBomCsv, buildBOM } from './bom.js';
 import { rsToast, rsConfirm, rsPrompt } from '../../shared/dialog.js';
 import { getActiveProjectId, ensureDefaultProject, listProjects } from '../../shared/project-storage.js';
+// v0.60.258: file-based storage (drawio-style).
+import { openProjectFile, saveProjectAsFile, writeProjectToHandle, buildFilePayload, isFileSystemAccessSupported } from '../../shared/file-sync.js';
 
 /* ---------- Фаза 1.27.2: save/load главной схемы в неймспейс активного
    проекта. Если активного проекта нет (edge-case) — падаем на глобальный
@@ -134,6 +136,136 @@ export function initToolbar() {
   bind('btn-load-local-side', loadLocalFn);
   bind('btn-export-side', exportJsonFn);
   bind('btn-import-side', importJsonFn);
+
+  // === v0.60.258: file-based storage (drawio-style) ===
+  // window.Raschet._fileMode хранит активный режим файлового сохранения:
+  //   {
+  //     handle: FileSystemFileHandle | null,
+  //     fileName: string,
+  //     readOnly: boolean,
+  //     supportedAccess: boolean,  // true если File System Access API
+  //   }
+  // Если установлен, saveCurrent (см. main.js) и autosave пишут в файл
+  // через handle вместо Firestore. Кнопки sidebar:
+  //   • btn-file-open       — открыть файл (с правом записи), активировать file-mode
+  //   • btn-file-open-readonly — открыть только для чтения (без авто-save)
+  //   • btn-file-save-as    — сохранить как новый файл, активировать file-mode
+  const _updateFileModeBadge = () => {
+    const badge = document.getElementById('file-mode-badge');
+    if (!badge) return;
+    const fm = window.Raschet?._fileMode;
+    if (!fm) {
+      badge.classList.add('hidden');
+      badge.textContent = '';
+      return;
+    }
+    badge.classList.remove('hidden');
+    const accessNote = fm.supportedAccess ? ' (in-place save)' : ' (download-only)';
+    if (fm.readOnly) {
+      badge.style.background = '#fef3c7';
+      badge.style.borderLeftColor = '#d97706';
+      badge.style.color = '#92400e';
+      badge.innerHTML = `👁 <b>${escapeHtml(fm.fileName)}</b> · только чтение`;
+    } else {
+      badge.style.background = '#f0fdf4';
+      badge.style.borderLeftColor = '#15803d';
+      badge.style.color = '#15803d';
+      badge.innerHTML = `📁 <b>${escapeHtml(fm.fileName)}</b>${accessNote}`;
+    }
+  };
+  function escapeHtml(s) { return String(s || '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+
+  bind('btn-file-open', async () => {
+    try {
+      const result = await openProjectFile({ readOnly: false });
+      // Если File System Access не поддерживается, handle=null → save будет
+      // download. Но фактически открыли файл, scheme можно загрузить.
+      deserialize(result.payload.scheme);
+      render(); renderInspector();
+      window.Raschet = window.Raschet || {};
+      window.Raschet._fileMode = {
+        handle: result.handle,
+        fileName: result.payload.fileName || result.file?.name || 'project.raschet.json',
+        readOnly: !!result.readOnly && !result.handle,
+        supportedAccess: !!result.handle,
+      };
+      _updateFileModeBadge();
+      const acc = result.handle ? 'авто-save в тот же файл' : 'без авто-save (старый браузер) — используйте «Сохранить в файл»';
+      flash(`📁 Открыт: ${result.payload.fileName} · ${acc}`, 'success');
+    } catch (e) {
+      if (e.name !== 'AbortError') flash('Ошибка открытия файла: ' + (e.message || e), 'error');
+    }
+  });
+
+  bind('btn-file-open-readonly', async () => {
+    try {
+      const result = await openProjectFile({ readOnly: true });
+      deserialize(result.payload.scheme);
+      render(); renderInspector();
+      window.Raschet = window.Raschet || {};
+      window.Raschet._fileMode = {
+        handle: result.handle,
+        fileName: result.payload.fileName || result.file?.name || 'project.raschet.json',
+        readOnly: true,
+        supportedAccess: !!result.handle,
+      };
+      _updateFileModeBadge();
+      flash(`👁 Открыт только для чтения: ${result.payload.fileName}. Изменения локально, в файл не сохраняются.`, 'success');
+    } catch (e) {
+      if (e.name !== 'AbortError') flash('Ошибка открытия файла: ' + (e.message || e), 'error');
+    }
+  });
+
+  bind('btn-file-save-as', async () => {
+    try {
+      const scheme = serialize();
+      const projName = document.getElementById('project-name')?.textContent
+        || window.Raschet?.currentProjectName
+        || 'Project';
+      const payload = buildFilePayload(scheme, { name: projName });
+      const result = await saveProjectAsFile(payload, { suggestedName: `${projName.replace(/[^\w\sа-яёА-ЯЁ.-]+/gi, '_')}.raschet.json` });
+      window.Raschet = window.Raschet || {};
+      window.Raschet._fileMode = {
+        handle: result.handle,
+        fileName: result.fileName,
+        readOnly: false,
+        supportedAccess: !!result.handle,
+      };
+      _updateFileModeBadge();
+      const acc = result.handle ? ' Дальнейшие изменения авто-сохраняются в этот файл.' : '';
+      flash(`💾 Сохранено: ${result.fileName}.${acc}`, 'success');
+    } catch (e) {
+      if (e.name !== 'AbortError') flash('Ошибка сохранения файла: ' + (e.message || e), 'error');
+    }
+  });
+
+  // Экспортируем helper в window.Raschet для main.js (saveCurrent integration).
+  window.Raschet = window.Raschet || {};
+  window.Raschet.saveToFileHandle = async () => {
+    const fm = window.Raschet?._fileMode;
+    if (!fm || !fm.handle || fm.readOnly) return false;
+    const scheme = serialize();
+    const projName = document.getElementById('project-name')?.textContent
+      || window.Raschet?.currentProjectName
+      || 'Project';
+    const payload = buildFilePayload(scheme, { name: projName });
+    const r = await writeProjectToHandle(fm.handle, payload);
+    return r;
+  };
+  window.Raschet.isFileMode = () => {
+    const fm = window.Raschet?._fileMode;
+    return !!(fm && fm.handle && !fm.readOnly);
+  };
+  window.Raschet.updateFileModeBadge = _updateFileModeBadge;
+  // Initial badge render.
+  _updateFileModeBadge();
+  // Если File System Access API не поддерживается (Firefox/Safari) — кнопку
+  // «Открыть только для чтения» оставляем (через input[type=file]), но
+  // визуально намекаем на ограничение.
+  if (!isFileSystemAccessSupported()) {
+    const btnOpen = document.getElementById('btn-file-open');
+    if (btnOpen) btnOpen.title = btnOpen.title + ' ⚠ В этом браузере (Firefox/Safari) автосохранение в файл недоступно. Будет fallback: при сохранении файл скачается заново.';
+  }
   bind('btn-export-svg-side', () => exportSVG());
   bind('btn-export-png-side', () => exportPNG());
 

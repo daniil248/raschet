@@ -267,6 +267,11 @@
         <button id="btn-save-local-side" class="full-btn">💾 Сохр. локально</button>
         <button id="btn-save-as" class="full-btn">💾 Сохранить как…</button>
         <button id="btn-load-local-side" class="full-btn">📂 Загр. локально</button>
+        <!-- v0.60.258: file-based storage (drawio-style) — открыть/сохранить в локальный файл, авто-save в тот же файл. Сетевой ресурс работает прозрачно. -->
+        <button id="btn-file-open" class="full-btn" title="Открыть проект из локального файла (.raschet.json). После открытия все изменения автоматически сохраняются в тот же файл (drawio-стиль). Можно открыть файл с сетевого ресурса (Z:\\projects\\...).">📁 Открыть файл проекта…</button>
+        <button id="btn-file-open-readonly" class="full-btn" title="Открыть файл только для чтения. Полезно когда другой коллега редактирует тот же файл на сетевом ресурсе — вы видите содержимое без риска перезаписи.">👁 Открыть только для чтения…</button>
+        <button id="btn-file-save-as" class="full-btn" title="Сохранить текущий проект в новый локальный файл (.raschet.json). Можно сохранить в сетевой ресурс. После сохранения дальнейшие правки автоматически пишутся в этот файл (file-mode).">💾 Сохранить в файл…</button>
+        <div id="file-mode-badge" class="hidden" style="font-size:11px;color:#15803d;margin:4px 0 6px;line-height:1.4;padding:4px 6px;background:#f0fdf4;border-left:3px solid #15803d;border-radius:3px"></div>
         <button id="btn-export-side" class="full-btn">📤 Экспорт JSON</button>
         <button id="btn-import-side" class="full-btn">📥 Импорт JSON</button>
         <button id="btn-export-svg-side" class="full-btn">🖼 Экспорт SVG</button>

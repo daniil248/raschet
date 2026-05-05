@@ -4,6 +4,20 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.258', date: '2026-05-06', items: [
+      '📁 <b>File-based storage (drawio-style)</b>. По запросу Пользователя 2026-05-06 «предлагаю пользовательские данные хранить не в браузере а в локальных файлах пользователя, как drawio например хранит библиотеки пользователя просто в файле. Такой файл можно выложить на сетевом ресурсе и использовать совместно».',
+      '• Новый модуль <code>shared/file-sync.js</code> — обёртка над File System Access API (Chromium-браузеры) с graceful fallback на download/upload через input[type=file] для Firefox/Safari.',
+      '• 3 новые кнопки в sidebar (раздел «Файл»):',
+      '   ▸ <b>📁 Открыть файл проекта…</b> — выбор .raschet.json через showOpenFilePicker; handle сохраняется в <code>window.Raschet._fileMode</code>; авто-save при изменениях пишется в тот же файл (in-place, без диалога).',
+      '   ▸ <b>👁 Открыть только для чтения…</b> — handle без права записи. Полезно для сетевого ресурса с одним «писателем» — все остальные открывают read-only, видят актуальное содержимое без риска перезаписи.',
+      '   ▸ <b>💾 Сохранить в файл…</b> — showSaveFilePicker (или download fallback), активирует file-mode для дальнейшего автосохранения.',
+      '• Файлы сохраняются в формате <code>{ _format: "raschet-project", _version, _savedAt, name, scheme: {...}, customer, address, code, info }</code>. Поддерживается legacy-импорт raw-scheme JSON (как было раньше).',
+      '• Сетевой ресурс: handle указывает на mapped-drive (Z:\\projects\\...), запись прозрачно идёт через ОС. Возможна совместная работа: один писатель + N читателей.',
+      '• <code>saveCurrent()</code> и <code>markDirty()</code> в main.js теперь проверяют file-mode и пишут в handle вместо Firestore. AUTO_SAVE_DELAY (1.5 с) работает идентично.',
+      '• Badge в sidebar показывает активный режим: «📁 имя.raschet.json (in-place save)» или «👁 имя.raschet.json · только чтение».',
+      '• В Firefox/Safari (без File System Access API): кнопки работают через download/upload — сохранение каждый раз скачивает новый файл, открытие через input[type=file] загружает scheme в текущую сессию (без in-place save).',
+      'Файлы: <code>shared/file-sync.js</code> (новый), <code>js/engine/export.js</code> (UI handlers + window.Raschet integration), <code>js/main.js</code> (saveCurrent + markDirty file-mode branch), <code>index.html</code> (3 кнопки + badge).',
+    ] },
     { version: '0.60.257', date: '2026-05-06', items: [
       '💾 <b>LS-backup при quota / timeout / network ошибках сохранения</b>. По репорту Пользователя 2026-05-06 «все еще не могу сохранить» (скриншот: <code>Firestore Quota exceeded [code=resource-exhausted]</code> + <code>timeout: сохранение заняло больше 30 с</code>).',
       '• Корень: бесплатный (Spark) план Firestore имеет суточный лимит на writes; при исчерпании все save-и падают, пока квота не сбросится в UTC midnight.',
