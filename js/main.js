@@ -1156,10 +1156,43 @@ function renderCurrentTab() {
   for (const cp of ctxProjects) {
     if (!groups.has(cp.id)) groups.set(cp.id, []);
   }
-  const orderedPids = [
+  // v0.60.307 (Phase 47.3.2): project-mode фильтрация — если URL содержит
+  // ?project=X (открыт из project-mode hub'а или /projects/), показываем
+  // ТОЛЬКО схемы этого проекта, без «Без проекта» и других контекстов.
+  // Plus banner сверху (рендерится отдельно при наличии project-mode).
+  let _projectMode = null;
+  try {
+    const _projUrl = new URL(location.href).searchParams.get('project');
+    if (_projUrl && ctxMap.has(_projUrl)) _projectMode = _projUrl;
+    else if (_projUrl && cloudIdToLocal.has(_projUrl)) _projectMode = cloudIdToLocal.get(_projUrl);
+  } catch (e) { /* noop */ }
+  let orderedPids = [
     ...ctxProjects.map(p => p.id),
     ...(groups.has('') ? [''] : []),
   ];
+  if (_projectMode) {
+    // Только активный проект; «Без проекта» скрываем.
+    orderedPids = orderedPids.filter(pid => pid === _projectMode);
+    // Banner project-mode'а сверху grid'а
+    const ctxP = ctxMap.get(_projectMode);
+    if (ctxP) {
+      const KIND_LABEL = { datacenter: '🏢 ЦОД', factory: '🏭 Завод', 'pump-station': '💧 Насосная', office: '🏢 Офис', custom: '✏ Свой' };
+      const kindLabel = KIND_LABEL[ctxP.objectKind || 'datacenter'] || '🏢 ЦОД';
+      const banner = document.createElement('div');
+      banner.style.cssText = 'grid-column:1/-1;background:linear-gradient(180deg,#dbeafe 0%,#eff6ff 100%);border:2px solid #1e40af;border-radius:6px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:13px';
+      banner.innerHTML = `
+        <span style="font-size:22px">📁</span>
+        <div style="flex:1;min-width:200px">
+          <div style="font-weight:600;color:#1e3a8a;font-size:15px">${escHtml(ctxP.name || '(без имени)')}</div>
+          <div style="color:#475569;font-size:11.5px;margin-top:2px">${kindLabel} · показаны схемы только этого проекта</div>
+        </div>
+        <a href="projects/project.html?project=${escAttr(_projectMode)}" style="padding:6px 14px;background:#1e40af;color:#fff;border-radius:4px;text-decoration:none;font-size:12px;font-weight:500" title="Карточка проекта (общее, команда, экономика, проверки, согласование)">📋 Карточка проекта</a>
+        <a href="hub.html?project=${escAttr(_projectMode)}" style="padding:6px 14px;background:#fff;border:1px solid #1e40af;color:#1e40af;border-radius:4px;text-decoration:none;font-size:12px" title="Все модули в контексте проекта">🏠 Hub проекта</a>
+        <a href="index.html" style="padding:6px 14px;background:#fff;border:1px solid #cbd5e1;color:#475569;border-radius:4px;text-decoration:none;font-size:12px" title="Показать все схемы (выйти из контекста проекта)">✕ Без проекта</a>
+      `;
+      els.projectsList.appendChild(banner);
+    }
+  }
   for (const pid of orderedPids) {
     const list = groups.get(pid) || [];
     const ctxP = pid ? ctxMap.get(pid) : null;
