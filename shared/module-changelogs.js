@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.314', date: '2026-05-06', items: [
+      '🌡 <b>ДГУ: автоподтяжка высоты + ISA давление</b>. По репорту Пользователя 2026-05-06: «конфигуратор до сих пор не знает параметры по метео, ни высоту места установки, не давление».',
+      '<b>Auto-fill высоты усилен</b>: project.location.altitudeM применяется когда meta=\'default\' (а не только когда state=0). Раньше saved state (например, ранее введённые 500 м) блокировал auto-fill после reload, и метка оставалась «default».',
+      '<b>Meteo elev fallback</b>: расширено условие — применяется когда meta=\'default\' независимо от saved state. Это закрывает кейс «высота 500 м · default» когда meteo dataset содержит elev метеостанции.',
+      '<b>ISA atmospheric pressure</b>: новая функция <code>isaPressureKpa(altM)</code> — формула International Standard Atmosphere: P = 101.325 × (1 − 0.0065·h/288.15)^5.2561. Возвращается в derate.breakdown.pressureKpa.',
+      '<b>UI</b>: новая строка в таблице derate — «Атм. давление (ISA)» с tooltip-объяснением. Влияет на плотность воздуха на впуске и качество сгорания.',
+      'Files: <code>dgu-config/calc/dgu-calc.js</code> (isaPressureKpa + breakdown.pressureKpa), <code>dgu-config/dgu-config.js</code> (auto-fill условия + UI row).',
+    ] },
     { version: '0.60.313', date: '2026-05-06', items: [
       '⚙ <b>Расширенная база engine-профилей derate + UI selector</b>. По уточнению Пользователя 2026-05-06: «учти это при расчёте, если нет данных, бери расчётные нормативные, если есть возможность найти конкретные данные на выбранную модель, используй паспортные».',
       '<b>Логика 3-уровневая</b>:',

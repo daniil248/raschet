@@ -181,7 +181,7 @@ async function loadFromProject() {
         },
       };
     }
-    if (loc.altitudeM != null && (_force || _state.altitudeM === 0)) {
+    if (loc.altitudeM != null && (_force || _state.altitudeM === 0 || _stateMeta.altitudeM === 'default')) {
       _state.altitudeM = Number(loc.altitudeM);
       _stateMeta.altitudeM = 'project';
       appliedHints.push(`высота ${_state.altitudeM} м (из локации проекта)`);
@@ -256,7 +256,11 @@ async function loadFromProject() {
       // v0.60.224: высота из метео — применяем если в проекте локация без
       // altitudeM (или не задана) И в state ещё default. project.location
       // имеет приоритет (см. блок 2 выше).
-      if (elevValid && _stateMeta.altitudeM === 'default' && (_force || _state.altitudeM === 0)) {
+      // v0.60.314: применяем meteo elev и когда state уже был не 0 (saved),
+      // если meta = 'default' (не было явного источника). Это покрывает кейс
+      // когда saved state имеет 500, а meta после reload вернулся к default —
+      // раньше высота оставалась 500 с подписью "default", вводя в заблуждение.
+      if (elevValid && _stateMeta.altitudeM === 'default') {
         _state.altitudeM = Math.round(elevM);
         _stateMeta.altitudeM = 'meteo';
         elevSource = `${Math.round(elevM)} м (метеостанция «${active.name || ''}»)`;
@@ -385,6 +389,7 @@ function renderCalcResult(res) {
       <thead><tr><th>Фактор</th><th class="num">Значение</th><th class="num">Derate, %</th><th>Норма</th></tr></thead>
       <tbody>
         <tr><td>Высота над уровнем моря</td><td class="num">${fmt(_state.altitudeM)} м</td><td class="num" style="color:${d.altDerate < 0 ? '#c62828' : '#16a34a'}">${fmt(d.altDerate, 2)}%</td><td>выше ${Math.round(d.effAltBaseline || 100)}м</td></tr>
+        <tr title="Атмосферное давление по ISA (International Standard Atmosphere): P = 101.325 × (1 − 0.0065·h/288.15)^5.2561. Влияет на плотность воздуха на впуске двигателя и качество сгорания."><td>Атм. давление (ISA)</td><td class="num">${fmt(d.pressureKpa, 1)} кПа</td><td class="num muted" style="color:#64748b">справочно</td><td>P₀ = 101.325 кПа</td></tr>
         <tr><td>T наружного воздуха</td><td class="num">${fmt(_state.ambientTC)} °C</td><td class="num" style="color:${d.tDerate < 0 ? '#c62828' : '#16a34a'}">${fmt(d.tDerate, 2)}%</td><td>выше baseline°C</td></tr>
         <tr><td>Относительная влажность</td><td class="num">${fmt(_state.humidityPct)} %</td><td class="num" style="color:${d.rhDerate < 0 ? '#c62828' : '#16a34a'}">${fmt(d.rhDerate, 2)}%</td><td>−1% за 25% &gt; 60% RH</td></tr>
         <tr style="font-weight:600;border-top:2px solid #cbd5e1"><td>Σ Climate derate</td><td></td><td class="num" style="color:${d.totalDerate < 0 ? '#c62828' : '#16a34a'}">${fmt(d.totalDerate, 2)}%</td><td>от nameplate</td></tr>

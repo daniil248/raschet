@@ -179,6 +179,18 @@ export const ENGINE_DERATE_PROFILES = {
 };
 
 /**
+ * Атмосферное давление по ISA (International Standard Atmosphere).
+ * P = P0 × (1 − L × h / T0)^(g·M/(R·L))
+ * где P0 = 101.325 кПа, L = 0.0065 K/м, T0 = 288.15 K, g·M/(R·L) ≈ 5.2561.
+ * @param {number} altitudeM — высота над уровнем моря, м
+ * @returns {number} давление в кПа
+ */
+export function isaPressureKpa(altitudeM) {
+  const h = Math.max(0, Number(altitudeM) || 0);
+  return 101.325 * Math.pow(1 - 0.0065 * h / 288.15, 5.2561);
+}
+
+/**
  * Climate derate.
  *
  * @param {object} climate — { altitudeM, ambientTC, humidityPct }
@@ -207,6 +219,10 @@ export function calcClimateDerate(climate = {}, profileId) {
   const totalDerate = altDerate + tDerate + rhDerate;
   const multiplier = Math.max(0.5, 1 - totalDerate);
 
+  // v0.60.314: атмосферное давление по ISA — справочно для подбора ДГУ
+  // (важно для пересчёта плотности воздуха на впуске, влияет на сгорание).
+  const pressureKpa = isaPressureKpa(altM);
+
   return {
     multiplier,
     breakdown: {
@@ -215,6 +231,7 @@ export function calcClimateDerate(climate = {}, profileId) {
       rhDerate: -(rhDerate * 100),
       totalDerate: -(totalDerate * 100),
       effAltBaseline,             // фактическая высота, с которой начинается дирейтинг (с учётом T-сдвига)
+      pressureKpa,                 // ISA pressure при текущей altitudeM
     },
     profile: {
       id: profileId || 'iso-naturally-aspirated',
