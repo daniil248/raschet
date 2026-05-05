@@ -4,6 +4,19 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.290', date: '2026-05-06', items: [
+      '🎯 <b>Этап 1.4 Phase 47: этапы реализации проекта (milestones)</b>. По плану 2026-05-06: «стандартный набор с возможностью добавлять этапы в любом месте».',
+      '<b>Стандартный набор</b>: 💡 Концепция → ✏ Эскиз (П) → 📐 РД (рабочая) → 🔧 Монтаж → 🚀 ПНР → 🏭 Эксплуатация. При первом обращении генерится автоматически.',
+      '<b>Хранение</b>: <code>project.implStages: [{id, name, icon, status, startedAt, finishedAt}]</code> через <code>updateProject</code>.',
+      '<b>4 статуса этапа</b>: ⚪ не начат (default) / 🔵 в работе / ✅ завершён / ⊘ пропущен. Цикл при клике на dot: pending → active → done → skipped → pending.',
+      '<b>Visual</b>: горизонтальный timeline с цветными dot\'ами и линиями между ними; под каждым — название, status-label и кнопки <code>✏</code> rename, <code>+</code> insert-after, <code>×</code> delete.',
+      '<b>UX</b>:',
+      '• Кнопка «↺ дефолт» — сброс к стандартному набору (с confirm).',
+      '• Insert-after — диалог «Название нового этапа», вставка между этапами в любом месте (как просил Пользователь).',
+      '• Только <b>owner</b> может редактировать (как visibility и objectKind).',
+      '<b>Расположение</b>: top of plan-tab («📅 План-график»), выше задач Phase 38. Этапы — high-level milestones, задачи — низкоуровневые операции внутри этапов.',
+      'Files: <code>projects/project.js</code> (IMPL_STAGES_DEFAULT + IMPL_STATUS_META + _renderImplStagesBlock + _wireImplStagesBlock + интеграция в renderProjectPlan), <code>js/engine/constants.js</code>.',
+    ] },
     { version: '0.60.289', date: '2026-05-06', items: [
       '🔐 <b>Этап 1.3 Phase 47: visibility 3 уровня + team-tab</b>. По плану архитектуры обсуждённой 2026-05-06 (после удаления /chief/): «3 уровня видимости как в Teams: 1) не виден / 2) виден, нужен запрос / 3) виден, можно сам присоединиться».',
       '<b>В <code>js/projects.js</code></b> — расширен <code>setVisibility</code>:',

@@ -951,6 +951,138 @@ function _savePlanTasks(pid, tasks) {
 }
 function _newTaskId() { return 't-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6); }
 
+// v0.60.290 (Этап 1.4 Phase 47): этапы реализации проекта.
+// По плану обсуждённой архитектуры 2026-05-06: «стандартный набор с
+// возможностью добавлять этапы в любом месте». Этапы хранятся в
+// project.implStages — массив, можно расставлять / переименовывать /
+// удалять / вставлять между.
+const IMPL_STAGES_DEFAULT = [
+  { id: 'concept', name: 'Концепция', icon: '💡', status: 'pending' },
+  { id: 'sketch', name: 'Эскиз (П)', icon: '✏', status: 'pending' },
+  { id: 'docs', name: 'РД (рабочая)', icon: '📐', status: 'pending' },
+  { id: 'install', name: 'Монтаж', icon: '🔧', status: 'pending' },
+  { id: 'commissioning', name: 'ПНР', icon: '🚀', status: 'pending' },
+  { id: 'operation', name: 'Эксплуатация', icon: '🏭', status: 'pending' },
+];
+const IMPL_STATUS_META = {
+  pending: { label: 'не начат', icon: '⚪', color: '#94a3b8', bg: '#f1f5f9' },
+  active:  { label: 'в работе', icon: '🔵', color: '#1d4ed8', bg: '#dbeafe' },
+  done:    { label: 'завершён', icon: '✅', color: '#15803d', bg: '#dcfce7' },
+  skipped: { label: 'пропущен', icon: '⊘', color: '#6b7280', bg: '#f3f4f6' },
+};
+function _newStageId() { return 's-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6); }
+function _getImplStages(p) {
+  if (Array.isArray(p.implStages)) return p.implStages;
+  // На первом обращении создаём дефолтный набор (не сохраняем сразу — только при изменении).
+  return IMPL_STAGES_DEFAULT.map(s => ({ ...s, id: _newStageId() }));
+}
+function _saveImplStages(pid, stages) {
+  try { updateProject(pid, { implStages: stages }); }
+  catch (e) { console.warn('[stages] save failed:', e); }
+}
+function _renderImplStagesBlock(p) {
+  const stages = _getImplStages(p);
+  const isOwner = (p._role || 'guest') === 'owner';
+  const ro = !isOwner; // только owner может менять (как visibility)
+  // Visual timeline: dots с горизонтальной линией.
+  const dotsHtml = stages.map((s, idx) => {
+    const meta = IMPL_STATUS_META[s.status] || IMPL_STATUS_META.pending;
+    const isLast = idx === stages.length - 1;
+    return `<div style="display:flex;align-items:center;flex:${isLast ? '0 0 auto' : '1 1 auto'}">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;min-width:80px">
+        <button type="button" data-stage-cycle="${esc(s.id)}" ${ro ? 'disabled' : ''}
+                title="${esc(meta.label)}. ${ro ? '' : 'Клик — переключить статус (не начат → в работе → завершён → пропущен → не начат).'}"
+                style="width:32px;height:32px;border-radius:50%;border:2px solid ${meta.color};background:${meta.bg};color:${meta.color};cursor:${ro ? 'default' : 'pointer'};font-size:14px;display:flex;align-items:center;justify-content:center;padding:0;line-height:1">
+          ${meta.icon}
+        </button>
+        <div style="font-size:11px;font-weight:600;color:#0f172a;text-align:center;line-height:1.3">${s.icon || ''} ${esc(s.name)}</div>
+        <div style="font-size:10px;color:${meta.color}">${esc(meta.label)}</div>
+        ${ro ? '' : `<div style="display:flex;gap:2px;margin-top:2px">
+          <button type="button" data-stage-rename="${esc(s.id)}" title="Переименовать" style="font-size:10px;padding:1px 4px;background:#fff;border:1px solid #cbd5e1;border-radius:3px;cursor:pointer">✏</button>
+          <button type="button" data-stage-insert-after="${esc(s.id)}" title="Вставить этап после" style="font-size:10px;padding:1px 4px;background:#fff;border:1px solid #cbd5e1;border-radius:3px;cursor:pointer">+</button>
+          ${stages.length > 1 ? `<button type="button" data-stage-delete="${esc(s.id)}" title="Удалить этап" style="font-size:10px;padding:1px 4px;background:#fff;border:1px solid #fecaca;color:#b91c1c;border-radius:3px;cursor:pointer">×</button>` : ''}
+        </div>`}
+      </div>
+      ${!isLast ? `<div style="flex:1;height:2px;background:${meta.color};opacity:0.4;min-width:20px"></div>` : ''}
+    </div>`;
+  }).join('');
+  return `<div class="pr-impl-stages" style="margin-bottom:18px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <h4 style="margin:0;font-size:14px;color:#0f172a">🎯 Этапы реализации</h4>
+      <span class="muted" style="font-size:11px">${stages.filter(s => s.status === 'done').length} / ${stages.length} завершено</span>
+      ${ro ? '' : `<button type="button" id="pr-stage-reset" title="Сбросить к стандартному набору этапов" style="margin-left:auto;font-size:11px;padding:3px 10px;border:1px solid #cbd5e1;background:#fff;border-radius:3px;cursor:pointer">↺ дефолт</button>`}
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:0;overflow-x:auto;padding:8px 4px;background:#fff;border:1px solid #e5e7eb;border-radius:6px">
+      ${dotsHtml}
+    </div>
+    ${ro ? '<p class="muted" style="font-size:11px;margin:6px 0 0">⚠ Только владелец может менять этапы (текущая роль: ' + esc(p._role || 'guest') + ').</p>' : ''}
+  </div>`;
+}
+function _wireImplStagesBlock(p, host) {
+  const stages = _getImplStages(p);
+  // Cycle status on dot click.
+  host.querySelectorAll('[data-stage-cycle]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-stage-cycle');
+      const s = stages.find(x => x.id === id);
+      if (!s) return;
+      const order = ['pending', 'active', 'done', 'skipped'];
+      const cur = s.status || 'pending';
+      const next = order[(order.indexOf(cur) + 1) % order.length];
+      s.status = next;
+      const now = Date.now();
+      if (next === 'active' && !s.startedAt) s.startedAt = now;
+      if (next === 'done' && !s.finishedAt) s.finishedAt = now;
+      if (next === 'pending') { delete s.startedAt; delete s.finishedAt; }
+      _saveImplStages(p.id, stages);
+      render();
+    });
+  });
+  host.querySelectorAll('[data-stage-rename]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-stage-rename');
+      const s = stages.find(x => x.id === id);
+      if (!s) return;
+      const newName = await prPrompt('Новое название этапа:', s.name);
+      if (!newName || newName === s.name) return;
+      s.name = newName.trim();
+      _saveImplStages(p.id, stages);
+      render();
+    });
+  });
+  host.querySelectorAll('[data-stage-insert-after]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-stage-insert-after');
+      const idx = stages.findIndex(x => x.id === id);
+      if (idx < 0) return;
+      const newName = await prPrompt('Название нового этапа:', 'Новый этап');
+      if (!newName) return;
+      stages.splice(idx + 1, 0, { id: _newStageId(), name: newName.trim(), icon: '⚙', status: 'pending' });
+      _saveImplStages(p.id, stages);
+      render();
+    });
+  });
+  host.querySelectorAll('[data-stage-delete]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-stage-delete');
+      const s = stages.find(x => x.id === id);
+      if (!s) return;
+      if (!await prConfirm(`Удалить этап «${s.name}»?`, 'Этапы — структурные milestones, обычно соответствуют стандартным стадиям проектирования.')) return;
+      const idx = stages.findIndex(x => x.id === id);
+      if (idx >= 0) stages.splice(idx, 1);
+      _saveImplStages(p.id, stages);
+      render();
+    });
+  });
+  const resetBtn = host.querySelector('#pr-stage-reset');
+  if (resetBtn) resetBtn.addEventListener('click', async () => {
+    if (!await prConfirm('Сбросить этапы к стандартному набору?', 'Текущие этапы будут заменены на: ' + IMPL_STAGES_DEFAULT.map(s => s.name).join(' → '))) return;
+    const fresh = IMPL_STAGES_DEFAULT.map(s => ({ ...s, id: _newStageId() }));
+    _saveImplStages(p.id, fresh);
+    render();
+  });
+}
+
 function renderProjectPlan(p, host) {
   const tasks = _loadPlanTasks(p.id);
   const total = tasks.length;
@@ -1014,7 +1146,11 @@ function renderProjectPlan(p, host) {
     }
   }
 
+  // v0.60.290 (Этап 1.4 Phase 47): этапы реализации в plan-tab.
+  const stagesHtml = _renderImplStagesBlock(p);
   host.innerHTML = `
+    ${stagesHtml}
+    <h4 style="margin:18px 0 10px;font-size:14px;color:#0f172a;border-top:1px solid #e5e7eb;padding-top:14px">📅 План-график задач</h4>
     ${summaryHtml}
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:end;margin-bottom:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px">
       <input type="text" id="pr-task-title" placeholder="Название задачи..." style="flex:1;min-width:200px;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px;font:inherit;font-size:13px">
@@ -1095,6 +1231,9 @@ function renderProjectPlan(p, host) {
       renderProjectPlan(p, host);
     });
   });
+
+  // v0.60.290 (Этап 1.4): wire-up для блока «🎯 Этапы реализации».
+  _wireImplStagesBlock(p, host);
 }
 
 // v0.60.96 (Phase 39.2): per-state checklists. Что должно быть у проекта,
