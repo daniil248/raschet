@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.276', date: '2026-05-06', items: [
+      '📚 <b>Обновление статьи feature-kit-container.html</b>: Phase 3 фичи (бейджи + фильтр) добавлены в раздел «Кабельный журнал».',
+      '• Упоминание colored бейджей <b>🧩 kit</b> (зелёный) и <b>🔌 int</b> (синий) в колонке «Обозначение» — visual indicator для kit-internal/integrated-UPS соединений.',
+      '• Описание dropdown-фильтра «Все соединения / Только внешние / Только kit-internal / Только integrated UPS» с разъяснением use case.',
+      '• Хоткей <code>Ctrl+Shift+L</code> для открытия журнала в крестах.',
+      '• Article теперь полностью отражает Phase 1-3 (v0.60.250-259) функциональность.',
+      'File: <code>help/articles/feature-kit-container.html</code>.',
+    ] },
     { version: '0.60.275', date: '2026-05-06', items: [
       '🔘 <b>btnSave «Сохранить» в шапке теперь видна в file-mode (writer)</b>. Замечен gap UX после v0.60.270.',
       '• Корень: btnSave управляется через openProject (показ при загрузке cloud-проекта) и backToProjects/exitCloudMode (скрытие). Для file-mode визуальный state не учитывался — кнопка оставалась hidden, и Пользователь мог сохранить только через 3-сек autosave.',
