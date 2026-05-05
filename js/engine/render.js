@@ -2264,6 +2264,27 @@ export function renderNodes() {
         g.appendChild(el('circle', { cx: ix + 5, cy: iy, r: 11, fill: 'none', stroke: '#ff9800', 'stroke-width': 1.5, class: 'node-icon' }));
         const gt = text(ix + 5, iy + 4, 'G', 'node-icon-letter');
         g.appendChild(gt);
+        // v0.60.285 (по запросу Пользователя 2026-05-06: «дежурство покажи
+        // как иконку под иконкой генератора, а общий блок на 4 строки как
+        // у всех»): status-badge под G-icon вместо statusLine текста.
+        if (n.type === 'generator') {
+          const _hasTrigger = (Array.isArray(n.triggerGroups) && n.triggerGroups.length) || n.triggerNodeId;
+          let badgeText = null, badgeColor = '#94a3b8';
+          if (effectiveOn(n) && _hasTrigger) {
+            if (n._startCountdown > 0) { badgeText = `▶ ${Math.ceil(n._startCountdown)}с`; badgeColor = '#f59e0b'; }
+            else if (n._stopCountdown > 0) { badgeText = `⏸ ${Math.ceil(n._stopCountdown)}с`; badgeColor = '#f59e0b'; }
+            else if (!n._running) { badgeText = '💤 деж.'; badgeColor = '#64748b'; }
+          }
+          if (badgeText) {
+            const bx = ix + 5 - 22, by = iy + 14;
+            const bw = 44, bh = 14;
+            g.appendChild(el('rect', { x: bx, y: by, width: bw, height: bh, fill: '#fff', stroke: badgeColor, 'stroke-width': 1, rx: 7, class: 'node-icon' }));
+            const bt = text(bx + bw/2, by + 10, badgeText, 'node-icon');
+            bt.setAttribute('text-anchor', 'middle');
+            bt.setAttribute('style', `font-size:9px;fill:${badgeColor};font-weight:600`);
+            g.appendChild(bt);
+          }
+        }
       }
     }
 
@@ -2415,14 +2436,13 @@ export function renderNodes() {
       const SnomNameplate = (Number(n.snomKva) > 0)
         ? Number(n.snomKva)
         : (n.capacityKw > 0 ? n.capacityKw / Math.max(0.1, cos) : 0);
+      // v0.60.285: текстовый «Дежурство» / «ПУСК» / «Стоп» заменён на
+      // status-badge под G-icon (см. рендер выше). loadCls += ' off' для
+      // visual-fade сохраняем — карточка должна тускнеть.
       if (!effectiveOn(n)) { statusLine = 'Отключён'; loadCls += ' off'; }
-      else if (hasTrigger && n._startCountdown > 0) {
-        statusLine = `ПУСК через ${Math.ceil(n._startCountdown)} с`; loadCls += ' off';
-      } else if (hasTrigger && n._stopCountdown > 0) {
-        statusLine = `Стоп через ${Math.ceil(n._stopCountdown)} с`;
-      } else if (hasTrigger && !n._running) {
-        statusLine = 'Дежурство'; loadCls += ' off';
-      }
+      else if (hasTrigger && n._startCountdown > 0) { loadCls += ' off'; }
+      else if (hasTrigger && n._stopCountdown > 0) { /* стоп — без visual-fade */ }
+      else if (hasTrigger && !n._running) { loadCls += ' off'; }
       if (n._overload) loadCls += ' overload';
       {
         const _bo = _breakerOverloadStatusFor(n);
