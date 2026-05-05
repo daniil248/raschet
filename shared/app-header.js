@@ -624,14 +624,16 @@ function _openStandaloneProjectMenu(currentModuleId, opts = {}) {
     return p ? (p.name || p.id) : null;
   })();
 
-  // Фильтр: показываем full-проекты + sketch-проекты ownerModule этого модуля
-  // (по правилу feedback_module_scope_pickers.md). Sketch других модулей —
-  // не релевантны в этом конфигураторе.
+  // v0.60.349 (по репорту Пользователя 2026-05-06: «что за проект Вариант 1
+  // — схемы, если это схема в проекте, она не должна быть как проект, тоже
+  // самое и с проектами СКС, может быть схема СКС в проекте»): в picker'е
+  // активного проекта показываем ТОЛЬКО full-проекты. Sketch (схемы
+  // Конструктора, СКС-эскизы, локальные cooling-подборы) — это
+  // суб-элементы внутри full-проекта, а не standalone проекты. Sketch'и
+  // открываются через карточку их родительского full-проекта.
   const isRelevant = (p) => {
     if (!p) return false;
-    if (!p.kind || p.kind === 'full') return true;
-    if (p.kind === 'sketch' && (p.ownerModule === currentModuleId || p.ownerModule === 'tech-workspace')) return true;
-    return false;
+    return !p.kind || p.kind === 'full';
   };
   let filtered = projects.filter(isRelevant);
   // v0.60.323 (по репорту Пользователя 2026-05-06: дубликаты в picker'е тоже —
@@ -670,7 +672,8 @@ function _openStandaloneProjectMenu(currentModuleId, opts = {}) {
   const rowsHtml = filtered.length
     ? filtered.map(p => {
         const isActive = p.id === activeId;
-        const tag = (p.kind === 'sketch') ? '<span style="font-size:10px;background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px;margin-left:6px">sketch</span>' : '';
+        // v0.60.349: sketch-tag больше не нужен — sketches здесь не показываются.
+        const tag = '';
         const lock = isActive ? ' style="background:#dbeafe;border-color:#93c5fd"' : '';
         const arrow = isActive ? '<span style="color:#1d4ed8;font-weight:700;margin-left:auto">✓ Активен</span>' : '<span style="color:#64748b;font-size:11px;margin-left:auto">→ переключиться</span>';
         return `<button type="button" class="rs-proj-menu-row" data-pid="${esc(p.id)}"${lock} style="display:flex;align-items:center;width:100%;text-align:left;padding:8px 12px;border:1px solid #e2e8f0;background:#fff;border-radius:5px;margin:4px 0;cursor:pointer;font:inherit">
@@ -699,7 +702,7 @@ function _openStandaloneProjectMenu(currentModuleId, opts = {}) {
         <div class="rs-proj-menu-list" style="margin-bottom:12px">${rowsHtml}</div>
 
         <div style="display:flex;gap:8px;border-top:1px dashed #cbd5e1;padding-top:12px;flex-wrap:wrap">
-          <button type="button" class="rs-proj-menu-create" style="flex:1 1 220px;padding:8px 12px;background:#16a34a;color:#fff;border:0;border-radius:5px;cursor:pointer;font:inherit;font-weight:600;font-size:12px" title="Создать новый локальный проект (sketch) с привязкой к этому модулю и сделать его активным.">➕ Создать локальный проект</button>
+          <button type="button" class="rs-proj-menu-standalone" style="flex:1 1 220px;padding:8px 12px;background:#475569;color:#fff;border:0;border-radius:5px;cursor:pointer;font:inherit;font-weight:600;font-size:12px" title="Работать без активного проекта (разовый расчёт). Данные модуля сохранятся в общем LocalStorage без привязки к проекту.">🔓 Разовый расчёт (без проекта)</button>
           ${linkedPid ? `<a href="../projects/project.html?project=${esc(linkedPid)}" class="rs-proj-menu-detail" style="padding:8px 12px;background:#0ea5e9;color:#fff;border-radius:5px;text-decoration:none;font-weight:600;font-size:12px;display:inline-flex;align-items:center" title="Открыть карточку текущего проекта в модуле «Управление проектами»: реквизиты, локация, BOM, сотрудники.">📋 Карточка проекта</a>` : ''}
           <a href="../projects/" class="rs-proj-menu-open" style="padding:8px 12px;background:#3b82f6;color:#fff;border-radius:5px;text-decoration:none;font-weight:600;font-size:12px;display:inline-flex;align-items:center" title="Открыть полный список проектов в модуле «Управление проектами».">→ Все проекты</a>
         </div>

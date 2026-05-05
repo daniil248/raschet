@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.349', date: '2026-05-06', items: [
+      '🗑 <b>Tombstone для удалённых проектов + sketch скрыт из global-picker\'а</b>. По двум репортам Пользователя 2026-05-06: «тестовый проект не удаляется» + «что за проект Вариант 1 — схемы, если это схема в проекте, она не должна быть как проект, тоже самое и с проектами СКС».',
+      '<b>Часть A: Tombstone для удалённых проектов</b>',
+      '<b>Корень</b>: <code>syncCloudToLsContainers()</code> в <code>projects/projects.js</code> запускается на каждой загрузке /projects/ и для каждой cloud-схемы создаёт LS-контейнер если его нет. Удаляешь проект → перезагружаешь → cloud-sync видит cloud-схему «Тестовый» без LS-контейнера → создаёт заново.',
+      '<b>Fix</b>: при удалении (single + bulk-empty) имя проекта добавляется в LS-tombstone (<code>raschet.projects.tombstones.v1</code>). Cloud-sync проверяет имя в tombstone-set ДО создания контейнера и пропускает явно удалённые. Tombstone хранится permanent — проект не вернётся даже после reload.',
+      '<b>Часть B: Sketch скрыт из global picker</b>',
+      '<b>Корень</b>: глобальный picker «Активный проект» (header chip) показывал full + sketch ownerModule\'а. Конструктор-схемы (<code>kind=sketch, ownerModule=engine</code>) и СКС-design-эскизы (<code>ownerModule=scs-design</code>) появлялись как top-level «проекты» с тегом «sketch».',
+      '<b>Fix</b>: фильтр <code>isRelevant()</code> в <code>shared/app-header.js:_openStandaloneProjectMenu</code> теперь принимает только <code>kind===\'full\'</code> (или undefined = legacy full). Все sketch\'и (Конструктор, СКС, cooling, прочие) скрыты — это не проекты, а схемы/эскизы внутри проектов.',
+      '<b>Кнопка «➕ Создать локальный проект»</b> заменена на <b>«🔓 Разовый расчёт (без проекта)»</b>: первая создавала sketch (тот самый, который теперь скрыт), вторая правильно сбрасывает activeProjectId → standalone-режим без проекта.',
+      'Files: <code>projects/projects.js</code> (delete-handler + bulk-delete + cloud-sync tombstone-check), <code>shared/app-header.js</code> (filter + tag + button replacement).',
+    ] },
     { version: '0.60.348', date: '2026-05-06', items: [
       '🐛 <b>CRITICAL: SyntaxError в module-changelogs.js — сбрасывался состав шкафов scs-config</b>. По репорту Пользователя 2026-05-06: «у меня постоянно сбрасывается состав моих телеком/серверных шкафов» + console-error «SyntaxError: Unexpected identifier \'a\' module-changelogs.js:224».',
       '<b>Корень</b>: в записях changelog\'а v0.60.321 и v0.59.967 присутствовали неэкранированные одинарные кавычки внутри JS-string\'ов в составе русских слов: <code>conn-loop\'а</code>, <code>badge\'е</code>. JS-парсер обрывал строку на этом апострофе → <code>Unexpected identifier \'а\'</code> (русская «а» после кавычки) → <code>module-changelogs.js</code> не парсился целиком.',

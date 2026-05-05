@@ -445,11 +445,26 @@ function render() {
       );
       if (!ok) return;
       let removed = 0;
+      let blockedByCloud = 0;
+      // v0.60.349: для bulk-delete тоже проверяем cloud-привязки.
+      // Если проект имеет cloud-схемы — пропускаем (силент в bulk; индивид-
+      // ный delete покажет explicit-объяснение).
+      let cloudSchemes = [];
+      try {
+        if (window.Storage && typeof window.Storage.listMyProjects === 'function') {
+          cloudSchemes = await window.Storage.listMyProjects().catch(() => []);
+        }
+      } catch {}
+      const norm = s => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const cloudNames = new Set((cloudSchemes || []).map(s => norm(s.projectName || s.name || s.label || '')));
       for (const p of emptyFullProjects) {
+        const nm = norm(p.name);
+        if (nm && cloudNames.has(nm)) { blockedByCloud++; continue; }
         try { deleteProject(p.id); removed++; }
         catch (e) { console.warn('[projects.js] bulk-delete project failed:', p.id, e); }
       }
-      prToast(`✔ Удалено ${removed} пустых проектов`);
+      const blockedMsg = blockedByCloud ? ` (${blockedByCloud} пропущено: связаны с облачными схемами)` : '';
+      prToast(`✔ Удалено ${removed} пустых проектов${blockedMsg}`);
       render();
     });
   }
@@ -588,6 +603,39 @@ function render() {
         { okLabel: total ? 'Удалить (и потерять данные)' : 'Удалить', isHtml: true }
       );
       if (!ok) return;
+      // v0.60.349 (по репорту Пользователя 2026-05-06: «если есть причины,
+      // нужно оповещать пользователя о том почему он не может удалить
+      // проект а не удалять его вид а после обновления опять отображать
+      // его»): ДО удаления проверяем cloud-схемы, привязанные по имени.
+      // Если есть — показываем чёткое объяснение и блокируем удаление.
+      let cloudLinked = [];
+      try {
+        if (window.Storage && typeof window.Storage.listMyProjects === 'function') {
+          const norm = s => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+          const target = norm(p.name);
+          const all = await window.Storage.listMyProjects().catch(() => []);
+          cloudLinked = (all || []).filter(sch => {
+            if (!sch) return false;
+            if (sch.projectId === id || sch.parentProjectId === id) return true;
+            const cnm = norm(sch.projectName || sch.name || sch.label || '');
+            return cnm && cnm === target;
+          });
+        }
+      } catch (e) { console.warn('[projects.js] cloud-link check failed:', e); }
+      if (cloudLinked.length > 0) {
+        const list = cloudLinked.slice(0, 5).map(s => `• ${s.name || s.label || s.id || '(без имени)'}`).join('<br>');
+        const more = cloudLinked.length > 5 ? `<br>… и ещё ${cloudLinked.length - 5}` : '';
+        await prConfirm(
+          `Нельзя удалить проект «${p.name}»`,
+          `<b style="color:#b91c1c">К проекту привязаны ${cloudLinked.length} облачных схем(ы):</b><br>${list}${more}<br><br>` +
+          `LS-контейнер был создан автоматически на основе этих схем. После удаления контейнер будет пере-создан при следующей загрузке страницы.<br><br>` +
+          `<b>Что делать:</b><br>` +
+          `1. Откройте Конструктор / СКС-design и удалите облачные схемы там (или переименуйте).<br>` +
+          `2. Затем вернитесь сюда и удалите LS-контейнер.`,
+          { okLabel: 'Понятно', isHtml: true, hideCancel: true }
+        );
+        return;
+      }
       const { removedKeys } = deleteProject(id);
       prToast(`✔ Удалено${removedKeys ? ' (стёрто ' + removedKeys + ' ключей LS)' : ''}`);
       render();
