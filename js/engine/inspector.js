@@ -1326,9 +1326,8 @@ export function openContainerMembersModal(container) {
   const body = document.getElementById('container-members-body');
   const title = document.getElementById('container-members-title');
   if (!modal || !body) return;
-  // v0.60.255: режим контейнера — обычная Группа vs Сборка (kitMode).
-  const _isKit = !!container.kitMode;
-  if (title) title.textContent = `${_isKit ? 'Состав сборки' : 'Состав контейнера'} ${effectiveTag(container) || ''}`;
+  // v0.60.345: kit-mode (Сборка) удалён. Только обычная Группа.
+  if (title) title.textContent = `Состав контейнера ${effectiveTag(container) || ''}`;
   const slots = Array.isArray(container.slots) ? container.slots : [];
   const h = [];
   // Σ-подсводка + per-member powered-state (для Kit-сборок с разными ATS).
@@ -1366,19 +1365,13 @@ export function openContainerMembersModal(container) {
   // нужно учитывать» — ATS активный вход тракторируется per-member
   // (recalc.activeInputs работает per-узел), Σ powered считается отдельно
   // для каждого slot-узла; в банере показано info-напоминание.
-  h.push(`<div style="padding:8px 12px;border-bottom:1px solid #e0e7ee;background:${_isKit ? '#ecfdf5' : '#fff'};display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:12px">
-    <span style="color:${_isKit ? '#065f46' : '#475569'};font-weight:600" title="Группа = много однотипных потребителей с общим питающим кабелем (контейнер показывается как ОДИН узел).
-Сборка (kit) = композитный набор разнотипных приборов с внутренними кабелями (cond → outdoor); каждый член считается отдельно, но контейнер на схеме показывается как один блок.">Режим:</span>
-    <span style="display:inline-flex;border:1px solid #cbd5e1;border-radius:4px;overflow:hidden">
-      <button type="button" id="cm-kitmode-off" style="padding:4px 12px;font-size:11px;border:none;background:${!_isKit ? '#dbeafe' : '#fff'};color:${!_isKit ? '#1e40af' : '#64748b'};cursor:pointer;font-weight:${!_isKit ? '600' : '400'};border-right:1px solid #cbd5e1" title="Группа однотипных потребителей. Один питающий кабель → много одинаковых приборов.">📦 Группа</button>
-      <button type="button" id="cm-kitmode-on" style="padding:4px 12px;font-size:11px;border:none;background:${_isKit ? '#bbf7d0' : '#fff'};color:${_isKit ? '#065f46' : '#64748b'};cursor:pointer;font-weight:${_isKit ? '600' : '400'}" title="Сборка (kit). Композитный набор разнотипных приборов: например, кондиционер + наружный блок (или 2 наружных для двухконтурных).
-Внутренние кабели (cond → outdoor) маркируются как «kit-internal» и группируются отдельно в кабельном журнале.
-ВАЖНО: каждый прибор считается отдельно по своим P/cos/Ки, многоввод (ATS) тракторируется per-member.">🧩 Сборка</button>
-    </span>
-    ${_isKit
-      ? `<span style="color:#047857;font-size:11px;font-style:italic">Внутренние кабели (cond→outdoor) помечены как kit-internal. ATS трактуется per-member: у каждого прибора может быть свой активный ввод.</span>`
-      : `<span style="color:#64748b;font-size:11px;font-style:italic">Однотипные приборы с общим питающим кабелем. Переключите в «Сборку» для cond+outdoor.</span>`
-    }
+  // v0.60.345 (по репорту Пользователя 2026-05-06: «не сработала твоя идея,
+  // связей между элементами нет, подключение не работает, лучше как я
+  // описал... группу как Сборка удаляем из программы»): kit-mode (Сборка)
+  // удалён как UI-режим. Группы только однотипные. Outdoor-блоки делаются
+  // через modal-button в карточке кондиционера (отдельный refactor).
+  h.push(`<div style="padding:8px 12px;border-bottom:1px solid #e0e7ee;background:#fff;font-size:12px;color:#64748b;font-style:italic">
+    Группа однотипных потребителей с общим питающим кабелем. Для cond+outdoor — открывайте карточку кондиционера, там кнопка «🔧 Наружный блок».
   </div>`);
   if (!slots.length) {
     h.push('<div style="padding:24px;text-align:center;color:#778899">Контейнер пуст. Drop потребителя на канвасе сюда — добавится.</div>');
@@ -1767,16 +1760,9 @@ export function openContainerMembersModal(container) {
   }
   h.push('<button type="button" id="cm-delete-container" title="Удалить контейнер целиком вместе со всеми linked-потребителями (необратимо)" style="padding:6px 14px;font-size:12px;border:1px solid #dc2626;background:#fee2e2;color:#991b1b;border-radius:4px;cursor:pointer">🗑 Удалить группу полностью</button>');
   h.push('</div>');
-  // v0.60.255: кнопки добавления — в kit-mode показываем парные сборки;
-  // в обычном режиме — стандартный placeholder.
+  // v0.60.345: kit-mode удалён, остаётся только placeholder-слот для обычной группы.
   h.push('<div style="display:flex;gap:6px;flex-wrap:wrap">');
-  if (_isKit) {
-    h.push('<button type="button" id="cm-add-kit-cond-only" style="padding:6px 12px;font-size:11px;border:1px solid #16a34a;background:#dcfce7;color:#15803d;border-radius:4px;cursor:pointer" title="Кондиционер БЕЗ внешнего блока — water-cooled / chiller-fed. Создаёт один conditioner-узел в сборке.">+ Кондиционер (water)</button>');
-    h.push('<button type="button" id="cm-add-kit-cond-1out" style="padding:6px 12px;font-size:11px;border:1px solid #16a34a;background:#bbf7d0;color:#15803d;border-radius:4px;cursor:pointer;font-weight:600" title="Стандартный сплит: кондиционер + наружный блок. Создаёт пару узлов и conn между ними. Conn между cond и outdoor помечается как kit-internal.">+ Кондиционер + outdoor</button>');
-    h.push('<button type="button" id="cm-add-kit-cond-2out" style="padding:6px 12px;font-size:11px;border:1px solid #16a34a;background:#dcfce7;color:#15803d;border-radius:4px;cursor:pointer" title="Двухконтурный кондиционер: cond + 2 outdoor (например VRF / dual-circuit DX). Создаёт триплет узлов и 2 conn от cond к каждому outdoor.">+ Кондиционер + 2× outdoor</button>');
-  } else {
-    h.push('<button type="button" id="cm-add-placeholder" style="padding:6px 14px;font-size:12px;border:1px solid #2563eb;background:#dbeafe;color:#1e40af;border-radius:4px;cursor:pointer">➕ Добавить placeholder-слот</button>');
-  }
+  h.push('<button type="button" id="cm-add-placeholder" style="padding:6px 14px;font-size:12px;border:1px solid #2563eb;background:#dbeafe;color:#1e40af;border-radius:4px;cursor:pointer">➕ Добавить placeholder-слот</button>');
   h.push('</div>');
   h.push('</div>');
   body.innerHTML = h.join('');
