@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.357', date: '2026-05-06', items: [
+      '🐛 <b>CRITICAL fix follow-up: ещё один <code>n</code> в placeholder-branch модалки группы</b>. После v0.60.356 ошибка повторялась — на placeholder-слотах строка <code>const _futureTag = _suggestTagFromContainer(n)</code> также крашилась с тем же ReferenceError.',
+      '<b>Корень</b>: при добавлении placeholder rendering ранее (v0.59.843) использовалась переменная <code>n</code> которая не существует в scope <code>openContainerMembersModal(container)</code>. Этот баг был ДО моих v0.60.352 изменений, но проявлялся только при наличии placeholder-слотов в группе. У Пользователя placeholder #3 / #4 видны в скриншоте → краш.',
+      '<b>Fix</b>: <code>n</code> → <code>container</code> в placeholder-branch.',
+      'Files: <code>js/engine/inspector.js</code> (placeholder-branch _suggestTagFromContainer call).',
+    ] },
     { version: '0.60.356', date: '2026-05-06', items: [
       '🐛 <b>CRITICAL fix: ReferenceError при открытии модалки группы</b>. По репорту Пользователя 2026-05-06: «модалка не открывается» + console-error «Uncaught ReferenceError: n is not defined at openContainerMembersModal (inspector.js:1732)».',
       '<b>Корень</b>: в v0.60.352 при добавлении селектора «Порт группы» в карточку child\'а я использовал переменную <code>n.inputs</code>, но в scope <code>openContainerMembersModal(container)</code> переменная контейнера называется <code>container</code>, не <code>n</code>. Когда у child\'а 1 ввод (<code>inputs === 1</code>), JS пытался эвалуировать <code>Number(n.inputs)</code> и крашил всю функцию рендера → body.innerHTML не записывался → modal.classList.remove(\'hidden\') не вызывался → модалка не открывалась.',
