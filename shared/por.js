@@ -174,7 +174,30 @@ export function addObject(pid, partial) {
   if (!partial || !partial.type) { console.warn('[por] addObject: type required'); return null; }
   const uid = _currentUid();
   const now = _now();
-  const oid = partial.id || _uidPor();
+  // v0.60.330 (по репорту Пользователя 2026-05-06: «и вновь дубликаты, когда
+  // это прекратится??? а можно их не удалять а найти корень и не создавать???»):
+  // Cross-discipline дубликаты — Технолог создаёт rack POR-объекты, Конструктор
+  // создаёт consumer-rack узлы с теми же tag\'ами → ДВА POR-объекта на одну
+  // физическую стойку. Решение: dedup ПО ТЕГУ при создании. Если partial.id
+  // не задан И tag+type совпадает с существующим → upsert в существующий,
+  // не создаём дубликат.
+  let oid = partial.id;
+  if (!oid && partial.tag && partial.type) {
+    const _existingStore = _loadStore(pid);
+    const _normTag = String(partial.tag).trim().toUpperCase();
+    for (const [exId, exObj] of Object.entries(_existingStore)) {
+      if (!exObj) continue;
+      if (exObj.type !== partial.type) continue;
+      if (String(exObj.tag || '').trim().toUpperCase() !== _normTag) continue;
+      // Совпадение tag+type — переиспользуем существующий oid.
+      oid = exId;
+      partial._dedupedFromTag = true;
+      partial._dedupSourceMatch = exId;
+      console.info(`[por] addObject dedup: tag=${partial.tag} type=${partial.type} → reusing oid=${exId} (was creating new)`);
+      break;
+    }
+  }
+  if (!oid) oid = _uidPor();
   // Базовый shape с whitelist'ом обязательных top-level полей.
   const baseShape = _ensureObjectShape({
     id: oid, type: partial.type,

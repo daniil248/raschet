@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.330', date: '2026-05-06', items: [
+      '🔧 <b>POR: dedup по тегу при создании (root-cause fix)</b>. По репорту Пользователя 2026-05-06: «и вновь дубликаты, когда это прекратится??? а можно их не удалять а найти корень и не создавать???»',
+      '<b>Корень</b>: cross-discipline POR-дубликаты возникают когда Технолог создаёт rack-объекты (с tag SR01..SR08, kW=8.2), а Конструктор создаёт свои consumer-rack узлы с теми же тегами (kW=0.0). Каждый модуль вызывает <code>addObject(pid, {tag, type})</code> с auto-generated id → 2 POR-объекта на одну физическую стойку. Кнопка «Удалить дубликаты» убирала только id-дубли.',
+      '<b>Fix</b>: в <code>addObject</code> добавлена проверка: если <code>partial.id</code> НЕ задан и <code>partial.tag</code>+<code>partial.type</code> совпадают с существующим объектом — переиспользуем его <code>oid</code> вместо генерации нового. Это превращает create в upsert (per existing semantics для prev = store[oid]).',
+      '<b>Эффект</b>: больше не появляется второй rack POR-объект для уже-существующего тега. Электрик и технолог работают с ОДНИМ POR-объектом, обогащая разные домены (electrical vs scs).',
+      '<b>Совместимость</b>: explicit <code>partial.id</code> по-прежнему создаёт/обновляет точно эту запись (бывает нужно для legacy-маркеров). Dedup срабатывает ТОЛЬКО для auto-generated id.',
+      '<b>Tag normalization</b>: case-insensitive trim для match\'а (SR01 == sr01 == " SR01 ").',
+      'Files: <code>shared/por.js</code> (addObject — pre-create tag-based dedup).',
+    ] },
     { version: '0.60.329', date: '2026-05-06', items: [
       '🐛 <b>CRITICAL: cable до ДГУ не просчитался</b>. По репорту Пользователя 2026-05-06: «кабель до ДГУ не просчитался, может потому что считается по текущему току, а текущий может быть нулевым. Используем только расчетные данные».',
       '<b>Корень</b>: для cable target=junction-box или channel в conn-loop\'е <code>maxKwDownstream = c._loadKw</code> (default fallback). Для ДГУ-off c._loadKw=0 → cable selection видел Iрасч=0А → подбирал минимальное сечение (35мм² Iz=107А) при фактической потребности 158А.',
