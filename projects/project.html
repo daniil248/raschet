@@ -31,7 +31,20 @@
       <!-- Заполняется project.js -->
     </section>
 
-    <section class="pr-card">
+    <!-- v0.60.288 (Phase 47.1.2 / Этап 1.2): tab-bar над секциями карточки.
+         Подсекции группируются по ролевой логике — Общее / Модули / Экономика /
+         Планирование / Команда / Управление. ГИП-функции (cross-discipline
+         сводка, согласование) добавятся как новые tabs в Этапе 1.5. -->
+    <nav id="pr-detail-tabs" style="display:flex;gap:4px;flex-wrap:wrap;margin:12px 0;padding:6px;background:#fff;border-radius:8px;border:1px solid #e5e7eb">
+      <button type="button" class="pr-tab pr-tab-active" data-tab="general"  title="Реквизиты, тип объекта, локация, общие данные">📋 Общее</button>
+      <button type="button" class="pr-tab" data-tab="modules"  title="Модули проекта (Конструктор, Технолог, СКС, BOM) и sketch'и проекта">🔗 Модули и связи</button>
+      <button type="button" class="pr-tab" data-tab="economics" title="Тариф, валюта, дата курса">💰 Экономика</button>
+      <button type="button" class="pr-tab" data-tab="plan"     title="План-график задач, milestones, Gantt">📅 План-график</button>
+      <button type="button" class="pr-tab pr-tab-stub" data-tab="team" title="Команда проекта, роли, доступы (Этап 1.3 — visibility 3 уровня)">👥 Команда (1.3)</button>
+      <button type="button" class="pr-tab" data-tab="actions"  title="Удаление, дублирование, экспорт">⚙ Управление</button>
+    </nav>
+
+    <section class="pr-card pr-tab-panel" data-tab-panel="general">
       <h3 style="margin:0 0 12px" title="Свойства проекта: реквизиты (заказчик, адрес, стадия, ГИП), место расположения объекта (single/multi). Передаётся во все calc-модули проекта.">⚙ Свойства проекта</h3>
       <div id="pr-detail-properties"></div>
     </section>
@@ -40,7 +53,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-    <section class="pr-card">
+    <section class="pr-card pr-tab-panel" data-tab-panel="modules" hidden>
       <h3 style="margin:0 0 12px">Модули проекта</h3>
       <p class="muted" style="margin:0 0 14px">
         Только модули, которые имеют смысл в контексте проекта. «Штучные»
@@ -53,38 +66,91 @@
     </section>
 
     <!-- v0.60.98: Экономика проекта (тариф / валюта / дата курса) — единая
-         для всех модулей по запросу Пользователя 2026-05-03 «курс наверное
-         вынести с датой курса. Тариф на электроэнергию синхронизировать или
-         объединить для всего проекта». -->
-    <section class="pr-card">
-      <h3 style="margin:0 0 8px" title="Экономические параметры всего проекта: тариф на электричество, валюта расчётов, дата курса для конвертации. Используется ВСЕМИ calc-модулями (cooling/service/tech-workspace/dgu-config). Раньше каждый модуль имел свои значения — теперь единый источник.">💰 Экономика проекта</h3>
+         для всех модулей по запросу Пользователя 2026-05-03. -->
+    <section class="pr-card pr-tab-panel" data-tab-panel="economics" hidden>
+      <h3 style="margin:0 0 8px" title="Экономические параметры всего проекта: тариф на электричество, валюта расчётов, дата курса для конвертации. Используется ВСЕМИ calc-модулями.">💰 Экономика проекта</h3>
       <div id="pr-detail-economics"></div>
     </section>
 
     <!-- Phase 38.1 (v0.60.97): План-график проекта. -->
-    <section class="pr-card">
-      <h3 style="margin:0 0 8px" title="План-график задач проекта (Phase 38). Per-discipline tasks с датами, прогрессом, milestones. Полный Gantt с критическим путём — TODO Phase 38.3.">📅 План-график (Phase 38 START)</h3>
+    <section class="pr-card pr-tab-panel" data-tab-panel="plan" hidden>
+      <h3 style="margin:0 0 8px" title="План-график задач проекта (Phase 38). Per-discipline tasks с датами, прогрессом, milestones.">📅 План-график (Phase 38 START)</h3>
       <div id="pr-detail-plan"></div>
     </section>
 
-    <!-- v0.60.171 (Phase 3.5 follow-up): Sketch references — обзор всех
-         sketch'ей этого проекта и какие entity они упоминают. Кросс-cutting
-         view: вместо чипа возле каждого entity — единая страница «что
-         где упоминается» на уровне проекта. -->
-    <section class="pr-card">
-      <h3 style="margin:0 0 8px" title="Все sketch'и (drawio) этого проекта и какие данные модулей они упоминают. Каждый sketch может ссылаться на стойки, схемы, конфигурации НКУ/ИБП/РУ-СН и т.д. — здесь сводный обзор всех ссылок проекта.">🔗 Sketch'и проекта и их связи</h3>
+    <!-- v0.60.171: Sketch references — все sketch'и + ссылки. -->
+    <section class="pr-card pr-tab-panel" data-tab-panel="modules" hidden>
+      <h3 style="margin:0 0 8px" title="Все sketch'и (drawio) этого проекта и какие данные модулей они упоминают.">🔗 Sketch'и проекта и их связи</h3>
       <div id="pr-detail-sketch-refs"></div>
     </section>
 
-    <section class="pr-card">
+    <!-- v0.60.288 (Этап 1.2 placeholder): Команда — будет реализована в Этапе 1.3
+         (visibility 3 уровня: private / discoverable / public; роли). -->
+    <section class="pr-card pr-tab-panel" data-tab-panel="team" hidden>
+      <h3 style="margin:0 0 8px">👥 Команда и доступ</h3>
+      <p class="muted" style="margin:0 0 12px;font-size:13px;line-height:1.6">
+        Раздел в разработке (<b>Этап 1.3 Phase 47</b>): visibility (private / discoverable / public),
+        управление участниками, роли. Сейчас доступ контролируется через стандартный «Поделиться»
+        (см. кнопку в карточке проекта внутри Конструктора схем).
+      </p>
+      <div style="padding:14px 16px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:4px;color:#78350f">
+        🚧 Будет: <ul style="margin:6px 0 0;padding-left:22px;line-height:1.7">
+          <li><b>Visibility</b>: private (default, только members) / discoverable (виден в каталоге, нужен запрос) / public (любой залогиненный может присоединиться)</li>
+          <li><b>Команда</b>: список участников с ролями (electrician / mechanic / technologist / GIP / admin), назначение разделов конкретным участникам</li>
+          <li><b>Запросы доступа</b>: pending requests с одобрением owner'ом</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="pr-card pr-tab-panel" data-tab-panel="actions" hidden>
       <h3 style="margin:0 0 12px">Действия с проектом</h3>
       <div id="pr-detail-actions" style="display:flex;flex-wrap:wrap;gap:8px"></div>
     </section>
 
-    <section class="pr-card">
+    <section class="pr-card pr-tab-panel" data-tab-panel="actions" hidden>
       <h3 style="margin:0 0 8px">Заметки и метаданные</h3>
       <div id="pr-detail-meta"></div>
     </section>
+
+    <!-- v0.60.288: tab-bar styles + JS handler. -->
+    <style>
+      .pr-tab {
+        padding: 8px 14px; border: 1px solid transparent; background: #f8fafc;
+        color: #475569; font: inherit; font-size: 13px; font-weight: 500;
+        border-radius: 5px; cursor: pointer; transition: all 0.15s;
+      }
+      .pr-tab:hover { background: #eff6ff; color: #1e40af; }
+      .pr-tab-active { background: #1e40af; color: #fff; }
+      .pr-tab-active:hover { background: #1e3a8a; color: #fff; }
+      .pr-tab-stub { opacity: 0.65; }
+      .pr-tab-stub::after { content: ' 🚧'; }
+    </style>
+    <script type="module">
+      // Tab switching: hide all .pr-tab-panel except those matching active tab.
+      // Sync state with URL ?tab=X для сохранения после reload.
+      const _setTab = (tab) => {
+        document.querySelectorAll('.pr-tab').forEach(b => {
+          b.classList.toggle('pr-tab-active', b.dataset.tab === tab);
+        });
+        document.querySelectorAll('.pr-tab-panel').forEach(p => {
+          p.hidden = p.dataset.tabPanel !== tab;
+        });
+        try {
+          const url = new URL(location.href);
+          if (tab && tab !== 'general') url.searchParams.set('tab', tab);
+          else url.searchParams.delete('tab');
+          history.replaceState({}, '', url.toString());
+        } catch {}
+      };
+      document.querySelectorAll('.pr-tab').forEach(btn => {
+        btn.addEventListener('click', () => _setTab(btn.dataset.tab));
+      });
+      // Init from URL ?tab=X
+      try {
+        const t = new URL(location.href).searchParams.get('tab');
+        if (t) _setTab(t);
+      } catch {}
+    </script>
   </main>
 
   <script type="module" src="project.js"></script>

@@ -4,6 +4,22 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.288', date: '2026-05-06', items: [
+      '📑 <b>Этап 1.2 Phase 47: tabs в карточке проекта</b>. Длинная страница со всеми секциями превратилась в табовый view для лёгкой навигации. Раньше всё на одной странице → длинный скролл, теперь группировка по ролевой логике.',
+      '<b>Tabs:</b>',
+      '• 📋 <b>Общее</b> — реквизиты + objectKind + локация (current view)',
+      '• 🔗 <b>Модули и связи</b> — модули проекта (TW / Constructor / СКС / Catalog) + sketch-refs',
+      '• 💰 <b>Экономика</b> — тариф / валюта / дата курса',
+      '• 📅 <b>План-график</b> — задачи проекта (Phase 38)',
+      '• 👥 <b>Команда (1.3)</b> 🚧 — placeholder для следующего этапа: visibility 3 уровня + роли + запросы доступа',
+      '• ⚙ <b>Управление</b> — действия + заметки/метаданные',
+      '<b>UX:</b>',
+      '• Active tab сохраняется в URL <code>?tab=X</code> — переживает reload, можно делиться deep-link\'ом.',
+      '• <code>?tab=general</code> опускается из URL (default).',
+      '• Stub-tabs (Команда) визуально отмечены 🚧 emoji через ::after pseudo-element.',
+      '• Без поломок: existing rendering функция renderProject() продолжает работать с тем же DOM (find by id), tabs — wrapper-слой.',
+      'Files: <code>projects/project.html</code> (tab-bar + tab-panels markup + style + handler), <code>js/engine/constants.js</code> (APP_VERSION).',
+    ] },
     { version: '0.60.287', date: '2026-05-06', items: [
       '🔁 <b>Sibling-clamp: shared-hop detection (JB1/JB2 → UPS.IN integrated)</b>. По репорту Пользователя 2026-05-06 «два щита питающих одну нагрузку показывают разную максимальную мощность» (скриншот: JB1 max=114.2 kW, JB2 max=56.2 kW при том что оба питают UPS.IN integrated UPS).',
       '<b>Корень:</b> Jaccard-критерий sibling-clamp использует <code>_walkConsumers</code>, который пропускает <code>_isInternalIntegrated</code> connections (фабричные шины UPS.IN→UPS-core). Для JB1/JB2 walk обрывается на UPS.IN → panelDownstream пустые → Jaccard = 0/0 = 0 < 0.7 → не siblings → нет clamp.',
