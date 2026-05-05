@@ -474,6 +474,17 @@ export function renderUnplacedPalette() {
         const _c = state.nodes.get(n.containerId);
         if (_c && _c.type === 'consumer-container') continue;
       }
+      // v0.60.355 (по репорту Пользователя 2026-05-06: «размещенные в группе
+      // кондиционеры и наружные блоки которые входят в их состав, должны
+      // считаться размещенными на схеме, а не попадать в реестр
+      // неразмещенных»): outdoor-блоки управляются через карточку
+      // родительского cond'а, никогда не появляются standalone в
+      // «Неразмещённых». Если parent cond размещён где-то (на странице
+      // или в группе) — outdoor считается там же логически.
+      if (n.embedAsOutdoor && n.linkedIndoorId) {
+        const _parent = state.nodes.get(n.linkedIndoorId);
+        if (_parent) continue;
+      }
       const pids = Array.isArray(n.pageIds) ? n.pageIds : [];
       if (pids.includes(pageId)) continue; // уже на этой странице
       if (!_nodeCompatibleWithPageKind(n, kind)) continue; // нет подходящего порта/системы
@@ -620,14 +631,39 @@ export function renderProjectRegistry() {
   const collapseGroups = state._regFilter?.collapseGroups !== false;  // default true
   const matches = (n) => {
     const pids = Array.isArray(n.pageIds) ? n.pageIds : [];
-    if (filterPlace === 'placed' && pids.length === 0) return false;
-    if (filterPlace === 'unplaced' && pids.length > 0) return false;
+    // v0.60.355: узел в consumer-container считается «размещённым» через
+    // контейнер, даже если у самого pageIds=[]. Раньше cond внутри группы
+    // фильтровался как «не размещён».
+    const _inContainer = n.containerId && state.nodes.get(n.containerId)?.type === 'consumer-container';
+    const _placed = pids.length > 0 || _inContainer;
+    if (filterPlace === 'placed' && !_placed) return false;
+    if (filterPlace === 'unplaced' && _placed) return false;
     // v0.60.127: при collapseGroups=true скрываем aliased / contained-children.
     if (collapseGroups) {
       if (n.linkedAlias && state.nodes.get(n.linkedAlias)) return false;
       if (n.containerId) {
         const c = state.nodes.get(n.containerId);
         if (c && c.type === 'consumer-container') return false;
+      }
+      // v0.60.355: outdoor-блоки показываются через master cond (counter
+      // ×N или отдельной expand-логикой), не отдельной строкой.
+      if (n.embedAsOutdoor && n.linkedIndoorId && state.nodes.get(n.linkedIndoorId)) return false;
+    }
+    // v0.60.355 (по репорту Пользователя 2026-05-06: «размещенные в группе
+    // кондиционеры и наружные блоки которые входят в их состав, должны
+    // считаться размещенными на схеме, а не попадать в реестр
+    // неразмещенных»): для filterPlace='unplaced' / 'placed' учитываем,
+    // что embedAsOutdoor блоки наследуют размещённость от parent cond'а.
+    if (n.embedAsOutdoor && n.linkedIndoorId) {
+      const _p = state.nodes.get(n.linkedIndoorId);
+      if (_p) {
+        const _pPids = Array.isArray(_p.pageIds) ? _p.pageIds : [];
+        const _pInContainer = _p.containerId && state.nodes.get(_p.containerId)?.type === 'consumer-container';
+        const _pPlaced = _pPids.length > 0 || _pInContainer;
+        if (filterPlace === 'placed' && !_pPlaced) return false;
+        if (filterPlace === 'unplaced' && _pPlaced) return false;
+        // если parent placed — outdoor тоже не должен попадать в счётчик
+        // unplaced; стандартная логика выше уже обработала.
       }
     }
     if (!filterQ) return true;

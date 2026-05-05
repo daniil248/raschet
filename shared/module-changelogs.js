@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.355', date: '2026-05-06', items: [
+      '🏠 <b>Outdoor-блоки и cond внутри group считаются «размещёнными»</b>. По репорту Пользователя 2026-05-06: «размещенные в группе кондиционеры и наружные блоки которые входят в их состав, должны считаться размещенными на схеме, а не попадать в реестр неразмещенных».',
+      '<b>Корень</b>: «Неразмещённые» (renderUnplacedList) и Реестр (renderProjectRegistry) фильтровали по <code>n.pageIds.length === 0</code>. Outdoor-блоки (<code>embedAsOutdoor=true</code>) с <code>linkedIndoorId</code> и cond внутри group (<code>containerId</code> есть, но <code>pageIds=[]</code>) попадали в счётчик неразмещённых, хотя логически размещены через parent.',
+      '<b>Fix renderUnplacedList</b>: outdoor с <code>linkedIndoorId</code> на существующего cond — skip (parent определяет где «лежит» outdoor).',
+      '<b>Fix renderProjectRegistry</b>: 1) collapseGroups скрывает outdoor\'ы (как и aliased/contained-children); 2) <code>filterPlace</code> уважает «размещён через контейнер» — узел в consumer-container считается placed, outdoor с placed-parent — placed.',
+      'Files: <code>js/engine/render.js</code> (renderUnplacedList outdoor-skip + renderProjectRegistry filterPlace + collapseGroups extension).',
+    ] },
     { version: '0.60.354', date: '2026-05-06', items: [
       '🏭 <b>VRF-группа: связывание indoor-блоков под общий outdoor</b> + <b>📋 Дублирование child\'а в группе</b>.',
       '<b>VRF-группа</b> (по запросу Пользователя: «про VRF сделай как предложил, группа VRF»). Реальность VRF: 1 outdoor (компрессор+конденсатор) обслуживает несколько indoor (фанкойлов). Питание indoor\'ов <b>независимое</b> — НЕ daisy-chain. Связь — refrigerant lines + сигнальная шина (low-voltage, не учитывается в power BOM).',
