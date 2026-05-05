@@ -1709,6 +1709,14 @@ export function openContainerMembersModal(container) {
             <b>${escHtml(phase)} · ${v} В</b>
             <span title="Количество входных портов (P1, P2…) и приоритеты их использования. Параллель = все приоритеты одинаковые. АВР = разные (1=primary, 2=standby).">Входы:</span>
             <b>${escHtml(portsTxt)}</b>
+            ${(inputs === 1 && (Number(n.inputs) || 1) > 1) ? `
+              <span title="Порт группы, к которому подключён этот блок. Используется для маршрутизации до соответствующего щита.">Порт группы:</span>
+              <select data-cm-groupport="${escAttr(a.id)}" style="font:inherit;font-size:11px;padding:1px 4px;border:1px solid #cbd5e1;border-radius:3px" title="Этот блок имеет 1 ввод; выберите к какому порту контейнера (P1…) он подключён. От этого зависит, через какой щит (на верхнем уровне) он питается.">
+                ${Array.from({ length: Number(n.inputs) || 1 }, (_, _pi) =>
+                  `<option value="${_pi}"${(Number(a.assignedGroupPort) || 0) === _pi ? ' selected' : ''}>P${_pi + 1}</option>`
+                ).join('')}
+              </select>
+            ` : ''}
           </div>
           <div style="display:flex;gap:4px;margin-top:6px">
             <button type="button" data-cm-edit="${escAttr(a.id)}" style="flex:1;padding:4px 8px;font-size:11px;border:1px solid #2563eb;background:#dbeafe;color:#1e40af;border-radius:4px;cursor:pointer" title="Открыть полный инспектор члена">⚙ Редактировать</button>
@@ -1927,6 +1935,19 @@ function _wireContainerMembersModal(n, body, modal) {
   // (а не оставляем пользователя у пустого канваса). Пользователь:
   // «после открытия карточки потребителя из группы, нужно вернуться
   // обратно в группу а не просто закрыть окно».
+  // v0.60.352: change-handler для группового порта single-input child'ов.
+  body.querySelectorAll('[data-cm-groupport]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const aid = sel.getAttribute('data-cm-groupport');
+      const a = state.nodes.get(aid);
+      if (!a) return;
+      const v = Number(sel.value) || 0;
+      a.assignedGroupPort = v;
+      try { snapshot('cm-groupport-change:' + aid + ':' + v); } catch {}
+      try { notifyChange(); } catch {}
+    });
+  });
+
   body.querySelectorAll('[data-cm-edit]').forEach(btn => {
     btn.addEventListener('click', () => {
       const aid = btn.getAttribute('data-cm-edit');
