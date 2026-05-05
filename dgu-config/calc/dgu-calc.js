@@ -105,39 +105,52 @@ export const ENGINE_DERATE_PROFILES = {
     tempPer5Pct: 2.5,           // -2.5% per 5°C above baseline
     note: 'Консервативная generic формула. Для современных turbo-двигателей дирейтинг будет завышен.',
   },
+  // v0.60.320 (по уточнению Пользователя 2026-05-06: «по температуре разве в
+  // графике было +30 с дирейтингом, напомню» — на графике Perkins 1106A
+  // при 30°C/500м дирейтинг = 0, нет отдельного T-derate component):
+  // У engine-specific профилей T-эффект работает ИСКЛЮЧИТЕЛЬНО через
+  // altShiftPerC — сдвигает baseline-высоту, но НЕ создаёт standalone
+  // T-component. tempPer5Pct = 0 для всех engine-specific. Generic
+  // ISO 3046-1 — оставлен с двойной формулой (это его суть).
+  //
   // Современный turbocharged + aftercooled (Perkins 1100/1300, Cummins QSB,
   // CAT C-series, Volvo TWD, Iveco N-series). Per datasheet'ам — нет
-  // дирейтинга до ~1500м при 25-30°C, slope ~1% за 100м после baseline.
+  // дирейтинга до ~1500м при 25°C, slope ~1% за 100м после baseline.
+  // T-эффект через altShiftPerC ~10м/°C (типичная кривая).
   'modern-turbo-aftercooled': {
     label: 'Современный turbo+aftercooled (Perkins/Cummins/CAT/Volvo)',
-    altBaselineM: 1500,
+    altBaselineM: 1500,           // при 25°C
     altPerHundredPct: 1.0,
     tempBaselineC: 25,
-    tempPer5Pct: 2.0,           // менее агрессивный t-derate
-    note: 'Подходит для большинства современных Tier 4 / Stage IIIA двигателей. Подтверждён datasheet\'ами Perkins 1106A, Cummins QSB7, CAT C9.',
+    tempPer5Pct: 0,               // T уже учтена через altShiftPerC
+    altShiftPerC: 10,             // baseline понижается на 10м за каждый °C выше 25
+    note: 'Подходит для большинства современных Tier 4 / Stage IIIA двигателей. T влияет на baseline-высоту, не создаёт отдельного T-derate.',
   },
   // Perkins 1106A-70TAG2 — точная аппроксимация официального derate chart.
   // Per Perkins doc: baseline = 2400m@25°C, 2300m@30°C, 2150m@40°C, 2050m@50°C.
+  // Slope ~14м/°C падения baseline. Standalone T-derate = 0 (по графику).
   'perkins-1106a-70tag2': {
     label: 'Perkins 1106A-70TAG2 (точный по datasheet)',
     altBaselineM: 2400,           // при 25°C
-    altPerHundredPct: 1.1,        // ~1.1% per 100m above baseline
+    altPerHundredPct: 1.1,
     tempBaselineC: 25,
-    tempPer5Pct: 1.5,
-    altShiftPerC: 7.5,            // baseline понижается на 7.5м за каждый °C выше 25
+    tempPer5Pct: 0,
+    altShiftPerC: 14,
     source: 'Perkins datasheet 1106A-70TAG2 50Hz Prime Derate Chart',
-    note: 'Точные данные из Perkins datasheet. Дирейтинг отсутствует до 2400м при 25°C.',
+    note: 'Точные данные из Perkins datasheet. При 25°C — 0% до 2400м, при 30°C — до 2300м, при 50°C — до 2050м. Standalone T-derate отсутствует (нет в графике).',
   },
-  // Perkins 4000 series (1306-E87, 4006-23TAG2A, 4008-30TAG3) — большие
-  // двигатели для 200-1100 кВт ДГУ. Аппроксимация типичной кривой.
+  // Perkins 4000 series (1306-E87, 4006-23TAG2A, 4008-30TAG3, 4016-61TRG3).
+  // Per Perkins 4016 chart: 25°C→1500m, 30°C→1000m, 40°C→500m, 50°C→0m.
+  // Slope ~50м/°C — большие двигатели чувствительнее к T.
   'perkins-4000-series': {
-    label: 'Perkins 4000-series (1306, 4006, 4008)',
-    altBaselineM: 1800,
-    altPerHundredPct: 1.0,
+    label: 'Perkins 4000-series (1306, 4006, 4008, 4016)',
+    altBaselineM: 1500,           // при 25°C
+    altPerHundredPct: 1.5,
     tempBaselineC: 25,
-    tempPer5Pct: 2.0,
-    source: 'Perkins 4000-series typical datasheet',
-    note: 'Типовая кривая для серии 4000. Точная — в datasheet конкретной модели.',
+    tempPer5Pct: 0,
+    altShiftPerC: 50,
+    source: 'Perkins 4016-61TRG3 datasheet (typical for series)',
+    note: 'Типовая кривая для серии 4000. Большие двигатели — выше slope T-shift. Точная — в datasheet конкретной модели.',
   },
   // Cummins QSB / QSL / QSX series — типовая для 60-700 кВт.
   'cummins-qs-series': {
@@ -145,9 +158,10 @@ export const ENGINE_DERATE_PROFILES = {
     altBaselineM: 1500,
     altPerHundredPct: 1.0,
     tempBaselineC: 25,
-    tempPer5Pct: 2.0,
+    tempPer5Pct: 0,
+    altShiftPerC: 12,
     source: 'Cummins QS-series typical datasheet',
-    note: 'Tier 3/4 turbocharged + aftercooled. Стандарт для большинства Cummins ДГУ.',
+    note: 'Tier 3/4 turbocharged + aftercooled. T влияет через сдвиг baseline-высоты.',
   },
   // Caterpillar C-series (C4.4, C7.1, C9, C13, C15, C18, C32).
   'cat-c-series': {
@@ -155,9 +169,10 @@ export const ENGINE_DERATE_PROFILES = {
     altBaselineM: 1500,
     altPerHundredPct: 1.0,
     tempBaselineC: 25,
-    tempPer5Pct: 2.0,
+    tempPer5Pct: 0,
+    altShiftPerC: 12,
     source: 'Cat C-series typical datasheet',
-    note: 'Типовая кривая. CAT публикует точные derate charts на каждую модель.',
+    note: 'CAT публикует точные derate charts на каждую модель. Standalone T-derate в графиках отсутствует.',
   },
   // Volvo Penta TAD/TWD — индустриальные генераторные.
   'volvo-tad-twd': {
@@ -165,19 +180,32 @@ export const ENGINE_DERATE_PROFILES = {
     altBaselineM: 1500,
     altPerHundredPct: 1.0,
     tempBaselineC: 25,
-    tempPer5Pct: 2.0,
+    tempPer5Pct: 0,
+    altShiftPerC: 10,
     source: 'Volvo Penta industrial gen-set datasheet',
-    note: 'Современные turbo+aftercooled. Ключевое преимущество — высокий допуск по T (до 50°C без значительного дирейтинга).',
+    note: 'Современные turbo+aftercooled. Ключевое преимущество — высокий допуск по T (до 50°C без значительного дирейтинга при низких высотах).',
   },
-  // MTU 2000 / 4000 series — крупные ДГУ 1-3 МВт.
+  // MTU 2000 / 4000 series — крупные ДГУ 1-3 МВт. По Perkins 2506-аналогу.
   'mtu-large': {
     label: 'MTU 12V/16V 2000 / 4000',
-    altBaselineM: 1500,
-    altPerHundredPct: 0.8,        // менее агрессивный slope для больших двигателей
+    altBaselineM: 1700,
+    altPerHundredPct: 0.8,
     tempBaselineC: 25,
-    tempPer5Pct: 1.5,
+    tempPer5Pct: 0,
+    altShiftPerC: 8,              // топ-класс T-tolerance
     source: 'MTU industrial gen-set datasheet',
     note: 'Для ЦОД-класса (1-3 МВт). Топ-класс по T-tolerance благодаря двойному охлаждению.',
+  },
+  // Perkins 2506A-E15 (TAG1/2/3/4) — серия 2500, 500-650 kVA.
+  'perkins-2506a-e15': {
+    label: 'Perkins 2506A-E15 (TAG1-4, точный по datasheet)',
+    altBaselineM: 1700,           // при 25°C TAG1
+    altPerHundredPct: 1.5,
+    tempBaselineC: 25,
+    tempPer5Pct: 0,
+    altShiftPerC: 25,
+    source: 'Perkins 2506A-E15 datasheet derate curve',
+    note: 'Точные данные из Perkins datasheet 2506A-E15 TAG1. При 25°C — 0% до 1700м, при 50°C — до 1100м.',
   },
 };
 

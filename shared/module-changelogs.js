@@ -4,6 +4,32 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.321', date: '2026-05-06', items: [
+      '🐛 <b>CRITICAL: cable._maxA меньше cable._loadA (недогруз кабеля)</b>. По репорту Пользователя 2026-05-06: «текущий ток 158.1А а расчетный по макс нагрузке 70.8А?????»',
+      '<b>Корень</b>: <code>c._maxKw</code> / <code>c._maxA</code> для кабеля вычислялись в conn-loop ЧЕРЕЗ <code>maxDownstreamLoad(panel.id)</code> — это PRE-clamp BFS-сумма. После conn-loop'а в node-loop работает sanity-clamp (если <code>n._loadKw > n._maxLoadKw</code> — bump до loadKw, и нода показывает корректные значения 107 кВт/158А). НО cable.max остаётся pre-clamp (48 кВт/70.8А) — кабель подбирается под недостаточную нагрузку.',
+      '<b>Эффект bug\'а</b>: 5×35мм² кабель Iдоп=122.4А подобран для 70.8А, но фактически течёт 158А — <b>перегруз +30%</b>, недогрев изоляции, риск возгорания.',
+      '<b>Fix</b>: post-pass на все conns после всех node-clamp\'ов. Для каждого <code>c</code>: <code>c._maxKw = max(c._maxKw, c._loadKw, target-node._maxLoadKw)</code>. <code>c._maxA</code> пересчитывается при clamp\'е. Помечается <code>c._maxKwClampedFromLoad</code> / <code>c._maxKwClampedFromTarget</code> для отладки.',
+      '<b>Также — Engine derate profiles + R-резерв из TW</b> (см. v0.60.320 рядом):',
+      'Engine profiles: T через altShiftPerC, без standalone tDerate. Уточнённые altShiftPerC по datasheet (Perkins 1106A → 14м/°C, 4000-series → 50м/°C, etc). + Perkins 2506A-E15 новый профиль.',
+      'consumer.consumerReserveR с резолвером из TW: <code>resolveConsumerReserveR(n)</code> ищет matching cooling/rack group по tagPrefix → парсит N+1/N+2/2N. Total active = (count-R) × demandKw.',
+      'Files: <code>js/engine/recalc.js</code> (cable post-clamp loop), <code>js/engine/electrical.js</code> (resolveConsumerReserveR), <code>dgu-config/calc/dgu-calc.js</code> (engine profiles).',
+    ] },
+    { version: '0.60.319', date: '2026-05-06', items: [
+      '🌡 <b>Engine derate profiles: T через altShiftPerC, без standalone tDerate</b>. По репорту Пользователя 2026-05-06: «по температуре разве в графике было +30 с дирейтингом, напомню».',
+      '<b>Корень</b>: на datasheet-графиках Perkins/Cummins/CAT/Volvo/MTU при увеличении T линия дирейтинга НЕ создаёт standalone компонента — она просто СДВИГАЕТ baseline-высоту. При 30°C/500м у Perkins 1106A → 0%, не -2%.',
+      '<b>Fix</b>: для всех engine-specific профилей <code>tempPer5Pct = 0</code>. T-эффект работает ИСКЛЮЧИТЕЛЬНО через <code>altShiftPerC</code> (понижение baseline-высоты на N м/°C). Generic ISO 3046-1 — оставлен с двойной формулой (там это его суть).',
+      '<b>Уточнённые altShiftPerC по datasheet</b>: Perkins 1106A → 14м/°C, Perkins 4000-series → 50м/°C (большие двигатели), Cummins QS → 12м/°C, CAT C → 12м/°C, Volvo TAD/TWD → 10м/°C, MTU 2000/4000 → 8м/°C.',
+      '<b>+ Perkins 2506A-E15 (TAG1-4)</b> — новый профиль из datasheet derate curve.',
+      '🔄 <b>R-резерв consumer\'а из TW coolingUnits/rackGroups</b>. По репорту Пользователя 2026-05-06: «резерв нужно считать из параметров технолога или климотехника».',
+      '<b>Новый <code>resolveConsumerReserveR(n)</code></b> с приоритетом источников:',
+      '1. Explicit <code>n.consumerReserveR</code> — manual override',
+      '2. TW <code>coolingUnits[].redundancy</code> для cooling/hvac consumer\'ов — match по tagPrefix',
+      '3. TW <code>rackGroups[].redundancy</code> для IT/rack consumer\'ов — match по tagPrefix',
+      '4. <code>0</code> (no reserve)',
+      'Парсер «N+1» / «N+2» / «2N» → числовой R. Источник пишется в <code>n._reserveSource</code> для UI-индикации.',
+      '<b>Эффект</b>: 4 кондиционера с tag\'ами совпадающими с TW coolingUnit (N+1) автоматически получают R=1, total=8×3=24 кВт без ручной настройки.',
+      'Files: <code>dgu-config/calc/dgu-calc.js</code> (профили tempPer5Pct=0 + altShiftPerC + новый perkins-2506a-e15), <code>js/engine/electrical.js</code> (resolveConsumerReserveR + _parseRedundancyR + интеграция в consumerTotalDemandKw).',
+    ] },
     { version: '0.60.319', date: '2026-05-06', items: [
       '👁 <b>Auto-detected engine profile теперь видим</b>. По репорту Пользователя 2026-05-06: «не подставил правильный профиль, отдал это на откуп пользователю, а он не увидел что можно менять профиль».',
       '<b>Корень</b>: profile auto-detect был «невидимым» — селектор показывал «Auto», но Пользователь не видел КАКОЙ профиль выбран автоматически. И что вообще можно менять профиль вручную.',

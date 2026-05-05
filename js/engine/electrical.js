@@ -3,6 +3,8 @@
 import { GLOBAL } from './constants.js';
 import { effectiveLoadFactor } from './modes.js';
 import { state } from './state.js';
+// v0.60.320: для резолвера R-резерва из TW.
+import { getActiveProjectId, projectKey } from '../../shared/project-storage.js';
 
 // Обозначение класса напряжения кабеля по IEC 60502-2:
 // U₀/U (Um) — фаза-земля / фаза-фаза / макс. рабочее.
@@ -420,7 +422,90 @@ export function consumerTotalDemandKw(n) {
   }
   const per = Number(n?.demandKw) || 0;
   const cnt = Math.max(1, Number(n?.count) || 1);
-  return per * cnt;
+  // v0.60.320: consumerReserveR — кол-во резервных единиц. N=count-R активны.
+  // Источник R с приоритетом: explicit consumer.consumerReserveR > TW lookup
+  // > 0 (default).
+  const r = resolveConsumerReserveR(n);
+  return per * (cnt - r);
+}
+
+/**
+ * v0.60.320 (по уточнению Пользователя 2026-05-06: «резерв нужно считать
+ * из параметров технолога или климотехника»): резолвер R-резерва.
+ * Приоритет:
+ *   1. Explicit consumer.consumerReserveR (manual override)
+ *   2. TW coolingUnits[].redundancy ('N+1' → 1, '2N' → count) — match по tag prefix
+ *   3. TW rackGroups[].redundancy для IT-стоек (если consumer subtype rack)
+ *   4. 0 (no reserve)
+ *
+ * Источник записывается в n._reserveSource ('manual'/'tw-cooling'/'tw-rack'/'default')
+ * для отображения в инспекторе.
+ */
+export function resolveConsumerReserveR(n) {
+  if (!n) return 0;
+  const cnt = Math.max(1, Number(n?.count) || 1);
+  // 1. Explicit manual override
+  if (Number.isFinite(Number(n.consumerReserveR)) && Number(n.consumerReserveR) > 0) {
+    n._reserveSource = 'manual';
+    return Math.max(0, Math.min(cnt - 1, Number(n.consumerReserveR)));
+  }
+  // 2-3. TW lookup — пытаемся найти соответствующую систему по tag.
+  try {
+    const pid = (typeof getActiveProjectId === 'function') ? getActiveProjectId() : null;
+    if (!pid) { n._reserveSource = 'default'; return 0; }
+    const raw = (typeof localStorage !== 'undefined') && localStorage.getItem(projectKey(pid, 'tech-workspace', 'variants.v1'));
+    if (!raw) { n._reserveSource = 'default'; return 0; }
+    const variants = JSON.parse(raw);
+    const active = (Array.isArray(variants) && variants.find(v => v.primary)) || variants[0];
+    const concept = active?.concept;
+    if (!concept) { n._reserveSource = 'default'; return 0; }
+    const consumerTag = String(n.tag || '').toUpperCase();
+    if (!consumerTag) { n._reserveSource = 'default'; return 0; }
+    // Cooling units (для AC/HVAC consumer)
+    const isCooling = (n.consumerSubtype === 'cooling' || n.consumerSubtype === 'ac' || n.consumerSubtype === 'hvac' ||
+      (Array.isArray(n.systems) && (n.systems.includes('cooling') || n.systems.includes('hvac'))));
+    if (isCooling || !n.consumerSubtype) {
+      for (const cu of (concept.coolingUnits || [])) {
+        const prefix = String(cu.tagPrefix || cu.name || '').toUpperCase();
+        if (prefix && consumerTag.startsWith(prefix)) {
+          const r = _parseRedundancyR(cu.redundancy, Number(cu.count) || cnt);
+          if (r > 0) {
+            n._reserveSource = 'tw-cooling';
+            n._reserveSourceRef = cu.id || cu.name;
+            return Math.max(0, Math.min(cnt - 1, r));
+          }
+        }
+      }
+    }
+    // Rack groups (для IT-нагрузок)
+    if (n.consumerSubtype === 'rack' || (Array.isArray(n.systems) && n.systems.includes('it'))) {
+      for (const rg of (concept.rackGroups || [])) {
+        const prefix = String(rg.tagPrefix || rg.name || '').toUpperCase();
+        if (prefix && consumerTag.startsWith(prefix)) {
+          const r = _parseRedundancyR(rg.redundancy, Number(rg.count) || cnt);
+          if (r > 0) {
+            n._reserveSource = 'tw-rack';
+            n._reserveSourceRef = rg.id || rg.name;
+            return Math.max(0, Math.min(cnt - 1, r));
+          }
+        }
+      }
+    }
+  } catch (e) { /* silent fallback */ }
+  n._reserveSource = 'default';
+  return 0;
+}
+
+/** Парс строки 'N+1' / '2N' / 'N+2' в количество резервных единиц. */
+function _parseRedundancyR(scheme, totalCount) {
+  if (!scheme) return 0;
+  const s = String(scheme).trim().toUpperCase();
+  if (s === 'N+1') return 1;
+  if (s === 'N+2') return 2;
+  if (s === '2N') return Math.floor((totalCount || 0) / 2);
+  const m = s.match(/N\+(\d+)/);
+  if (m) return Number(m[1]) || 0;
+  return 0;
 }
 
 // v0.59.866: расчётная мощность группы/контейнера/одиночного потребителя

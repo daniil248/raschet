@@ -4044,6 +4044,48 @@ function recalc() {
     }
   }
 
+  // v0.60.321 (по репорту Пользователя 2026-05-06: «текущий ток 158.1А а
+  // расчётный по макс нагрузке 70.8А?????»): cable sanity-clamp.
+  // c._maxKw / c._maxA вычислялись в conn-loop ДО node-level sanity-clamp
+  // (panels с loadKw > maxLoadKw → bumped в node-loop, но cable брал
+  // pre-clamp maxDownstreamLoad). После всех node-clamp'ов проходим
+  // ещё раз: cable.max ≥ cable.load ≥ target-node.maxLoad.
+  // По определению: ток через кабель ≥ текущий, поэтому cable max не может
+  // быть меньше cable current.
+  for (const c of state.conns.values()) {
+    if (!c || c._virtual) continue;
+    const loadKw = Number(c._loadKw) || 0;
+    const maxKw = Number(c._maxKw) || 0;
+    // Если на conn'е ток меньше чем рабочий — поднимаем до рабочего.
+    if (loadKw > maxKw) {
+      c._maxKwClampedFromLoad = true;
+      c._maxKw = loadKw;
+    }
+    // Также если target-node имеет post-clamp _maxLoadKw больше нашей оценки
+    // (panel sanity clamp / source post-prop) — берём его.
+    const toN = state.nodes.get(c.to.nodeId);
+    if (toN && (toN.type === 'panel' || toN.type === 'ups' || toN.type === 'consumer-container') && Number.isFinite(Number(toN._maxLoadKw))) {
+      const tnMax = Number(toN._maxLoadKw) || 0;
+      if (tnMax > Number(c._maxKw) || 0) {
+        c._maxKwClampedFromTarget = true;
+        c._maxKw = tnMax;
+      }
+    }
+    // Пересчёт _maxA при изменении _maxKw.
+    if (c._maxKwClampedFromLoad || c._maxKwClampedFromTarget) {
+      const fromN = state.nodes.get(c.from.nodeId);
+      const refN = fromN || toN;
+      if (refN) {
+        const U = nodeCalcVoltage(refN) || 0;
+        const cos = Number(c._cosPhi) || Number(refN._cosPhi) || GLOBAL.defaultCosPhi || 0.92;
+        const ph3 = isThreePhase(refN);
+        if (U > 0 && c._maxKw > 0) {
+          c._maxA = computeCurrentA(c._maxKw, U, cos, ph3, false);
+        }
+      }
+    }
+  }
+
   // v0.59.330: о длине для passthrough-кабелей клеммной коробки.
   // Электрически passthrough-участок — продолжение вышестоящего кабеля,
   // но SC/vdrop калькулятор уже обходит граф сегмент-за-сегментом и
