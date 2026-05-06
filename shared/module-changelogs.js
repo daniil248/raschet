@@ -4,6 +4,18 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.390', date: '2026-05-06', items: [
+      '🎯 <b>Per-port load override применяется ко ВСЕМ container conns + recompute c._loadA</b>. По репорту Пользователя 2026-05-06: «P2 показывает 16 кВт вместо 0» (4 children все на P1, P2 backup без активных).',
+      '<b>Корень 1</b>: post-loop override <code>c._loadKw = portLoad[i]</code> применялся ТОЛЬКО когда <code>_activePorts.has(_portIdx)</code>. Для backup-портов (без активных children) override не делался → walkUp distribute оставлял non-zero на этих conns.',
+      '<b>Корень 2</b>: <code>c._loadA</code> вычислялся в conn-loop из <code>c._loadKw</code> ДО моего override\'а. После того как я менял <code>c._loadKw</code>, <code>c._loadA</code> оставался stale.',
+      '<b>Fix</b>:',
+      '• Override <code>c._loadKw = portLoad[i]</code> для ВСЕХ container conns (port < containerInputs), не только active ports.',
+      '• После override — пересчитываем <code>c._loadA = computeCurrentA(c._loadKw, U, cos, ph3, isDC)</code> из нового значения.',
+      '<b>Эффект</b> для GR1 (4 children все на P1, P2 backup без активных):',
+      '• До: P2 conn = 16 кВт / 25.1 А (walkUp distribute container.loadKw / 2)',
+      '• После: P2 conn = <b>0 кВт / 0 А</b> ✓ (нет активных children на P2; backup AVR — нет тока)',
+      'Files: <code>js/engine/recalc.js</code> (post-loop override + _loadA recompute).',
+    ] },
     { version: '0.60.389', date: '2026-05-06', items: [
       '🔌 <b>Per-port grouping (Kg) для group container conn</b>. По уточнению Пользователя 2026-05-06: «сечение в групповой линии не зависит от количества в группе, только на количество в условиях прокладки. (это как одиночные линии и они не в параллели). А вот параллельные линии должны влиять на сечение кабеля)».',
       '<b>Контекст</b>: cables в группе — это N <b>независимых</b> линий (каждая обслуживает одного consumer), не параллельные. Сечение каждой = ток одного consumer. Влияние количества — только через K_grouping (число цепей в conduit/bundle).',

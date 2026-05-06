@@ -1946,22 +1946,38 @@ function recalc() {
       const _totalContLoad = Number(_cont._loadKw) || _portLoadKw.reduce((a, b) => a + b, 0);
       // Активируем все incoming-conns на эти порты + per-port _loadKw +
       // _maxKw = total (worst-case AVR).
+      // v0.60.390 (по репорту Пользователя 2026-05-06: «P2 показывает 16 кВт
+      // вместо 0»): override применяется КО ВСЕМ container conns, не только
+      // к "активным" портам. Иначе walkUp distribute оставлял non-zero на
+      // backup-портах (где fact активных children нет).
       for (const c of state.conns.values()) {
         if (c.to?.nodeId !== _cont.id) continue;
         const _portIdx = c.to.port | 0;
-        if (_activePorts.has(_portIdx)) {
-          if (isConnLive(c)) {
-            c._active = true;
-            if (!c._state || c._state === 'dead') c._state = 'active';
-          }
-          // Per-port load (override walkUp aggregate).
+        if (_portIdx < _contInputs) {
+          // Per-port load для ВСЕХ container conns (override walkUp aggregate).
           c._loadKw = _portLoadKw[_portIdx] || 0;
           c._loadKwPerPort = true; // маркер
-        }
-        // _maxKw = total container load (любая линия может нести всё при AVR fail).
-        if (_portIdx < _contInputs && _totalContLoad > (Number(c._maxKw) || 0)) {
-          c._maxKw = _totalContLoad;
-          c._maxKwClampedFromContainerWorst = true;
+          // v0.60.390: пересчитываем c._loadA из нового c._loadKw, иначе
+          // ток отображался от walkUp (stale value).
+          const _U = Number(c._voltage) || 0;
+          const _cos = Number(c._cosPhi) || 0.92;
+          const _ph3 = !!c._threePhase;
+          if (_U > 0 && c._loadKw >= 0) {
+            const _isDC2 = !!c._isDC;
+            try { c._loadA = c._loadKw > 0 ? computeCurrentA(c._loadKw, _U, _cos, _ph3, _isDC2) : 0; } catch {}
+          }
+          // _state / _active только для портов с активными children.
+          if (_activePorts.has(_portIdx)) {
+            if (isConnLive(c)) {
+              c._active = true;
+              if (!c._state || c._state === 'dead') c._state = 'active';
+            }
+          }
+          // _maxKw = total container load (любая линия может нести всё при AVR fail).
+          if (_totalContLoad > (Number(c._maxKw) || 0)) {
+            c._maxKw = _totalContLoad;
+            c._maxKwClampedFromContainerWorst = true;
+          }
         }
       }
     }
