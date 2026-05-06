@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.382', date: '2026-05-06', items: [
+      '📊 <b>Балансировка нагрузки в карточке группы — fallback computation</b>. По репорту Пользователя 2026-05-06: «почему в одном контейнере работает а в другом нет» (Z1.GR1 показывал балансировку, Z1.GR4 — нет).',
+      '<b>Корень</b>: секция «📊 Распределение нагрузки» зависела от <code>container._portLoadKwBreakdown</code>, который устанавливался в recalc post-loop ТОЛЬКО когда <code>_activePorts.size > 0</code>. Если по какой-то причине children\'ы не получили <code>_activeContainerPorts</code> (например, fallback inheritance вместо per-child priorities), массив оставался null → секция не рендерилась.',
+      '<b>Fix</b>: секция теперь ВСЕГДА показывается для container.inputs ≥ 2. Если <code>_portLoadKwBreakdown</code> от recalc null — вычисляем сами в render по children + their priorities (приоритет-1 ports делят childLoad). Помечаем «(вычислено из priorities children\'ов; recalc не дал точные значения)» когда fallback использован.',
+      '<b>Дополнительно</b>: добавлены поля «Σ Текущая (по children)» и «Σ container._loadKw» — для отладки несоответствий между расчётами recalc и render.',
+      'Files: <code>js/engine/inspector.js</code> (балансировка-секция с fallback computation).',
+    ] },
     { version: '0.60.381', date: '2026-05-06', items: [
       '🔥❄ <b>Cold/Hot redundancy реально применяется к children в group container</b>. По репорту Пользователя 2026-05-06: «не увидал чтобы селектор режимов резервирования хоть как то влиял на текущую и/или расчетную нагрузку» + «все еще не работает с стойками».',
       '<b>Fix в per-child priorities branch (recalc.js)</b>:',

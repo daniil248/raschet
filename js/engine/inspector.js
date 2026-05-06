@@ -1418,20 +1418,59 @@ export function openContainerMembersModal(container) {
     // суммарная нагрузка/режим. Берём из container._portLoadKwBreakdown
     // (вычислен в recalc v0.60.376).
     const _contInputs2 = Math.max(1, Number(container.inputs) || 1);
-    const _portBreakdown = Array.isArray(container._portLoadKwBreakdown) ? container._portLoadKwBreakdown : null;
     const _contLoadTotal = Number(container._loadKw) || 0;
     const _contMaxLoad = Number(container._maxLoadKw) || 0;
-    if (_contInputs2 >= 2 && _portBreakdown) {
+    if (_contInputs2 >= 2) {
+      // v0.60.382: ВСЕГДА вычисляем breakdown прямо в render — fallback если
+      // recalc не сделал. Раньше требовался container._portLoadKwBreakdown
+      // от recalc (v0.60.376), но если по какой-то причине он null — секция
+      // вообще не показывалась. Теперь fallback: пересчитываем сами по
+      // children + their _activeContainerPorts / priorities.
+      let _portBreakdown = Array.isArray(container._portLoadKwBreakdown)
+        ? container._portLoadKwBreakdown
+        : null;
+      let _fallbackUsed = false;
+      if (!_portBreakdown) {
+        _fallbackUsed = true;
+        _portBreakdown = new Array(_contInputs2).fill(0);
+        for (const _s of slots) {
+          if (!_s || _s.kind !== 'linked' || !_s.nodeId) continue;
+          const _ch = state.nodes.get(_s.nodeId);
+          if (!_ch) continue;
+          // Попытка использовать _activeContainerPorts / Port из recalc
+          let _ports = Array.isArray(_ch._activeContainerPorts)
+            ? _ch._activeContainerPorts
+            : (Number.isFinite(Number(_ch._activeContainerPort)) ? [Number(_ch._activeContainerPort)] : []);
+          // Fallback из priorities — если recalc не назначил, выводим из priorities[]
+          if (!_ports.length && Array.isArray(_ch.priorities) && _ch.priorities.length) {
+            // priority-1 ports (в спецификации потребителя)
+            const _minPrio = Math.min(...(_ch.priorities.map(Number).filter(Number.isFinite)));
+            for (let i = 0; i < Math.min(_ch.priorities.length, _contInputs2); i++) {
+              if (Number(_ch.priorities[i]) === _minPrio) _ports.push(i);
+            }
+          }
+          if (!_ports.length) _ports = [0]; // last resort: port 0
+          const _validPorts = _ports.filter(p => Number.isFinite(p) && p >= 0 && p < _contInputs2);
+          if (!_validPorts.length) continue;
+          // Per-unit load: demand × kUse × count (один прибор × count если group)
+          const _demandKw = (Number(_ch.demandKw) || 0) * Math.max(1, Number(_ch.count) || 1) * (Number(_ch.kUse) || 1);
+          const _shareKw = _demandKw / _validPorts.length;
+          for (const _p of _validPorts) {
+            _portBreakdown[_p] += _shareKw;
+          }
+        }
+      }
       const _portsHtml = _portBreakdown.map((kw, i) =>
         `<span style="display:inline-block;padding:2px 8px;background:${kw > 0.05 ? '#dcfce7' : '#f1f5f9'};color:${kw > 0.05 ? '#15803d' : '#64748b'};border-radius:3px;font-weight:600;margin-right:6px">P${i+1}: ${kw.toFixed(2)} кВт</span>`
       ).join('');
-      const _balance = _portBreakdown.length > 0 && _contLoadTotal > 0
-        ? _portBreakdown.map(kw => ((kw / _contLoadTotal) * 100).toFixed(0) + '%').join(' / ')
+      const _portSum = _portBreakdown.reduce((a, b) => a + b, 0);
+      const _balance = _portBreakdown.length > 0 && _portSum > 0
+        ? _portBreakdown.map(kw => ((kw / _portSum) * 100).toFixed(0) + '%').join(' / ')
         : '—';
       h.push(`<div style="padding:8px 12px;border-bottom:1px solid #e0e7ee;background:#fffbeb;font-size:11.5px;color:#78350f;line-height:1.6">
-        <b style="color:#92400e">📊 Распределение нагрузки по портам:</b><br>
+        <b style="color:#92400e">📊 Распределение нагрузки по портам:</b>${_fallbackUsed ? ' <span style="color:#a16207;font-size:10.5px">(вычислено из priorities children\'ов; recalc не дал точные значения)</span>' : ''}<br>
         Текущая на каждой линии: ${_portsHtml}<br>
-        Σ Текущая: <b>${_contLoadTotal.toFixed(2)} кВт</b> · Σ Макс (worst-case AVR): <b>${_contMaxLoad.toFixed(2)} кВт</b> · Балансировка: <b>${_balance}</b><br>
+        Σ Текущая (по children): <b>${_portSum.toFixed(2)} кВт</b> · Σ container._loadKw: <b>${_contLoadTotal.toFixed(2)} кВт</b> · Σ Макс: <b>${_contMaxLoad.toFixed(2)} кВт</b> · Балансировка: <b>${_balance}</b><br>
         <span style="color:#a16207;font-style:italic;font-size:10.5px">Текущая = сумма children._loadKw на этом порту (по их priority). Макс = вся нагрузка контейнера (worst-case при отказе AVR-резерва).</span>
       </div>`);
     }
