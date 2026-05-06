@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.397', date: '2026-05-06', items: [
+      '👻 <b>Drag-overlap игнорирует скрытые узлы</b>. По репорту Пользователя 2026-05-06: «при переносе карточки Z1.MR1 на это место появляется это сообщение [Параметры разные], что наводит меня на мысль что в этом месте уже есть скрытый объект».',
+      '<b>Корень</b>: <code>_findConsumerOverlapAt(dragged)</code> в interaction.js iterate по ВСЕМ <code>state.nodes.values()</code> — попадали скрытые узлы:',
+      '• alias-источники после merge (pageIds=[], hidden via hideAliasSourceFromCanvas) — у них остались старые .x/.y',
+      '• contained children в consumer-container (containerId set, скрыты на canvas) — также с прежними координатами',
+      'Любой drag в зону прежней позиции скрытого узла → bbox-overlap match → toast «Параметры разные» хотя визуально пусто.',
+      '<b>Fix</b>: добавлен фильтр <code>if (!isOnCurrentPage(n)) continue</code> в overlap-loop. <code>isOnCurrentPage</code> уже учитывает linkedAlias / containerId / embedAsOutdoor / pageIds=[].',
+      'Files: <code>js/engine/interaction.js</code> (импорт isOnCurrentPage + фильтр в overlap-loop).',
+    ] },
     { version: '0.60.396', date: '2026-05-06', items: [
       '🔌 <b>Отключённый потребитель → 0 на кабеле и щите</b>. По репорту Пользователя 2026-05-06: «если режим отключен, то и текущая нагрузка в кабеле и соответственно на щите должна быть равна нулю».',
       '<b>Корень</b>: тумблер «В работе» (effectiveOn) только менял визуал карточки и group factor для логических групп. recalc.js НЕ исключал disabled-узел из walkUp → cable/panel получали полную долю нагрузки.',

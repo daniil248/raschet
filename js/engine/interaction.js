@@ -1,6 +1,6 @@
 /* interaction.js -- all canvas/palette event handling (ES module) */
 
-import { state, svg, layerOver, uid, getCurrentPage, getPageKind, saveCurrentPagePositions, loadPagePositions } from './state.js';
+import { state, svg, layerOver, uid, getCurrentPage, getPageKind, saveCurrentPagePositions, loadPagePositions, isOnCurrentPage } from './state.js';
 import { NODE_H, SVG_NS, DEFAULTS, GLOBAL } from './constants.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth, nodeHeight, portPos, getNodeGeometryMm } from './geometry.js';
 import { snapshot, notifyChange } from './history.js';
@@ -67,6 +67,13 @@ function _findConsumerOverlapAt(dragged) {
   // в bbox target — это слишком строго (юзер мог положить «рядом», но не в
   // центр). Теперь — любое пересечение прямоугольников.
   // v0.59.820 (Phase 3): таргет может быть consumer ИЛИ consumer-container.
+  // v0.60.397 (по репорту Пользователя 2026-05-06: «при переносе карточки
+  // Z1.MR1 на это место появляется это сообщение, что наводит меня на
+  // мысль что в этом месте уже есть скрытый объект»): фильтруем по
+  // isOnCurrentPage. Раньше iterate по всем state.nodes — попадали скрытые
+  // alias-источники (pageIds=[]) и contained children (containerId set),
+  // у которых остались их старые .x/.y координаты. Это давало ложный
+  // overlap-match → toast «Параметры разные» хотя на canvas узла нет.
   const dw = nodeWidth(dragged), dh = nodeHeight(dragged);
   const dx1 = dragged.x, dy1 = dragged.y;
   const dx2 = dragged.x + dw, dy2 = dragged.y + dh;
@@ -74,6 +81,7 @@ function _findConsumerOverlapAt(dragged) {
   for (const n of state.nodes.values()) {
     if (n.id === dragged.id) continue;
     if (n.type !== 'consumer' && n.type !== 'consumer-container') continue;
+    if (!isOnCurrentPage(n)) continue; // v0.60.397: исключить скрытые узлы
     const nw = nodeWidth(n), nh = nodeHeight(n);
     const nx1 = n.x, ny1 = n.y;
     const nx2 = n.x + nw, ny2 = n.y + nh;
