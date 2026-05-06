@@ -1720,6 +1720,9 @@ function recalc() {
     c._activeSlotIds = new Set();
     c._reserveSlotIds = new Set();
     c._redundancyHotFactorComputed = 1;
+    // v0.60.399: для compensation-логики (per-unit kUse override при shortage).
+    c._redundancyTarget = (Array.isArray(c.slots) ? c.slots.length : 0); // плановое N
+    c._redundancyActiveCount = c._redundancyTarget; // фактически работающие
     delete c._redundancyShortage;
     if (!effectiveOn(c)) continue;
 
@@ -1788,6 +1791,16 @@ function recalc() {
         ? Math.min(1, Ntarget / availCount)
         : 1;
     }
+
+    // v0.60.399 (по запросу Пользователя 2026-05-06: «при недостатке
+    // резервных потребителей нужно для оставшихся в работе применять
+    // номинальную мощность для расчетов, а не расчетную»): сохраняем
+    // Ntarget и Navail (фактически работающих) для compensation-формулы:
+    //   per-unit_factor = min(1, kUse × Ntarget / Navail)
+    // Cold: Navail = active count (= min(Ntarget, available)).
+    // Hot: Navail = available count.
+    c._redundancyTarget = Ntarget;
+    c._redundancyActiveCount = c._activeSlotIds.size;
 
     if (availCount < Ntarget) {
       c._redundancyShortage = {
@@ -1944,11 +1957,18 @@ function recalc() {
             }
           }
           if (n._powered) {
+            // v0.60.399: единый compensation-factor вместо kUse × hotF.
+            // per-unit_factor = min(1, kUse × Ntarget / Navail)
+            // - Cold normal: Navail=Ntarget → factor = min(1,kUse) = kUse (по конструкции kUse≤1)
+            // - Cold shortage: Navail<Ntarget → factor может вырасти до 1 (компенсация)
+            // - Hot normal: Navail>Ntarget → factor = kUse × Ntarget/Navail < kUse
+            // - Hot shortage: Navail<Ntarget → factor = min(1, kUse × Ntarget/Navail), компенсация
             const kUse = Number(n.kUse) || 1;
             const factor = effectiveLoadFactor(n) || 1;
-            // v0.60.381: применяем hot redundancy factor.
-            const hotF = Number(n._redundancyHotFactor) || 1;
-            n._loadKw = (Number(n.demandKw) || 0) * kUse * factor * hotF;
+            const Ntarget = Number(c._redundancyTarget) || 1;
+            const Navail = Math.max(1, Number(c._redundancyActiveCount) || 1);
+            const compFactor = Math.min(1, kUse * Ntarget / Navail);
+            n._loadKw = (Number(n.demandKw) || 0) * compFactor * factor;
           }
         } else if (c._powered) {
           // Fallback: single-input children или без своих priorities —
@@ -1956,9 +1976,11 @@ function recalc() {
           n._powered = true;
           const kUse = Number(n.kUse) || 1;
           const factor = effectiveLoadFactor(n) || 1;
-          // v0.60.381: применяем hot redundancy factor.
-          const hotF = Number(n._redundancyHotFactor) || 1;
-          n._loadKw = (Number(n.demandKw) || 0) * kUse * factor * hotF;
+          // v0.60.399: см. выше — единый compensation-factor.
+          const Ntarget = Number(c._redundancyTarget) || 1;
+          const Navail = Math.max(1, Number(c._redundancyActiveCount) || 1);
+          const compFactor = Math.min(1, kUse * Ntarget / Navail);
+          n._loadKw = (Number(n.demandKw) || 0) * compFactor * factor;
           // v0.60.385 (по репорту Пользователя 2026-05-06: «выбор порта
           // потребителя с одним вводом не влияет на групповое потребление
           // на порту группы. Само решение отличное»): для single-input

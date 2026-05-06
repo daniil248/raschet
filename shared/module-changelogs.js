@@ -4,6 +4,24 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.399', date: '2026-05-06', items: [
+      '⚙ <b>Compensation-фактор при нехватке резерва (К_и → 1.0 для оставшихся)</b>. По запросу Пользователя 2026-05-06: «при недостатке резервных потребителей нужно для оставшихся в работе применять номинальную мощность для расчетов, а не расчетную».',
+      '<b>Физическая логика</b>: суммарная design-нагрузка = Ntarget × P_ном × K_и. При нехватке резерва эта нагрузка распределяется на меньшее число оставшихся работающих → каждый должен ramp-up до полной номинальной мощности.',
+      '<b>Единая формула</b> для всех режимов:',
+      '<code>per-unit_factor = min(1, kUse × Ntarget / Navail)</code>',
+      'где Navail = фактически работающие (cold normal: =Ntarget; cold shortage: <Ntarget; hot normal: =Ntarget+R; hot shortage: <Ntarget).',
+      '<b>Поведение в разных режимах</b>:',
+      '• Cold normal: factor = kUse (как было)',
+      '• Cold shortage: factor поднимается; если N_work=2, Nt=3, kUse=0.67 → factor=min(1, 1.005)=1.0 → каждый выдаёт P_ном',
+      '• Hot normal: factor = kUse × Nt/(Nt+R) (как было через hotF)',
+      '• Hot shortage: factor поднимается аналогично',
+      '<b>Изменения</b>:',
+      '• recalc.js (pre-pass): сохраняет <code>c._redundancyTarget</code> + <code>c._redundancyActiveCount</code>',
+      '• recalc.js (inheritance loop): replaces <code>kUse × hotF</code> → единый <code>compFactor</code>',
+      '• electrical.js consumerCalcDemandKw: использует ту же формулу для container',
+      '• inspector.js (container modal): per-member P_расч и К_и показывают компенсированные значения с пометкой «⚠ +комп.» / «→ X.XX (комп.)»',
+      'Files: <code>js/engine/recalc.js</code>, <code>js/engine/electrical.js</code>, <code>js/engine/inspector.js</code>.',
+    ] },
     { version: '0.60.398', date: '2026-05-06', items: [
       '🔁 <b>Auto-activate резерва в container + warning «недостаток резервирования»</b>. По запросу Пользователя 2026-05-06: «если в группе есть холодное резервирование, то отключение любого рабочего экземпляра, должно включать резервный компонент. Если отключено более чем N то на карточке группы нужно сделать указание о недостатке резервирования и изменить свет компонентов».',
       '<b>Часть A: pre-pass активации в recalc.js</b>',

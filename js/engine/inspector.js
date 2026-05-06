@@ -1795,7 +1795,15 @@ export function openContainerMembersModal(container) {
         const k = ph3 ? Math.sqrt(3) : 1;
         const Pnom = kw * cnt;
         const Inom = (Pnom > 0 && Uc > 0 && cos > 0) ? (Pnom * 1000) / (k * Uc * cos) : 0;
-        const Pcalc = Pnom * ku;
+        // v0.60.399: per-unit compensation factor (см. recalc pre-pass).
+        // При нехватке резерва (Navail < Ntarget) per-unit Ku ramps up до 1.0
+        // — оставшиеся работающие выдают номинальную мощность для покрытия
+        // отсутствующих. Pуст одного экземпляра = P_nom × min(1, ku × Nt/Na).
+        const _ntFor = Number(container._redundancyTarget) || cnt;
+        const _naFor = Math.max(1, Number(container._redundancyActiveCount) || cnt);
+        const _compK = Math.min(1, ku * _ntFor / _naFor);
+        const _kuShown = _compK; // эффективное Ku с учётом компенсации
+        const Pcalc = Pnom * _kuShown;
         const Icalc = (Pcalc > 0 && Uc > 0 && cos > 0) ? (Pcalc * 1000) / (k * Uc * cos) : 0;
         // Статус питания.
         // v0.60.398: дополнительные badge'и — disabled / standby reserve /
@@ -1827,10 +1835,10 @@ export function openContainerMembersModal(container) {
           <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 8px;font-size:11px;color:#475569;align-items:center">
             <span title="Установленная мощность одного прибора (P_ном) × количество.">P_ном:</span>
             <b>${cnt > 1 ? `${cnt}×${kw} = ${fmt(Pnom)}` : fmt(kw)} кВт <span class="muted">/ ${fmt(Inom, 1)} A</span></b>
-            <span title="Расчётная мощность с учётом коэффициента использования (К_и). По ПУЭ 1.3.13.">P_расч:</span>
-            <b>${fmt(Pcalc)} кВт <span class="muted">/ ${fmt(Icalc, 1)} A</span></b>
-            <span title="Коэффициент использования (К_и).">К_и:</span>
-            <b>${ku.toFixed(2)}</b>
+            <span title="Расчётная мощность с учётом коэффициента использования (К_и). По ПУЭ 1.3.13. При нехватке резерва в группе — К_и компенсируется до 1.0 для покрытия отсутствующих экземпляров.">P_расч:</span>
+            <b>${fmt(Pcalc)} кВт <span class="muted">/ ${fmt(Icalc, 1)} A</span>${(_compK > ku + 0.001) ? ` <span style="color:#92400e;font-size:10px" title="Компенсация нехватки резерва: было ${ku.toFixed(2)}, стало ${_compK.toFixed(2)}.">⚠ +комп.</span>` : ''}</b>
+            <span title="Коэффициент использования (К_и). Базовое значение из паспорта потребителя; при нехватке резерва в группе — эффективное значение увеличивается (см. P_расч).">К_и:</span>
+            <b>${ku.toFixed(2)}${(_compK > ku + 0.001) ? ` <span style="color:#92400e;font-size:10px">→ ${_compK.toFixed(2)} (комп.)</span>` : ''}</b>
             <span title="Косинус φ — коэффициент мощности.">cos φ:</span>
             <b>${cos}</b>
             <span title="Фаза и напряжение.">U / Фаза:</span>
