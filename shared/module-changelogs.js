@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.371', date: '2026-05-06', items: [
+      '🔧 <b>CRITICAL: cable re-selection после post-clamp _maxKw</b>. По репорту Пользователя 2026-05-06: «у этой линии (проблемной) ручные флаги не установлены не для кабеля не для автомата, а подбора автоматического нет» — auto-mode выбрал 10мм² + 50A для линии Iрасч=169.3А (грубо в 4 раза меньше нужного).',
+      '<b>Корень</b>: <code>selectCable</code> в conn-loop работает с <code>maxKwDownstream</code> из <code>maxDownstreamLoad(toN.id)</code> BFS. Для DGU-off / cross-feed сценариев BFS мог давать заниженное значение (например 25 кВт вместо 111.9 кВт). Затем <b>в post-pass</b> (строка 4170+) <code>c._maxKw</code> клампился UP до <code>toN._maxLoadKw</code> (post-clamp v0.60.184) — обновлял отображение «Макс: 111.9 kW / 169.3 А», но cable._cableSize ОСТАВАЛСЯ под старый ток.',
+      '<b>Fix</b>: после клампа <code>_maxKw</code> + пересчёта <code>_maxA</code>, если <code>_maxA > _cableTotalIz × 1.05</code> и нет manual-флагов — re-run <code>selectCable</code> с новым током. Сохраняем <code>_cableReselectedAfterClamp=true</code> как маркер для отладки.',
+      '<b>Эффект</b>: для линии 169.3А выберется адекватное сечение (95-150мм² Cu PVC) + соответствующий автомат (200А) при auto-mode. Manual-флаги остаются неприкосновенными.',
+      'Files: <code>js/engine/recalc.js</code> (post-pass cable re-select).',
+    ] },
     { version: '0.60.370', date: '2026-05-06', items: [
       '🔁 <b>Reverted: auto-clear manual flags при overload</b>. По уточнению Пользователя 2026-05-06: «ручные флаги пользователя снимать не нужно, на то они и ручные, только если они не остались от предыдущего состояния и были удалены, а флаг остался».',
       '<b>Что было</b>: первая итерация v0.60.370 авто-снимала <code>manualCableSize</code> когда <code>Iрасч > Iz × 1.05</code> и пере-подбирала кабель в auto-режиме.',

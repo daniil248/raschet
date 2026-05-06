@@ -4200,6 +4200,65 @@ function recalc() {
           c._maxA = computeCurrentA(c._maxKw, U, cos, ph3, false);
         }
       }
+      // v0.60.371 (по репорту Пользователя 2026-05-06: «у этой линии
+      // (проблемной) ручные флаги не установлены не для кабеля не для
+      // автомата, а подбора автоматического нет»): после post-clamp
+      // _maxKw → ПЕРЕ-ПОДБИРАЕМ кабель в auto-режиме (если не manual).
+      // Раньше selectCable вызывался в conn-loop с _maxKw до post-clamp
+      // (BFS мог дать заниженное значение для DGU-off / cross-feed
+      // сценариев), и клампинг _maxKw в post-pass обновлял отображение,
+      // но не cable._cableSize. → cable оставался под маленький ток.
+      if (!c.manualCableSize && !c.manualBreakerIn && !c._busbarNom && c._maxA > 0) {
+        const _curIz = Number(c._cableTotalIz) || Number(c._cableIz) || 0;
+        // Если cable Iz < нового _maxA с запасом 5% — пере-подбираем.
+        if (_curIz > 0 && c._maxA > _curIz * 1.05) {
+          try {
+            const calcMethod = getMethod(GLOBAL.calcMethod);
+            const _toN = state.nodes.get(c.to.nodeId);
+            const _toFirstLinked = (_toN && _toN.type === 'consumer-container' && Array.isArray(_toN.slots))
+              ? (() => { for (const s of _toN.slots) {
+                  if (s && s.kind === 'linked' && s.nodeId) {
+                    const a = state.nodes.get(s.nodeId);
+                    if (a) return a;
+                  }
+                } return null; })()
+              : null;
+            const _consInrush = (_toN && _toN.type === 'consumer') ? (Number(_toN.inrushFactor) || 1)
+                              : (_toFirstLinked ? (Number(_toFirstLinked.inrushFactor) || 1) : 1);
+            const _sizingMarginPct = Math.max(
+              Number(GLOBAL.breakerMinMarginPct) || 0,
+              autoBreakerMargin(_consInrush)
+            );
+            const _conductorsInParallel = Number(c._cableParallel) || 1;
+            const sel = calcMethod.selectCable(c._maxA, {
+              material: c._cableMaterial || GLOBAL.defaultMaterial,
+              insulation: c._cableInsulation || GLOBAL.defaultInsulation,
+              method: c._cableMethod || GLOBAL.defaultInstallMethod,
+              ambient: c._cableAmbient || GLOBAL.defaultAmbient,
+              grouping: c._cableGrouping || GLOBAL.defaultGrouping,
+              bundling: c._cableBundling || 'touching',
+              cableType: c._cableType || GLOBAL.defaultCableType,
+              maxSize: GLOBAL.maxCableSize,
+              parallel: _conductorsInParallel,
+              breakerMarginPct: _sizingMarginPct,
+              breakerCurve: c.breakerCurve || autoBreakerCurve(_consInrush, 0),
+              protectionMode: 'individual',
+            });
+            if (sel && sel.s) {
+              c._cableSize = sel.s;
+              c._cableIz = sel.iDerated;
+              c._cableTotalIz = sel.totalCapacity || sel.iDerated * sel.parallel;
+              c._cableOverflow = !!sel.overflow;
+              c._cableKt = sel.kT;
+              c._cableKg = sel.kG;
+              c._cableKtotal = sel.kT * sel.kG;
+              c._cableAutoParallel = !!sel.autoParallel;
+              c._cableParallel = sel.parallel;
+              c._cableReselectedAfterClamp = true; // отладочный маркер
+            }
+          } catch (e) { /* fallback: старое значение остаётся */ }
+        }
+      }
     }
   }
 
