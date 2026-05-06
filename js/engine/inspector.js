@@ -1378,6 +1378,41 @@ export function openContainerMembersModal(container) {
   h.push(`<div style="padding:8px 12px;border-bottom:1px solid #e0e7ee;background:#fff;font-size:12px;color:#64748b;font-style:italic">
     Группа однотипных потребителей с общим питающим кабелем. Для cond+outdoor — открывайте карточку кондиционера, там кнопка «🔧 Наружный блок». АВР работает <b>per-член</b>: каждый потребитель с multi-input независимо выбирает свой приоритетный вход (см. строку «Входы» в карточке члена).
   </div>`);
+  // v0.60.378 (по репорту Пользователя 2026-05-06: «не нашел в карточке
+  // группы селектора режима резервирования»): селектор режима для
+  // container'а (как для consumer в v0.60.375). Применяется к group через
+  // container.consumerReserveR + redundancyStandbyType. Влияет на
+  // consumerTotalDemandKw для container (electrical.js).
+  {
+    const _slotCount = slots.filter(s => s && (s.kind === 'linked' || s.kind === 'placeholder')).length;
+    if (_slotCount >= 2) {
+      const _curR = Math.max(0, Math.min(_slotCount - 1, Number(container.consumerReserveR) || 0));
+      let _curMode = 'N';
+      if (_curR === 0) _curMode = 'N';
+      else if (_curR === 1) _curMode = 'N+1';
+      else if (_curR === 2 && _slotCount >= 3) _curMode = 'N+2';
+      else if (_curR * 2 === _slotCount) _curMode = '2N';
+      else _curMode = 'custom';
+      const _N = _slotCount - _curR;
+      const _standbyType = String(container.redundancyStandbyType || 'cold');
+      h.push(`<div style="padding:8px 12px;border-bottom:1px solid #e0e7ee;background:#f0fdfa;font-size:12px;display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+        <span><b>Режим резервирования группы:</b></span>
+        <select id="cm-cont-redundancyMode" style="font:inherit;font-size:12px;padding:3px 6px;border:1px solid #cbd5e1;border-radius:3px">
+          <option value="N"${_curMode === 'N' ? ' selected' : ''}>N (все ${_slotCount} активны)</option>
+          <option value="N+1"${_curMode === 'N+1' ? ' selected' : ''}${_slotCount < 2 ? ' disabled' : ''}>N+1 (активны ${_slotCount - 1})</option>
+          <option value="N+2"${_curMode === 'N+2' ? ' selected' : ''}${_slotCount < 3 ? ' disabled' : ''}>N+2 (активны ${_slotCount - 2})</option>
+          <option value="2N"${_curMode === '2N' ? ' selected' : ''}${(_slotCount % 2 !== 0 || _slotCount < 2) ? ' disabled' : ''}>2N (${_slotCount / 2} акт.+${_slotCount / 2} рез.)</option>
+          <option value="custom"${_curMode === 'custom' ? ' selected' : ''}>Custom (R = ${_curR})</option>
+        </select>
+        ${_curR > 0 ? `<span><b>Тип:</b></span>
+          <select id="cm-cont-standbyType" style="font:inherit;font-size:12px;padding:3px 6px;border:1px solid #cbd5e1;border-radius:3px" title="Холодный — резерв ОТКЛЮЧЁН (АВР). Горячий — все count работают на ${(_N / _slotCount * 100).toFixed(0)}%, load-sharing.">
+            <option value="cold"${_standbyType === 'cold' ? ' selected' : ''}>❄ Холодный</option>
+            <option value="hot"${_standbyType === 'hot' ? ' selected' : ''}>🔥 Горячий</option>
+          </select>` : ''}
+        <span style="font-size:10.5px;color:#64748b">Активные N=<b>${_N}</b> · Резерв R=<b>${_curR}</b> · Всего ${_slotCount}</span>
+      </div>`);
+    }
+  }
   if (!slots.length) {
     h.push('<div style="padding:24px;text-align:center;color:#778899">Контейнер пуст. Drop потребителя на канвасе сюда — добавится.</div>');
   } else {
@@ -1941,6 +1976,34 @@ function _wireContainerMembersModal(n, body, modal) {
   // (а не оставляем пользователя у пустого канваса). Пользователь:
   // «после открытия карточки потребителя из группы, нужно вернуться
   // обратно в группу а не просто закрыть окно».
+  // v0.60.378: change-handlers для container redundancy + standby type.
+  body.querySelector('#cm-cont-redundancyMode')?.addEventListener('change', (e) => {
+    const mode = e.target.value;
+    const _slotCount = (Array.isArray(n.slots) ? n.slots : []).filter(s => s && (s.kind === 'linked' || s.kind === 'placeholder')).length;
+    let r = 0;
+    if (mode === 'N') r = 0;
+    else if (mode === 'N+1' && _slotCount >= 2) r = 1;
+    else if (mode === 'N+2' && _slotCount >= 3) r = 2;
+    else if (mode === '2N' && _slotCount >= 2 && _slotCount % 2 === 0) r = _slotCount / 2;
+    if (r > 0) n.consumerReserveR = r;
+    else delete n.consumerReserveR;
+    try { snapshot('cm-cont-reserveR:' + n.id + ':' + mode); } catch {}
+    try { notifyChange(); } catch {}
+    try { window.Raschet?.recalc?.(); } catch {}
+    try { window.Raschet?.render?.(); } catch {}
+    openContainerMembersModal(n);
+  });
+  body.querySelector('#cm-cont-standbyType')?.addEventListener('change', (e) => {
+    const st = e.target.value;
+    if (st === 'hot') n.redundancyStandbyType = 'hot';
+    else delete n.redundancyStandbyType;
+    try { snapshot('cm-cont-standbyType:' + n.id + ':' + st); } catch {}
+    try { notifyChange(); } catch {}
+    try { window.Raschet?.recalc?.(); } catch {}
+    try { window.Raschet?.render?.(); } catch {}
+    openContainerMembersModal(n);
+  });
+
   // v0.60.352: change-handler для группового порта single-input child'ов.
   body.querySelectorAll('[data-cm-groupport]').forEach(sel => {
     sel.addEventListener('change', () => {

@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.378', date: '2026-05-06', items: [
+      '🔄 <b>Селектор резервирования в карточке group container</b>. По репорту Пользователя 2026-05-06: «не нашел в карточке группы селектора режима резервирования».',
+      '<b>Где</b>: модалка «Состав контейнера» (двойной клик на group) → светло-бирюзовая полоса под subtitle с селекторами:',
+      '• <b>Режим резервирования группы</b>: N / N+1 / N+2 / 2N / Custom',
+      '• <b>Тип</b> (виден если R > 0): ❄ Холодный / 🔥 Горячий',
+      '• Сводка справа: «Активные N=X · Резерв R=Y · Всего Z»',
+      '<b>State</b>: <code>container.consumerReserveR</code> + <code>container.redundancyStandbyType</code> (как у consumer\'а в v0.60.375). Применяется к group через <code>consumerTotalDemandKw(container)</code> в electrical.js (per × (count-R)).',
+      '<b>Change-handlers</b>: на смене selector\'а — recalc + render + reopen модалки. Snapshot для undo.',
+      'Раньше (v0.60.375) селектор был ТОЛЬКО для отдельного consumer\'а. Group container не имел UI — нужно было задавать R через children, что неудобно.',
+      'Files: <code>js/engine/inspector.js</code> (UI section + change-handlers).',
+    ] },
     { version: '0.60.377', date: '2026-05-06', items: [
       '⚡ <b>Параллельные children в группе делят нагрузку между ports (load-sharing)</b>. По репорту Пользователя 2026-05-06: «группа кондиционеров работает (линии с разной нагрузкой) с группой стоек не сработало». В группе Z1.GR4 8 стоек × 7 кВт: 7 из 8 имели <code>priorities=[1,1]</code> (параллель), 1 — <code>[1,2]</code> (АВР). На P2 нагрузки не было.',
       '<b>Корень</b>: per-child priorities (v0.60.361) брал <code>ports[0]</code> из priority-1 группы — для параллели (все priorities одинаковые) брался ТОЛЬКО первый порт. Стойки висели на P1, P2 был пустой.',
