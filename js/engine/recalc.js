@@ -2556,8 +2556,37 @@ function recalc() {
     // v0.59.829 (1.28.20): consumer-container — N параллельных проводников
     // (по числу slots), как у группового потребителя count=N. Каждый slot =
     // отдельный кабель от общего автомата.
+    // v0.60.388 (по репорту Пользователя 2026-05-06: «количество линий в
+    // групповой линии должно отображаться соответствующим образом»):
+    // Per-port cable count для container: на каждый порт идёт столько
+    // кабелей, сколько children АКТУАЛЬНО подключено к этому порту:
+    //   - multi-input child (inputs > 1) → 1 cable на КАЖДЫЙ свой port
+    //     (АВР: и на priority-1, и на priority-2)
+    //   - single-input child → 1 cable на assignedGroupPort
     if (toN.type === 'consumer-container' && Array.isArray(toN.slots) && toN.slots.length > 1) {
-      conductorsInParallel = toN.slots.length;
+      const _connPort = c.to.port | 0;
+      let _portCableCount = 0;
+      for (const _s of toN.slots) {
+        if (!_s) continue;
+        if (_s.kind === 'placeholder') {
+          // placeholder — потенциальный consumer; counts всегда (для всех портов).
+          _portCableCount++;
+          continue;
+        }
+        if (_s.kind !== 'linked' || !_s.nodeId) continue;
+        const _ch = state.nodes.get(_s.nodeId);
+        if (!_ch) continue;
+        const _chInputs = Math.max(1, Number(_ch.inputs) || 1);
+        if (_chInputs > 1) {
+          // Multi-input child: cable на каждый порт <= chInputs
+          if (_connPort < _chInputs) _portCableCount++;
+        } else {
+          // Single-input child: только на assignedGroupPort (default 0)
+          const _agp = Number(_ch.assignedGroupPort) || 0;
+          if (_agp === _connPort) _portCableCount++;
+        }
+      }
+      conductorsInParallel = Math.max(1, _portCableCount);
     }
 
     const cableType = c.cableType || GLOBAL.defaultCableType;

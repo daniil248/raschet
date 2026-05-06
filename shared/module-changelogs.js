@@ -4,6 +4,19 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.388', date: '2026-05-06', items: [
+      '🔌 <b>Per-port cable count для group container conn</b>. По репорту Пользователя 2026-05-06: «количество линий в групповой линии должно отображаться соответствующим образом. На представленном примере на групповой линии 1 должно быть 2 линии а на групповой линии 2 уже 4 линии».',
+      '<b>Корень</b>: <code>conductorsInParallel</code> для container conn = <code>toN.slots.length</code> (4 для GR1 с 4 children) — одинаково для P1 и P2. Не учитывалось что:',
+      '• multi-input child (inputs > 1) подключается к ВСЕМ своим портам (АВР: cable на P1 + cable на P2)',
+      '• single-input child подключается ТОЛЬКО к своему <code>assignedGroupPort</code>',
+      '<b>Fix</b>: для каждой incoming-conn контейнера считаем per-port cable count:',
+      '• Multi-input child → +1 cable если <code>connPort < childInputs</code>',
+      '• Single-input child → +1 cable если <code>connPort === assignedGroupPort</code>',
+      '<b>Эффект</b> для GR1 (2 ACU multi-input AVR + 2 ACU single-input на P2):',
+      '• P1 conn: <b>Линий = 2</b> (только 2 multi-input ACU подключены к port 0)',
+      '• P2 conn: <b>Линий = 4</b> (2 multi-input ACU + 2 single-input ACU на P2)',
+      'Files: <code>js/engine/recalc.js</code> (per-port cable count в conn-loop).',
+    ] },
     { version: '0.60.387', date: '2026-05-06', items: [
       '🔄 <b>Auto-recalc при смене «Порт группы»</b>. По репорту Пользователя 2026-05-06: «просто автоматический не обновляется, но если изменить селектор режима резервирования и вернуть, то все пересчитывается».',
       '<b>Корень</b>: change-handler селектора «Порт группы» (single-input child) только записывал <code>n.assignedGroupPort</code> и вызывал <code>notifyChange()</code>, но НЕ форсил <code>recalc()</code>. Балансировка пересчитывалась только при следующем recalc-trigger (другой UI action).',
