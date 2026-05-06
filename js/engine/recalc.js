@@ -910,6 +910,32 @@ function recalc() {
     normalizeContainers();
   } catch {}
 
+  // v0.60.384 (по репорту Пользователя 2026-05-06: GR4 имеет inputs=1, но
+  // _avrBreakerOverride=[true,true] и conns подведены к 2 портам → per-
+  // child priorities не запускался → балансировка не считалась): auto-
+  // detect container.inputs из incoming-conns. Если контейнер имеет conn
+  // к port > inputs-1 — расширяем inputs до max(port)+1.
+  try {
+    const _maxPortByContainer = new Map();
+    for (const c of state.conns.values()) {
+      if (!c.to || !c.to.nodeId) continue;
+      const _toN = state.nodes.get(c.to.nodeId);
+      if (!_toN || _toN.type !== 'consumer-container') continue;
+      const _port = c.to.port | 0;
+      const _cur = _maxPortByContainer.get(_toN.id) || 0;
+      if (_port > _cur) _maxPortByContainer.set(_toN.id, _port);
+    }
+    for (const [_cId, _maxPort] of _maxPortByContainer) {
+      const _cont = state.nodes.get(_cId);
+      if (!_cont) continue;
+      const _needed = _maxPort + 1;
+      if ((Number(_cont.inputs) || 1) < _needed) {
+        _cont.inputs = _needed;
+        _cont._inputsAutoHealed = true;
+      }
+    }
+  } catch (e) { /* swallow — non-critical */ }
+
   // v0.60.373 (по репорту Пользователя 2026-05-06: «первый конденсатор не
   // отображается в перечне потребителей»): auto-heal stale outdoor-блоков
   // ПРИ КАЖДОМ recalc'е (не только при открытии cond-modal как v0.60.363):

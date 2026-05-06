@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.384', date: '2026-05-06', items: [
+      '🔧 <b>CRITICAL: Auto-heal container.inputs из incoming-conns</b>. По debug-выводу Пользователя для Z1.GR4: container.inputs=1, но _avrBreakerOverride=[true,true] и conns подведены к 2 портам → per-child priorities branch (условие containerInputs > 1) не запускался → children._activeContainerPorts = undefined → балансировка не считалась.',
+      '<b>Корень</b>: container.inputs мог остаться = 1 при создании или быть сброшен миграцией, хотя физически conns подведены к нескольким портам. Per-child priorities branch требовал <code>containerInputs > 1</code> — условие false → fallback inheritance, без port-assignment.',
+      '<b>Fix</b>: в начале recalc — auto-detect <code>container.inputs</code> из incoming-conns. Если контейнер имеет conn к port > (inputs-1), расширяем inputs до <code>max(port) + 1</code>. Idempotent — выполняется при каждом recalc.',
+      '<b>Маркер</b>: <code>container._inputsAutoHealed = true</code> для отладки.',
+      '<b>Эффект</b>: для GR4 (8 racks) container.inputs станет 2, per-child priorities заработает, _activeContainerPorts будут корректно распределены, балансировка нагрузки появится в карточке.',
+      'Files: <code>js/engine/recalc.js</code> (auto-heal container.inputs в начале recalc).',
+    ] },
     { version: '0.60.383', date: '2026-05-06', items: [
       '🔌 <b>Conn-inspector: для групповой линии TOTAL вместо per-line</b>. По репорту Пользователя 2026-05-06: «На самом деле при выборе одной линии, которая по факту символизирует четыре одинаковые линии, нельзя отображать текущую нагрузку для групповой линии в разрезе одиночной линии. Сами нагрузки должны суммарно расчитываться на щите, но для линии (групповой) нельзя делать раздельное отображение».',
       '<b>Корень</b>: «Текущая P / Текущий I / Расчётный I» делились на <code>_par</code> (количество физических кабелей в группе). Для group container с 4 ACU: <code>32 кВт / 4 = 8 кВт</code> per-line. Это сечение каждого кабеля корректно, но «Текущая нагрузка линии» в инспекторе должна отражать ОБЩУЮ нагрузку через визуальную линию.',
