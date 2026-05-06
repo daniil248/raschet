@@ -4,6 +4,18 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.369', date: '2026-05-06', items: [
+      '🐛 <b>CRITICAL fix: cable journal table пустая</b> + <b>декомпозиция Номинала для group-container</b>.',
+      '<b>1. Cable journal empty</b> (по репорту Пользователя 2026-05-06: «кабели не показываются в реестре» + console-error «Uncaught ReferenceError: _vCableSize is not defined at renderCableTable main.js:4456:20»).',
+      '<b>Корень</b>: в строке <code>const size = _vCableSize != null ? _vCableSize : (c._cableSize || \'?\')</code> переменная <code>_vCableSize</code> никогда не объявлялась — рудимент v0.60.233 (per-row sizing для group-expansion), который был откачен в v0.60.237 без удаления использования. JS-engine крашил рендеринг каждой строки → таблица оставалась пустой.',
+      '<b>Fix</b>: <code>_vCableSize</code> → <code>c._virtualCableSize</code> (объявленное поле на virtual-conn). Если null → fallback на <code>c._cableSize</code>.',
+      '<b>2. Декомпозиция Номинала для group-container</b> (по репорту Пользователя: «как просил изменить вид карточки, до сих пор нет, а я уже 3 раза просил» — про «общая мощность и в скобках отдельно наружный + внутренний блок»).',
+      'В render.js для consumer-container с member-cond\'ами имеющими outdoor-блоки теперь:',
+      '• <b>Номинал</b>: <code>total (indoor+outdoor) кВт</code> per-unit',
+      '• <b>Номинальный ток</b>: <code>I_total (I_indoor+I_outdoor) А</code>',
+      'Раньше cond-decomposition (v0.60.366) работал ТОЛЬКО для отдельного consumer\'а — карточки group-container оставались без разбивки. Теперь — homogeneous-group берёт первый linked-member для оценки outdoor.demandKw, дополняет Pnom.',
+      'Files: <code>js/main.js</code> (renderCableTable _vCableSize fix), <code>js/engine/render.js</code> (container valueMap nominalKw/capacityA decomposition).',
+    ] },
     { version: '0.60.368', date: '2026-05-06', items: [
       '🏷 <b>Группы возвращены к собственным тегам (GR1, GR2…)</b>. По запросу Пользователя 2026-05-06: «давай для групп вернем их базовое обозначение. GR1».',
       '<b>Корень</b>: c v0.59.811 <code>_baseTag(container)</code> возвращал тег ПЕРВОГО (по натуральной сортировке) linked-члена — не собственный тег контейнера. Это давало визуальную путаницу: контейнер «GR1» с членами ACU01, ACU02 показывался на карточке как «Z1.ACU01», а cond ACU01 внутри группы тоже отображался как «Z1.ACU01» — два разных объекта с одинаковым именем.',

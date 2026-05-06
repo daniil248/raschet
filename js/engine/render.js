@@ -2716,11 +2716,41 @@ export function renderNodes() {
         // + cos + U. Для группы — дополнительно count. Σ группы — в footer.
         // Все значения через единый pipeline: nodeCalcVoltage → computeCurrentA.
         const Icalc_cont = (Pcalc > 0 && Ucalc) ? computeCurrentA(Pcalc, Ucalc, cos, isThreePhase(n)) : 0;
+        // v0.60.369 (по репорту Пользователя 2026-05-06: «как просил изменить
+        // вид карточки, до сих пор нет, а я уже 3 раза просил» — про
+        // «оставить общую мощность и в скобках отдельно наружный + внутренний
+        // блок»): декомпозиция Номинала per-unit на indoor + outdoor для
+        // group-container с member-cond'ами имеющими outdoor-блоки.
+        // Для одной единицы: indoor.demand + sum(outdoor.demand для linked OUs).
+        let _PnomIndoorPU = Pnom; // per-unit indoor (текущий Pnom)
+        let _PnomOutdoorPU = 0;
+        if (Array.isArray(n.slots) && n.slots.length) {
+          // Берём ПЕРВЫЙ linked member (hom-group: все одинаковые) для оценки outdoor.
+          for (const s of n.slots) {
+            if (!s || s.kind !== 'linked' || !s.nodeId) continue;
+            const _m = state.nodes.get(s.nodeId);
+            if (!_m) continue;
+            const _ouIds = Array.isArray(_m.linkedOutdoorIds) ? _m.linkedOutdoorIds
+              : (_m.linkedOutdoorId ? [_m.linkedOutdoorId] : []);
+            for (const _ouId of _ouIds) {
+              const _ou = state.nodes.get(_ouId);
+              if (_ou) _PnomOutdoorPU += (Number(_ou.demandKw) || 0) * Math.max(1, Number(_ou.count) || 1);
+            }
+            break; // homogeneous — один пример достаточно
+          }
+        }
+        const _hasOutdoorPU = _PnomOutdoorPU > 0.05;
+        const PnomTotalPU = _PnomIndoorPU + _PnomOutdoorPU;
+        const InomTotalPU = (PnomTotalPU > 0 && Ucalc) ? computeCurrentA(PnomTotalPU, Ucalc, cos, isThreePhase(n)) : 0;
+        const _InomIndoorPU = (_PnomIndoorPU > 0 && Ucalc) ? computeCurrentA(_PnomIndoorPU, Ucalc, cos, isThreePhase(n)) : 0;
+        const _InomOutdoorPU = (_PnomOutdoorPU > 0 && Ucalc) ? computeCurrentA(_PnomOutdoorPU, Ucalc, cos, isThreePhase(n)) : 0;
+        const _PnomDecompC = _hasOutdoorPU ? ` (${fmtDigits(_PnomIndoorPU)}+${fmtDigits(_PnomOutdoorPU)})` : '';
+        const _InomDecompC = _hasOutdoorPU ? ` (${fmtDigits(_InomIndoorPU)}+${fmtDigits(_InomOutdoorPU)})` : '';
         valueMap = {
           demandKw:   { v: fmtDigits(Pcalc) },           // Расчёт P (per-unit)
           currentA:   { v: fmtDigits(Icalc_cont) },      // Расчёт I (per-unit)
-          nominalKw:  { v: fmtDigits(Pnom)  },           // Номинал P (per-unit)
-          capacityA:  { v: fmtDigits(Inom)  },           // Номинал I (per-unit)
+          nominalKw:  { v: fmtDigits(PnomTotalPU) + _PnomDecompC },  // Номинал P + декомпозиция (indoor+outdoor)
+          capacityA:  { v: fmtDigits(InomTotalPU) + _InomDecompC },  // Номинал I + декомпозиция
           kvAOrVA:    { v: fmtDigits(Snom)  },
           maxKw:      { v: null },                        // только для щитов
           maxA:       { v: null },

@@ -4451,9 +4451,15 @@ function renderCableTable() {
       conductorSpec = `шинопр. ${c._busbarNom} А`;
     } else {
       const cores = c._wireCount || (c._isHV ? 3 : (c._threePhase ? 5 : 3));
-      // v0.60.233: для виртуальных строк (раскрытие группы) — индивидуальное
-      // сечение под Pном одного прибора.
-      const size = _vCableSize != null ? _vCableSize : (c._cableSize || '?');
+      // v0.60.369 (CRITICAL fix по репорту Пользователя 2026-05-06: «Uncaught
+      // ReferenceError: _vCableSize is not defined at renderCableTable
+      // main.js:4456»): _vCableSize не объявлено — это причина что таблица
+      // кабельного журнала была пустой («60 из 60 но рендер пуст»). Виртуальные
+      // строки (group-expansion v0.60.233) использовали бы _virtualCableSize,
+      // но логика per-row sizing откачена в v0.60.237 — все слоты используют
+      // parent _cableSize.
+      const _vSize = c._virtualCableSize != null ? c._virtualCableSize : null;
+      const size = _vSize != null ? _vSize : (c._cableSize || '?');
       const nSize = Number(c._neutralSizeMm2) || 0;
       conductorSpec = (nSize > 0 && nSize < Number(size))
         ? `${cores - 1}×${size} + 1×${nSize} мм²`
