@@ -8,7 +8,7 @@ let _tccChartMod = null;
 import { state, inspectorBody } from '../state.js';
 import { escHtml, escAttr, fmt, field, flash, helpIcon } from '../utils.js';
 import { effectiveTag } from '../zones.js';
-import { cableVoltageClass } from '../electrical.js';
+import { cableVoltageClass, computeCurrentA, nodeCalcVoltage, isThreePhase } from '../electrical.js';
 import { snapshot, notifyChange } from '../history.js';
 import { render } from '../render.js';
 import { deleteConn } from '../graph.js';
@@ -153,9 +153,12 @@ export function renderInspectorConn(c) {
     // экземпляров полное перечисление по группам загрузки кабельных линий
     // (как в примере 12 кВт × 2 + 0 кВт × 2) тоже и для тока»): для group-line
     // к контейнеру выводим per-cable breakdown — список разных значений
-    // загрузки. Группируем children по _loadKw / _loadA и показываем
-    // «P1 × N1 + P2 × N2 …». Применимо только когда target=consumer-container
-    // и par > 1.
+    // загрузки.
+    // v0.60.402 (по уточнению Пользователя 2026-05-06: «для тока не верно
+    // сделал, там такой же принцип, если отличается, нужно показать»): ток
+    // вычисляется ON-THE-FLY из child._loadKw + voltage/cosphi/phase, потому
+    // что у consumer'ов в recalc не выставляется n._loadA (только _powerP).
+    // Также убрано слово «кабелей» из breakdown'а.
     let _perCableKwBreakdown = null;
     let _perCableABreakdown = null;
     if (_par > 1) {
@@ -163,7 +166,6 @@ export function renderInspectorConn(c) {
       if (_toContainer && _toContainer.type === 'consumer-container'
           && Array.isArray(_toContainer.slots)) {
         const _portIdx = Number(c.to?.port) || 0;
-        // Children, которые маршрутизированы на этот порт
         const _routed = [];
         for (const _s of _toContainer.slots) {
           if (!_s || _s.kind !== 'linked' || !_s.nodeId) continue;
@@ -172,28 +174,32 @@ export function renderInspectorConn(c) {
           const _ports = Array.isArray(_ch._activeContainerPorts)
             ? _ch._activeContainerPorts
             : (Number.isFinite(Number(_ch._activeContainerPort)) ? [Number(_ch._activeContainerPort)] : []);
-          // Если этот child использует данный порт — учитываем
-          // (для disabled — _activeContainerPorts пустой, но child всё равно
-          // считается «как если бы был на своём assignedGroupPort», иначе он
-          // потеряется в перечислении). Берём по assignedGroupPort fallback.
           const _agp = Number(_ch.assignedGroupPort);
           const _portsEff = _ports.length ? _ports
             : (Number.isFinite(_agp) ? [_agp] : [0]);
           if (_portsEff.includes(_portIdx)) _routed.push(_ch);
         }
         if (_routed.length > 1) {
-          // Группировка по округлённой kW
           const _kwMap = new Map();
           const _aMap = new Map();
           for (const _ch of _routed) {
             const _kw = Number(_ch._loadKw) || 0;
-            const _a = Number(_ch._loadA) || 0;
+            // v0.60.402: ток считаем из kW + voltage/cosphi/phase, а не
+            // из _ch._loadA (для consumer'ов _loadA не устанавливается).
+            let _a = 0;
+            if (_kw > 0) {
+              const _U = nodeCalcVoltage(_ch) || 0;
+              const _cosCh = Number(_ch.cosPhi) || Number(_ch._cosPhi) || 0.92;
+              const _ph3 = isThreePhase(_ch);
+              if (_U > 0) {
+                try { _a = computeCurrentA(_kw, _U, _cosCh, _ph3); } catch {}
+              }
+            }
             const _kwKey = _kw.toFixed(2);
             const _aKey = _a.toFixed(2);
             _kwMap.set(_kwKey, (_kwMap.get(_kwKey) || 0) + 1);
             _aMap.set(_aKey, (_aMap.get(_aKey) || 0) + 1);
           }
-          // Если разные значения — формируем breakdown. Иначе оставляем единое.
           if (_kwMap.size > 1) {
             const _entries = [..._kwMap.entries()].sort((a, b) => Number(b[0]) - Number(a[0]));
             _perCableKwBreakdown = _entries.map(([kw, n]) => `${fmt(Number(kw))} kW × ${n}`).join(' + ');
@@ -235,12 +241,12 @@ export function renderInspectorConn(c) {
     h.push(`<div style="font-size:12px;line-height:1.8">` +
       (_par > 1 ? `Линий: <b>${_par}</b> <span class="muted" style="font-size:10.5px">(одна групповая = ${_par} физических кабелей)</span><br>` : '') +
       `Текущая P: <b>${fmt(kwTotal)} kW</b>${_par > 1
-        ? ` <span class="muted" style="font-size:11px">(${_perCableKwBreakdown || `${fmt(kwPerLine)} kW × ${_par} кабелей`})</span>`
+        ? ` <span class="muted" style="font-size:11px">(${_perCableKwBreakdown || `${fmt(kwPerLine)} kW × ${_par}`})</span>`
         : ''}<br>` +
       `Текущий I: <b>${fmt(loadTotal)} A</b>${_par > 1
-        ? ` <span class="muted" style="font-size:11px">(${_perCableABreakdown || `${fmt(loadPerLine)} A × ${_par} кабелей`})</span>`
+        ? ` <span class="muted" style="font-size:11px">(${_perCableABreakdown || `${fmt(loadPerLine)} A × ${_par}`})</span>`
         : ''}<br>` +
-      `Расчётный I: <b>${fmt(maxTotal)} A</b>${_par > 1 ? ` <span class="muted" style="font-size:11px">(${fmt(maxPerLine)} A × ${_par} кабелей)</span>` : ''} <span class="muted">(по макс. нагрузке)</span><br>` +
+      `Расчётный I: <b>${fmt(maxTotal)} A</b>${_par > 1 ? ` <span class="muted" style="font-size:11px">(${fmt(maxPerLine)} A × ${_par})</span>` : ''} <span class="muted">(по макс. нагрузке)</span><br>` +
       (c._cosPhi ? `cos φ: <b>${c._cosPhi.toFixed(2)}</b><br>` : '') +
       `Напряжение: <b>${_vNom || '-'} В</b>` +
       (_vNom > 0 && (_segDrop > 0 || _cumDrop > 0)

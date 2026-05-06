@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.402', date: '2026-05-06', items: [
+      '🔧 <b>Fix per-cable I breakdown + убрано слово «кабелей»</b>. По уточнению Пользователя 2026-05-06: «для тока не верно сделал, там такой же принцип, если отличается, нужно показать и убери в этих местах слово кабелей».',
+      '<b>Корень</b>: для consumer\'ов <code>n._loadA</code> в recalc НЕ устанавливается (только <code>_powerP/Q/S</code>, <code>_nominalA/_ratedA</code>). Поэтому per-cable breakdown по <code>_loadA</code> давал всё нули → fallback показывал среднее.',
+      '<b>Fix</b>: ток на жилу считаем on-the-fly из <code>_loadKw</code> + <code>nodeCalcVoltage</code> + <code>cosPhi</code> + <code>isThreePhase</code> через <code>computeCurrentA()</code>. Группировка по уникальным значениям → корректный breakdown «12.6 A × 2 + 0 A × 2».',
+      '<b>UX</b>: в выводе breakdown\'а убрано слово «кабелей» — оставлено просто «X kW × N» (контекст уже ясен из «Линий: 4»).',
+      'Files: <code>js/engine/inspector/conn.js</code> (импорт computeCurrentA + per-child A computation).',
+    ] },
     { version: '0.60.401', date: '2026-05-06', items: [
       '📊 <b>Per-cable breakdown в conn-inspector для group-line с разнородной загрузкой</b>. По репорту Пользователя 2026-05-06: «представление текущей мощности и тока в сайдбаре не соответствуют расчету в карточке группы. (2 по 12 кВт + 2 × 0 кВт в карточке и 4 × 6 кВт в сайдбаре). Сделай для различающихся экземпляров полное перечисление по группам загрузки кабельных линий».',
       '<b>Контекст</b>: cable к group-container'у визуально = N физических кабелей (по одной на child). При разной загрузке children (например ACU01 и ACU04 активны по 12 кВт, ACU02 и ACU03 disabled на 0 кВт) старое отображение «6 kW × 4 кабелей» (среднее) НЕ отражало реальную загрузку конкретного кабеля.',
