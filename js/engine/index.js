@@ -621,6 +621,16 @@ window.Raschet = {
     // Синхронизация с shared/global-settings.js — уведомит все
     // подпрограммы через onGlobalChange + запишет в localStorage.
     try { saveGlobal(patch); } catch (e) { console.warn('[engine.setGlobal]', e); }
+    // v0.60.403 (по репорту Пользователя 2026-05-06: «при переключении на
+    // режим расчета по номинальной мощности, в карточках щитов мощность
+    // и потребления не пересчитывается»): после смены любого calc-влияющего
+    // GLOBAL-параметра (panelMaxBasis, calcMethod, calcVoltageMode,
+    // defaultCosPhi, maxVdropPct и т.п.) нужно прогнать recalc — иначе
+    // карточки рендерятся из закэшированных _loadKw/_maxLoadKw, посчитанных
+    // под старую настройку. UI-флаги (showHelp/autoCenterOnSelect/
+    // showIssueHighlights) тоже триггерят recalc — overhead минимален и
+    // безопаснее, чем точечный allow-list.
+    try { recalc(); } catch (e) { console.warn('[engine.setGlobal recalc]', e); }
     render();
     renderInspector();
   },

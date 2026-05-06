@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.403', date: '2026-05-06', items: [
+      '⚙ <b>Recalc после смены GLOBAL-настроек (panelMaxBasis и др.)</b>. По репорту Пользователя 2026-05-06: «при переключении на режим расчета по номинальной мощности, в карточках щитов мощность и потребления не пересчитывается».',
+      '<b>Корень</b>: <code>setGlobal(patch)</code> в engine/index.js вызывал только <code>render()</code> + <code>renderInspector()</code>, но не <code>recalc()</code>. После смены настройки (panelMaxBasis nameplate↔calculated, calcMethod IEC↔ПУЭ, calcVoltageMode real↔nominal и т.п.) карточки рендерились из закэшированных <code>_loadKw</code> / <code>_maxLoadKw</code>, посчитанных под старую настройку. Только при изменении проекта (drag/edit) вызывался <code>recalc()</code> и значения обновлялись.',
+      '<b>Fix</b>: добавлен <code>recalc()</code> в setGlobal перед render. Overhead минимален; безопаснее, чем точечный allow-list по полям.',
+      'Files: <code>js/engine/index.js</code> (setGlobal).',
+    ] },
     { version: '0.60.402', date: '2026-05-06', items: [
       '🔧 <b>Fix per-cable I breakdown + убрано слово «кабелей»</b>. По уточнению Пользователя 2026-05-06: «для тока не верно сделал, там такой же принцип, если отличается, нужно показать и убери в этих местах слово кабелей».',
       '<b>Корень</b>: для consumer\'ов <code>n._loadA</code> в recalc НЕ устанавливается (только <code>_powerP/Q/S</code>, <code>_nominalA/_ratedA</code>). Поэтому per-cable breakdown по <code>_loadA</code> давал всё нули → fallback показывал среднее.',
