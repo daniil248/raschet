@@ -1744,6 +1744,50 @@ function recalc() {
     }
   }
 
+  // v0.60.374 (по репорту Пользователя 2026-05-06: «группа как не подключалась
+  // к 2 вводам по составу компонентов так и не подключается»): аггрегация
+  // _activeContainerPort детей container'а в container._avrBreakerOverride
+  // для визуала. Раньше container ATS выбирал ОДИН порт → визуально только
+  // один порт зелёный. Если children используют РАЗНЫЕ контейнерные порты
+  // (per-child priorities, v0.60.361), оба должны быть зелёными.
+  for (const _cont of state.nodes.values()) {
+    if (_cont.type !== 'consumer-container') continue;
+    if (!Array.isArray(_cont.slots) || !_cont.slots.length) continue;
+    const _contInputs = Math.max(1, Number(_cont.inputs) || 1);
+    if (_contInputs < 2) continue;
+    const _activePorts = new Set();
+    for (const _s of _cont.slots) {
+      if (!_s || _s.kind !== 'linked' || !_s.nodeId) continue;
+      const _child = state.nodes.get(_s.nodeId);
+      if (!_child || !_child._powered) continue;
+      const _ap = Number(_child._activeContainerPort);
+      if (Number.isFinite(_ap) && _ap >= 0 && _ap < _contInputs) {
+        _activePorts.add(_ap);
+      }
+    }
+    if (_activePorts.size > 0) {
+      // Расширяем существующий _avrBreakerOverride (или создаём)
+      const _ovr = Array.isArray(_cont._avrBreakerOverride) && _cont._avrBreakerOverride.length === _contInputs
+        ? _cont._avrBreakerOverride.slice()
+        : new Array(_contInputs).fill(false);
+      for (const _p of _activePorts) _ovr[_p] = true;
+      _cont._avrBreakerOverride = _ovr;
+      // Устанавливаем _avrActivePort = первый активный (для legacy single-port logic).
+      const _firstActive = [..._activePorts].sort((a, b) => a - b)[0];
+      if (Number.isFinite(_firstActive)) _cont._avrActivePort = _firstActive;
+      // Также активируем все incoming-conns на эти порты (для cable journal / BOM /
+      // визуала «зелёных лампочек»).
+      for (const c of state.conns.values()) {
+        if (c.to?.nodeId !== _cont.id) continue;
+        if (!_activePorts.has(c.to.port | 0)) continue;
+        if (isConnLive(c)) {
+          c._active = true;
+          if (!c._state || c._state === 'dead') c._state = 'active';
+        }
+      }
+    }
+  }
+
   // Собственные нужды генераторов (auxInput)
   for (const n of state.nodes.values()) {
     if (n.type !== 'generator' || !n.auxInput) continue;

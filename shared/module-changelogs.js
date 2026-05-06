@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.374', date: '2026-05-06', items: [
+      '🟢 <b>Группа подключается к 2 вводам визуально (per-child priorities aggregation)</b>. По репорту Пользователя 2026-05-06: «группа как не подключалась к 2 вводам по составу компонентов так и не подключается».',
+      '<b>Корень</b>: после v0.60.361 (per-child priorities в recalc) — children с разными priorities действительно используют разные container-порты (cond1 [1,2] → port 1, cond2 [2,1] → port 2). Но <code>container._avrBreakerOverride</code> устанавливался ATS\'ом контейнера для ОДНОГО порта (по своим inherited priorities), визуально подсвечивался только ОДИН порт.',
+      '<b>Fix</b>: пост-loop в recalc после consumer-loop — для каждого <code>consumer-container</code> с inputs > 1, аггрегируем <code>_activeContainerPort</code> ВСЕХ powered children. Объединение в <code>_avrBreakerOverride[i] = true</code> для каждого использованного порта. Также активируются incoming-conns на эти порты (<code>c._active=true, c._state=\'active\'</code>) для cable journal / BOM / зелёных лампочек.',
+      '<b>Эффект</b>: для группы Z1.GR1 с cond1 [1,2] + cond2 [2,1] — обе лампочки P1 и P2 зелёные одновременно (каждая питает свой child). Раньше горела только одна.',
+      'Files: <code>js/engine/recalc.js</code> (post-loop container ports aggregation).',
+    ] },
     { version: '0.60.373', date: '2026-05-06', items: [
       '🔧 <b>Auto-heal stale outdoor-блоков при каждом recalc</b>. По репорту Пользователя 2026-05-06: «первый конденсатор не отображается в перечне потребителей».',
       '<b>Корень</b>: outdoor-блок мог иметь stale-состояние — неверный tag (после переименования cond без apply), <code>linkedIndoorId</code> сломан после миграции, или <code>embedAsOutdoor</code> сброшен. v0.60.363 чинил при открытии cond-modal — но если cond-modal не открывался, OU не был «видим» в перечне (тег чужой / не находится).',
