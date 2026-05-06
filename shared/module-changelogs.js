@@ -4,6 +4,20 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.377', date: '2026-05-06', items: [
+      '⚡ <b>Параллельные children в группе делят нагрузку между ports (load-sharing)</b>. По репорту Пользователя 2026-05-06: «группа кондиционеров работает (линии с разной нагрузкой) с группой стоек не сработало». В группе Z1.GR4 8 стоек × 7 кВт: 7 из 8 имели <code>priorities=[1,1]</code> (параллель), 1 — <code>[1,2]</code> (АВР). На P2 нагрузки не было.',
+      '<b>Корень</b>: per-child priorities (v0.60.361) брал <code>ports[0]</code> из priority-1 группы — для параллели (все priorities одинаковые) брался ТОЛЬКО первый порт. Стойки висели на P1, P2 был пустой.',
+      '<b>Fix</b>:',
+      '• <code>n._activeContainerPorts</code> (массив) сохраняет ВСЕ ports из priority-1 группы (для AVR — один, для параллели — все).',
+      '• <code>n._activeContainerPort</code> (single, legacy) остаётся для backward-compat.',
+      '• Post-loop port aggregation (v0.60.376) теперь делит childLoad ПОРОВНУ между всеми <code>_activeContainerPorts</code>: для параллельной стойки 7 кВт → 3.5 кВт на P1 + 3.5 кВт на P2.',
+      '<b>Эффект</b> (для группы Z1.GR4 8 стоек × 7 кВт = 56 кВт total):',
+      '• 7 параллельных стоек × 3.5 кВт = 24.5 кВт на каждую линию (P1 + P2)',
+      '• 1 АВР-стойка × 7 кВт на P1 (priority-1)',
+      '• <b>P1 текущая</b> = 31.5 кВт, <b>P2 текущая</b> = 24.5 кВт',
+      '• <b>P1/P2 макс</b> = 56 кВт (worst-case AVR fail)',
+      'Files: <code>js/engine/recalc.js</code> (per-child priorities — массив portов + post-loop split-aggregation).',
+    ] },
     { version: '0.60.376', date: '2026-05-06', items: [
       '⚡ <b>Per-port load aggregation в group container</b>. По репорту Пользователя 2026-05-06: «у меня 4 кондиционера с АВР по 5 кВт. 3 имеют приоритет на ввод 1, а один имеет приоритет на ввод 2, соответственно на линиях подключения группы текущий режим должен считаться 25 кВт на линии 1 и 5 кВт на линии 2. А максимальный учитывать любое состояние АВР».',
       '<b>Корень</b>: после v0.60.374 active container ports корректно подсвечивались (per-child priorities), но conn._loadKw на каждый input port был walkUp-aggregate (сумма ВСЕХ children) — не per-port breakdown.',

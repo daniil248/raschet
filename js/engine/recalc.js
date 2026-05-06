@@ -1686,7 +1686,14 @@ function recalc() {
             const ports = groups.get(p);
             if (ports.length) {
               n._powered = true;
-              n._activeContainerPort = ports[0];
+              // v0.60.377 (по репорту Пользователя 2026-05-06: «группа стоек
+              // не сработало» — у стоек priorities=[1,1] (параллель), но
+              // _activeContainerPort брал только ports[0]): для параллели
+              // (несколько ports с одной priority) — сохраняем ВСЕ как
+              // активные. Per-port load в post-loop поделит childLoad на
+              // count(_activeContainerPorts).
+              n._activeContainerPort = ports[0]; // legacy single-port (для backward-compat)
+              n._activeContainerPorts = ports.slice(); // массив всех активных
               break;
             }
           }
@@ -1760,9 +1767,15 @@ function recalc() {
       if (!_s || _s.kind !== 'linked' || !_s.nodeId) continue;
       const _child = state.nodes.get(_s.nodeId);
       if (!_child || !_child._powered) continue;
-      const _ap = Number(_child._activeContainerPort);
-      if (Number.isFinite(_ap) && _ap >= 0 && _ap < _contInputs) {
-        _activePorts.add(_ap);
+      // v0.60.377: используем _activeContainerPorts (массив) если есть —
+      // для параллельных детей все ports активны. Fallback — single-port.
+      const _ports = Array.isArray(_child._activeContainerPorts)
+        ? _child._activeContainerPorts
+        : (Number.isFinite(Number(_child._activeContainerPort)) ? [Number(_child._activeContainerPort)] : []);
+      for (const _ap of _ports) {
+        if (Number.isFinite(_ap) && _ap >= 0 && _ap < _contInputs) {
+          _activePorts.add(_ap);
+        }
       }
     }
     if (_activePorts.size > 0) {
@@ -1779,14 +1792,21 @@ function recalc() {
       // считаться 25 кВт на линии 1 и 5 кВт на линии 2. А максимальный
       // учитывать любое состояние АВР»): per-port load aggregation.
       // Aggregate: portLoad[i] = sum of children._loadKw with this port.
+      // v0.60.377: для параллельных детей (_activeContainerPorts.length > 1)
+      // childLoad делится поровну между всеми active ports (load-sharing).
       const _portLoadKw = new Array(_contInputs).fill(0);
       for (const _s2 of _cont.slots) {
         if (!_s2 || _s2.kind !== 'linked' || !_s2.nodeId) continue;
         const _ch2 = state.nodes.get(_s2.nodeId);
         if (!_ch2 || !_ch2._powered) continue;
-        const _ap2 = Number(_ch2._activeContainerPort);
-        if (Number.isFinite(_ap2) && _ap2 >= 0 && _ap2 < _contInputs) {
-          _portLoadKw[_ap2] += (Number(_ch2._loadKw) || 0);
+        const _chPorts = Array.isArray(_ch2._activeContainerPorts)
+          ? _ch2._activeContainerPorts
+          : (Number.isFinite(Number(_ch2._activeContainerPort)) ? [Number(_ch2._activeContainerPort)] : []);
+        const _validPorts = _chPorts.filter(p => Number.isFinite(p) && p >= 0 && p < _contInputs);
+        if (!_validPorts.length) continue;
+        const _shareKw = (Number(_ch2._loadKw) || 0) / _validPorts.length;
+        for (const _p of _validPorts) {
+          _portLoadKw[_p] += _shareKw;
         }
       }
       _cont._portLoadKwBreakdown = _portLoadKw; // отладочный маркер
