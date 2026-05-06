@@ -4,6 +4,23 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.406', date: '2026-05-06', items: [
+      '🔋 <b>UPS-конфигуратор: подбор АКБ с учётом параллели + общая/per-UPS АКБ + отчёт</b>. По запросу Пользователя 2026-05-06: «измени подбор АКБ с учетом подбора для параллельных систем и резерва (N+1, при N=2, в подбор АКБ нужно передать только половину мощности, но комплектов АКБ взять 3 шт). Добавить вариант общая АКБ или на ИБП. Все это отразить в отчете».',
+      '<b>Часть A: топология АКБ</b>',
+      'В шаге 3 wizard\'а добавлен селектор для multi-unit систем (installed > 1):',
+      '• <b>На каждый ИБП (per-unit)</b> — каждый ИБП имеет свой комплект АКБ. В подбор передаётся <b>P/N</b> (нагрузка одного), заказ — <b>N+R</b> комплектов. Default для multi-unit. Стандарт для N+1 / 2N — отказ одного комплекта АКБ не влияет на остальные.',
+      '• <b>Общая шина АКБ (shared)</b> — все ИБП на одной шине АКБ. В подбор передаётся <b>P</b> (полная нагрузка), заказ — <b>1</b> комплект увеличенной ёмкости. Экономия 10–20% ёмкости, но единая точка отказа.',
+      '<b>Часть B: handoff в battery-calc</b>',
+      '<code>_openBatteryPicker</code> теперь передаёт правильный <code>loadKw</code> (P/N или P) в зависимости от topology. URL-параметры расширены: <code>battSetsQty</code>, <code>battTopology</code>, <code>parallelN</code>, <code>parallelInstalled</code>. <code>parallelContext</code> в handoff содержит подробности (workingCount, redundantCount, redundancyScheme).',
+      '<b>Часть C: отчёт (Шаг 4)</b>',
+      'В summary добавлены строки:',
+      '• Резервирование: расширено до «N+1 (2 рабочих + 1 резерв = 3 установлено)»',
+      '• Топология АКБ: «на каждый ИБП — 3 комплект(ов) × P/N» или «общая шина — 1 комплект × P»',
+      '• АКБ-строка: « × N комплект(ов)» суффикс при per-unit',
+      '<b>Часть D: payload в Конструктор схем</b>',
+      '<code>configuration.batteryTopology</code> и <code>batterySetsQty</code> сохраняются в pendingUpsSelection / lastUpsConfig — Конструктор схем может применить и отразить в BOM.',
+      'Files: <code>ups-config/index.html</code> (radio-селектор), <code>ups-config/ups-config.js</code> (_wireBatteryTopologyUi, _renderBatteryTopologySummary, _openBatteryPicker, _renderBatteryInfo, summary, applyConfiguration).',
+    ] },
     { version: '0.60.405', date: '2026-05-06', items: [
       '🔗 <b>UPS-конфигуратор: меньшие модели в параллель + canParallel-gate</b>. По запросу Пользователя 2026-05-06: «при выборе поддержки параллельной работы, должны быть доступны ИБП меньшей единичной мощности, например на 1000 кВт должен быть выбор ИБП 500 или 600 кВт включенных в параллель».',
       '<b>monoblock.pickFit</b>:',

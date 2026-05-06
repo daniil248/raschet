@@ -1220,8 +1220,57 @@ function _goStep3() {
   if (!comp) { flash('Не удалось рассчитать конфигурацию', 'error'); return; }
   wizState.composition = comp;
   wizState.batteryChoice = wizState.batteryChoice || null; // 'skip' | 'pick' | null
+  // v0.60.406: топология АКБ для параллельных систем (per-unit / shared).
+  // Default: per-unit для multi-unit, shared для single-unit.
+  if (!wizState.batteryTopology) {
+    wizState.batteryTopology = (comp.fitInfo.installed > 1) ? 'per-unit' : 'shared';
+  }
+  _wireBatteryTopologyUi();
   _renderBatteryInfo();
   _showStep(3);
+}
+
+// v0.60.406: видимость и логика селектора топологии АКБ.
+function _wireBatteryTopologyUi() {
+  const wrap = document.getElementById('wiz-battery-topology');
+  if (!wrap) return;
+  const comp = wizState.composition;
+  if (!comp) { wrap.style.display = 'none'; return; }
+  const fi = comp.fitInfo;
+  const isMulti = fi.installed > 1;
+  // Селектор виден только при multi-unit (>=2 ИБП в системе).
+  wrap.style.display = isMulti ? '' : 'none';
+  if (!isMulti) return;
+  // Установить current state
+  document.querySelectorAll('input[name="wiz-batt-topology"]').forEach(r => {
+    r.checked = (r.value === (wizState.batteryTopology || 'per-unit'));
+    r.onchange = () => {
+      wizState.batteryTopology = r.value;
+      _renderBatteryTopologySummary();
+      _renderBatteryInfo();
+    };
+  });
+  _renderBatteryTopologySummary();
+}
+
+function _renderBatteryTopologySummary() {
+  const sum = document.getElementById('wiz-batt-topology-summary');
+  if (!sum) return;
+  const comp = wizState.composition;
+  if (!comp) { sum.textContent = ''; return; }
+  const fi = comp.fitInfo;
+  const rq = wizState.requirements;
+  const N = Math.max(1, fi.working || 1);
+  const R = Math.max(0, fi.redundant || 0);
+  const installed = N + R;
+  const loadKw = Number(rq.loadKw) || 0;
+  const topology = wizState.batteryTopology || 'per-unit';
+  const loadPerUnit = loadKw / N;
+  if (topology === 'per-unit') {
+    sum.innerHTML = `<b>Per-unit</b>: в подбор АКБ передаётся <b>${loadPerUnit.toFixed(1)} kW</b> (= ${loadKw}/${N}). Заказ: <b>${installed}</b> комплектов АКБ (${N} рабочих + ${R} резерв).`;
+  } else {
+    sum.innerHTML = `<b>Shared</b>: в подбор АКБ передаётся <b>${loadKw.toFixed(1)} kW</b> (полная нагрузка). Заказ: <b>1</b> комплект АКБ (увеличенной ёмкости, общая шина для всех ${installed} ИБП).`;
+  }
 }
 
 // v0.59.400: подхват результата возврата из battery/. Если пользователь
@@ -1266,15 +1315,30 @@ function _renderBatteryInfo() {
   const rq = wizState.requirements;
   if (!comp) { info.textContent = ''; return; }
   const u = comp.ups;
+  const fi = comp.fitInfo;
+  // v0.60.406: контекст параллели для индикации в info-блоке.
+  const N = Math.max(1, fi.working || 1);
+  const installed = Math.max(1, fi.installed || 1);
+  const isMulti = installed > 1;
+  const topology = wizState.batteryTopology || (isMulti ? 'per-unit' : 'shared');
+  const battSetsQty = (topology === 'per-unit') ? installed : 1;
+  const loadKwToPicker = (topology === 'per-unit')
+    ? (Number(rq.loadKw) || 0) / N
+    : (Number(rq.loadKw) || 0);
   const lines = [];
-  lines.push(`Выбран ИБП: <b>${esc(u.supplier || '')} ${esc(u.model || u.id)}</b>`);
+  lines.push(`Выбран ИБП: <b>${esc(u.supplier || '')} ${esc(u.model || u.id)}</b>${isMulti ? ` × <b>${installed}</b> в параллель (${N} раб + ${fi.redundant} рез)` : ''}`);
   if (u.vdcMin && u.vdcMax) lines.push(`Диапазон V<sub>DC</sub> по паспорту: <b>${u.vdcMin}…${u.vdcMax} В</b>`);
-  lines.push(`Нагрузка: <b>${rq.loadKw} kW</b>, автономия: <b>${rq.autonomyMin} мин</b>, cos φ: <b>${rq.cosPhi}</b>`);
+  if (isMulti) {
+    lines.push(`Топология АКБ: <b>${topology === 'per-unit' ? 'на каждый ИБП' : 'общая шина'}</b> → в подбор передаётся <b>${loadKwToPicker.toFixed(1)} kW</b>, заказ <b>${battSetsQty}</b> комплект(ов)`);
+  } else {
+    lines.push(`Нагрузка: <b>${rq.loadKw} kW</b>, автономия: <b>${rq.autonomyMin} мин</b>, cos φ: <b>${rq.cosPhi}</b>`);
+  }
   if (wizState.batteryChoice === 'skip') {
     lines.push(`<div style="margin-top:6px;color:#92400e">⚠ АКБ пропущены — конфигурация будет применена без батарей.</div>`);
   } else if (wizState.battery) {
     const b = wizState.battery;
-    lines.push(`<div style="margin-top:6px;color:#065f46">✓ Подобрана АКБ: <b>${esc(b.supplier || '')} ${esc(b.model || b.id)}</b>${b.dcVoltage ? ' · V<sub>DC</sub> ' + b.dcVoltage + ' В' : ''}${b.totalBlocks ? ' · ' + b.totalBlocks + ' блок(ов)' : ''}</div>`);
+    const setQtyLbl = isMulti && topology === 'per-unit' ? ` × <b>${battSetsQty}</b> комплект(ов)` : '';
+    lines.push(`<div style="margin-top:6px;color:#065f46">✓ Подобрана АКБ: <b>${esc(b.supplier || '')} ${esc(b.model || b.id)}</b>${b.dcVoltage ? ' · V<sub>DC</sub> ' + b.dcVoltage + ' В' : ''}${b.totalBlocks ? ' · ' + b.totalBlocks + ' блок(ов)' : ''}${setQtyLbl}</div>`);
   } else {
     lines.push(`<div style="margin-top:6px;color:#6b7280">Выберите дальнейшее действие.</div>`);
   }
@@ -1288,11 +1352,24 @@ function _openBatteryPicker() {
   const comp = wizState.composition;
   if (!comp) { flash('Сначала выберите ИБП', 'warn'); return; }
   const u = comp.ups;
+  const fi = comp.fitInfo;
   const rq = wizState.requirements;
+  // v0.60.406 (по запросу Пользователя 2026-05-06: «измени подбор АКБ с
+  // учетом подбора для параллельных систем и резерва (N+1, при N=2, в
+  // подбор АКБ нужно передать только половину мощности, но комплектов
+  // АКБ взять 3 шт»): per-unit vs shared topology.
+  // - per-unit: loadKw / N передаётся в подбор; кол-во комплектов = N+R = installed.
+  // - shared: вся нагрузка передаётся; кол-во комплектов = 1.
+  const N = Math.max(1, fi.working || 1);
+  const installed = Math.max(1, fi.installed || 1);
+  const topology = wizState.batteryTopology || (installed > 1 ? 'per-unit' : 'shared');
+  const isPerUnit = topology === 'per-unit';
+  const loadKwToPicker = isPerUnit ? (Number(rq.loadKw) || 0) / N : Number(rq.loadKw) || 0;
+  const batterySetsQty = isPerUnit ? installed : 1;
   const handoff = {
     source: 'ups-config',
     selectedAt: Date.now(),
-    loadKw: rq.loadKw,
+    loadKw: loadKwToPicker,
     autonomyMin: rq.autonomyMin,
     cosPhi: rq.cosPhi,
     invEff: (u.efficiency || 94) / 100,
@@ -1300,15 +1377,31 @@ function _openBatteryPicker() {
     vdcMax: u.vdcMax || null,
     upsLabel: [u.supplier, u.model || u.id].filter(Boolean).join(' '),
     upsId: u.id,
+    // v0.60.406: контекст параллельной системы для отчёта в battery-calc.
+    parallelContext: {
+      topology,
+      workingCount: N,
+      installedCount: installed,
+      redundantCount: Math.max(0, fi.redundant || 0),
+      batterySetsQty,
+      totalLoadKw: Number(rq.loadKw) || 0,
+      perUnitLoadKw: (Number(rq.loadKw) || 0) / N,
+      redundancyScheme: rq.redundancy || 'N',
+    },
   };
   try { localStorage.setItem('raschet.upsHandoff.v1', JSON.stringify(handoff)); } catch {}
   const url = new URL('../battery/', location.href);
   url.searchParams.set('fromUps', '1');
-  url.searchParams.set('loadKw', rq.loadKw);
+  url.searchParams.set('loadKw', loadKwToPicker.toFixed(2));
   url.searchParams.set('autonomyMin', rq.autonomyMin);
   if (u.vdcMin) url.searchParams.set('vdcMin', u.vdcMin);
   if (u.vdcMax) url.searchParams.set('vdcMax', u.vdcMax);
   if (u.efficiency) url.searchParams.set('invEff', u.efficiency);
+  // v0.60.406: контекст параллели для индикации в battery-calc.
+  url.searchParams.set('battSetsQty', String(batterySetsQty));
+  url.searchParams.set('battTopology', topology);
+  url.searchParams.set('parallelN', String(N));
+  url.searchParams.set('parallelInstalled', String(installed));
   window.open(url.toString(), '_blank');
   wizState.batteryChoice = 'pick';
   const next3Btn = document.getElementById('wiz-btn-next-3');
@@ -1381,6 +1474,20 @@ function _goStep4() {
   const priceStr = comp.totalPrice != null
     ? Number(comp.totalPrice).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ' + comp.currency
     : 'не указана';
+  // v0.60.406: контекст параллели для отчёта.
+  const N = Math.max(1, fi.working || 1);
+  const R = Math.max(0, fi.redundant || 0);
+  const installed = Math.max(1, fi.installed || 1);
+  const isMulti = installed > 1;
+  const battTopology = wizState.batteryTopology || (isMulti ? 'per-unit' : 'shared');
+  const battSetsQty = (battTopology === 'per-unit') ? installed : 1;
+  const loadPerUnit = Number(rq.loadKw) / N;
+  const battTopologyLbl = (battTopology === 'per-unit')
+    ? `на каждый ИБП (per-unit) — ${battSetsQty} комплект(ов) × ${loadPerUnit.toFixed(1)} kW`
+    : `общая шина (shared) — 1 комплект × ${rq.loadKw} kW`;
+  const redundancyDetail = isMulti
+    ? `${rq.redundancy} (${N} рабочих + ${R} резерв = ${installed} установлено)`
+    : rq.redundancy;
   const summary = document.getElementById('wiz-summary');
   summary.innerHTML = `
     <div class="wiz-summary-box">
@@ -1388,11 +1495,12 @@ function _goStep4() {
       <table class="wiz-summary-table">
         <tr><td>Нагрузка</td><td>${rq.loadKw} kW</td></tr>
         <tr><td>Автономия</td><td>${rq.autonomyMin} мин</td></tr>
-        <tr><td>Резервирование</td><td>${rq.redundancy}</td></tr>
+        <tr><td>Резервирование</td><td>${esc(redundancyDetail)}</td></tr>
         <tr><td>Тип</td><td>${rq.upsType ? esc((getUpsType(rq.upsType) || {}).label || rq.upsType) : 'любой'}</td></tr>
         <tr><td>V<sub>DC</sub> (по паспорту ИБП)</td><td>${u.vdcMin || '—'}–${u.vdcMax || '—'} В</td></tr>
         <tr><td>cos φ / фазы</td><td>${rq.cosPhi} / ${rq.phases}ph</td></tr>
-        <tr><td>АКБ</td><td>${wizState.batteryChoice === 'skip' ? '<i>пропущены</i>' : (wizState.battery ? esc((wizState.battery.supplier||'') + ' ' + (wizState.battery.model||wizState.battery.id||'')) : '—')}</td></tr>
+        ${isMulti ? `<tr><td>🔋 Топология АКБ</td><td>${esc(battTopologyLbl)}</td></tr>` : ''}
+        <tr><td>АКБ</td><td>${wizState.batteryChoice === 'skip' ? '<i>пропущены</i>' : (wizState.battery ? esc((wizState.battery.supplier||'') + ' ' + (wizState.battery.model||wizState.battery.id||'')) + (isMulti && battTopology === 'per-unit' ? ` × ${battSetsQty} комплект(ов)` : '') : '—')}</td></tr>
       </table>
     </div>
     <div class="wiz-summary-box">
@@ -1450,6 +1558,10 @@ function _applyConfiguration() {
       batteryAutonomyMin: rq.autonomyMin,
       batterySelection: wizState.battery || null,
       batteryChoice: wizState.batteryChoice || null,
+      // v0.60.406: топология АКБ (per-unit / shared) + кол-во комплектов.
+      batteryTopology: wizState.batteryTopology
+        || (fi.installed > 1 ? 'per-unit' : 'shared'),
+      batterySetsQty: (wizState.batteryTopology === 'shared' ? 1 : (fi.installed || 1)),
       composition: comp.composition,
       totalPrice: comp.totalPrice,
       currency: comp.currency,

@@ -211,6 +211,21 @@
       <div id="wiz-step-3" class="wiz-step" style="display:none">
         <h4>Шаг 3. Аккумуляторные батареи</h4>
         <p class="muted" style="font-size:12px">Подобрать АКБ под выбранный ИБП в модуле «Расчёт АКБ» (откроется в новой вкладке с переданными V<sub>DC</sub>, мощностью и автономией) или пропустить — конфигурацию ИБП можно применить и без батарей.</p>
+        <!-- v0.60.406: топология АКБ для параллельных систем — на каждый ИБП vs общая шина АКБ. -->
+        <div id="wiz-battery-topology" style="margin:10px 0;padding:10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;font-size:12px;display:none">
+          <b style="color:#92400e">🔋 Топология АКБ (параллельная система)</b>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+            <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer">
+              <input type="radio" name="wiz-batt-topology" value="per-unit" checked style="margin-top:3px">
+              <span><b>На каждый ИБП (per-unit)</b><br><span class="muted" style="font-size:11px">Каждый ИБП имеет свою группу АКБ. В подбор передаётся <b>P/N</b> (нагрузка одного ИБП), заказ — <b>N+R</b> комплектов АКБ. Стандарт для N+R и 2N. Каждый комплект — независимый, отказ одной АКБ не влияет на другие.</span></span>
+            </label>
+            <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer">
+              <input type="radio" name="wiz-batt-topology" value="shared" style="margin-top:3px">
+              <span><b>Общая шина АКБ (shared)</b><br><span class="muted" style="font-size:11px">Все ИБП подключены к одной батарейной шине. В подбор передаётся <b>P</b> (полная нагрузка), заказ — <b>1</b> комплект АКБ (увеличенной ёмкости). Экономия ёмкости (10–20%), но выше стоимость медных шин и единая точка отказа АКБ.</span></span>
+            </label>
+          </div>
+          <div id="wiz-batt-topology-summary" style="margin-top:8px;padding:6px 8px;background:#fff;border:1px solid #fcd34d;border-radius:3px;font-size:11px;color:#78350f"></div>
+        </div>
         <div id="wiz-battery-info" style="margin:10px 0;padding:10px;background:#f8fafc;border-left:3px solid #6366f1;border-radius:4px;font-size:12px"></div>
         <div class="wiz-actions" style="gap:10px">
           <button id="wiz-btn-back-3" class="btn-sm">← Назад</button>
