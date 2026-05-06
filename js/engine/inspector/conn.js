@@ -857,18 +857,30 @@ export function renderInspectorConn(c) {
       if (autoIn) {
         h.push(`<div style="background:#fff8e1;border:1px solid #ffd54f;border-radius:4px;padding:6px;font-size:11px;margin-top:4px">Рекомендация (авто): <b>${autoIn} А</b>${_minMarginPct > 0 ? ` <span class="muted">(с запасом ≥${_minMarginPct}%)</span>` : ''}</div>`);
         if (_showHelp) {
-          const parText = _parBrk > 1 ? ` × ${_parBrk} ветви = ${fmt(_IzTotal)} А суммарно` : '';
-          // v0.60.338: real rule check для рекомендации auto-In.
-          const _IzCalcAuto = (c._cableIz || 0) * (_parBrk > 1 ? _parBrk : 1);
-          const _r1OkA = _Imax <= autoIn;
+          // v0.60.392 (по репорту Пользователя 2026-05-06: «здесь ты взял всю
+          // группу кабелей, хотя мы защищаем каждую отдельно и группового
+          // автомата у нас нет»): для group-load (per-line breakers, no
+          // common) сравниваем PER-LINE Iрасч с PER-LINE автоматом и
+          // PER-LINE Iz. Раньше использовали total → ложное «не покрывает».
+          const _IzCalcAuto = _isGroupBrk
+            ? (c._cableIz || 0)  // per-line Iz
+            : ((c._cableIz || 0) * (_parBrk > 1 ? _parBrk : 1));  // total Iz для common
+          const _IrCheck = _isGroupBrk ? _IperLine : _Imax;
+          const _r1OkA = _IrCheck <= autoIn;
           const _r2OkA = autoIn <= _IzCalcAuto;
           const _ruleColorA = (_r1OkA && _r2OkA) ? '#15803d' : '#b91c1c';
           const _ruleIconA = (_r1OkA && _r2OkA) ? '✓' : '⛔';
-          const _ruleLineA = `Iрасч ${fmt(_Imax)} А ${_r1OkA ? '≤' : '>'} In ${autoIn} А ${_r2OkA ? '≤' : '>'} Iz ${fmt(_IzCalcAuto)} А`;
+          const _IzCheckLabel = _isGroupBrk ? `${fmt(_IzCalcAuto)} А (на жилу)` : `${fmt(_IzCalcAuto)} А`;
+          const _ruleLineA = _isGroupBrk
+            ? `Iрасч на жилу ${fmt(_IrCheck)} А ${_r1OkA ? '≤' : '>'} In ${autoIn} А (per-line) ${_r2OkA ? '≤' : '>'} Iz ${_IzCheckLabel}`
+            : `Iрасч ${fmt(_IrCheck)} А ${_r1OkA ? '≤' : '>'} In ${autoIn} А ${_r2OkA ? '≤' : '>'} Iz ${_IzCheckLabel}`;
+          const _parText = _parBrk > 1 && !_isGroupBrk ? ` × ${_parBrk} ветви = ${fmt(_IzTotal)} А суммарно` : '';
           h.push(`<div style="background:#eef5ff;border:1px solid #bbdefb;border-radius:4px;padding:6px;font-size:11px;margin-top:4px;color:#1565c0;line-height:1.5">
-            <b>Как получено:</b><br>
-            Iрасч линии = <b>${fmt(_Imax)} А</b>${_parBrk > 1 ? ` (на жилу ${fmt(_IperLine)} А)` : ''}<br>
-            Iz кабеля = <b>${fmt(c._cableIz || 0)} А</b>${parText}<br>
+            <b>Как получено:</b>${_isGroupBrk ? ` <span class="muted">(групповая нагрузка — ${_parBrk} индивидуальных автоматов)</span>` : ''}<br>
+            ${_isGroupBrk
+              ? `Iрасч линии (per-line) = <b>${fmt(_IperLine)} А</b> <span class="muted">(полная сумма ${fmt(_Imax)} А делится на ${_parBrk} линий)</span>`
+              : `Iрасч линии = <b>${fmt(_Imax)} А</b>${_parBrk > 1 ? ` (на жилу ${fmt(_IperLine)} А)` : ''}`}<br>
+            Iz кабеля = <b>${fmt(c._cableIz || 0)} А</b>${_parText}<br>
             <b style="color:${_ruleColorA}">${_ruleIconA} ${_ruleLineA}</b>${(!_r1OkA || !_r2OkA) ? ' <span style="color:#b91c1c;font-weight:600">— рекомендация не покрывает Iрасч</span>' : ' — правило выполнено'}.
           </div>`);
         }
@@ -888,21 +900,24 @@ export function renderInspectorConn(c) {
         }
       }
       // Warning 2: автомат < Iрасч (сработает при нормальной нагрузке, нагрузка будет отключена)
-      if (_Imax > 0 && effectiveIn > 0 && effectiveIn < _Imax * 0.95) {
-        // v0.59.720: быстрое действие — выбрать следующий стандартный
-        // номинал из ряда, способный выдержать Iрасч с запасом 25%.
+      // v0.60.392: для group-load сравниваем PER-LINE (каждый автомат
+      // защищает свой кабель отдельно).
+      const _IrW2 = _isGroupBrk ? _IperLine : _Imax;
+      const _InW2 = _isGroupBrk ? (c._breakerPerLine || effectiveIn) : effectiveIn;
+      if (_IrW2 > 0 && _InW2 > 0 && _InW2 < _IrW2 * 0.95) {
+        // v0.59.720 + v0.60.392: per-line логика для group-load.
         const _series = SERIES;
-        const _curIdx = _series.indexOf(effectiveIn);
-        const _target = _Imax * 1.25;
+        const _curIdx = _series.indexOf(_InW2);
+        const _target = _IrW2 * 1.25;
         let _suggested = null;
         for (const v of _series) {
           if (v >= _target) { _suggested = v; break; }
         }
-        // Также alternative — следующий за текущим в ряду
         const _next = (_curIdx >= 0 && _curIdx < _series.length - 1) ? _series[_curIdx + 1] : null;
         const _bumpTo = _suggested || _next;
+        const _w2Label = _isGroupBrk ? ' (per-line)' : '';
         h.push(`<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:4px;padding:6px;font-size:11px;color:#c62828;margin-top:4px">
-          ⚠ In (${effectiveIn} А) &lt; Iрасч (${fmt(_Imax)} А) — автомат будет срабатывать при штатной нагрузке! Нагрузка будет отключена.
+          ⚠ In${_w2Label} (${_InW2} А) &lt; Iрасч${_w2Label} (${fmt(_IrW2)} А) — автомат будет срабатывать при штатной нагрузке! Нагрузка будет отключена.
           ${_bumpTo ? `<button type="button" id="brk-bump" data-brk-to="${_bumpTo}" data-brk-prop="${manualProp}" style="margin-left:6px;padding:2px 8px;font-size:11px;border:1px solid #b91c1c;background:#fee2e2;color:#7f1d1d;border-radius:3px;cursor:pointer" title="Увеличить номинал автомата до ближайшего стандартного, способного выдержать Iрасч с запасом 25%">↑ Увеличить до ${_bumpTo} А</button>` : ''}
         </div>`);
       }

@@ -402,26 +402,24 @@ export function consumerTotalDemandKw(n) {
   // v0.59.815: для consumer-container — раскрываем slots[]:
   //   linked: реальный consumer-узел вкладывает свои consumerTotalDemandKw;
   //   placeholder: инлайн-спека вкладывает demandKw как «один прибор».
+  // v0.60.392 (revert v0.60.380): R НЕ применяется к Pуст контейнера.
+  // Pуст = INSTALLED capacity (sum всех slot'ов БЕЗ редукции по R) — это
+  // полная мощность установки. Используется для подбора кабеля (cable
+  // должен выдержать N+R при любых сценариях). R применяется ТОЛЬКО к
+  // Pрасч (consumerCalcDemandKw, активная нагрузка). По уточнению
+  // Пользователя: «Кабель к потребителю должен подбираться по
+  // номинальному току (режиму)... а ты здесь для подбора взял
+  // расчетный ток да и еще уменьшенный по режиму резервирования».
   if (n && n.type === 'consumer-container' && Array.isArray(n.slots)) {
     let sum = 0;
-    let slotCount = 0;
     for (const s of n.slots) {
       if (!s) continue;
       if (s.kind === 'linked' && s.nodeId) {
         const a = state.nodes && state.nodes.get && state.nodes.get(s.nodeId);
-        if (a) { sum += consumerTotalDemandKw(a); slotCount++; }
+        if (a) sum += consumerTotalDemandKw(a);
       } else if (s.kind === 'placeholder') {
         sum += Number(s.demandKw) || 0;
-        slotCount++;
       }
-    }
-    // v0.60.380 (по репорту Пользователя 2026-05-06: «не увидал чтобы селектор
-    // режимов резервирования хоть как то влиял на текущую и/или расчетную
-    // нагрузку»): применяем R контейнера. Total active = sum × (slotCount - R)
-    // / slotCount. Раньше R контейнера игнорировался — sum возвращал ВСЁ.
-    const containerR = Math.max(0, Math.min(slotCount - 1, Number(n.consumerReserveR) || 0));
-    if (containerR > 0 && slotCount > 0) {
-      return sum * (slotCount - containerR) / slotCount;
     }
     return sum;
   }

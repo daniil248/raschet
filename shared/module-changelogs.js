@@ -4,6 +4,18 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.392', date: '2026-05-06', items: [
+      '🔌 <b>Per-line проверки автомата для group-load</b> + <b>revert R-reduction в Pуст</b>. По 2 репортам Пользователя 2026-05-06: «здесь ты взял всю группу кабелей, хотя мы защищаем каждую отдельно и группового автомата у нас нет» + «Кабель к потребителю должен подбираться по номинальному току (режиму)... а ты здесь для подбора взял расчетный ток да и еще уменьшенный по режиму резервирования».',
+      '<b>Часть A: revert R в consumerTotalDemandKw для container</b>',
+      'v0.60.380 применял (slotCount-R)/slotCount к Pуст. По уточнению — Pуст должна быть INSTALLED capacity (sum всех slot\'ов БЕЗ редукции). R применяется ТОЛЬКО к Pрасч (consumerCalcDemandKw). Кабель сайзится по Pуст → cable должен выдержать N+R при любых сценариях.',
+      '<b>Часть B: per-line проверки автомата для group-load</b>',
+      'В conn-inspector «Как получено» и Warning2 сравнивали total Iрасч с per-line автоматом → ложное «не покрывает». Теперь для <code>_isGroupBrk</code> (per-line breakers, no common):',
+      '• «Как получено»: Iрасч на жилу, In per-line, Iz на жилу',
+      '• Warning2: «In (per-line) < Iрасч (per-line)»',
+      '• Bump-кнопка: target = Iперлайн × 1.25 (не Itotal)',
+      'Для single/common — старая логика без изменений.',
+      'Files: <code>js/engine/electrical.js</code> (revert v0.60.380 R), <code>js/engine/inspector/conn.js</code> (per-line breaker checks).',
+    ] },
     { version: '0.60.391', date: '2026-05-06', items: [
       '🔢 <b>Селект стандартных сечений в outdoor-cable модалке (IEC 60228)</b>. По репорту Пользователя 2026-05-06: «добавь типовые сечения из утвержденного списка».',
       '<b>Было</b>: free-input для сечения (number input с placeholder «авто»). Можно было ввести любое число, в т.ч. нестандартное.',
