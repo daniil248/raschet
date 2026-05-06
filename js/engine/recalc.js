@@ -944,6 +944,29 @@ function recalc() {
   //   - embedAsOutdoor = true
   // Также чистим linkedOutdoorIds от мёртвых ссылок (deleted nodes).
   try {
+    // v0.60.386: cleanup cross-linked outdoors first — outdoor.linkedIndoorId
+    // должен указывать на cond, который РЕАЛЬНО его содержит в
+    // linkedOutdoorIds[]. Если outdoor цитируется несколькими cond'ами
+    // (сценарий копирования с битым linkedOutdoorIds), оставляем у первого
+    // нашедшего и удаляем из остальных.
+    const _outdoorOwner = new Map(); // outdoorId → condId
+    for (const _cond of state.nodes.values()) {
+      if (_cond.consumerSubtype !== 'conditioner') continue;
+      const _ouIds = Array.isArray(_cond.linkedOutdoorIds) ? _cond.linkedOutdoorIds
+        : (_cond.linkedOutdoorId ? [_cond.linkedOutdoorId] : []);
+      const _filtered = [];
+      for (const _ouId of _ouIds) {
+        if (!_ouId) continue;
+        if (_outdoorOwner.has(_ouId)) continue; // уже принадлежит другому cond — drop
+        _outdoorOwner.set(_ouId, _cond.id);
+        _filtered.push(_ouId);
+      }
+      if (_filtered.length !== _ouIds.length) {
+        _cond.linkedOutdoorIds = _filtered;
+        _cond.linkedOutdoorId = _filtered[0] || null;
+      }
+    }
+    // Теперь auto-heal tags + linkedIndoorId + embedAsOutdoor.
     for (const _cond of state.nodes.values()) {
       if (_cond.consumerSubtype !== 'conditioner') continue;
       const _ouIds = Array.isArray(_cond.linkedOutdoorIds) ? _cond.linkedOutdoorIds.slice()
@@ -962,6 +985,36 @@ function recalc() {
       if (_validIds.length !== _ouIds.length) {
         _cond.linkedOutdoorIds = _validIds;
         _cond.linkedOutdoorId = _validIds[0] || null;
+      }
+    }
+    // v0.60.386: дедуп cond→outdoor conns. Один cond → один outdoor может
+    // иметь только ОДНУ conn. Дубликаты удаляются (оставляем самый свежий).
+    const _condOuKeys = new Map(); // 'fromId|toId' → connId
+    for (const c of state.conns.values()) {
+      if (!c.from?.nodeId || !c.to?.nodeId) continue;
+      const _from = state.nodes.get(c.from.nodeId);
+      const _to = state.nodes.get(c.to.nodeId);
+      if (!_from || !_to) continue;
+      // только conn cond→outdoor (где to is embedAsOutdoor)
+      if (!_to.embedAsOutdoor || _to.consumerSubtype !== 'outdoor_unit') continue;
+      const _key = c.from.nodeId + '|' + c.to.nodeId;
+      if (_condOuKeys.has(_key)) {
+        // Дубликат — удаляем этот (предыдущий уже сохранён)
+        state.conns.delete(c.id);
+      } else {
+        _condOuKeys.set(_key, c.id);
+      }
+    }
+    // Также удаляем conn'ы к outdoor'ам, у которых нет linkedIndoorId или
+    // указывает на удалённый cond (orphan conn).
+    for (const c of Array.from(state.conns.values())) {
+      const _to = state.nodes.get(c.to?.nodeId);
+      if (!_to || !_to.embedAsOutdoor || _to.consumerSubtype !== 'outdoor_unit') continue;
+      const _from = state.nodes.get(c.from?.nodeId);
+      const _parentCond = state.nodes.get(_to.linkedIndoorId);
+      // Если from-узел не parent cond outdoor'а — orphan conn, удаляем.
+      if (!_parentCond || _from?.id !== _parentCond.id) {
+        state.conns.delete(c.id);
       }
     }
   } catch (e) { /* swallow — non-critical */ }

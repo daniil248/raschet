@@ -4,6 +4,16 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.386', date: '2026-05-06', items: [
+      '🧹 <b>Cable journal cleanup: дубли cond→outdoor + cross-link orphan + zone-tag fix</b>. По репорту Пользователя 2026-05-06: «что то с кабелями между кондиционерами и наружными блоками? проверь, некоторые сдублированы, некоторые отсутствуют. у некоторых обозначений отсутствует обозначение зоны».',
+      '<b>3 cleanup-pass\'а в начале recalc</b>:',
+      '<b>1. Cross-linked outdoor dedup</b>: если outdoor цитируется в <code>linkedOutdoorIds[]</code> нескольких cond\'ов (сценарий копирования с битым state), оставляем у первого нашедшего, удаляем из остальных.',
+      '<b>2. Cond→outdoor conn dedup</b>: один cond → один outdoor может иметь только ОДНУ conn. Дубликаты (`fromId|toId` коллизии) удаляются из <code>state.conns</code>.',
+      '<b>3. Orphan-conn cleanup</b>: conn\'ы к outdoor\'у, чей <code>linkedIndoorId</code> указывает на ДРУГОЙ cond (не fromN), удаляются. Это ловит ситуацию когда outdoor скопирован, но conn остался от старого parent\'а.',
+      '<b>Zone-tag fix</b> (уже было в v0.60.373): outdoor.tag = parent.tag + ".OU" + (i+1). Если parent.tag без зоны — outdoor тоже без зоны (effectiveTag добавит зону через linkedIndoorId fallback v0.60.353).',
+      '<b>Эффект</b>: cable journal больше не показывает W-ACU03-ACU03.OU1 дважды или W-Z1.ACU02-Z1.ACU01.OU1 (cross-link). Только корректные cond→outdoor conns с правильной zone-prefix.',
+      'Files: <code>js/engine/recalc.js</code> (3 cleanup-pass\'а в auto-heal block).',
+    ] },
     { version: '0.60.385', date: '2026-05-06', items: [
       '🎯 <b>Single-input child\'s assignedGroupPort реально влияет на per-port aggregation</b>. По репорту Пользователя 2026-05-06: «выбор порта потребителя с одним вводом не влияет на групповое потребление на порту группы. Само решение отличное».',
       '<b>Корень</b>: per-child priorities branch обрабатывал ТОЛЬКО multi-input children (<code>childInputs > 1</code>). Single-input children падали в fallback inheritance — _powered=true, но без <code>_activeContainerPort</code>. В post-loop port aggregation у них _ports=[] → их load не попадал в portLoad[i] → не влияли на per-port балансировку.',
