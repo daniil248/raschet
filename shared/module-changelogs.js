@@ -4,6 +4,12 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.387', date: '2026-05-06', items: [
+      '🔄 <b>Auto-recalc при смене «Порт группы»</b>. По репорту Пользователя 2026-05-06: «просто автоматический не обновляется, но если изменить селектор режима резервирования и вернуть, то все пересчитывается».',
+      '<b>Корень</b>: change-handler селектора «Порт группы» (single-input child) только записывал <code>n.assignedGroupPort</code> и вызывал <code>notifyChange()</code>, но НЕ форсил <code>recalc()</code>. Балансировка пересчитывалась только при следующем recalc-trigger (другой UI action).',
+      '<b>Fix</b>: после записи <code>assignedGroupPort</code> — вызываем <code>window.Raschet.recalc()</code> + <code>render()</code> + reopen modal. Балансировка обновляется сразу.',
+      'Files: <code>js/engine/inspector.js</code> (data-cm-groupport handler — recalc/render/reopen).',
+    ] },
     { version: '0.60.386', date: '2026-05-06', items: [
       '🧹 <b>Cable journal cleanup: дубли cond→outdoor + cross-link orphan + zone-tag fix</b>. По репорту Пользователя 2026-05-06: «что то с кабелями между кондиционерами и наружными блоками? проверь, некоторые сдублированы, некоторые отсутствуют. у некоторых обозначений отсутствует обозначение зоны».',
       '<b>3 cleanup-pass\'а в начале recalc</b>:',

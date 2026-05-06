@@ -2067,6 +2067,8 @@ function _wireContainerMembersModal(n, body, modal) {
   });
 
   // v0.60.352: change-handler для группового порта single-input child'ов.
+  // v0.60.387: + recalc/render/reopen-modal — раньше изменение
+  // assignedGroupPort не пересчитывало балансировку (recalc не вызывался).
   body.querySelectorAll('[data-cm-groupport]').forEach(sel => {
     sel.addEventListener('change', () => {
       const aid = sel.getAttribute('data-cm-groupport');
@@ -2076,6 +2078,9 @@ function _wireContainerMembersModal(n, body, modal) {
       a.assignedGroupPort = v;
       try { snapshot('cm-groupport-change:' + aid + ':' + v); } catch {}
       try { notifyChange(); } catch {}
+      try { window.Raschet?.recalc?.(); } catch {}
+      try { window.Raschet?.render?.(); } catch {}
+      openContainerMembersModal(n);
     });
   });
 
