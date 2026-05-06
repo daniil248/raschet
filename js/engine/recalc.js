@@ -1775,14 +1775,41 @@ function recalc() {
       // Устанавливаем _avrActivePort = первый активный (для legacy single-port logic).
       const _firstActive = [..._activePorts].sort((a, b) => a - b)[0];
       if (Number.isFinite(_firstActive)) _cont._avrActivePort = _firstActive;
-      // Также активируем все incoming-conns на эти порты (для cable journal / BOM /
-      // визуала «зелёных лампочек»).
+      // v0.60.376 (по репорту Пользователя 2026-05-06: «текущий режим должен
+      // считаться 25 кВт на линии 1 и 5 кВт на линии 2. А максимальный
+      // учитывать любое состояние АВР»): per-port load aggregation.
+      // Aggregate: portLoad[i] = sum of children._loadKw with this port.
+      const _portLoadKw = new Array(_contInputs).fill(0);
+      for (const _s2 of _cont.slots) {
+        if (!_s2 || _s2.kind !== 'linked' || !_s2.nodeId) continue;
+        const _ch2 = state.nodes.get(_s2.nodeId);
+        if (!_ch2 || !_ch2._powered) continue;
+        const _ap2 = Number(_ch2._activeContainerPort);
+        if (Number.isFinite(_ap2) && _ap2 >= 0 && _ap2 < _contInputs) {
+          _portLoadKw[_ap2] += (Number(_ch2._loadKw) || 0);
+        }
+      }
+      _cont._portLoadKwBreakdown = _portLoadKw; // отладочный маркер
+      // Total container load (для max-сценария — все на одну линию при AVR fail).
+      const _totalContLoad = Number(_cont._loadKw) || _portLoadKw.reduce((a, b) => a + b, 0);
+      // Активируем все incoming-conns на эти порты + per-port _loadKw +
+      // _maxKw = total (worst-case AVR).
       for (const c of state.conns.values()) {
         if (c.to?.nodeId !== _cont.id) continue;
-        if (!_activePorts.has(c.to.port | 0)) continue;
-        if (isConnLive(c)) {
-          c._active = true;
-          if (!c._state || c._state === 'dead') c._state = 'active';
+        const _portIdx = c.to.port | 0;
+        if (_activePorts.has(_portIdx)) {
+          if (isConnLive(c)) {
+            c._active = true;
+            if (!c._state || c._state === 'dead') c._state = 'active';
+          }
+          // Per-port load (override walkUp aggregate).
+          c._loadKw = _portLoadKw[_portIdx] || 0;
+          c._loadKwPerPort = true; // маркер
+        }
+        // _maxKw = total container load (любая линия может нести всё при AVR fail).
+        if (_portIdx < _contInputs && _totalContLoad > (Number(c._maxKw) || 0)) {
+          c._maxKw = _totalContLoad;
+          c._maxKwClampedFromContainerWorst = true;
         }
       }
     }

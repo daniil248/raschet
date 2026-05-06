@@ -4,6 +4,21 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.376', date: '2026-05-06', items: [
+      '⚡ <b>Per-port load aggregation в group container</b>. По репорту Пользователя 2026-05-06: «у меня 4 кондиционера с АВР по 5 кВт. 3 имеют приоритет на ввод 1, а один имеет приоритет на ввод 2, соответственно на линиях подключения группы текущий режим должен считаться 25 кВт на линии 1 и 5 кВт на линии 2. А максимальный учитывать любое состояние АВР».',
+      '<b>Корень</b>: после v0.60.374 active container ports корректно подсвечивались (per-child priorities), но conn._loadKw на каждый input port был walkUp-aggregate (сумма ВСЕХ children) — не per-port breakdown.',
+      '<b>Fix</b>: в post-loop container ports aggregation (v0.60.374) добавлено:',
+      '• <code>portLoad[i] = Σ children._loadKw где child._activeContainerPort === i</code>',
+      '• Для каждого incoming conn(... → container.port_i):',
+      '&nbsp;&nbsp;◦ <code>c._loadKw = portLoad[i]</code> (override walkUp) — текущая нагрузка',
+      '&nbsp;&nbsp;◦ <code>c._maxKw = total container load</code> (любая линия может нести всё при AVR fail) — проектная максимальная',
+      '<b>Эффект</b>: для группы 4 cond × 5 кВт (3 на P1, 1 на P2):',
+      '• P1 conn: <b>Текущая = 15 кВт</b>, Макс = 20 кВт',
+      '• P2 conn: <b>Текущая = 5 кВт</b>, Макс = 20 кВт',
+      'Cable / breaker сайзятся на _maxA = 20 кВт (worst-case при AVR fail), что корректно по нормам — кабель/автомат должен выдержать всю нагрузку при отказе резерва.',
+      '<b>Маркеры для отладки</b>: <code>c._loadKwPerPort = true</code>, <code>c._maxKwClampedFromContainerWorst = true</code>, <code>cont._portLoadKwBreakdown = [P1Load, P2Load, ...]</code>.',
+      'Files: <code>js/engine/recalc.js</code> (extended container ports aggregation loop).',
+    ] },
     { version: '0.60.375', date: '2026-05-06', items: [
       '🔄 <b>Режим резервирования: scope-fix + cold/hot standby</b>. По уточнению Пользователя 2026-05-06: «режим резервирования актуален только для групповых потребителей и групп, для обычных потребителей он должен быть вообще не доступен и не виден. Для простых потребителей актуален только если они входят в логическую группу. Так же стоит учесть что есть холодный резерв... и горячий резерв».',
       '<b>1. Hide для одиночных consumer\'ов</b>: селектор «Режим резервирования» виден ТОЛЬКО когда:',
