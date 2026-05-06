@@ -133,9 +133,22 @@ export function renderInspectorConn(c) {
     }
     h.push('<h4>Нагрузка линии</h4>');
     const _par = Math.max(1, c._cableParallel || 1);
-    const loadPerLine = (c._loadA || 0) / _par;
-    const maxPerLine = (c._maxA || 0) / _par;
-    const kwPerLine = (c._loadKw || 0) / _par;
+    // v0.60.383 (по репорту Пользователя 2026-05-06: «На самом деле при
+    // выборе одной линии, которая по факту символизирует четыре одинаковые
+    // линии, нельзя отображать текущую нагрузку для групповой линии в
+    // разрезе одиночной линии. Сами нагрузки должны суммарно расчитываться
+    // на щите, но для линии (групповой) нельзя делать раздельное
+    // отображение»):
+    // Для group-line (par > 1) показываем TOTAL на линии, не per-cable.
+    // Per-cable значение нужно для подбора сечения, но в "Текущая P"
+    // должна быть полная нагрузка через визуальную линию (которая по факту
+    // _par физических кабелей, каждый со своим автоматом).
+    const loadTotal = Number(c._loadA) || 0;
+    const maxTotal = Number(c._maxA) || 0;
+    const kwTotal = Number(c._loadKw) || 0;
+    const loadPerLine = loadTotal / _par;
+    const maxPerLine = maxTotal / _par;
+    const kwPerLine = kwTotal / _par;
     // v0.59.705: показываем падение напряжения на этом сегменте +
     // напряжение в конце линии. Помогает быстро увидеть «толстые»
     // линии с большой потерей. Цветовая индикация по уровню падения.
@@ -164,10 +177,10 @@ export function renderInspectorConn(c) {
     const _cumDropTip = 'Накопленное падение напряжения от источника питания до конца этого сегмента. Сумма ΔU всех сегментов вверх по цепи. Для внутренних связей интегрированного ИБП — наследуется от приходящего на ИБП кабеля (внутренние шины считаются нулевой длины). Норма по IEC 60364-5-525: ≤ 5% от источника до самой дальней точки потребления.';
     const _isInternalConn = !!c._isInternalIntegrated;
     h.push(`<div style="font-size:12px;line-height:1.8">` +
-      (_par > 1 ? `Линий: <b>${_par}</b><br>` : '') +
-      `Текущая P: <b>${fmt(kwPerLine)} kW</b><br>` +
-      `Текущий I: <b>${fmt(loadPerLine)} A</b><br>` +
-      `Расчётный I: <b>${fmt(maxPerLine)} A</b> <span class="muted">(по макс. нагрузке)</span><br>` +
+      (_par > 1 ? `Линий: <b>${_par}</b> <span class="muted" style="font-size:10.5px">(одна групповая = ${_par} физических кабелей)</span><br>` : '') +
+      `Текущая P: <b>${fmt(kwTotal)} kW</b>${_par > 1 ? ` <span class="muted" style="font-size:11px">(${fmt(kwPerLine)} kW × ${_par} кабелей)</span>` : ''}<br>` +
+      `Текущий I: <b>${fmt(loadTotal)} A</b>${_par > 1 ? ` <span class="muted" style="font-size:11px">(${fmt(loadPerLine)} A × ${_par} кабелей)</span>` : ''}<br>` +
+      `Расчётный I: <b>${fmt(maxTotal)} A</b>${_par > 1 ? ` <span class="muted" style="font-size:11px">(${fmt(maxPerLine)} A × ${_par} кабелей)</span>` : ''} <span class="muted">(по макс. нагрузке)</span><br>` +
       (c._cosPhi ? `cos φ: <b>${c._cosPhi.toFixed(2)}</b><br>` : '') +
       `Напряжение: <b>${_vNom || '-'} В</b>` +
       (_vNom > 0 && (_segDrop > 0 || _cumDrop > 0)
