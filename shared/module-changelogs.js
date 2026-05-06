@@ -4,6 +4,21 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.409', date: '2026-05-06', items: [
+      '🎚 <b>Раздельные селекторы «Резерв модулей» и «Резерв ИБП»</b>. По уточнению Пользователя 2026-05-06: «так мне резерв и по модулям и по ИБП нужно отдельно выбирать».',
+      '<b>Шаг 2 wizard\'а</b> — раздельные селекторы:',
+      '• <b>Резерв модулей</b> (N / N+1 / N+2 / 2N): применимо ТОЛЬКО для модулярных ИБП. Лишние модули ВНУТРИ каждого фрейма.',
+      '• <b>Резерв ИБП</b> (N / N+1 / N+2 / 2N): лишние ИБП-units (фреймы / монолитные блоки) в параллель. Применимо для multi-unit систем.',
+      '<b>Behavior</b>:',
+      '• <b>monoblock</b>: использует только <code>unitRedundancy</code> (модулей нет в моноблоке).',
+      '• <b>modular single-frame</b>: <code>moduleRedundancy</code> применяется внутри frame\'а; <code>unitRedundancy</code> добавляет дополнительные frames в параллель (если canParallel).',
+      '• <b>modular multi-frame</b>: <code>moduleRedundancy</code> — модули внутри каждого frame; <code>unitRedundancy</code> — frame-level редундансия (extra frames). Каждый frame одинаков.',
+      '<b>Backward-compat</b>: старое поле <code>rq.redundancy</code> теперь = <code>moduleRedundancy</code> (для модулярных). Для моноблока используется как <code>unitRedundancy</code>.',
+      '<b>Summary report</b>:',
+      '• «Модули: <b>N+1</b>, ИБП: <b>N+1</b> → 2 рабочих + 1 резерв = 3 ИБП»',
+      '• Payload <code>moduleRedundancyScheme</code> + <code>unitRedundancyScheme</code> сохраняется для Конструктора схем.',
+      'Files: <code>ups-config/index.html</code> (два селектора), <code>ups-config/ups-config.js</code> (read/fill, summary, payload), <code>shared/ups-types/monoblock.js</code> (используется unitRedundancy), <code>shared/ups-types/modular.js</code> (raздельные rMod / rUnit).',
+    ] },
     { version: '0.60.408', date: '2026-05-06', items: [
       '🔁 <b>Frame-level редундансия для модулярных multi-frame + total qty АКБ</b>. По уточнению Пользователя 2026-05-06: «не хватает резервирования самих ИБП а не только модулей, так же общее количество акб так же должно быть, а не только один комплект».',
       '<b>Часть A: frame-level редундансия (modular)</b>',

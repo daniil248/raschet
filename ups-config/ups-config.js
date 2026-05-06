@@ -638,7 +638,9 @@ const wizState = {
   requirements: {
     loadKw: 10,
     autonomyMin: 15,
-    redundancy: 'N',
+    redundancy: 'N',          // legacy alias (== moduleRedundancy)
+    moduleRedundancy: 'N',     // v0.60.409: модули внутри frame
+    unitRedundancy: 'N',       // v0.60.409: ИБП-units (frames / monoblocks) в параллель
     upsType: '',
     vdcMin: 340,
     vdcMax: 480,
@@ -918,8 +920,14 @@ function _fillWizStep1Fields() {
   document.getElementById('wiz-cosPhi').value = rq.cosPhi;
   document.getElementById('wiz-phases').value = rq.phases;
   // v0.59.400: резервирование выехало на шаг 2.
+  // v0.60.409: раздельные селекторы — модули и ИБП.
+  const modSel = document.getElementById('wiz-redundancy-modules');
+  if (modSel) modSel.value = rq.moduleRedundancy || rq.redundancy || 'N';
+  const unitSel = document.getElementById('wiz-redundancy-units');
+  if (unitSel) unitSel.value = rq.unitRedundancy || 'N';
+  // legacy
   const redSel = document.getElementById('wiz-redundancy');
-  if (redSel) redSel.value = rq.redundancy;
+  if (redSel) redSel.value = rq.moduleRedundancy || rq.redundancy || 'N';
   // v0.59.640: дополнительные поля.
   const cpEl = document.getElementById('wiz-canParallel');
   if (cpEl) cpEl.checked = rq.canParallel !== false;
@@ -962,8 +970,16 @@ function _readStep1() {
 // v0.59.400: чтение фильтров и резервирования с шага 2.
 function _readStep2() {
   const rq = wizState.requirements;
-  const redSel = document.getElementById('wiz-redundancy');
-  if (redSel) rq.redundancy = redSel.value || 'N';
+  // v0.60.409 (по запросу Пользователя 2026-05-06: «так мне резерв и по
+  // модулям и по ИБП нужно отдельно выбирать»): раздельные селекторы.
+  const modSel = document.getElementById('wiz-redundancy-modules');
+  const unitSel = document.getElementById('wiz-redundancy-units');
+  // Backward-compat: legacy wiz-redundancy → пишем в обе.
+  const legacySel = document.getElementById('wiz-redundancy');
+  if (modSel) rq.moduleRedundancy = modSel.value || 'N';
+  if (unitSel) rq.unitRedundancy = unitSel.value || 'N';
+  // legacy `redundancy` оставляем как alias на module-level для совместимости.
+  rq.redundancy = rq.moduleRedundancy || rq.redundancy || (legacySel ? legacySel.value : 'N') || 'N';
 }
 
 // ====================== Шаг 2: Подбор ======================
@@ -1523,11 +1539,14 @@ function _goStep4() {
   const battTopologyLbl = (battTopology === 'per-unit')
     ? `на каждый ИБП (per-unit) — ${battSetsQty} комплект(ов) × ${loadPerUnit.toFixed(1)} kW`
     : `общая шина (shared) — 1 комплект × ${rq.loadKw} kW`;
+  // v0.60.409: показываем оба уровня резерва раздельно.
+  const modScheme = rq.moduleRedundancy || rq.redundancy || 'N';
+  const unitScheme = rq.unitRedundancy || 'N';
   const redundancyDetail = isMulti
     ? (R > 0
-        ? `${rq.redundancy} (${N} рабочих + ${R} резерв = ${installed} ИБП)`
-        : `${rq.redundancy} (${installed} ИБП в параллель, модуль-level редундансия внутри каждого)`)
-    : rq.redundancy;
+        ? `Модули: <b>${esc(modScheme)}</b>, ИБП: <b>${esc(unitScheme)}</b> → ${N} рабочих + ${R} резерв = ${installed} ИБП`
+        : `Модули: <b>${esc(modScheme)}</b>, ИБП: <b>${esc(unitScheme)}</b> → ${installed} ИБП в параллель`)
+    : `Модули: <b>${esc(modScheme)}</b>${unitScheme !== 'N' ? `, ИБП: <b>${esc(unitScheme)}</b>` : ''}`;
   const summary = document.getElementById('wiz-summary');
   summary.innerHTML = `
     <div class="wiz-summary-box">
@@ -1601,6 +1620,9 @@ function _applyConfiguration() {
       moduleKwRated: u.moduleKwRated,
       moduleSlots: u.moduleSlots,
       redundancyScheme: rq.redundancy,
+      // v0.60.409: раздельные схемы резерва — модули и ИБП.
+      moduleRedundancyScheme: rq.moduleRedundancy || rq.redundancy || 'N',
+      unitRedundancyScheme: rq.unitRedundancy || 'N',
       batteryVdcMin: u.vdcMin || null,
       batteryVdcMax: u.vdcMax || null,
       batteryAutonomyMin: rq.autonomyMin,

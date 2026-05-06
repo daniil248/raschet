@@ -170,14 +170,23 @@
       <!-- Шаг 2: Подбор фрейма + резервирование + фильтры -->
       <div id="wiz-step-2" class="wiz-step" style="display:none">
         <h4>Шаг 2. Подбор фрейма / модели</h4>
-        <p class="muted" style="font-size:12px">Подходящие модели из справочника. Резервирование (N / N+1 / N+2 / 2N) задаётся здесь — для модульных ИБП оно влияет на число модулей в фрейме.</p>
+        <p class="muted" style="font-size:12px">Подходящие модели из справочника. Резервирование задаётся здесь раздельно: <b>«Резерв модулей»</b> — лишние модули внутри каждого фрейма (модульные ИБП); <b>«Резерв ИБП»</b> — лишние фреймы / монолитные блоки в параллель.</p>
         <div class="wiz-grid" style="margin-bottom:8px">
-          <label>Резервирование
-            <select id="wiz-redundancy">
-              <option value="N">N (без резерва)</option>
-              <option value="N+1">N+1</option>
-              <option value="N+2">N+2</option>
-              <option value="2N">2N</option>
+          <!-- v0.60.409: раздельный резерв модулей и ИБП-units. -->
+          <label title="Резерв модулей: лишние силовые модули внутри каждого фрейма. Применимо ТОЛЬКО для модулярных ИБП. Не зависит от количества фреймов.">Резерв модулей
+            <select id="wiz-redundancy-modules">
+              <option value="N">N (без резерва модулей)</option>
+              <option value="N+1">N+1 (+1 модуль)</option>
+              <option value="N+2">N+2 (+2 модуля)</option>
+              <option value="2N">2N (двойной набор модулей)</option>
+            </select>
+          </label>
+          <label title="Резерв ИБП (frames / monoblocks): лишние ИБП-units в параллель. Применимо для multi-unit систем. Если поддержка параллельной работы выключена — недоступно.">Резерв ИБП
+            <select id="wiz-redundancy-units">
+              <option value="N">N (без резерва ИБП)</option>
+              <option value="N+1">N+1 (+1 ИБП)</option>
+              <option value="N+2">N+2 (+2 ИБП)</option>
+              <option value="2N">2N (двойной комплект ИБП)</option>
             </select>
           </label>
           <label>Производитель

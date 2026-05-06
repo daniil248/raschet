@@ -59,9 +59,12 @@ export const monoblockType = {
   pickFit(rq, u, parseRedundancy) {
     const cap = Number(u.capacityKw) || 0;
     if (cap <= 0) return null;
-    const r = parseRedundancy(rq.redundancy);
+    // v0.60.409: для monoblock используется unitRedundancy (модулей нет).
+    // Backward-compat: если unitRedundancy не задано — fallback на rq.redundancy.
+    const scheme = rq.unitRedundancy || rq.redundancy || 'N';
+    const r = parseRedundancy(scheme);
     let requiredQty = 1;
-    if (r.mode === '2N') requiredQty = 2;
+    if (r.mode === '2N') requiredQty = Math.max(2, Math.ceil(rq.loadKw / cap) * 2);
     else requiredQty = Math.ceil(rq.loadKw / cap) + r.x;
     // v0.60.405 (по запросу Пользователя 2026-05-06: «при выборе поддержки
     // параллельной работы, должны быть доступны ИБП меньшей единичной

@@ -63,24 +63,43 @@ export const modularType = {
 
   pickFit(rq, u, parseRedundancy) {
     if (!u.moduleKwRated || !u.moduleSlots) return null;
-    const r = parseRedundancy(rq.redundancy);
+    // v0.60.409: раздельные схемы — moduleRedundancy и unitRedundancy.
+    // Backward-compat: если только rq.redundancy задано — используем для модулей.
+    const moduleScheme = rq.moduleRedundancy || rq.redundancy || 'N';
+    const unitScheme = rq.unitRedundancy || 'N';
+    const rMod = parseRedundancy(moduleScheme);
+    const rUnit = parseRedundancy(unitScheme);
     const cap = Number(u.capacityKw) || Number(u.frameKw) || 0;
     const canParallel = rq.canParallel !== false;
     // Сколько модулей нужно для покрытия loadKw (без учёта резерва).
     const workingTotal = Math.ceil(rq.loadKw / u.moduleKwRated);
-    const installedTotal = (r.mode === '2N') ? workingTotal * 2 : workingTotal + r.x;
+    // Module-level редундансия (внутри single-frame) — только для single-frame
+    // (без multi-frame). Для multi-frame moduleScheme применяется на per-frame.
+    const installedTotalSingleFrame = (rMod.mode === '2N') ? workingTotal * 2 : workingTotal + rMod.x;
     // v0.59.407: жёсткий кап по паспортной мощности модели/фрейма.
     // Сначала пробуем уместить в ОДИН frame.
-    const fitsSingle = installedTotal <= u.moduleSlots
+    const fitsSingle = installedTotalSingleFrame <= u.moduleSlots
       && (cap === 0 || workingTotal * u.moduleKwRated <= cap + 1e-6)
-      && (cap === 0 || installedTotal * u.moduleKwRated <= cap + 1e-6);
+      && (cap === 0 || installedTotalSingleFrame * u.moduleKwRated <= cap + 1e-6);
     if (fitsSingle) {
-      const realCapacity = workingTotal * u.moduleKwRated;
+      // Single frame fit: применяем module-level редундансию. Unit-level тоже
+      // может применяться (1 рабочий frame + N+1 = 2 frames), при canParallel.
+      const unitRedundantFrames = canParallel
+        ? ((rUnit.mode === '2N') ? 1 : rUnit.x) // 1 фрейм-резерв (поверх 1 working frame)
+        : 0;
+      const totalFramesS = 1 + unitRedundantFrames;
+      const installedTotal = installedTotalSingleFrame * totalFramesS;
+      const workingModules = workingTotal; // working modules in working frame
+      const realCapacity = workingModules * u.moduleKwRated;
+      const totalRedundant = installedTotal - workingModules;
       return {
-        working: workingTotal, redundant: r.x, installed: installedTotal,
-        realCapacity, usable: workingTotal * u.moduleKwRated,
-        parallelFrames: 1,
-        isParallel: false,
+        working: workingModules, redundant: totalRedundant, installed: installedTotal,
+        realCapacity, usable: realCapacity,
+        parallelFrames: totalFramesS,
+        workingFrames: 1,
+        redundantFrames: unitRedundantFrames,
+        isParallel: totalFramesS > 1,
+        installedPerFrame: installedTotalSingleFrame, workingPerFrame: workingTotal,
       };
     }
     // v0.60.405 (по запросу Пользователя 2026-05-06): multi-frame parallel.
@@ -95,18 +114,21 @@ export const modularType = {
     if (frameCap <= 0) return null;
     const workingFrames = Math.ceil(rq.loadKw / frameCap);
     if (workingFrames < 2) return null; // single frame не помог parallel
-    // Frame-level редундансия
-    const redundantFrames = (r.mode === '2N') ? workingFrames : r.x;
+    // v0.60.409: frame-level редундансия — из rUnit; module-level — из rMod
+    // применяется ВНУТРИ каждого frame'а (extra модули в каждом frame'е).
+    const redundantFrames = (rUnit.mode === '2N') ? workingFrames : rUnit.x;
     const totalFrames = workingFrames + redundantFrames;
     // Каждый working frame несёт долю нагрузки; модулей в каждом frame'е
-    // = столько, сколько нужно для покрытия (loadKw / workingFrames).
+    // = столько, сколько нужно для покрытия (loadKw / workingFrames),
+    // плюс module-level reserve.
     const moduleKw = u.moduleKwRated;
     const workingPerFrame = Math.ceil((rq.loadKw / workingFrames) / moduleKw);
-    if (workingPerFrame > u.moduleSlots) return null;
-    if (cap > 0 && workingPerFrame * moduleKw > cap + 1e-6) return null;
-    // Все frames (incl. reserve) имеют одинаковое наполнение модулями —
-    // резервный frame должен быть готов взять полную долю нагрузки.
-    const installedPerFrame = workingPerFrame;
+    const installedPerFrame = (rMod.mode === '2N')
+      ? workingPerFrame * 2
+      : workingPerFrame + rMod.x;
+    if (installedPerFrame > u.moduleSlots) return null;
+    if (cap > 0 && installedPerFrame * moduleKw > cap + 1e-6) return null;
+    // Все frames (incl. reserve) имеют одинаковое наполнение модулями.
     const totalModules = installedPerFrame * totalFrames;
     const workingModules = workingPerFrame * workingFrames;
     const realCapacity = workingModules * moduleKw;
@@ -117,11 +139,14 @@ export const modularType = {
       installed: totalModules,
       realCapacity, usable: realCapacity,
       parallelFrames: totalFrames,
-      // v0.60.408: новые поля для UI/handoff.
       workingFrames,
       redundantFrames,
       isParallel: true,
       installedPerFrame, workingPerFrame,
+      // v0.60.409: разбивка редундансии для UI отчёта.
+      moduleReservePerFrame: installedPerFrame - workingPerFrame,
+      moduleScheme,
+      unitScheme,
     };
   },
 
