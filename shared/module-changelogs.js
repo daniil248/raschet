@@ -4,6 +4,15 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.385', date: '2026-05-06', items: [
+      '🎯 <b>Single-input child\'s assignedGroupPort реально влияет на per-port aggregation</b>. По репорту Пользователя 2026-05-06: «выбор порта потребителя с одним вводом не влияет на групповое потребление на порту группы. Само решение отличное».',
+      '<b>Корень</b>: per-child priorities branch обрабатывал ТОЛЬКО multi-input children (<code>childInputs > 1</code>). Single-input children падали в fallback inheritance — _powered=true, но без <code>_activeContainerPort</code>. В post-loop port aggregation у них _ports=[] → их load не попадал в portLoad[i] → не влияли на per-port балансировку.',
+      '<b>Fix</b>: в fallback branch — назначаем <code>_activeContainerPort</code> = <code>assignedGroupPort</code> (UI селектор «Порт группы» из v0.60.352). Если не задан — default port 0.',
+      '<b>Эффект</b>: для GR1 с 2 single-input cond\'ами (assignedGroupPort=P2) + 2 AVR cond\'ами (priority P1):',
+      '• До: P1=24 кВт, P2=8 кВт (single-input игнорировались — все 4 на P1)',
+      '• После: P1=16 кВт (2 AVR), P2=16 кВт (2 single-input на P2)',
+      'Files: <code>js/engine/recalc.js</code> (fallback branch — assignedGroupPort применён).',
+    ] },
     { version: '0.60.384', date: '2026-05-06', items: [
       '🔧 <b>CRITICAL: Auto-heal container.inputs из incoming-conns</b>. По debug-выводу Пользователя для Z1.GR4: container.inputs=1, но _avrBreakerOverride=[true,true] и conns подведены к 2 портам → per-child priorities branch (условие containerInputs > 1) не запускался → children._activeContainerPorts = undefined → балансировка не считалась.',
       '<b>Корень</b>: container.inputs мог остаться = 1 при создании или быть сброшен миграцией, хотя физически conns подведены к нескольким портам. Per-child priorities branch требовал <code>containerInputs > 1</code> — условие false → fallback inheritance, без port-assignment.',

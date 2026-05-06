@@ -1773,6 +1773,21 @@ function recalc() {
           // v0.60.381: применяем hot redundancy factor.
           const hotF = Number(n._redundancyHotFactor) || 1;
           n._loadKw = (Number(n.demandKw) || 0) * kUse * factor * hotF;
+          // v0.60.385 (по репорту Пользователя 2026-05-06: «выбор порта
+          // потребителя с одним вводом не влияет на групповое потребление
+          // на порту группы. Само решение отличное»): для single-input
+          // children назначаем _activeContainerPort из их assignedGroupPort
+          // (UI селектор «Порт группы», v0.60.352). Без этого они не
+          // вносили вклад в port-aggregation post-loop.
+          const _agp = Number(n.assignedGroupPort);
+          if (Number.isFinite(_agp) && _agp >= 0 && _agp < containerInputs) {
+            n._activeContainerPort = _agp;
+            n._activeContainerPorts = [_agp];
+          } else if (containerInputs >= 1) {
+            // Default: port 0 (первый вход)
+            n._activeContainerPort = 0;
+            n._activeContainerPorts = [0];
+          }
         }
       }
     }
