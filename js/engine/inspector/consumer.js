@@ -80,8 +80,13 @@ function _openOutdoorCableModal(conn) {
           </div>
           <div>
             <label style="display:block;font-size:11px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:3px">Сечение, мм² (override)</label>
-            <input id="oc-section" type="number" min="0" step="0.5" value="${_curSection || ''}" placeholder="авто (по току нагрузки)" style="width:100%;padding:6px 9px;border:1px solid #cbd5e1;border-radius:4px;font:inherit;font-size:13px">
-            <div class="muted" style="font-size:10.5px;color:#64748b;margin-top:3px">Пусто или 0 — автоподбор по току нагрузки. Введите значение, чтобы зафиксировать сечение вручную.</div>
+            <select id="oc-section" style="width:100%;padding:6px 9px;border:1px solid #cbd5e1;border-radius:4px;font:inherit;font-size:13px;background:#fff">
+              <option value="0"${(!_curSection || _curSection === 0) ? ' selected' : ''}>— авто (по току нагрузки) —</option>
+              ${[1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240, 300, 400, 500].map(s =>
+                `<option value="${s}"${Number(_curSection) === s ? ' selected' : ''}>${s} мм²</option>`
+              ).join('')}
+            </select>
+            <div class="muted" style="font-size:10.5px;color:#64748b;margin-top:3px">«Авто» — подбор по току нагрузки (IEC 60364-4-43). Стандартный ряд по IEC 60228: 1.5/2.5/4/6/10/16/25/35/50/70/95/120/150/185/240/300/400/500 мм².</div>
           </div>
         </div>
         <div style="padding:10px 16px;border-top:1px solid #e0e7ee;background:#f8fafc;display:flex;justify-content:flex-end;gap:8px">

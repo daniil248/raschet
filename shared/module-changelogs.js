@@ -4,6 +4,14 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.391', date: '2026-05-06', items: [
+      '🔢 <b>Селект стандартных сечений в outdoor-cable модалке (IEC 60228)</b>. По репорту Пользователя 2026-05-06: «добавь типовые сечения из утвержденного списка».',
+      '<b>Было</b>: free-input для сечения (number input с placeholder «авто»). Можно было ввести любое число, в т.ч. нестандартное.',
+      '<b>Стало</b>: select с фиксированным рядом IEC 60228:',
+      '<code>— авто (по току нагрузки) —</code> (default) / 1.5 / 2.5 / 4 / 6 / 10 / 16 / 25 / 35 / 50 / 70 / 95 / 120 / 150 / 185 / 240 / 300 / 400 / 500 мм²',
+      '<b>Применение</b>: «авто» (value=0) — селекте Cable выберет сечение через IEC 60364-4-43. Конкретное значение — фиксирует сечение вручную (override).',
+      'Files: <code>js/engine/inspector/consumer.js</code> (_openOutdoorCableModal — section input → select).',
+    ] },
     { version: '0.60.390', date: '2026-05-06', items: [
       '🎯 <b>Per-port load override применяется ко ВСЕМ container conns + recompute c._loadA</b>. По репорту Пользователя 2026-05-06: «P2 показывает 16 кВт вместо 0» (4 children все на P1, P2 backup без активных).',
       '<b>Корень 1</b>: post-loop override <code>c._loadKw = portLoad[i]</code> применялся ТОЛЬКО когда <code>_activePorts.has(_portIdx)</code>. Для backup-портов (без активных children) override не делался → walkUp distribute оставлял non-zero на этих conns.',
