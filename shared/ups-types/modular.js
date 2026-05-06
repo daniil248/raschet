@@ -84,37 +84,57 @@ export const modularType = {
       };
     }
     // v0.60.405 (по запросу Пользователя 2026-05-06): multi-frame parallel.
-    // Если single frame не вмещает И поддерживается параллель — несколько
-    // frames в параллель. Каждый frame заполнен по паспорту (cap или
-    // moduleSlots × moduleKwRated). Резерв — на каждом frame'е (распределён).
+    // v0.60.408 (по уточнению Пользователя 2026-05-06: «не хватает
+    // резервирования самих ИБП а не только модулей»): для multi-frame
+    // редундансия применяется на УРОВНЕ ФРЕЙМОВ (N+1 = +1 frame),
+    // а не размазывается на модули внутри каждого frame'а. Каждый frame
+    // имеет workingPerFrame модулей (без extra reserve внутри). Frame-level
+    // резерв = r.x фреймов (для N+1) или = framesNeeded (для 2N).
     if (!canParallel) return null;
     const frameCap = cap > 0 ? cap : (u.moduleSlots * u.moduleKwRated);
     if (frameCap <= 0) return null;
-    const framesNeeded = Math.ceil(rq.loadKw / frameCap);
-    if (framesNeeded < 2) return null; // не помог parallel, single тоже не fit
-    // Per-frame layout: модулей в каждом frame'е = ceil(workingTotal / framesNeeded),
-    // резерв распределяется аналогично.
-    const workingPerFrame = Math.ceil(workingTotal / framesNeeded);
-    const installedPerFrame = (r.mode === '2N') ? workingPerFrame * 2 : workingPerFrame + Math.ceil(r.x / framesNeeded);
-    if (installedPerFrame > u.moduleSlots) return null;
-    if (cap > 0 && installedPerFrame * u.moduleKwRated > cap + 1e-6) return null;
-    const totalInstalled = installedPerFrame * framesNeeded;
-    const totalWorking = workingPerFrame * framesNeeded;
-    const realCapacity = totalWorking * u.moduleKwRated;
-    const totalRedundant = totalInstalled - totalWorking;
+    const workingFrames = Math.ceil(rq.loadKw / frameCap);
+    if (workingFrames < 2) return null; // single frame не помог parallel
+    // Frame-level редундансия
+    const redundantFrames = (r.mode === '2N') ? workingFrames : r.x;
+    const totalFrames = workingFrames + redundantFrames;
+    // Каждый working frame несёт долю нагрузки; модулей в каждом frame'е
+    // = столько, сколько нужно для покрытия (loadKw / workingFrames).
+    const moduleKw = u.moduleKwRated;
+    const workingPerFrame = Math.ceil((rq.loadKw / workingFrames) / moduleKw);
+    if (workingPerFrame > u.moduleSlots) return null;
+    if (cap > 0 && workingPerFrame * moduleKw > cap + 1e-6) return null;
+    // Все frames (incl. reserve) имеют одинаковое наполнение модулями —
+    // резервный frame должен быть готов взять полную долю нагрузки.
+    const installedPerFrame = workingPerFrame;
+    const totalModules = installedPerFrame * totalFrames;
+    const workingModules = workingPerFrame * workingFrames;
+    const realCapacity = workingModules * moduleKw;
+    const totalRedundant = totalModules - workingModules;
     return {
-      working: totalWorking, redundant: totalRedundant, installed: totalInstalled,
+      working: workingModules,
+      redundant: totalRedundant,
+      installed: totalModules,
       realCapacity, usable: realCapacity,
-      parallelFrames: framesNeeded,
+      parallelFrames: totalFrames,
+      // v0.60.408: новые поля для UI/handoff.
+      workingFrames,
+      redundantFrames,
       isParallel: true,
       installedPerFrame, workingPerFrame,
     };
   },
 
   fitDescription(u, fi) {
-    // v0.60.405: для multi-frame parallel показываем «🔗 N×frames».
+    // v0.60.405/v0.60.408: для multi-frame parallel показываем frame-level
+    // breakdown.
     if (fi.isParallel && fi.parallelFrames > 1) {
-      return `${fi.parallelFrames} × Frame ${u.frameKw}kW (по ${fi.installedPerFrame} слотов = ${fi.installed}/${u.moduleSlots * fi.parallelFrames}) <span style="background:#dbeafe;color:#1e40af;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600">🔗 параллель</span>`;
+      const wF = fi.workingFrames || fi.parallelFrames;
+      const rF = fi.redundantFrames || 0;
+      const frameDescr = rF > 0
+        ? `${wF} раб + ${rF} рез = ${fi.parallelFrames} ИБП`
+        : `${fi.parallelFrames} ИБП в параллель`;
+      return `🔗 ${frameDescr}, по ${fi.installedPerFrame}×${u.moduleKwRated}kW в каждом фрейме (${fi.installed} модулей всего) <span style="background:#dbeafe;color:#1e40af;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600">параллель</span>`;
     }
     return `${fi.working}×${u.moduleKwRated}kW (работа) + ${fi.redundant}×${u.moduleKwRated}kW (резерв) = ${fi.installed}/${u.moduleSlots} слотов`;
   },
@@ -132,18 +152,24 @@ export const modularType = {
   },
 
   summaryRowsHtml(u, fi) {
-    // v0.60.405: для multi-frame parallel показываем кол-во фреймов.
-    const framesRow = (fi.parallelFrames && fi.parallelFrames > 1)
-      ? `<tr><td>🔗 Фреймов в параллель</td><td><b>${fi.parallelFrames}</b> × ${esc(fmt(u.frameKw))} kW</td></tr>`
-      : '';
+    // v0.60.405/v0.60.408: для multi-frame parallel — раздельно frame-level
+    // и module-level.
+    const isMulti = fi.parallelFrames && fi.parallelFrames > 1;
+    let framesRows = '';
+    if (isMulti) {
+      const wF = fi.workingFrames || fi.parallelFrames;
+      const rF = fi.redundantFrames || 0;
+      framesRows = `
+        <tr><td>🔗 Фреймов в параллель</td><td><b>${fi.parallelFrames}</b> × ${esc(fmt(u.frameKw))} kW${rF > 0 ? ` (${wF} раб + ${rF} рез)` : ''}</td></tr>`;
+    }
     const totalSlots = u.moduleSlots * (fi.parallelFrames || 1);
     return `
       <tr><td>Корпус (frame)</td><td>${esc(fmt(u.frameKw))} kW</td></tr>
-      ${framesRow}
+      ${framesRows}
       <tr><td>Модуль</td><td>${esc(fmt(u.moduleKwRated))} kW</td></tr>
-      <tr><td>Установлено модулей</td><td>${fi.installed} из ${totalSlots}</td></tr>
+      <tr><td>Установлено модулей</td><td>${fi.installed} из ${totalSlots}${isMulti ? ` (по ${fi.installedPerFrame} в каждом frame)` : ''}</td></tr>
       <tr><td>Рабочих модулей</td><td>${fi.working}</td></tr>
-      <tr><td>Резерв</td><td>${fi.redundant}</td></tr>
+      <tr><td>Резерв модулей</td><td>${fi.redundant}${isMulti && fi.redundantFrames > 0 ? ` (включая ${fi.redundantFrames} резервный фрейм)` : ''}</td></tr>
       <tr><td>Реальная мощность</td><td>${esc(fmt(fi.realCapacity))} kW</td></tr>`;
   },
 };

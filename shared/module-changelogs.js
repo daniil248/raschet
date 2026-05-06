@@ -4,6 +4,25 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.408', date: '2026-05-06', items: [
+      '🔁 <b>Frame-level редундансия для модулярных multi-frame + total qty АКБ</b>. По уточнению Пользователя 2026-05-06: «не хватает резервирования самих ИБП а не только модулей, так же общее количество акб так же должно быть, а не только один комплект».',
+      '<b>Часть A: frame-level редундансия (modular)</b>',
+      'Раньше для multi-frame parallel модулярного UPS редундансия N+1/N+2/2N распределялась по модулям ВНУТРИ каждого фрейма. Теперь — на уровне ФРЕЙМОВ (= ИБП-units):',
+      '• N: workingFrames = ceil(loadKw / frameCap), redundantFrames = 0',
+      '• N+1: workingFrames + 1 reserve frame',
+      '• N+2: workingFrames + 2 reserve frames',
+      '• 2N: workingFrames + workingFrames (полный дублёр)',
+      'Каждый frame (вкл. reserve) заполнен одинаковым числом working модулей (без extra module-level reserve). Для 1000 kW на MR33 600 с N+1: 2 working frames + 1 reserve = 3 фрейма × 10 модулей = 30 модулей всего. fitInfo получает поля <code>workingFrames</code>, <code>redundantFrames</code>.',
+      '<b>Часть B: total qty АКБ (всегда)</b>',
+      '_renderBatteryInfo и summary теперь показывают полное число блоков АКБ:',
+      '• Per-unit: «3 комплект(ов) × 80 блок = 240 блок всего».',
+      '• Shared: «1 комплект × 80 блок».',
+      '<b>Часть C: UI</b>',
+      '• fitDescription (modular multi-frame): «🔗 2 раб + 1 рез = 3 ИБП, по 10×50kW в каждом фрейме (30 модулей всего)».',
+      '• summaryRowsHtml: «Резерв модулей: X (включая 1 резервный фрейм)».',
+      '• Топология АКБ summary берёт workingUnits из workingFrames (не parallelFrames total).',
+      'Files: <code>shared/ups-types/modular.js</code> (pickFit + fitDescription + summaryRowsHtml), <code>ups-config/ups-config.js</code> (_getUpsUnits + _renderBatteryInfo + summary).',
+    ] },
     { version: '0.60.407', date: '2026-05-06', items: [
       '🔧 <b>Fix per-unit АКБ для модулярного multi-frame</b>. По уточнению Пользователя 2026-05-06: «здесь не верно определено 50 кВт на модуль, здесь должно быть 1000 нужно 2 ИБП подобрали, значит нужно 500 запрос на ИБП».',
       '<b>Корень</b>: для модулярного UPS с multi-frame parallel (например MR33 600 × 2 frames для 1000 kW) единицей «ИБП» в смысле батарейной топологии является ФРЕЙМ, а не модуль. Старая формула <code>loadKw / fi.working</code> делила на ВСЕ модули (1000/20=50 kW), а должно быть <code>loadKw / parallelFrames</code> = 1000/2 = 500 kW.',

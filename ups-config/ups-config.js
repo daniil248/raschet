@@ -1242,11 +1242,12 @@ function _getUpsUnits(comp) {
   const ups = comp.ups;
   if (!fi) return { unitCount: 1, workingUnits: 1, redundantUnits: 0 };
   // Модулярный multi-frame parallel — единицы = фреймы.
+  // v0.60.408: учитываем frame-level редундансию (workingFrames vs total).
   if (ups && ups.upsType === 'modular' && fi.parallelFrames && fi.parallelFrames > 1) {
     return {
-      unitCount: fi.parallelFrames,
-      workingUnits: fi.parallelFrames, // нет frame-level редундансии (модуль-level внутри каждого frame)
-      redundantUnits: 0,
+      unitCount: fi.parallelFrames, // total frames (incl. reserve)
+      workingUnits: fi.workingFrames || fi.parallelFrames,
+      redundantUnits: fi.redundantFrames || 0,
     };
   }
   // Моноблок / single-frame — единицы = installed (total UPS).
@@ -1368,8 +1369,13 @@ function _renderBatteryInfo() {
     lines.push(`<div style="margin-top:6px;color:#92400e">⚠ АКБ пропущены — конфигурация будет применена без батарей.</div>`);
   } else if (wizState.battery) {
     const b = wizState.battery;
-    const setQtyLbl = isMulti && topology === 'per-unit' ? ` × <b>${battSetsQty}</b> комплект(ов)` : '';
-    lines.push(`<div style="margin-top:6px;color:#065f46">✓ Подобрана АКБ: <b>${esc(b.supplier || '')} ${esc(b.model || b.id)}</b>${b.dcVoltage ? ' · V<sub>DC</sub> ' + b.dcVoltage + ' В' : ''}${b.totalBlocks ? ' · ' + b.totalBlocks + ' блок(ов)' : ''}${setQtyLbl}</div>`);
+    // v0.60.408: показываем ВСЕГДА общее количество АКБ (комплект × блоков).
+    const blocksPerSet = Number(b.totalBlocks) || 0;
+    const totalBlocks = blocksPerSet * battSetsQty;
+    const setQtyLbl = (battSetsQty > 1)
+      ? ` · <b>${battSetsQty} комплект(ов)</b>${blocksPerSet > 0 ? ` × ${blocksPerSet} блок = <b>${totalBlocks} блок всего</b>` : ''}`
+      : (blocksPerSet > 0 ? ` · <b>${blocksPerSet} блок (1 комплект)</b>` : '');
+    lines.push(`<div style="margin-top:6px;color:#065f46">✓ Подобрана АКБ: <b>${esc(b.supplier || '')} ${esc(b.model || b.id)}</b>${b.dcVoltage ? ' · V<sub>DC</sub> ' + b.dcVoltage + ' В' : ''}${setQtyLbl}</div>`);
   } else {
     lines.push(`<div style="margin-top:6px;color:#6b7280">Выберите дальнейшее действие.</div>`);
   }
@@ -1534,7 +1540,15 @@ function _goStep4() {
         <tr><td>V<sub>DC</sub> (по паспорту ИБП)</td><td>${u.vdcMin || '—'}–${u.vdcMax || '—'} В</td></tr>
         <tr><td>cos φ / фазы</td><td>${rq.cosPhi} / ${rq.phases}ph</td></tr>
         ${isMulti ? `<tr><td>🔋 Топология АКБ</td><td>${esc(battTopologyLbl)}</td></tr>` : ''}
-        <tr><td>АКБ</td><td>${wizState.batteryChoice === 'skip' ? '<i>пропущены</i>' : (wizState.battery ? esc((wizState.battery.supplier||'') + ' ' + (wizState.battery.model||wizState.battery.id||'')) + (isMulti && battTopology === 'per-unit' ? ` × ${battSetsQty} комплект(ов)` : '') : '—')}</td></tr>
+        <tr><td>АКБ</td><td>${wizState.batteryChoice === 'skip' ? '<i>пропущены</i>' : (wizState.battery ? (function() {
+          const b = wizState.battery;
+          const blk = Number(b.totalBlocks) || 0;
+          const total = blk * battSetsQty;
+          const breakdown = battSetsQty > 1
+            ? ` × <b>${battSetsQty}</b> комплект(ов)${blk > 0 ? ` × ${blk} блок = <b>${total} блок всего</b>` : ''}`
+            : (blk > 0 ? ` · <b>${blk}</b> блок` : '');
+          return esc((b.supplier||'') + ' ' + (b.model||b.id||'')) + breakdown;
+        })() : '—')}</td></tr>
       </table>
     </div>
     <div class="wiz-summary-box">
