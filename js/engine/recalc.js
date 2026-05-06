@@ -1654,6 +1654,40 @@ function recalc() {
     if (n.containerId) {
       const c = state.nodes.get(n.containerId);
       if (c && c.type === 'consumer-container') {
+        // v0.60.381 (по репорту Пользователя 2026-05-06: «не увидал чтобы
+        // селектор режимов резервирования хоть как то влиял на текущую
+        // и/или расчетную нагрузку» + «все еще не работает с стойками»):
+        // Применяем R container'а к children:
+        //   Cold: первые N children активны (100%), последние R — НЕ активны
+        //   Hot: все count children активны, каждый на (N/(N+R)) × demand
+        const _contR = Math.max(0, Math.min(
+          (Array.isArray(c.slots) ? c.slots.length : 1) - 1,
+          Number(c.consumerReserveR) || 0
+        ));
+        const _contStandbyType = String(c.redundancyStandbyType || 'cold');
+        const _slotCnt2 = Array.isArray(c.slots) ? c.slots.length : 1;
+        const _N2 = _slotCnt2 - _contR;
+        if (_contR > 0 && _contStandbyType === 'cold') {
+          // Cold: только первые N children активны (по порядку slots[]).
+          // Найдём позицию текущего child в slots[].
+          let _slotIdx = -1;
+          for (let i = 0; i < c.slots.length; i++) {
+            const _ss = c.slots[i];
+            if (_ss && _ss.kind === 'linked' && _ss.nodeId === n.id) { _slotIdx = i; break; }
+          }
+          if (_slotIdx >= _N2) {
+            // Этот child — резервный, в standby. _powered = false, _loadKw = 0.
+            n._powered = false;
+            n._loadKw = 0;
+            n._isStandbyReserve = true;
+            continue; // skip остальную обработку для этого child
+          }
+        }
+        // Для hot mode — продолжаем обычную обработку, но per-unit factor
+        // применяется ниже при вычислении n._loadKw.
+        n._redundancyHotFactor = (_contR > 0 && _contStandbyType === 'hot' && _slotCnt2 > 0)
+          ? (_N2 / _slotCnt2)
+          : 1;
         // v0.60.361 (по репорту Пользователя 2026-05-06: «А у меня было
         // что кондиционер один с приоритетом от входа 1 а кондиционер 2 с
         // приоритетом от входа 2»): per-child priorities. Если child имеет
@@ -1700,7 +1734,9 @@ function recalc() {
           if (n._powered) {
             const kUse = Number(n.kUse) || 1;
             const factor = effectiveLoadFactor(n) || 1;
-            n._loadKw = (Number(n.demandKw) || 0) * kUse * factor;
+            // v0.60.381: применяем hot redundancy factor.
+            const hotF = Number(n._redundancyHotFactor) || 1;
+            n._loadKw = (Number(n.demandKw) || 0) * kUse * factor * hotF;
           }
         } else if (c._powered) {
           // Fallback: single-input children или без своих priorities —
@@ -1708,7 +1744,9 @@ function recalc() {
           n._powered = true;
           const kUse = Number(n.kUse) || 1;
           const factor = effectiveLoadFactor(n) || 1;
-          n._loadKw = (Number(n.demandKw) || 0) * kUse * factor;
+          // v0.60.381: применяем hot redundancy factor.
+          const hotF = Number(n._redundancyHotFactor) || 1;
+          n._loadKw = (Number(n.demandKw) || 0) * kUse * factor * hotF;
         }
       }
     }

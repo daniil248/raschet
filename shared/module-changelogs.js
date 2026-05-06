@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.381', date: '2026-05-06', items: [
+      '🔥❄ <b>Cold/Hot redundancy реально применяется к children в group container</b>. По репорту Пользователя 2026-05-06: «не увидал чтобы селектор режимов резервирования хоть как то влиял на текущую и/или расчетную нагрузку» + «все еще не работает с стойками».',
+      '<b>Fix в per-child priorities branch (recalc.js)</b>:',
+      '<b>Cold standby (R > 0)</b>: первые N children активны (по порядку slots[]), последние R — НЕ активны (<code>_powered=false, _loadKw=0, _isStandbyReserve=true</code>). Это классический АВР — резерв в standby, при отказе включается.',
+      '<b>Hot standby (R > 0)</b>: все count children активны, каждый <code>_loadKw = demand × kUse × (N/(N+R))</code> (load-sharing). Total Σ остаётся = N × demand × kUse — то же что cold, но равномерно по всем единицам.',
+      '<b>Эффект для группы 8 стоек × 7 кВт с N+1 hot</b>:',
+      '• Cold: 7 стоек на 7 кВт = 49 кВт, 1 в standby (0 кВт)',
+      '• Hot: все 8 на 6.125 кВт = 49 кВт',
+      'Per-port aggregation теперь даёт правильно различающиеся значения P1 vs P2 (раньше child._loadKw = 7 для всех независимо от R/тип, теперь зависит).',
+      'Files: <code>js/engine/recalc.js</code> (per-child branch — Cold standby skip + Hot factor применён).',
+    ] },
     { version: '0.60.380', date: '2026-05-06', items: [
       '⚡ <b>Container R теперь влияет на расчёт нагрузки</b> + <b>📊 справочный блок «Распределение нагрузки по портам»</b> в карточке группы. По репорту Пользователя 2026-05-06: «не увидал чтобы селектор режимов резервирования хоть как то влиял на текущую и/или расчетную нагрузку» + «Не плохо было бы выводить справочные данные по балансировке и распределению нагрузки прямо в карточке группы».',
       '<b>1. Container R apply в electrical.js</b>:',
