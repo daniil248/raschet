@@ -4,6 +4,20 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.405', date: '2026-05-06', items: [
+      '🔗 <b>UPS-конфигуратор: меньшие модели в параллель + canParallel-gate</b>. По запросу Пользователя 2026-05-06: «при выборе поддержки параллельной работы, должны быть доступны ИБП меньшей единичной мощности, например на 1000 кВт должен быть выбор ИБП 500 или 600 кВт включенных в параллель».',
+      '<b>monoblock.pickFit</b>:',
+      '• canParallel=true (default) → multi-unit fits разрешены: для loadKw=1000 предложит «2×500 kW» или «3×400 kW» при наличии в каталоге.',
+      '• canParallel=false → только single-unit (cap ≥ loadKw); смалые модели возвращают null.',
+      '• fitDescription добавляет badge «🔗 параллель» для multi-unit.',
+      '<b>modular.pickFit</b>:',
+      '• Если single frame не вмещает (loadKw &gt; frame cap), пробуем multi-frame parallel при canParallel=true.',
+      '• Например: MR33 800 (frame 800 kW) для loadKw=1500 → 2 frames × 8 модулей × 100 kW.',
+      '• Возвращает <code>parallelFrames</code> и <code>installedPerFrame</code> для UI.',
+      '• fitDescription и summaryRowsHtml показывают «🔗 N × Frame» когда parallelFrames &gt; 1.',
+      '• buildComposition умножает qty фрейма на parallelFrames.',
+      'Files: <code>shared/ups-types/monoblock.js</code>, <code>shared/ups-types/modular.js</code>.',
+    ] },
     { version: '0.60.404', date: '2026-05-06', items: [
       '🏷 <b>Pуст / Pрасч downstream на карточке щита + tooltip объяснение «Максимум»</b>. По репорту Пользователя 2026-05-06: «а где 208,2 А в карточке шита??? там ограничение 158,9 А и как соотносится максимальная мощность 105,1 кВт и расчетная 94,7 кВт и Установочная 137,7 кВт?».',
       '<b>Часть A: новые поля для карточки</b>',

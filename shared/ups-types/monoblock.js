@@ -63,6 +63,15 @@ export const monoblockType = {
     let requiredQty = 1;
     if (r.mode === '2N') requiredQty = 2;
     else requiredQty = Math.ceil(rq.loadKw / cap) + r.x;
+    // v0.60.405 (по запросу Пользователя 2026-05-06: «при выборе поддержки
+    // параллельной работы, должны быть доступны ИБП меньшей единичной
+    // мощности, например на 1000 кВт должен быть выбор ИБП 500 или 600 кВт
+    // включенных в параллель»): canParallel-gate. Если параллельная работа
+    // запрещена (rq.canParallel === false) — допускаем только single-unit
+    // (cap × 1 ≥ loadKw). При canParallel=true (default) — multi-unit
+    // monoblock'и тоже показываются (например 2×500 kW для loadKw=1000).
+    const canParallel = rq.canParallel !== false; // default true
+    if (!canParallel && requiredQty > 1) return null;
     if (cap * (requiredQty - r.x) >= rq.loadKw) {
       return {
         working: requiredQty - r.x,
@@ -70,6 +79,7 @@ export const monoblockType = {
         installed: requiredQty,
         realCapacity: cap,
         usable: cap * (requiredQty - r.x),
+        isParallel: requiredQty > 1, // v0.60.405: маркер для UI
       };
     }
     return null;
@@ -77,7 +87,11 @@ export const monoblockType = {
 
   // Краткое описание подбора (для suitable-list).
   fitDescription(u, fi) {
-    return `${fi.installed} × ${fi.realCapacity}kW (${fi.working} работа + ${fi.redundant} резерв)`;
+    // v0.60.405: для multi-unit фитов добавляем «🔗 параллель» индикатор.
+    const par = fi.isParallel || fi.installed > 1
+      ? ` <span style="background:#dbeafe;color:#1e40af;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600">🔗 параллель</span>`
+      : '';
+    return `${fi.installed} × ${fi.realCapacity}kW (${fi.working} работа + ${fi.redundant} резерв)${par}`;
   },
 
   // Состав для BOM/composition.
@@ -92,8 +106,13 @@ export const monoblockType = {
 
   // Доп. строки в шаге 3 (summary).
   summaryRowsHtml(u, fi) {
+    // v0.60.405: для multi-unit маркируем «🔗 в параллель».
+    const parTxt = (fi.installed > 1)
+      ? ` 🔗 в параллель`
+      : '';
     return `
       <tr><td>Мощность ед.</td><td>${esc(fmt(u.capacityKw))} kW</td></tr>
-      <tr><td>Количество ИБП</td><td>${fi.installed}</td></tr>`;
+      <tr><td>Количество ИБП</td><td>${fi.installed}${parTxt}</td></tr>
+      <tr><td>Суммарная активная</td><td>${esc(fmt(fi.usable || (fi.realCapacity * fi.working)))} kW</td></tr>`;
   },
 };
