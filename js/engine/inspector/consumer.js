@@ -241,6 +241,34 @@ export function openConsumerParamsModal(n) {
   }
   const _cpCount = isOutdoor ? 1 : Math.max(1, Number(n.count) || 1);
 
+  // v0.60.379 (по репорту Пользователя 2026-05-06: «не нашел управления
+  // виртуальными группами для целей группирования одиночных потребителей»
+  // + «Для простых потребителей актуален только если они входят в
+  // логическую группу (как у нас для источников питания)»): поле
+  // logicalGroupId — текстовый идентификатор виртуальной группы. Все
+  // consumer'ы с одинаковым logicalGroupId считаются логически
+  // связанными для целей резервирования (без физического container'а).
+  // Например, 5 одинаковых насосов в разных шкафах разнесены по схеме,
+  // но с т.з. резервирования (N+1) — это одна группа.
+  if (!isOutdoor && _cpCount === 1) {
+    const _curLg = String(n.logicalGroupId || '').trim();
+    h.push(field('Логическая группа резервирования (опц.)', `<input type="text" id="cp-logicalGroupId" value="${escAttr(_curLg)}" placeholder="например PUMPS-A, AC-MAIN..." title="Идентификатор виртуальной группы. Все consumer'ы с тем же ID логически связаны для целей резервирования. Применимо когда одинаковые приборы разнесены физически (разные шкафы), но с т.з. N+1/2N — одна группа. Только для одиночных потребителей (count=1). Для group-container используйте container.consumerReserveR.">`));
+    if (_curLg) {
+      const _siblingsLg = [];
+      for (const _m of state.nodes.values()) {
+        if (_m.id === n.id) continue;
+        if (_m.type !== 'consumer') continue;
+        if (String(_m.logicalGroupId || '').trim() === _curLg) _siblingsLg.push(_m);
+      }
+      h.push(`<div class="muted" style="font-size:11px;color:#475569;background:#f0fdfa;border:1px solid #99f6e4;border-radius:4px;padding:6px 8px;margin-top:-4px;line-height:1.5">
+        <b style="color:#0f766e">В группе «${escHtml(_curLg)}»:</b> ${_siblingsLg.length + 1} consumer(s)<br>
+        ${_siblingsLg.length > 0
+          ? `<span style="color:#64748b">Связанные: ${_siblingsLg.slice(0, 5).map(s => escHtml(effectiveTag(s))).join(', ')}${_siblingsLg.length > 5 ? `… и ещё ${_siblingsLg.length - 5}` : ''}</span>`
+          : '<span style="color:#a16207;font-style:italic">Этот consumer пока единственный — назначьте такой же ID другим, чтобы связать в группу.</span>'}
+      </div>`);
+    }
+  }
+
   // v0.60.364 (по запросу Пользователя 2026-05-06: «режим работы N, N+1,
   // N+2, 2N влияющий на коэффициент загрузки... согласно норм и правил
   // расчета»): селектор режима резервирования. Влияет на consumerReserveR
@@ -269,7 +297,9 @@ export function openConsumerParamsModal(n) {
   // Для одиночных без группы — скрыт.
   const _isInContainerCtx = !!(n.containerId && state.nodes.get(n.containerId)?.type === 'consumer-container');
   const _isInVrfGroup = !!(n.vrfGroupId && String(n.vrfGroupId).trim());
-  const _showRedundancy = !isOutdoor && (_cpCount > 1 || _isInContainerCtx || _isInVrfGroup);
+  // v0.60.379: logicalGroupId тоже даёт право на redundancy mode.
+  const _isInLogicalGroup = !!(n.logicalGroupId && String(n.logicalGroupId).trim());
+  const _showRedundancy = !isOutdoor && (_cpCount > 1 || _isInContainerCtx || _isInVrfGroup || _isInLogicalGroup);
   if (_showRedundancy) {
     const _curR = Math.max(0, Math.min(_cpCount - 1, Number(n.consumerReserveR) || 0));
     let _curMode = 'N';
@@ -2630,6 +2660,13 @@ export function openConsumerParamsModal(n) {
       const st = _stEl.value;
       if (st === 'hot') n.redundancyStandbyType = 'hot';
       else delete n.redundancyStandbyType; // 'cold' = default
+    }
+    // v0.60.379: logicalGroupId — virtual logical group для одиночных consumer'ов
+    const _lgEl = document.getElementById('cp-logicalGroupId');
+    if (_lgEl) {
+      const lg = String(_lgEl.value || '').trim();
+      if (lg) n.logicalGroupId = lg;
+      else delete n.logicalGroupId;
     }
     n.serialMode = !!document.getElementById('cp-serialMode')?.checked;
     n.loadSpec = (document.getElementById('cp-loadSpec')?.value === 'total') ? 'total' : 'per-unit';
