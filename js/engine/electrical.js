@@ -404,14 +404,24 @@ export function consumerTotalDemandKw(n) {
   //   placeholder: инлайн-спека вкладывает demandKw как «один прибор».
   if (n && n.type === 'consumer-container' && Array.isArray(n.slots)) {
     let sum = 0;
+    let slotCount = 0;
     for (const s of n.slots) {
       if (!s) continue;
       if (s.kind === 'linked' && s.nodeId) {
         const a = state.nodes && state.nodes.get && state.nodes.get(s.nodeId);
-        if (a) sum += consumerTotalDemandKw(a);
+        if (a) { sum += consumerTotalDemandKw(a); slotCount++; }
       } else if (s.kind === 'placeholder') {
         sum += Number(s.demandKw) || 0;
+        slotCount++;
       }
+    }
+    // v0.60.380 (по репорту Пользователя 2026-05-06: «не увидал чтобы селектор
+    // режимов резервирования хоть как то влиял на текущую и/или расчетную
+    // нагрузку»): применяем R контейнера. Total active = sum × (slotCount - R)
+    // / slotCount. Раньше R контейнера игнорировался — sum возвращал ВСЁ.
+    const containerR = Math.max(0, Math.min(slotCount - 1, Number(n.consumerReserveR) || 0));
+    if (containerR > 0 && slotCount > 0) {
+      return sum * (slotCount - containerR) / slotCount;
     }
     return sum;
   }
@@ -520,15 +530,22 @@ function _parseRedundancyR(scheme, totalCount) {
 export function consumerCalcDemandKw(n) {
   if (n && n.type === 'consumer-container' && Array.isArray(n.slots)) {
     let sum = 0;
+    let slotCount = 0;
     for (const s of n.slots) {
       if (!s) continue;
       if (s.kind === 'linked' && s.nodeId) {
         const a = state.nodes && state.nodes.get && state.nodes.get(s.nodeId);
-        if (a) sum += consumerCalcDemandKw(a);
+        if (a) { sum += consumerCalcDemandKw(a); slotCount++; }
       } else if (s.kind === 'placeholder') {
         const ku = (s.kUse != null) ? Number(s.kUse) : 1;
         sum += (Number(s.demandKw) || 0) * (Number.isFinite(ku) ? ku : 1);
+        slotCount++;
       }
+    }
+    // v0.60.380: применяем R контейнера. Total active = sum × (slotCount-R)/slotCount.
+    const containerR = Math.max(0, Math.min(slotCount - 1, Number(n.consumerReserveR) || 0));
+    if (containerR > 0 && slotCount > 0) {
+      return sum * (slotCount - containerR) / slotCount;
     }
     return sum;
   }
@@ -544,7 +561,9 @@ export function consumerCalcDemandKw(n) {
   }
   const per = Number(n?.demandKw) || 0;
   const cnt = Math.max(1, Number(n?.count) || 1);
-  return per * cnt * kuSafe;
+  // v0.60.380: применяем consumer's own R (для группового consumer'а с count>1).
+  const r = resolveConsumerReserveR(n);
+  return per * (cnt - r) * kuSafe;
 }
 
 // v0.60.232 (по запросу Пользователя 2026-05-05 «давай сделаем вариант В,

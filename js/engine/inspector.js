@@ -1412,6 +1412,29 @@ export function openContainerMembersModal(container) {
         <span style="font-size:10.5px;color:#64748b">Активные N=<b>${_N}</b> · Резерв R=<b>${_curR}</b> · Всего ${_slotCount}</span>
       </div>`);
     }
+    // v0.60.380 (по запросу Пользователя 2026-05-06: «не плохо было бы
+    // выводить справочные данные по балансировке и распределению нагрузки
+    // прямо в карточке группы»): балансировка по портам контейнера +
+    // суммарная нагрузка/режим. Берём из container._portLoadKwBreakdown
+    // (вычислен в recalc v0.60.376).
+    const _contInputs2 = Math.max(1, Number(container.inputs) || 1);
+    const _portBreakdown = Array.isArray(container._portLoadKwBreakdown) ? container._portLoadKwBreakdown : null;
+    const _contLoadTotal = Number(container._loadKw) || 0;
+    const _contMaxLoad = Number(container._maxLoadKw) || 0;
+    if (_contInputs2 >= 2 && _portBreakdown) {
+      const _portsHtml = _portBreakdown.map((kw, i) =>
+        `<span style="display:inline-block;padding:2px 8px;background:${kw > 0.05 ? '#dcfce7' : '#f1f5f9'};color:${kw > 0.05 ? '#15803d' : '#64748b'};border-radius:3px;font-weight:600;margin-right:6px">P${i+1}: ${kw.toFixed(2)} кВт</span>`
+      ).join('');
+      const _balance = _portBreakdown.length > 0 && _contLoadTotal > 0
+        ? _portBreakdown.map(kw => ((kw / _contLoadTotal) * 100).toFixed(0) + '%').join(' / ')
+        : '—';
+      h.push(`<div style="padding:8px 12px;border-bottom:1px solid #e0e7ee;background:#fffbeb;font-size:11.5px;color:#78350f;line-height:1.6">
+        <b style="color:#92400e">📊 Распределение нагрузки по портам:</b><br>
+        Текущая на каждой линии: ${_portsHtml}<br>
+        Σ Текущая: <b>${_contLoadTotal.toFixed(2)} кВт</b> · Σ Макс (worst-case AVR): <b>${_contMaxLoad.toFixed(2)} кВт</b> · Балансировка: <b>${_balance}</b><br>
+        <span style="color:#a16207;font-style:italic;font-size:10.5px">Текущая = сумма children._loadKw на этом порту (по их priority). Макс = вся нагрузка контейнера (worst-case при отказе AVR-резерва).</span>
+      </div>`);
+    }
   }
   if (!slots.length) {
     h.push('<div style="padding:24px;text-align:center;color:#778899">Контейнер пуст. Drop потребителя на канвасе сюда — добавится.</div>');
