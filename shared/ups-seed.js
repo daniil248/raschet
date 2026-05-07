@@ -26,7 +26,7 @@ import { LEGRAND_UPSES } from './catalogs/ups/legrand.js';
 import { DKC_UPSES } from './catalogs/ups/dkc.js';
 
 const KEY = 'raschet.upsCatalog.kehua.seedVersion';
-const CURRENT_VERSION = '20'; // v0.59.498: DKC Small Tower 1/3 + SMALL+ 6/10 + Modulys GP 25/100 — verified V_DC через pdftotext PDFs (OEM источники: DAKER DK, Socomec)
+const CURRENT_VERSION = '21'; // v0.60.411: Kehua MR33 400-600К (100K module, 2025 manual) + обновление 800-1200К (КПД, веса, воздухопоток)
 
 export const ALL_UPS_SEEDS = [
   ...KEHUA_MR33_UPSES,
