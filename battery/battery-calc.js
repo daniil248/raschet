@@ -1552,9 +1552,19 @@ const DERATING_PRESETS = {
 };
 // Следит за последней авто-применённой химией, чтобы не перетирать ручные правки
 let _lastAutoDerateChemistry = null;
+// Следит за последним применённым пресетом (кнопка или авто) — для метки
+let _lastAppliedPreset = 'ieee485';
+const _PRESET_LABELS = {
+  ieee485:    '· IEEE 485 (VRLA)',
+  iec62040:   '· IEC 62040 (мягче)',
+  lfp:        '· LFP / Li-Ion',
+  aggressive: '· Жёсткий (тропики/EOL)',
+  none:       '· Без запаса (теор.)',
+};
 function _applyDeratingPreset(name) {
   const p = DERATING_PRESETS[name];
   if (!p) return;
+  _lastAppliedPreset = name;
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
   set('calc-k-age', p.kAge);
   set('calc-k-temp', p.kTemp);
@@ -1568,9 +1578,7 @@ function _applyDeratingPreset(name) {
 function _refreshDerateLabel() {
   const el = document.getElementById('calc-derate-default-label');
   if (!el) return;
-  el.textContent = _lastAutoDerateChemistry === 'li-ion'
-    ? '· по умолчанию LFP / Li-Ion'
-    : '· по умолчанию IEEE 485';
+  el.textContent = _PRESET_LABELS[_lastAppliedPreset] || '· IEEE 485 (VRLA)';
 }
 
 // Срок службы АКБ по умолчанию (лет до EOL 80% ёмкости)
