@@ -2893,9 +2893,10 @@ function wireCalcForm() {
       const nMax = lim.maxPerCabinet;  // 20 для 40/50 Ач, 12 для 100 Ач
       let N = Number(blocksEl.value);
       blocksEl.min = 1;
-      blocksEl.max = nMax;
-      // Auto-clamp value к лимиту S3, чтобы input не оставался invalid
-      // (форма не может сфокусировать невалидное поле — блокирует submit).
+      // ВАЖНО: не ставим HTML5 max — иначе при value > max форма не сабмитится
+      // (browser blocks с "invalid form control"). Лимит проверяем визуально через hint.
+      blocksEl.removeAttribute('max');
+      // Auto-clamp value к лимиту S3
       if (Number.isFinite(N) && N > nMax) {
         N = nMax;
         blocksEl.value = nMax;
