@@ -1417,6 +1417,18 @@ function _applyBatteryLock() {
       chemSel.style.background = '';
     }
   }
+  // Авто-применение пресета при смене химии. Срабатывает только при
+  // ИЗМЕНЕНИИ химии (переключение VRLA↔Li-Ion), не перетирает ручные правки.
+  const autoChemistry = b?.chemistry || null;
+  if (autoChemistry !== _lastAutoDerateChemistry) {
+    _lastAutoDerateChemistry = autoChemistry;
+    if (autoChemistry === 'li-ion') _applyDeratingPreset('lfp');
+    else if (autoChemistry === 'vrla') _applyDeratingPreset('ieee485');
+    // Авто-подставить срок службы АКБ
+    const battLifeEl = document.getElementById('calc-batt-life');
+    if (battLifeEl) battLifeEl.value = _defaultBattLife(autoChemistry);
+  }
+  _refreshDerateLabel();
 }
 function _renderCapacityRecommend() {
   const box = document.getElementById('calc-recommend');
@@ -1534,9 +1546,12 @@ function _readDerating() {
 const DERATING_PRESETS = {
   ieee485:    { kAge: 1.25, kTemp: 1.00, kDesign: 1.10, vdcSafetyPct: 0, socMinPct: 10 },
   iec62040:   { kAge: 1.20, kTemp: 1.00, kDesign: 1.05, vdcSafetyPct: 0, socMinPct: 10 },
+  lfp:        { kAge: 1.20, kTemp: 1.00, kDesign: 1.05, vdcSafetyPct: 0, socMinPct: 10 },
   aggressive: { kAge: 1.25, kTemp: 1.11, kDesign: 1.15, vdcSafetyPct: 3, socMinPct: 20 },
   none:       { kAge: 1.00, kTemp: 1.00, kDesign: 1.00, vdcSafetyPct: 0, socMinPct: 0  },
 };
+// Следит за последней авто-применённой химией, чтобы не перетирать ручные правки
+let _lastAutoDerateChemistry = null;
 function _applyDeratingPreset(name) {
   const p = DERATING_PRESETS[name];
   if (!p) return;
@@ -1548,6 +1563,55 @@ function _applyDeratingPreset(name) {
   set('calc-soc-min', p.socMinPct);
   _refreshDerateSummary();
   _refreshDcExplanation();
+  _refreshDerateLabel();
+}
+function _refreshDerateLabel() {
+  const el = document.getElementById('calc-derate-default-label');
+  if (!el) return;
+  el.textContent = _lastAutoDerateChemistry === 'li-ion'
+    ? '· по умолчанию LFP / Li-Ion'
+    : '· по умолчанию IEEE 485';
+}
+
+// Срок службы АКБ по умолчанию (лет до EOL 80% ёмкости)
+function _defaultBattLife(chemistry) {
+  if (chemistry === 'li-ion') return 15;
+  return 5; // VRLA/AGM: IEEE 1188
+}
+
+// Расчёт жизненного цикла: число замен, суммарные затраты
+function _calcLifecycle({ designLife, battLife, chemistry, battPriceK }) {
+  const sets = Math.max(1, Math.ceil(designLife / battLife));   // всего комплектов
+  const replacements = sets - 1;                                // число замен (первый = начало)
+  const totalCostK = battPriceK > 0 ? sets * battPriceK : null;
+  return { designLife, battLife, sets, replacements, totalCostK, chemistry };
+}
+
+// Строит HTML-блок жизненного цикла для вставки в результаты
+function _lifecycleHtml(lc) {
+  if (!lc) return '';
+  const isLi = lc.chemistry === 'li-ion';
+  const battLabel = isLi ? 'LFP/Li-Ion' : 'VRLA/AGM';
+  const color = lc.replacements === 0 ? '#1b5e20' : (lc.replacements <= 1 ? '#e65100' : '#b71c1c');
+  let h = `<div class="result-block" style="margin-top:14px">`;
+  h += `<div class="result-title">♻ Жизненный цикл: ${lc.designLife} лет</div>`;
+  h += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:8px;font-size:12px">`;
+  h += `<div style="padding:8px;background:#f5f5f5;border-radius:6px;text-align:center"><div class="muted" style="font-size:10px">Срок службы АКБ</div><div style="font-size:18px;font-weight:700;color:#1565c0">${lc.battLife} лет</div><div class="muted" style="font-size:10px">${battLabel}</div></div>`;
+  h += `<div style="padding:8px;background:#f5f5f5;border-radius:6px;text-align:center"><div class="muted" style="font-size:10px">Всего комплектов АКБ</div><div style="font-size:18px;font-weight:700;color:${color}">${lc.sets}</div><div class="muted" style="font-size:10px">за ${lc.designLife} лет</div></div>`;
+  h += `<div style="padding:8px;background:#f5f5f5;border-radius:6px;text-align:center"><div class="muted" style="font-size:10px">Замен АКБ</div><div style="font-size:18px;font-weight:700;color:${color}">${lc.replacements}</div><div class="muted" style="font-size:10px">${lc.replacements === 0 ? 'не требуется' : 'плановых замен'}</div></div>`;
+  if (lc.totalCostK) {
+    h += `<div style="padding:8px;background:#f5f5f5;border-radius:6px;text-align:center"><div class="muted" style="font-size:10px">Стоимость АКБ (ЖЦ)</div><div style="font-size:18px;font-weight:700;color:#4a148c">${lc.totalCostK.toLocaleString('ru-RU')} тыс.</div><div class="muted" style="font-size:10px">${lc.sets} × ${lc.battPriceK?.toLocaleString('ru-RU') || '?'} тыс.</div></div>`;
+  }
+  h += `</div>`;
+  if (!isLi && lc.replacements > 0) {
+    const yrs = Array.from({ length: lc.replacements }, (_, i) => (i + 1) * lc.battLife).join(', ');
+    h += `<div class="muted" style="font-size:11px;margin-top:6px">⏰ Плановые замены VRLA: год ${yrs}. Рекомендуется заложить в бюджет обслуживания.</div>`;
+  }
+  if (isLi && lc.sets === 1) {
+    h += `<div class="muted" style="font-size:11px;margin-top:6px;color:#1b5e20">✅ LFP прослужит ${lc.battLife} лет — замена в горизонте проекта ${lc.designLife} лет не требуется.</div>`;
+  }
+  h += `</div>`;
+  return h;
 }
 function _refreshDerateSummary() {
   const el = document.getElementById('calc-derate-summary');
@@ -1995,6 +2059,14 @@ function _doCalcS3({ battery, loadKw, mode, targetMin, vRange, derate, invEff })
     html += _renderS3SystemSpecHtml(battery, s3Cfg.totalModules, loadKwEff, invEff, s3Cfg.cabinetsCount);
   }
 
+  // Жизненный цикл (для S³ — Li-Ion, 15 лет)
+  {
+    const get2 = id => document.getElementById(id);
+    const designLife = Number(get2('calc-design-life')?.value) || 10;
+    const battLife   = Number(get2('calc-batt-life')?.value)   || _defaultBattLife('li-ion');
+    const battPriceK = Number(get2('calc-batt-price')?.value)  || 0;
+    html += _lifecycleHtml(_calcLifecycle({ designLife, battLife, chemistry: 'li-ion', battPriceK }));
+  }
   // График разряда + zoom (как для обычной АКБ — battery.dischargeTable есть).
   html += `<div class="result-block" style="margin-top:14px"><div class="result-title" style="margin-bottom:8px">График разряда модуля</div><div id="calc-chart-mount" style="background:#fafbfc;border:1px solid #e0e3ea;border-radius:6px;padding:12px"></div><div class="muted" style="font-size:11px;margin-top:6px">Кривая P(t) для одного модуля. Красный маркер — рабочая точка.</div></div>`;
   html += `<div class="result-block" style="margin-top:14px"><div class="result-title" style="margin-bottom:8px">Детализация в рабочей зоне (zoom)</div><div id="calc-chart-zoom-mount" style="background:#fafbfc;border:1px solid #e0e3ea;border-radius:6px;padding:12px"></div></div>`;
@@ -2253,6 +2325,14 @@ function doCalc() {
     } else {
       html += `<div class="result-block error">Не удалось подобрать конфигурацию в пределах 2000 блоков. Проверьте нагрузку / параметры.</div>`;
     }
+  }
+  // Жизненный цикл системы
+  {
+    const designLife = Number(get('calc-design-life')?.value) || 10;
+    const battLife   = Number(get('calc-batt-life')?.value)   || _defaultBattLife(chemistry);
+    const battPriceK = Number(get('calc-batt-price')?.value)  || 0;
+    const lc = _calcLifecycle({ designLife, battLife, chemistry, battPriceK });
+    html += _lifecycleHtml(lc);
   }
   // Контейнер для графика разряда с отметкой рассчитанной точки
   html += `<div class="result-block" style="margin-top:14px"><div class="result-title" style="margin-bottom:8px">График разряда АКБ</div><div id="calc-chart-mount" style="background:#fafbfc;border:1px solid #e0e3ea;border-radius:6px;padding:12px"></div><div class="muted" style="font-size:11px;margin-top:6px">Красный маркер — рассчитанная рабочая точка (мощность на блок и время разряда). Оранжевый — экстраполированная (за пределами таблицы производителя).</div></div>`;
