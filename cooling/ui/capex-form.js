@@ -26,7 +26,7 @@
 import {
   DEFAULT_ECONOMICS, COST_ITEM_COLUMNS,
   normCostItems, sumCostItemsByCol, computeEcoTotals,
-} from '../calc/capex-tco.js';
+} from '../../shared/calc/capex-tco.js';
 import { fmtMoney, CURRENCIES } from '../calc/fc-summary.js';
 import { escAttr, escHtml, modalOpen, toast } from '../../meteo/util.js';
 

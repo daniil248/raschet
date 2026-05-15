@@ -4,6 +4,10 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.431', date: '2026-05-15', items: [
+      '🩹 <b>Hotfix: «Подбор холодильных систем» перестал работать (404 capex-tco.js)</b>. При переносе модуля в shared/ (v0.60.427) был пропущен импортёр <code>cooling/ui/capex-form.js</code> (многострочный import — не попал в grep): он продолжал ссылаться на удалённый <code>../calc/capex-tco.js</code> → 404 → падал весь модуль cooling («нет активной опции»).',
+      '<b>Исправление</b>: <code>cooling/ui/capex-form.js</code> перенаправлен на <code>../../shared/calc/capex-tco.js</code>. Дополнительно восстановлен <code>cooling/calc/capex-tco.js</code> как форвардер (<code>export * from \'../../shared/calc/capex-tco.js\'</code>) — чтобы закэшированные браузером старые cooling.js/comparison.js не получали 404 в окно кэша GitHub Pages.',
+    ] },
     { version: '0.60.430', date: '2026-05-15', items: [
       '✨ <b>Подбор ИБП/АКБ: авто-выбор активного подбора</b> (UX-доводка к Фазе 23.2a). Панель «Свойства подбора / TCO» больше не пустая при заходе: если активный подбор явно не выбран в сайдбаре — берётся самый свежий (по записи подбора, иначе по самому свежему варианту). Подхватывается и подбор, созданный сохранением из wizard (минуя клик в сайдбаре).',
       '<b>shared/selection-panel.js</b>: добавлен <code>autoSelName()</code> (listSelectionMetas → listConfigs fallback); <code>onConfigsChange</code> перерисовывает панель не только на вкладке сравнения, но и когда подбор ещё не выбран.',
