@@ -626,10 +626,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // Если открыта standalone (без nodeId) — всё равно показываем wizard
   // сразу на шаге 1, чтобы модуль работал как КОНФИГУРАТОР, а не только
   // как каталог. Каталог остаётся ниже как справочник.
-  const startedViaNode = initWizard();
-  if (!startedViaNode) {
-    try { launchStandaloneWizard(); } catch (e) { console.warn('[ups-config] auto-wizard', e); }
-  }
+  // v0.60.444: ДВЕ ЗОНЫ (как «Подбор холода»). По умолчанию открыта зона
+  // ПОДБОРА (панель «Свойства подбора/TCO/Сравнение»), wizard НЕ
+  // авто-открывается. Wizard (зона варианта) показывается при: ?nodeId=
+  // (из Конструктора схем — initWizard сам откроет), клике «🧙 Мастер
+  // подбора» или выборе варианта в сайдбаре. Видимость секций — index.html
+  // (setScope по событию rs-cs-focus). Раньше standalone-wizard
+  // авто-открывался → панель подбора и wizard были на одной странице.
+  initWizard();
 });
 
 // ====================== WIZARD конфигуратора ======================

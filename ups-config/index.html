@@ -461,11 +461,16 @@
         ?.addEventListener('click', () => setScope('variant'), true);
       // Старт: если открыто из Конструктора схем (?nodeId=…) — сразу
       // зона варианта (wizard). Иначе зона подбора (исходные + сравнение).
-      const _fromSchematic = (() => {
-        try { return !!new URLSearchParams(location.search).get('nodeId'); }
-        catch { return false; }
+      // Зона варианта на старте, если открыто из Конструктора схем
+      // (?nodeId=) или PUSH из технолога ЦОД (?capacityKw=) — initWizard
+      // сам откроет wizard. Иначе — зона подбора.
+      const _wizardEntry = (() => {
+        try {
+          const q = new URLSearchParams(location.search);
+          return !!(q.get('nodeId') || q.get('capacityKw'));
+        } catch { return false; }
       })();
-      setScope(_fromSchematic ? 'variant' : 'selection');
+      setScope(_wizardEntry ? 'variant' : 'selection');
     }
   </script>
 
