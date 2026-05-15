@@ -136,6 +136,11 @@
     }
   </script>
 
+  <!-- v0.60.425: shell с левым сайдбаром подборов АКБ (как в ups-config). -->
+  <div class="bt-shell">
+  <aside class="rs-sidebar rs-sidebar-left" id="bt-sidebar">
+    <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
+  </aside>
   <main>
     <div class="tabs">
       <button class="tab-btn active" data-tab="tab-calc">Расчёт разряда</button>
@@ -567,6 +572,7 @@
       <div id="rack-result"></div>
     </section>
   </main>
+  </div><!-- /.bt-shell -->
 
   <div id="flash" class="flash"></div>
 
@@ -575,6 +581,24 @@
     import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
     import { APP_VERSION } from '../js/engine/constants.js';
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'battery', moduleTitle: 'АКБ' });
+  </script>
+  <!-- v0.60.425: сайдбар подборов АКБ (kind='battery', groupBySelection). -->
+  <script type="module">
+    import '../shared/sidebar-resizer.js';
+    import { mountConfigSidebar } from '../shared/config-sidebar.js';
+    const api = mountConfigSidebar({
+      kind: 'battery',
+      title: 'Подборы АКБ',
+      groupBySelection: true,
+      sections: ['list'],
+      onSelect: (entry) => {
+        // Применение сохранённого расчёта — событие для battery-calc.js.
+        try { window.dispatchEvent(new CustomEvent('battery:load-config', { detail: entry })); } catch {}
+      },
+    });
+    if (api && api.enabled) {
+      window.addEventListener('battery:configs-changed', () => { try { api.refresh(); } catch {} });
+    }
   </script>
 </body>
 </html>

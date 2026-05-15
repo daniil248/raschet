@@ -3113,12 +3113,32 @@ async function _saveBatteryConfiguration() {
   } else {
     defaultLabel = `${battery.supplier || ''} ${battery.type || battery.model || ''} · ${strings}×${blocksPerString}`.trim();
   }
+  // v0.60.425 (по запросу Пользователя 2026-05-06: «добавь варианты для
+  // подбора АКБ, как при самостоятельном подборе, так и в составе ИБП»):
+  // 2-шаговое сохранение в Подбор → Вариант (как в ups-config v0.60.422).
+  // 1) Подбор АКБ (selectionName) — группа альтернативных вариантов
+  //    (VRLA vs Li-Ion, разные endV, разное число цепочек).
+  // 2) Вариант (label) — конкретная модель/конфигурация в этом подборе.
+  const projectCode = _getActiveProjectCode();
+  let selectionName;
+  try {
+    const { listSelectionNames } = await import('../shared/configuration-catalog.js');
+    const existing = listSelectionNames('battery', { projectCode: projectCode || undefined }).slice(0, 20);
+    const defSel = `АКБ ${(lastBatteryCalc.params.loadKwEff || lastBatteryCalc.params.loadKw || '')} кВт · ${params.targetMin || autonomyMin || '?'} мин`;
+    const hint = existing.length
+      ? `\n\nСуществующие подборы (впишите имя, чтобы добавить вариант):\n${existing.map(s => '• ' + s).join('\n')}`
+      : '';
+    const sres = (window.scsPrompt
+      ? await window.scsPrompt('Подбор АКБ (группа вариантов)', 'Название подбора:' + hint, defSel)
+      : await rsPrompt('Название подбора АКБ (группа вариантов)' + hint, defSel));
+    if (sres === null || sres === undefined) return;
+    selectionName = String(sres || '').trim() || defSel;
+  } catch { selectionName = ''; }
   // v0.60.139: replaced prompt() with rsPrompt (no browser dialogs).
   const name = (window.scsPrompt
-    ? await window.scsPrompt('Сохранение конфигурации АКБ', 'Имя конфигурации:', defaultLabel)
-    : await rsPrompt('Имя конфигурации АКБ:', defaultLabel));
+    ? await window.scsPrompt('Вариант в подборе «' + (selectionName || '—') + '»', 'Имя варианта:', defaultLabel)
+    : await rsPrompt('Имя варианта АКБ в подборе «' + (selectionName || '—') + '»:', defaultLabel));
   if (!name) return;
-  const projectCode = _getActiveProjectCode();
   const id = _nextConfigId('battery', projectCode);
   const description = [
     battery.supplier,
@@ -3130,6 +3150,8 @@ async function _saveBatteryConfiguration() {
   ].filter(Boolean).join(' · ');
   const entry = {
     id, kind: 'battery', label: name.trim(), description,
+    // v0.60.425: подбор (группа вариантов).
+    selectionName: selectionName || undefined,
     projectCode: projectCode || undefined,
     payload: {
       source: 'battery-calc',
@@ -3157,7 +3179,9 @@ async function _saveBatteryConfiguration() {
   };
   try {
     _saveConfig('battery', entry);
-    rsToast(`Сохранено: ${entry.label} (${entry.id})`, 'success');
+    rsToast(`Сохранено: ${entry.label} (${entry.id})${selectionName ? ' → подбор «' + selectionName + '»' : ''}`, 'success');
+    // v0.60.425: уведомить сайдбар подборов АКБ (он подписан на onConfigsChange).
+    try { window.dispatchEvent(new CustomEvent('battery:configs-changed')); } catch {}
   } catch (e) {
     rsToast('Не удалось сохранить: ' + (e && e.message ? e.message : e), 'err');
   }

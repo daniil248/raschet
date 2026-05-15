@@ -7,6 +7,25 @@ html, body { height: 100%; }
 body { display: flex; flex-direction: column; min-height: 100vh; }
 
 /* Phase 1.26.1 — full-width; max-width/margin-auto сняты. */
+/* v0.60.425: shell с левым сайдбаром подборов АКБ. */
+.bt-shell {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+.bt-shell > main {
+  flex: 1;
+  min-width: 0;
+}
+#bt-sidebar.rs-sidebar-left {
+  flex: 0 0 auto;
+  width: 280px;
+  position: relative;
+  border-right: 1px solid #e2e8f0;
+  background: #fff;
+  overflow: auto;
+}
 main {
   flex: 1;
   padding: 24px;

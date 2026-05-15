@@ -4,6 +4,19 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.425', date: '2026-05-06', items: [
+      '🔋 <b>Подборы / варианты для АКБ — standalone + в составе ИБП</b>. По запросу Пользователя 2026-05-06: «добавь варианты для подбора АКБ, как при самостоятельном подборе, так и в составе ИБП».',
+      '<b>battery-calc.js (самостоятельный подбор)</b>:',
+      '• <code>_saveBatteryConfiguration</code> теперь 2-шаговый: 1) «Подбор АКБ» (группа вариантов, с подсказкой существующих имён), 2) «Вариант» (модель/конфигурация).',
+      '• На записи (kind=\'battery\') проставляется <code>selectionName</code>.',
+      '• Default подбор: «АКБ X кВт · Y мин». После сохранения — событие <code>battery:configs-changed</code> для refresh сайдбара.',
+      '<b>battery/index.html — новый левый сайдбар «Подборы АКБ»</b>:',
+      '• Shell <code>.bt-shell</code> (flex-row) с <code>aside.rs-sidebar-left</code> + resizer (как в ups-config).',
+      '• <code>mountConfigSidebar({ kind:\'battery\', groupBySelection:true, sections:[\'list\'] })</code> — группировка подбор→варианты, действия 📋 / ★ / ✎ / ✕.',
+      '• onSelect → событие <code>battery:load-config</code> (точка расширения для применения сохранённого расчёта).',
+      '<b>В составе ИБП</b>: батарея, выбранная в мастере ups-config, входит в вариант ИБП-подбора (v0.60.422/424) — отдельные варианты ИБП в одном подборе несут разные АКБ. Standalone-подборы АКБ (kind=\'battery\') переиспользуемы между проектами.',
+      'Files: <code>battery/battery-calc.js</code>, <code>battery/index.html</code>, <code>battery/battery-calc.css</code>.',
+    ] },
     { version: '0.60.424', date: '2026-05-06', items: [
       '📋 <b>Подборы ИБП — теперь видны и доступны из сайдбара</b>. По репорту Пользователя 2026-05-06: «подборы и варианты не нашел». Фича v0.60.422 была скрыта: при одной группе «— Без подбора —» рендер был плоским, а сайдбарная «+ Сохранить» не спрашивала подбор.',
       '<b>config-sidebar.js</b> — новая опция <code>groupBySelection</code> (default false → backward-compat для panel/mv/etc.):',
