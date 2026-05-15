@@ -29,6 +29,7 @@ import {
   DEFAULT_ECONOMICS, computeTco, discountedPaybackYears, convertEcoToCurrency,
 } from './calc/capex-tco.js';
 import { CURRENCIES, fmtMoney } from './money.js';
+import { getProject, getActiveProjectId } from './project-storage.js';
 
 let _cssInjected = false;
 function injectCss() {
@@ -93,6 +94,33 @@ export function mountSelectionPanel(o) {
     return { ...DEFAULT_ECONOMICS, tariff: 0, ...(meta && meta.eco || {}) };
   }
 
+  // v0.60.436: если подбор привязан к проекту (pc задан) — цена э/э, валюта
+  // и прочие фин-параметры берутся ИЗ ПРОЕКТА (свойства проекта → 💰
+  // Экономика). Каскад как в cooling/таксы: project.economics → fallback.
+  // В разовом подборе (standalone, pc=null) — параметры задаются вручную.
+  function projEco() {
+    if (!pc) return null;
+    try {
+      const p = getProject(getActiveProjectId());
+      const e = p && p.economics;
+      if (!e) return null;
+      const out = {};
+      if (typeof e.displayCurrency === 'string' && e.displayCurrency) out.currency = e.displayCurrency;
+      if (Number.isFinite(Number(e.tariffPerKwh))) out.tariff = Number(e.tariffPerKwh);
+      for (const k of ['projectLifetimeYears', 'discountRatePct', 'escalationEnergyPct', 'escalationMaintPct']) {
+        if (Number.isFinite(Number(e[k]))) out[k] = Number(e[k]);
+      }
+      return Object.keys(out).length ? out : null;
+    } catch { return null; }
+  }
+  // Действующие фин-параметры для расчёта/отображения: проект перекрывает
+  // сохранённые в подборе значения для тех полей, что заданы в проекте.
+  function effEco(meta) {
+    const base = selEcoOf(meta);
+    const pe = projEco();
+    return pe ? { ...base, ...pe } : base;
+  }
+
   function persist(patch) {
     if (!selName) return;
     ensureSelectionMeta(kind, { projectCode: pc, selectionName: selName },
@@ -104,7 +132,11 @@ export function mountSelectionPanel(o) {
 
   function renderGeneral(meta) {
     const req = (meta && meta.requirements) || {};
-    const eco = selEcoOf(meta);
+    const eco = effEco(meta);
+    const pe = projEco() || {};
+    const lockedNote = (k) => (k in pe)
+      ? ` title="🔒 Значение из проекта (свойства проекта → 💰 Экономика). Для разового подбора переключите «Контекст подбора»."` : '';
+    const lockAttr = (k) => (k in pe) ? ' disabled' : '';
     const reqHtml = (o.requirementsSchema || []).map(f => {
       const v = req[f.key];
       if (f.type === 'select') {
@@ -124,8 +156,9 @@ export function mountSelectionPanel(o) {
     const curOpts = CURRENCIES.map(c =>
       `<option value="${c.code}"${c.code === (eco.currency || '₸') ? ' selected' : ''} title="${escH(c.label)}">${c.code}</option>`).join('');
     const finHtml = FIN_FIELDS.map(f =>
-      `<label class="rsp-field" title="${escH(f.tip)}">${escH(f.label)}
-        <input type="number" data-eco="${f.key}" step="${f.step}" value="${escH(eco[f.key] == null ? '' : eco[f.key])}"></label>`).join('');
+      `<label class="rsp-field" title="${escH(f.tip)}">${escH(f.label)}${(f.key in pe) ? ' <span style="color:#16a34a">🔒 из проекта</span>' : ''}
+        <input type="number" data-eco="${f.key}" step="${f.step}" value="${escH(eco[f.key] == null ? '' : eco[f.key])}"${lockAttr(f.key)}${lockedNote(f.key)}></label>`).join('');
+    const curLocked = ('currency' in pe);
 
     return `
       <div class="rsp-sec-title" title="Общие УСЛОВИЯ подбора — одинаковы для всех вариантов. Конкретные решения задаются в вариантах.">📋 Условия подбора</div>
@@ -133,16 +166,18 @@ export function mountSelectionPanel(o) {
       <div class="rsp-divider"></div>
       <div class="rsp-sec-title" title="Финансовые параметры — общие для всех вариантов, чтобы сравнение TCO было на одинаковых условиях (как в «Подбор холода»).">💰 Финансовые параметры (общие для всех вариантов)</div>
       <div class="rsp-grid">
-        <label class="rsp-field" title="Валюта подбора — все CAPEX/OPEX/TCO приводятся к ней по курсу.">Валюта подбора
-          <select data-eco="currency">${curOpts}</select></label>
+        <label class="rsp-field" title="Валюта подбора — все CAPEX/OPEX/TCO приводятся к ней по курсу.">Валюта подбора${curLocked ? ' <span style="color:#16a34a">🔒 из проекта</span>' : ''}
+          <select data-eco="currency"${curLocked ? ' disabled title="🔒 Валюта из проекта (свойства проекта → 💰 Экономика)."' : ''}>${curOpts}</select></label>
         ${finHtml}
       </div>
-      <div class="rsp-note">ℹ Условия и финансы хранятся на уровне ПОДБОРА. Варианты сравниваются на одинаковых условиях во вкладке «📈 TCO / Сравнение».</div>
+      <div class="rsp-note">${Object.keys(pe).length
+        ? 'ℹ Подбор привязан к проекту: цена э/э, валюта и фин-параметры берутся из свойств проекта (💰 Экономика) и здесь только для просмотра. Для ручного ввода переключите «Контекст подбора» → «Разовый подбор».'
+        : 'ℹ Условия и финансы хранятся на уровне ПОДБОРА. Варианты сравниваются на одинаковых условиях во вкладке «📈 TCO / Сравнение».'}</div>
     `;
   }
 
   function renderCompare(meta) {
-    const eco = selEcoOf(meta);
+    const eco = effEco(meta);
     const req = (meta && meta.requirements) || {};
     const cur = eco.currency || '₸';
     const variants = listConfigs(kind, { projectCode: pc, selectionName: selName });
@@ -238,7 +273,7 @@ export function mountSelectionPanel(o) {
     return ci || null;
   }
   function renderCapex(meta) {
-    const eco = selEcoOf(meta);
+    const eco = effEco(meta);
     const cur0 = eco.currency || '₸';
     const variants = listConfigs(kind, { projectCode: pc, selectionName: selName });
     if (!variants.length) {
@@ -352,7 +387,7 @@ export function mountSelectionPanel(o) {
         if (!entry) return;
         const g = (f) => tr.querySelector(`[data-capf="${f}"]`);
         const m = getSelectionMeta(kind, { projectCode: pc, selectionName: selName });
-        const curDef = (selEcoOf(m).currency) || '₸';
+        const curDef = (effEco(m).currency) || '₸';
         const ccy = (g('currency') && g('currency').value) || curDef;
         const val = (f) => Number(g(f) && g(f).value) || 0;
         const ci = {
