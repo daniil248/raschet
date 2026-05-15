@@ -1,0 +1,114 @@
+/* =============================================================================
+ * shared/styles/selection-theme.css — ЕДИНАЯ ТЕМА «подбор / варианты»
+ * =============================================================================
+ * v0.60.440. По требованию Пользователя 2026-05-15: «сам дизайн кнопок и
+ * сайдбара должен быть одинаковым и меняться одним комплектом css файлов
+ * темы». ЕДИНЫЙ источник внешнего вида сайдбара подборов, карточек
+ * подбор/вариант, кнопок и вкладок панели — для ups-config, battery и
+ * cooling. Меняя токены ниже, меняем вид во всех модулях сразу.
+ *
+ * Подключается <link>'ом в ups-config/index.html, battery/index.html,
+ * cooling/index.html. JS-модули (config-sidebar.js, selection-panel.js)
+ * больше НЕ инжектят эти стили — единый источник здесь.
+ * ========================================================================== */
+
+:root {
+  /* Акцент панели подбора */
+  --sel-accent:        #6366f1;
+  --sel-accent-bg:     #eef2ff;
+  --sel-accent-bd:     #c7d2fe;
+  --sel-accent-ink:    #3730a3;
+  /* Карточка ПОДБОРА (жёлтая; активная — оранжевая) */
+  --sel-podbor-bg:     #fef3c7;
+  --sel-podbor-bd:     #fde68a;
+  --sel-podbor-ink:    #92400e;
+  --sel-podbor-hover:  #fde68a;
+  --sel-podbor-act-bg: #fbbf24;
+  --sel-podbor-act-bd: #d97706;
+  --sel-podbor-act-ink:#78350f;
+  /* Карточка ВАРИАНТА (нейтр.; активная — синяя; основной — зелёная) */
+  --sel-var-bg:        #f9fafb;
+  --sel-var-bd:        #e5e7eb;
+  --sel-var-hover-bg:  #eff6ff;
+  --sel-var-hover-bd:  #93c5fd;
+  --sel-var-act-bg:    #dbeafe;
+  --sel-var-act-bd:    #1e40af;
+  --sel-main-bg:       #ecfdf5;
+  --sel-main-bd:       #22c55e;
+  --sel-main-act-bg:   #d1fae5;
+  --sel-main-act-bd:   #16a34a;
+  --sel-main-ink:      #16a34a;
+  /* Кнопки */
+  --sel-btn-bg:        #fff;
+  --sel-btn-bd:        #cbd5e1;
+  --sel-btn-ink:       #0f172a;
+  --sel-btn-hover:     #f1f5f9;
+  --sel-btn-primary:   #2563eb;
+  --sel-btn-primary-h: #1d4ed8;
+  --sel-danger-ink:    #b91c1c;
+  /* Таблицы / прочее */
+  --sel-th-bg:         #f1f5f9;
+  --sel-ink:           #334155;
+  --sel-muted:         #64748b;
+  --sel-bd:            #e2e8f0;
+  --sel-best-bg:       #dcfce7;
+  --sel-best-ink:      #166534;
+  --sel-note-bg:       #fef3c7;
+  --sel-note-bd:       #fcd34d;
+  --sel-note-ink:      #92400e;
+}
+
+/* ── Сайдбар: режим подборов (groupBySelection) ─────────────────────────── */
+.rs-cs-ctx { padding: 10px; }
+.rs-cs-ctx label { display:block; font-size:11px; font-weight:600; color:var(--sel-muted); margin-bottom:3px; text-transform:uppercase; letter-spacing:.3px; }
+.rs-cs-ctx select { width:100%; padding:6px 8px; border:1px solid var(--sel-btn-bd); border-radius:4px; font:inherit; font-size:12px; background:#fff; cursor:pointer; }
+.rs-cs-ctx-hint { font-size:10.5px; color:var(--sel-muted); margin-top:4px; }
+.rs-cs-gbs .rs-cs-list { border:0; border-radius:0; max-height:none; overflow:visible; background:transparent; }
+.rs-cs-gbs .rs-cs-sel-block { border:0; padding:8px 10px 0; }
+.rs-cs-gbs .rs-cs-sel-head { padding:8px 12px; background:var(--sel-podbor-bg); border:1px solid var(--sel-podbor-bd); border-radius:5px; font-size:12.5px; font-weight:600; color:var(--sel-podbor-ink); }
+.rs-cs-gbs .rs-cs-sel-head:hover { background:var(--sel-podbor-hover); }
+.rs-cs-gbs .rs-cs-sel-head.rs-cs-sel-active { background:var(--sel-podbor-act-bg); border-color:var(--sel-podbor-act-bd); color:var(--sel-podbor-act-ink); }
+.rs-cs-gbs .rs-cs-sel-head::before { color:var(--sel-podbor-ink); }
+.rs-cs-gbs .rs-cs-sel-count { color:var(--sel-podbor-act-ink); opacity:.8; }
+.rs-cs-gbs .rs-cs-sel-block > ul { margin:4px 0 0 14px; }
+.rs-cs-gbs .rs-cs-item { border:1px solid var(--sel-var-bd); background:var(--sel-var-bg); border-radius:5px; margin-bottom:4px; padding:8px 12px; }
+.rs-cs-gbs .rs-cs-item:hover { background:var(--sel-var-hover-bg); border-color:var(--sel-var-hover-bd); }
+.rs-cs-gbs .rs-cs-item.rs-active { background:var(--sel-var-act-bg); border-color:var(--sel-var-act-bd); }
+.rs-cs-gbs .rs-cs-item.rs-cs-item-main { background:var(--sel-main-bg); border-color:var(--sel-main-bd); }
+.rs-cs-gbs .rs-cs-item.rs-cs-item-main.rs-active { background:var(--sel-main-act-bg); border-color:var(--sel-main-act-bd); }
+.rs-cs-gbs .rs-cs-main-badge { background:transparent; color:var(--sel-main-ink); padding:0; margin-left:4px; font-size:10px; font-weight:700; }
+.rs-cs-gbs .rs-cs-item-actions { display:flex; }
+.rs-cs-sel-actions { display:none; flex:0 0 auto; gap:2px; }
+.rs-cs-sel-head:hover .rs-cs-sel-actions { display:flex; }
+.rs-cs-sel-actions button { background:transparent; border:none; cursor:pointer; padding:2px 4px; font-size:11px; color:var(--sel-podbor-ink); }
+.rs-cs-sel-actions button:hover { color:var(--sel-danger-ink); }
+.rs-cs-addrow { display:flex; gap:6px; padding:10px; }
+.rs-cs-addrow .rs-cs-btn { flex:1; padding:8px 10px; font-size:12.5px; text-align:center; }
+/* Кнопки сайдбара (единый вид) */
+.rs-cs-btn { cursor:pointer; padding:3px 8px; border:1px solid var(--sel-btn-bd); background:var(--sel-btn-bg); border-radius:4px; font:11px/1 system-ui,sans-serif; color:var(--sel-btn-ink); }
+.rs-cs-btn:hover { background:var(--sel-btn-hover); }
+.rs-cs-btn-primary { background:var(--sel-btn-primary); color:#fff; border-color:var(--sel-btn-primary); }
+.rs-cs-btn-primary:hover { background:var(--sel-btn-primary-h); }
+
+/* ── Панель подбора (selection-panel.js, .rsp-*) ────────────────────────── */
+.rsp-wrap{border:2px solid var(--sel-accent);border-radius:8px;margin:16px 0;background:#fff;font:13px/1.45 system-ui,sans-serif}
+.rsp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--sel-accent-bg);border-bottom:1px solid var(--sel-accent-bd);border-radius:6px 6px 0 0}
+.rsp-head h3{margin:0;font-size:15px;color:var(--sel-accent-ink)}
+.rsp-sub{font-size:12px;color:var(--sel-accent)}
+.rsp-tabs{display:flex;gap:4px;padding:8px 14px 0;border-bottom:1px solid var(--sel-bd);flex-wrap:wrap}
+.rsp-tab{padding:7px 14px;border:1px solid var(--sel-bd);border-bottom:none;border-radius:6px 6px 0 0;background:#f8fafc;cursor:pointer;font-size:12.5px;color:#475569}
+.rsp-tab.active{background:#fff;color:var(--sel-accent-ink);font-weight:600;border-color:var(--sel-accent-bd)}
+.rsp-body{padding:14px}
+.rsp-sec-title{font-weight:600;color:var(--sel-ink);margin:4px 0 8px;font-size:13px}
+.rsp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.rsp-field{display:flex;flex-direction:column;gap:3px;font-size:12px;color:#475569}
+.rsp-field input,.rsp-field select{padding:6px 8px;border:1px solid var(--sel-btn-bd);border-radius:4px;font:inherit}
+.rsp-note{font-size:11.5px;color:var(--sel-note-ink);background:var(--sel-note-bg);border:1px solid var(--sel-note-bd);border-radius:4px;padding:7px 10px;margin:10px 0 0}
+.rsp-empty{color:var(--sel-muted);text-align:center;padding:26px 10px;font-size:13px}
+.rsp-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+.rsp-table th,.rsp-table td{border:1px solid var(--sel-bd);padding:6px 8px;text-align:right;white-space:nowrap}
+.rsp-table th{background:var(--sel-th-bg);color:var(--sel-ink);font-weight:600;text-align:right}
+.rsp-table td.rsp-lft,.rsp-table th.rsp-lft{text-align:left}
+.rsp-table tr.rsp-main td{background:#fffbeb}
+.rsp-best{background:var(--sel-best-bg)!important;font-weight:700;color:var(--sel-best-ink)}
+.rsp-divider{height:1px;background:var(--sel-bd);margin:14px 0}

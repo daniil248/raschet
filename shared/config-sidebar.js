@@ -74,32 +74,10 @@ const SIDEBAR_CSS = `
 .rs-cs-sel-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rs-cs-sel-count { color: #64748b; font-weight: 400; font-size: 10px; }
 .rs-cs-main-badge { background: #fef3c7; color: #92400e; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 600; margin-left: 4px; }
-/* v0.60.434: дизайн как в «Подбор холода» (groupBySelection). */
-.rs-cs-ctx { padding: 10px; }
-.rs-cs-ctx label { display:block; font-size:11px; font-weight:600; color:#475569; margin-bottom:3px; text-transform:uppercase; letter-spacing:.3px; }
-.rs-cs-ctx select { width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:4px; font:inherit; font-size:12px; background:#fff; cursor:pointer; }
-.rs-cs-ctx-hint { font-size:10.5px; color:#64748b; margin-top:4px; }
-.rs-cs-gbs .rs-cs-list { border:0; border-radius:0; max-height:none; overflow:visible; background:transparent; }
-.rs-cs-gbs .rs-cs-sel-block { border:0; padding:8px 10px 0; }
-.rs-cs-gbs .rs-cs-sel-head { padding:8px 12px; background:#fef3c7; border:1px solid #fde68a; border-radius:5px; font-size:12.5px; font-weight:600; color:#92400e; }
-.rs-cs-gbs .rs-cs-sel-head:hover { background:#fde68a; }
-.rs-cs-gbs .rs-cs-sel-head.rs-cs-sel-active { background:#fbbf24; border-color:#d97706; color:#78350f; }
-.rs-cs-gbs .rs-cs-sel-head::before { color:#92400e; }
-.rs-cs-gbs .rs-cs-sel-count { color:#78350f; opacity:.8; }
-.rs-cs-gbs .rs-cs-sel-block > ul { margin:4px 0 0 14px; }
-.rs-cs-gbs .rs-cs-item { border:1px solid #e5e7eb; background:#f9fafb; border-radius:5px; margin-bottom:4px; padding:8px 12px; }
-.rs-cs-gbs .rs-cs-item:hover { background:#eff6ff; border-color:#93c5fd; }
-.rs-cs-gbs .rs-cs-item.rs-active { background:#dbeafe; border-color:#1e40af; }
-.rs-cs-gbs .rs-cs-item.rs-cs-item-main { background:#ecfdf5; border-color:#22c55e; }
-.rs-cs-gbs .rs-cs-item.rs-cs-item-main.rs-active { background:#d1fae5; border-color:#16a34a; }
-.rs-cs-gbs .rs-cs-main-badge { background:transparent; color:#16a34a; padding:0; margin-left:4px; font-size:10px; font-weight:700; }
-.rs-cs-gbs .rs-cs-item-actions { display:flex; }
-.rs-cs-sel-actions { display:none; flex:0 0 auto; gap:2px; }
-.rs-cs-sel-head:hover .rs-cs-sel-actions { display:flex; }
-.rs-cs-sel-actions button { background:transparent; border:none; cursor:pointer; padding:2px 4px; font-size:11px; color:#92400e; }
-.rs-cs-sel-actions button:hover { color:#b91c1c; }
-.rs-cs-addrow { display:flex; gap:6px; padding:10px; }
-.rs-cs-addrow .rs-cs-btn { flex:1; padding:8px 10px; font-size:12.5px; text-align:center; }
+/* v0.60.440: дизайн режима подборов (groupBySelection: «Контекст подбора»,
+   карточки подбор/вариант, +Подбор/+Вариант, ✎/🗑) ВЫНЕСЕН в ЕДИНУЮ ТЕМУ
+   shared/styles/selection-theme.css (один источник для ups/battery/cooling).
+   Здесь оставлен только generic-base сайдбара для НЕ-selection модулей. */
 `;
 
 function injectCss() {

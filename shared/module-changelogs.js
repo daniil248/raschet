@@ -4,6 +4,13 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.440', date: '2026-05-15', items: [
+      '🎨 <b>Единая тема «подбор/варианты» (один комплект CSS)</b> — Этап A1. По требованию Пользователя 2026-05-15: «дизайн кнопок и сайдбара одинаковый и меняется одним комплектом css файлов темы».',
+      '<b>shared/styles/selection-theme.css</b> (новый) — единый источник внешнего вида: токены палитры (--sel-*), карточки подбор/вариант (жёлтый/оранжевый/зелёный/синий), кнопки, «Контекст подбора», вкладки и таблицы панели. Меняя токены — меняется вид во ВСЕХ модулях сразу.',
+      '<b>config-sidebar.js</b>: selection-специфичные стили (gbs/ctx/addrow/sel-actions) убраны из inline-инжекта → теперь в теме; generic-base для не-selection модулей сохранён (panel/mv/rack-config не затронуты).',
+      '<b>selection-panel.js</b>: больше не инжектит .rsp-* CSS; стили из темы. Страховка — авто-подключение <link> темы, если забыли.',
+      '<b>ups-config/index.html, battery/index.html</b>: подключена <link> темы. Этап A2 — перевод cooling на ту же тему.',
+    ] },
     { version: '0.60.439', date: '2026-05-15', items: [
       '🎯 <b>Единый источник активного проекта (исправлен разнобой проектов)</b>. По замечанию Пользователя 2026-05-15: «не нужно в нескольких местах отображать разные проекты; к какому относится подбор?». Причина: шапка читала активный проект из <code>raschet.activeProjectId.v1</code>, а каталог конфигураций — из отдельного <code>raschet.activeProject.v1</code> (его пишет только главная схема), плюс cooling без <code>?pid</code> брал первый/default проект. Итог — в шапке один проект, в сайдбаре подбора другой.',
       '<b>shared/configuration-catalog.js</b>: <code>getActiveProjectCode()</code> теперь берёт проект из ЕДИНОГО источника (как бейдж в шапке: <code>raschet.activeProjectId.v1</code> → <code>raschet.projects.v1</code>), старый ключ — fallback. Новый <code>getActiveProjectRef()</code> ({id,code,name}).',

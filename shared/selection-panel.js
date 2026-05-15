@@ -31,35 +31,23 @@ import {
 import { CURRENCIES, fmtMoney } from './money.js';
 import { getProject, getActiveProjectId } from './project-storage.js';
 
-let _cssInjected = false;
+// v0.60.440: стили .rsp-* вынесены в ЕДИНУЮ ТЕМУ
+// shared/styles/selection-theme.css (один источник для ups/battery/cooling,
+// «меняется одним комплектом css»). Модуль больше НЕ инжектит CSS.
+// Страховка: если тему забыли подключить <link>'ом — добавим её.
 function injectCss() {
-  if (_cssInjected) return;
-  _cssInjected = true;
-  const s = document.createElement('style');
-  s.textContent = `
-  .rsp-wrap{border:2px solid #6366f1;border-radius:8px;margin:16px 0;background:#fff;font:13px/1.45 system-ui,sans-serif}
-  .rsp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:#eef2ff;border-bottom:1px solid #c7d2fe;border-radius:6px 6px 0 0}
-  .rsp-head h3{margin:0;font-size:15px;color:#3730a3}
-  .rsp-sub{font-size:12px;color:#6366f1}
-  .rsp-tabs{display:flex;gap:4px;padding:8px 14px 0;border-bottom:1px solid #e2e8f0;flex-wrap:wrap}
-  .rsp-tab{padding:7px 14px;border:1px solid #e2e8f0;border-bottom:none;border-radius:6px 6px 0 0;background:#f8fafc;cursor:pointer;font-size:12.5px;color:#475569}
-  .rsp-tab.active{background:#fff;color:#3730a3;font-weight:600;border-color:#c7d2fe}
-  .rsp-body{padding:14px}
-  .rsp-sec-title{font-weight:600;color:#334155;margin:4px 0 8px;font-size:13px}
-  .rsp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
-  .rsp-field{display:flex;flex-direction:column;gap:3px;font-size:12px;color:#475569}
-  .rsp-field input,.rsp-field select{padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;font:inherit}
-  .rsp-note{font-size:11.5px;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;padding:7px 10px;margin:10px 0 0}
-  .rsp-empty{color:#64748b;text-align:center;padding:26px 10px;font-size:13px}
-  .rsp-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
-  .rsp-table th,.rsp-table td{border:1px solid #e2e8f0;padding:6px 8px;text-align:right;white-space:nowrap}
-  .rsp-table th{background:#f1f5f9;color:#334155;font-weight:600;text-align:right}
-  .rsp-table td.rsp-lft,.rsp-table th.rsp-lft{text-align:left}
-  .rsp-table tr.rsp-main td{background:#fffbeb}
-  .rsp-best{background:#dcfce7!important;font-weight:700;color:#166534}
-  .rsp-divider{height:1px;background:#e2e8f0;margin:14px 0}
-  `;
-  document.head.appendChild(s);
+  if (typeof document === 'undefined') return;
+  if (document.getElementById('rs-selection-theme-link')
+    || document.querySelector('link[href*="selection-theme.css"]')) return;
+  try {
+    const base = (document.querySelector('link[href*="shared/styles/base.css"]')?.getAttribute('href') || '')
+      .replace(/base\.css.*$/, '');
+    const l = document.createElement('link');
+    l.id = 'rs-selection-theme-link';
+    l.rel = 'stylesheet';
+    l.href = (base || '../shared/styles/') + 'selection-theme.css';
+    document.head.appendChild(l);
+  } catch {}
 }
 
 const FIN_FIELDS = [
