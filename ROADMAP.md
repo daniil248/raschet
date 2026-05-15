@@ -3311,6 +3311,30 @@ standalone-приложение в отдельном. Чтобы использ
   ```js
   import { openMoneyItemsModal, normMoney, moneyTotalIn } from 'shared/money-items.js';
   ```
+- [x] **23.2a** Подбор ИБП/АКБ как «Подбор холода» — selection-level условия +
+  TCO/CAPEX/OPEX/сравнение. Закрыто v0.60.427–429 (по запросу Пользователя
+  2026-05-15: «подбор ИБП и АКБ должен быть выполнен как подбор холодильных
+  систем — в самом подборе все условия, а в вариантах конкретные решения, со
+  сравнениями, TCO, CAPEX, OPEX»).
+  - **Фаза 1** v0.60.427: `cooling/calc/capex-tco.js` → `shared/calc/capex-tco.js`
+    (без изменения логики, импорты cooling перенаправлены). В
+    `shared/configuration-catalog.js` — запись подбора (selection-level record)
+    с `requirements` (условия) + `eco` (финансы): API `getSelectionMeta /
+    listSelectionMetas / saveSelectionMeta / ensureSelectionMeta /
+    renameSelection / deleteSelection`, LS-ключ `raschet.selections.<kind>.v1`.
+  - **Фаза 2** v0.60.428: `shared/selection-panel.js` (универсальная панель
+    «📋 Свойства подбора» + «📈 TCO / Сравнение»), `shared/money.js`,
+    `config-sidebar.js` — событие `rs-selection-change` (backward-compat).
+    ups-config: OPEX-энергия = потери КПД `Pвых·(1/η−1)·8760·k_load·тариф`,
+    OPEX-ТО = % CAPEX/год.
+  - **Фаза 3** v0.60.429: панель в battery; `selection-panel` поддерживает
+    ступенчатые CAPEX-события (`extraCapexEvents`); АКБ-OPEX = ТО + замена
+    АКБ как CAPEX-событие при сроке службы < срока проекта (Li-ion ≈ 12,
+    VRLA ≈ 6 лет).
+  - TODO (по мере необходимости): bulk-снятие freeze, авто-выбор активного
+    подбора при загрузке/после wizard-save, rollout панели на mv-config /
+    dgu-config / panel-config / transformer-config.
+
 - [ ] **23.3** Rollout в Logistics — стоимость доставки/растаможки как статьи.
 - [ ] **23.4** Rollout в SCS-config / breaker-catalog / battery-catalog — поля
   цены позиции с возможностью разбивки (доставка + НДС + скидка).

@@ -22,7 +22,7 @@
 
 import {
   getSelectionMeta, saveSelectionMeta, ensureSelectionMeta,
-  listConfigs, onConfigsChange,
+  listSelectionMetas, listConfigs, onConfigsChange,
 } from './configuration-catalog.js';
 import {
   DEFAULT_ECONOMICS, computeTco, discountedPaybackYears, convertEcoToCurrency,
@@ -224,8 +224,23 @@ export function mountSelectionPanel(o) {
     `;
   }
 
+  // v0.60.430: авто-выбор активного подбора, если явный ещё не задан —
+  // самый свежий по записи подбора, иначе по самому свежему варианту.
+  // Чтобы панель не была пустой при заходе/после сохранения из wizard.
+  function autoSelName() {
+    const metas = listSelectionMetas(kind, { projectCode: pc });
+    if (metas && metas.length) return metas[0].selectionName || null;
+    const cfgs = listConfigs(kind, { projectCode: pc });
+    for (const c of cfgs) {
+      const s = String(c.selectionName || '').trim();
+      if (s) return s;
+    }
+    return null;
+  }
+
   function render() {
-    selName = (typeof o.getActiveSelectionName === 'function' ? o.getActiveSelectionName() : selName) || selName;
+    const explicit = (typeof o.getActiveSelectionName === 'function' ? o.getActiveSelectionName() : selName) || selName;
+    selName = explicit || autoSelName();
     if (!selName) {
       mountEl.innerHTML = `<div class="rsp-wrap"><div class="rsp-body"><div class="rsp-empty">Выберите или создайте ПОДБОР в сайдбаре слева, чтобы задать условия и сравнить варианты по TCO/CAPEX/OPEX.</div></div></div>`;
       return;
@@ -269,7 +284,10 @@ export function mountSelectionPanel(o) {
     });
   }
 
-  const off = onConfigsChange(kind, () => { if (activeTab === 'compare') render(); });
+  // Перерисовка при изменении конфигураций: на вкладке сравнения всегда;
+  // и когда подбор ещё не выбран — чтобы подхватить только что созданный
+  // (в т.ч. сохранение из wizard, минующее сайдбар).
+  const off = onConfigsChange(kind, () => { if (activeTab === 'compare' || !selName) render(); });
   render();
 
   return {
