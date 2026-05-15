@@ -23,6 +23,7 @@
 import {
   getSelectionMeta, saveSelectionMeta, ensureSelectionMeta,
   listSelectionMetas, listConfigs, onConfigsChange,
+  getConfig, saveConfig,
 } from './configuration-catalog.js';
 import {
   DEFAULT_ECONOMICS, computeTco, discountedPaybackYears, convertEcoToCurrency,
@@ -151,9 +152,13 @@ export function mountSelectionPanel(o) {
     const rows = variants.map(v => {
       let ec = {};
       try { ec = o.variantEconomics(v, eco, req) || {}; } catch { ec = {}; }
+      // v0.60.433: цены, введённые Пользователем вручную во вкладке
+      // «💰 CAPEX (по вариантам)», имеют приоритет над авто-выводом из payload.
+      const storedCI = (v.eco && Array.isArray(v.eco.costItems) && v.eco.costItems.length)
+        ? v.eco.costItems : null;
       const ecoForCalc = ec.eco
         ? ec.eco
-        : { ...eco, costItems: Array.isArray(ec.costItems) ? ec.costItems : [] };
+        : { ...eco, costItems: storedCI || (Array.isArray(ec.costItems) ? ec.costItems : []) };
       const flat = convertEcoToCurrency(ecoForCalc, cur, o.convertFn || null);
       const t = computeTco({
         annualEnergyKwh: Number(ec.annualEnergyKwh) || 0,
@@ -224,6 +229,57 @@ export function mountSelectionPanel(o) {
     `;
   }
 
+  // v0.60.433: вкладка «💰 CAPEX (по вариантам)» — Пользователь вводит
+  // конкретные цены каждого варианта (оборудование / монтаж / ТО-год +
+  // валюта). Хранится в самом варианте: entry.eco.costItems[0]. Эти цены
+  // приоритетнее авто-вывода из payload (см. storedCI в renderCompare).
+  function ciOf(entry) {
+    const ci = entry.eco && Array.isArray(entry.eco.costItems) && entry.eco.costItems[0];
+    return ci || null;
+  }
+  function renderCapex(meta) {
+    const eco = selEcoOf(meta);
+    const cur0 = eco.currency || '₸';
+    const variants = listConfigs(kind, { projectCode: pc, selectionName: selName });
+    if (!variants.length) {
+      return `<div class="rsp-empty">В подборе «${escH(selName)}» нет вариантов. Создайте решение и сохраните кнопкой «+ Вариант».</div>`;
+    }
+    const curOpts = (selCur) => CURRENCIES.map(c =>
+      `<option value="${c.code}"${c.code === (selCur || cur0) ? ' selected' : ''} title="${escH(c.label)}">${c.code}</option>`).join('');
+    const rowsH = variants.map(v => {
+      const ci = ciOf(v);
+      let sug = {};
+      if (!ci) { try { const e = o.variantEconomics(v, eco, (meta && meta.requirements) || {}) || {}; sug = (e.costItems && e.costItems[0]) || {}; } catch {} }
+      const eqp = ci ? ci.equipmentPrice : sug.equipmentPrice;
+      const inp = ci ? ci.installPrice : sug.installPrice;
+      const mnt = ci ? ci.maintenancePerYearPrice : sug.maintenancePerYearPrice;
+      const rc = (ci && ci.equipmentPrice && ci.equipmentPrice.currency) || (sug.equipmentPrice && sug.equipmentPrice.currency) || cur0;
+      const num = (x) => (x && Number(x.value)) || 0;
+      const auto = ci ? '' : ' title="Авто-оценка из параметров варианта. Введите цену, чтобы зафиксировать."';
+      return `<tr data-cap-id="${escH(v.id)}">
+        <td class="rsp-lft">${v.isMainVariant ? '★ ' : ''}${escH(v.label || v.id)}${ci ? '' : ' <span style="color:#94a3b8">(авто)</span>'}</td>
+        <td><input type="number" step="100" data-capf="equipmentPrice" value="${num(eqp)}"${auto}></td>
+        <td><input type="number" step="100" data-capf="installPrice" value="${num(inp)}"${auto}></td>
+        <td><input type="number" step="100" data-capf="maintenancePerYearPrice" value="${num(mnt)}"${auto}></td>
+        <td><select data-capf="currency">${curOpts(rc)}</select></td>
+      </tr>`;
+    }).join('');
+    return `
+      <div class="rsp-sec-title" title="Конкретные цены каждого варианта. Σ Оборудование+Монтаж = CAPEX (год 0); ТО за год идёт в OPEX (с эскалацией из «Свойства подбора»). Введённые цены имеют приоритет над авто-оценкой.">💰 CAPEX по вариантам (валюта подбора по умолчанию — ${escH(cur0)})</div>
+      <table class="rsp-table">
+        <thead><tr>
+          <th class="rsp-lft" title="Вариант подбора.">Вариант</th>
+          <th title="Стоимость оборудования варианта (за весь комплект).">Оборудование</th>
+          <th title="Стоимость монтажа+ПНР.">Монтаж/ПНР</th>
+          <th title="Стоимость ТО за год (база OPEX-ТО, далее с эскалацией).">ТО за год</th>
+          <th title="Валюта цен этого варианта. Конвертируется в валюту подбора по курсу.">Валюта</th>
+        </tr></thead>
+        <tbody>${rowsH}</tbody>
+      </table>
+      <div class="rsp-note">ℹ «(авто)» — цена ещё не задана, показана оценка из параметров. Любая правка фиксирует вариант. Итоги CAPEX/OPEX/TCO — во вкладке «📈 TCO / Сравнение».</div>
+    `;
+  }
+
   // v0.60.430: авто-выбор активного подбора, если явный ещё не задан —
   // самый свежий по записи подбора, иначе по самому свежему варианту.
   // Чтобы панель не была пустой при заходе/после сохранения из wizard.
@@ -246,7 +302,9 @@ export function mountSelectionPanel(o) {
       return;
     }
     const meta = getSelectionMeta(kind, { projectCode: pc, selectionName: selName });
-    const inner = activeTab === 'general' ? renderGeneral(meta) : renderCompare(meta);
+    const inner = activeTab === 'general' ? renderGeneral(meta)
+      : activeTab === 'capex' ? renderCapex(meta)
+      : renderCompare(meta);
     mountEl.innerHTML = `
       <div class="rsp-wrap">
         <div class="rsp-head">
@@ -255,6 +313,7 @@ export function mountSelectionPanel(o) {
         </div>
         <div class="rsp-tabs">
           <div class="rsp-tab ${activeTab === 'general' ? 'active' : ''}" data-tab="general" title="Общие условия подбора и финансовые параметры.">📋 Свойства подбора</div>
+          <div class="rsp-tab ${activeTab === 'capex' ? 'active' : ''}" data-tab="capex" title="Конкретные цены каждого варианта: оборудование / монтаж / ТО-год + валюта.">💰 CAPEX (по вариантам)</div>
           <div class="rsp-tab ${activeTab === 'compare' ? 'active' : ''}" data-tab="compare" title="Сравнение вариантов: CAPEX / OPEX / TCO / окупаемость.">📈 TCO / Сравнение</div>
         </div>
         <div class="rsp-body">${inner}</div>
@@ -280,6 +339,30 @@ export function mountSelectionPanel(o) {
         eco[k] = inp.tagName === 'SELECT' ? inp.value : (inp.value === '' ? '' : Number(inp.value));
         persist({ eco });
         if (activeTab === 'compare') render();
+      });
+    });
+    // v0.60.433: правка цен варианта во вкладке CAPEX → сохраняем в сам
+    // вариант (entry.eco.costItems[0]). Любая правка «фиксирует» вариант.
+    mountEl.querySelectorAll('[data-capf]').forEach(inp => {
+      inp.addEventListener('change', () => {
+        const tr = inp.closest('[data-cap-id]');
+        if (!tr) return;
+        const id = tr.getAttribute('data-cap-id');
+        const entry = getConfig(kind, id);
+        if (!entry) return;
+        const g = (f) => tr.querySelector(`[data-capf="${f}"]`);
+        const m = getSelectionMeta(kind, { projectCode: pc, selectionName: selName });
+        const curDef = (selEcoOf(m).currency) || '₸';
+        const ccy = (g('currency') && g('currency').value) || curDef;
+        const val = (f) => Number(g(f) && g(f).value) || 0;
+        const ci = {
+          id: 'main', label: entry.label || 'Вариант', qty: 1,
+          equipmentPrice:          { value: val('equipmentPrice'),          currency: ccy },
+          installPrice:            { value: val('installPrice'),            currency: ccy },
+          maintenancePerYearPrice: { value: val('maintenancePerYearPrice'), currency: ccy },
+        };
+        saveConfig(kind, { ...entry, eco: { ...(entry.eco || {}), costItems: [ci] } });
+        render();
       });
     });
   }
