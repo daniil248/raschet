@@ -4,6 +4,17 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.424', date: '2026-05-06', items: [
+      '📋 <b>Подборы ИБП — теперь видны и доступны из сайдбара</b>. По репорту Пользователя 2026-05-06: «подборы и варианты не нашел». Фича v0.60.422 была скрыта: при одной группе «— Без подбора —» рендер был плоским, а сайдбарная «+ Сохранить» не спрашивала подбор.',
+      '<b>config-sidebar.js</b> — новая опция <code>groupBySelection</code> (default false → backward-compat для panel/mv/etc.):',
+      '• Когда true — структура подбор→варианты показывается ВСЕГДА (даже одна группа).',
+      '• Сайдбарная «+ Сохранить» сначала спрашивает «Название подбора» (с подсказкой существующих), затем метку варианта.',
+      '• У каждого варианта действие <b>📋</b> — переместить в подбор / создать подбор / убрать из подбора.',
+      '• Пустое состояние объясняет суть подборов.',
+      'rename сохраняет selectionName (spread <code>...e</code>).',
+      '<b>ups-config/index.html</b>: <code>groupBySelection: true</code>, заголовок «Подборы ИБП».',
+      'Files: <code>shared/config-sidebar.js</code>, <code>ups-config/index.html</code>.',
+    ] },
     { version: '0.60.423', date: '2026-05-06', items: [
       '🐛 <b>Hotfix: <code>CHANGELOGS is not defined</code> — крах footer-скрипта в 12 модулях</b>. Регрессия v0.60.419 (рефактор changelog: «footer монтируется всегда — dynamic import вместо static»).',
       '<b>Корень</b>: 12 inline-скриптов модулей передавали <code>entries: CHANGELOGS[\'xxx\']</code> в mountModuleFooter, но <code>CHANGELOGS</code> больше нигде не импортировался → <code>ReferenceError</code> рушил весь inline-модуль (footer не монтировался, на ups-config — и сайдбар вариантов).',

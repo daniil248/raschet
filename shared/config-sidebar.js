@@ -166,14 +166,19 @@ export function mountConfigSidebar(opts) {
       search: filter || undefined,
     });
     if (!groups.size) {
-      slotList.innerHTML = `<li class="rs-cs-empty">${filter ? 'Ничего не найдено' : 'Нет записей'}</li>`;
+      slotList.innerHTML = `<li class="rs-cs-empty">${filter ? 'Ничего не найдено'
+        : (o.groupBySelection
+            ? 'Подборов пока нет. «+ Сохранить» создаст подбор и первый вариант. В одном подборе держите альтернативные варианты (моноблок vs модульный vs гибрид) для сравнения.'
+            : 'Нет записей')}</li>`;
       return;
     }
-    // v0.60.422: рендерим группы (Подборы) с вложенными вариантами.
-    // Если только одна группа «— Без подбора —» — рендерим плоско (как раньше),
-    // чтобы не нагружать UI «пустой» секцией.
+    // v0.60.422/v0.60.424: рендерим группы (Подборы) с вложенными вариантами.
+    // По умолчанию (groupBySelection !== true) если только одна группа
+    // «— Без подбора —» — рендерим плоско (backward-compat для panel/mv/etc.).
+    // Если модуль явно включил groupBySelection (ups-config) — ВСЕГДА
+    // показываем структуру подборов, чтобы фича была видна и понятна.
     const onlyDefault = groups.size === 1 && groups.has('— Без подбора —');
-    if (onlyDefault) {
+    if (onlyDefault && !o.groupBySelection) {
       const entries = groups.get('— Без подбора —');
       slotList.innerHTML = entries.map(e => renderEntryItem(e)).join('');
       return;
@@ -205,6 +210,7 @@ export function mountConfigSidebar(opts) {
           ${e.description ? `<div class="rs-cs-item-desc">${esc(e.description)}</div>` : ''}
         </div>
         <div class="rs-cs-item-actions">
+          ${o.groupBySelection ? `<button type="button" class="rs-cs-btn" data-act="movesel" title="Переместить в подбор / создать подбор">📋</button>` : ''}
           ${e.selectionName && !e.isMainVariant ? `<button type="button" class="rs-cs-btn" data-act="setmain" title="Сделать основным вариантом подбора">★</button>` : ''}
           <button type="button" class="rs-cs-btn" data-act="rename" title="Переименовать">✎</button>
           <button type="button" class="rs-cs-btn rs-cs-btn-danger" data-act="del" title="Удалить">✕</button>
@@ -253,6 +259,22 @@ export function mountConfigSidebar(opts) {
     const li = ev.target.closest('.rs-cs-item');
     if (!li) return;
     const id = li.getAttribute('data-id');
+    // v0.60.424: «📋» — переместить вариант в подбор / создать подбор.
+    if (btn && btn.dataset.act === 'movesel') {
+      ev.stopPropagation();
+      const e = getConfig(kind, id);
+      if (!e) return;
+      const existing = listSelectionNames(kind, { projectCode: projectCode || undefined }).slice(0, 20);
+      const hint = existing.length
+        ? `\n\nСуществующие подборы:\n${existing.map(s => '• ' + s).join('\n')}\n\n(пусто = убрать из подбора)`
+        : '\n\n(пусто = без подбора)';
+      const res = await rsPrompt('Переместить в подбор' + hint, e.selectionName || (existing[0] || ''));
+      if (res == null) return;
+      const sel = String(res || '').trim();
+      saveConfig(kind, { ...e, selectionName: sel || undefined });
+      rsToast(sel ? ('Перемещено → подбор «' + sel + '»') : 'Убрано из подбора', 'ok');
+      return;
+    }
     // v0.60.422: «★» — пометить как основной вариант подбора.
     if (btn && btn.dataset.act === 'setmain') {
       ev.stopPropagation();
@@ -301,20 +323,34 @@ export function mountConfigSidebar(opts) {
       try { data = o.onSave() || {}; }
       catch (e) { console.warn('[config-sidebar] onSave error', e); rsToast('Ошибка сохранения', 'err'); return; }
     }
+    // v0.60.424: если модуль использует подборы (groupBySelection) —
+    // спрашиваем имя Подбора (с подсказкой существующих) ДО метки/описания,
+    // чтобы новая запись сразу попала в группу.
+    let selectionName = data.selectionName;
+    if (o.groupBySelection && selectionName == null) {
+      const existing = listSelectionNames(kind, { projectCode: projectCode || undefined }).slice(0, 20);
+      const hint = existing.length
+        ? `\n\nСуществующие подборы (впишите имя, чтобы добавить вариант в этот подбор):\n${existing.map(s => '• ' + s).join('\n')}`
+        : '';
+      const sres = await rsPrompt('Название подбора (группа вариантов)' + hint, existing[0] || 'Подбор 1');
+      if (sres == null) return;
+      selectionName = String(sres || '').trim() || (existing[0] || 'Подбор 1');
+    }
     const label = data.label != null ? data.label :
-      await rsPrompt('Метка конфигурации (коротко)', '');
+      await rsPrompt('Метка варианта (коротко)', '');
     if (label == null) return;
     const description = data.description != null ? data.description :
       await rsPrompt('Описание (что именно конфигурировали)', '');
     if (description == null) return;
     const saved = saveConfig(kind, {
       label, description,
+      selectionName: selectionName || undefined,
       projectCode: data.projectCode || projectCode || undefined,
       payload: data.payload || {},
     });
     activeId = saved.id;
     renderProps(saved);
-    rsToast('Сохранено: ' + saved.id, 'ok');
+    rsToast('Сохранено: ' + saved.id + (selectionName ? ' → подбор «' + selectionName + '»' : ''), 'ok');
   });
 
   if (searchInput) searchInput.addEventListener('input', () => {
