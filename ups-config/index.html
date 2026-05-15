@@ -258,6 +258,10 @@
       </div>
     </section>
 
+    <!-- v0.60.428: панель ПОДБОРА (условия + TCO/CAPEX/OPEX/сравнение),
+         как в «Подбор холода». Активный подбор берётся из сайдбара слева. -->
+    <div id="uc-selection-panel"></div>
+
     <section class="panel" data-reference-panel="1">
       <div class="panel-head">
         <h3>Справочник моделей ИБП</h3>
@@ -342,6 +346,83 @@
       });
     }
   </script>
+  <!-- v0.60.428: панель ПОДБОРА ИБП (условия + TCO/CAPEX/OPEX/сравнение) -->
+  <script type="module">
+    import { mountSelectionPanel } from '../shared/selection-panel.js';
+    import { getActiveProjectCode, isEmbeddedMode } from '../shared/configuration-catalog.js';
+    if (!isEmbeddedMode()) {
+      const mountEl = document.getElementById('uc-selection-panel');
+      const pc = getActiveProjectCode();
+      let activeSel = null;
+
+      // UPS-условия подбора (общие для всех вариантов).
+      const requirementsSchema = [
+        { key: 'loadKw',          label: 'Критическая нагрузка', unit: 'кВт', type: 'number', step: 0.5,
+          tip: 'Sкрит — критическая активная нагрузка, которую ИБП должен держать. Общее условие подбора; используется для расчёта потерь КПД (OPEX).' },
+        { key: 'autonomyMin',     label: 'Автономия',            unit: 'мин', type: 'number', step: 1,
+          tip: 'Требуемое время работы от АКБ при пропадании сети.' },
+        { key: 'redundancy',      label: 'Резервирование',       type: 'select',
+          options: ['N', 'N+1', 'N+2', '2N'],
+          tip: 'Схема резервирования ИБП/модулей. Общее условие подбора.' },
+        { key: 'topology',        label: 'Топология (IEC 62040-3)', type: 'select',
+          options: ['VFI', 'VI', 'VFD'],
+          tip: 'VFI — on-line double-conversion (ЦОД Tier III/IV); VI — line-interactive; VFD — off-line.' },
+        { key: 'cosPhi',          label: 'cos φ нагрузки',       type: 'number', step: 0.01,
+          tip: 'Коэффициент мощности нагрузки.' },
+        { key: 'phases',          label: 'Число фаз',            type: 'select',
+          options: [{ value: 3, label: '3-фазный' }, { value: 1, label: '1-фазный' }],
+          tip: 'Конфигурация ввода/вывода.' },
+        { key: 'loadFactorPct',   label: 'Факт. загрузка',       unit: '%', type: 'number', step: 5,
+          tip: 'Средняя фактическая загрузка ИБП относительно Sкрит — для расчёта годовых потерь КПД (OPEX-энергия). Типично 60–80%.' },
+        { key: 'maintPctPerYear', label: 'ТО, %/год от CAPEX',   unit: '%', type: 'number', step: 0.5,
+          tip: 'Годовая стоимость обслуживания как % от стоимости оборудования (если в варианте нет явной цены ТО). Типично 1.5–3%.' },
+      ];
+
+      // Как из конкретного варианта получить экономику для TCO:
+      //  CAPEX  = цена ИБП (+ АКБ) из варианта;
+      //  OPEX-энергия = годовые потери КПД: Pвых·(1/η−1)·8760·k_load·тариф;
+      //  OPEX-ТО      = maintPctPerYear % от CAPEX (или явная цена варианта).
+      function variantEconomics(entry, selEco, req) {
+        const p = (entry && entry.payload) || {};
+        const cur = selEco.currency || '₸';
+        const price = Number(p.totalPrice) || Number(p.capacityKw) * 0 || 0;
+        const priceCur = p.currency || cur;
+        let eff = Number(p.efficiency) || 0.95;
+        if (eff > 1) eff = eff / 100;          // 95 → 0.95
+        if (!(eff > 0 && eff < 1)) eff = 0.95;
+        const loadKw = Number(req.loadKw) || Number(p.loadKw) || 0;
+        const kLoad = (Number(req.loadFactorPct) || 80) / 100;
+        const pOut = loadKw * kLoad;
+        const lossKw = pOut * (1 / eff - 1);
+        const annualEnergyKwh = lossKw * 8760;
+        const maintPerYear = price * ((Number(req.maintPctPerYear) || 2) / 100);
+        return {
+          annualEnergyKwh,
+          costItems: [{
+            id: 'ups-main', label: entry.label || 'ИБП', qty: 1,
+            equipmentPrice:          { value: price, currency: priceCur },
+            installPrice:            { value: 0, currency: priceCur },
+            maintenancePerYearPrice: { value: maintPerYear, currency: priceCur },
+          }],
+        };
+      }
+
+      const api = mountSelectionPanel({
+        kind: 'ups', mountEl, projectCode: pc,
+        getActiveSelectionName: () => activeSel,
+        requirementsSchema, variantEconomics,
+        variantLabel: (e) => e.label || e.id,
+        convertFn: null,
+      });
+      window.addEventListener('rs-selection-change', (ev) => {
+        const d = ev.detail || {};
+        if (d.kind && d.kind !== 'ups') return;
+        activeSel = d.selectionName || null;
+        api.setSelection(activeSel);
+      });
+    }
+  </script>
+
   <script type="module">
     import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
     import { APP_VERSION } from '../js/engine/constants.js';

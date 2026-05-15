@@ -245,6 +245,16 @@ export function mountConfigSidebar(opts) {
     `;
   }
 
+  // v0.60.428: уведомление об активном ПОДБОРЕ — для shared/selection-panel.js
+  // (панель условий + TCO). Опциональный колбэк o.onSelectionChange + window
+  // CustomEvent 'rs-selection-change' (backward-compatible: модули без панели
+  // его просто игнорируют).
+  function fireSel(name) {
+    const sel = String(name || '').trim() || null;
+    try { if (typeof o.onSelectionChange === 'function') o.onSelectionChange(sel); } catch {}
+    try { window.dispatchEvent(new CustomEvent('rs-selection-change', { detail: { kind, selectionName: sel } })); } catch {}
+  }
+
   // Делегирование кликов по списку
   if (slotList) slotList.addEventListener('click', async (ev) => {
     // v0.60.422: клик на header подбора → toggle collapsed.
@@ -253,6 +263,7 @@ export function mountConfigSidebar(opts) {
       const name = selHead.getAttribute('data-sel-name');
       collapsedSelections.set(name, !(collapsedSelections.get(name) === true));
       render();
+      fireSel(name);
       return;
     }
     const btn = ev.target.closest('[data-act]');
@@ -273,6 +284,7 @@ export function mountConfigSidebar(opts) {
       const sel = String(res || '').trim();
       saveConfig(kind, { ...e, selectionName: sel || undefined });
       rsToast(sel ? ('Перемещено → подбор «' + sel + '»') : 'Убрано из подбора', 'ok');
+      if (sel) fireSel(sel);
       return;
     }
     // v0.60.422: «★» — пометить как основной вариант подбора.
@@ -313,6 +325,7 @@ export function mountConfigSidebar(opts) {
     if (e && typeof o.onSelect === 'function') {
       try { o.onSelect(e); } catch (err) { console.warn(err); }
     }
+    if (e) fireSel(e.selectionName || null);
   });
 
   // Сохранить
@@ -351,6 +364,7 @@ export function mountConfigSidebar(opts) {
     activeId = saved.id;
     renderProps(saved);
     rsToast('Сохранено: ' + saved.id + (selectionName ? ' → подбор «' + selectionName + '»' : ''), 'ok');
+    if (selectionName) fireSel(selectionName);
   });
 
   if (searchInput) searchInput.addEventListener('input', () => {
