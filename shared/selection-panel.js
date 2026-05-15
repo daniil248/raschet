@@ -137,6 +137,10 @@ export function mountSelectionPanel(o) {
     const lockedNote = (k) => (k in pe)
       ? ` title="🔒 Значение из проекта (свойства проекта → 💰 Экономика). Для разового подбора переключите «Контекст подбора»."` : '';
     const lockAttr = (k) => (k in pe) ? ' disabled' : '';
+    // v0.60.438: для модулей с wizard'ом (ИБП) УСЛОВИЯ задаются в «Шаг 1.
+    // Требования» — единый источник; в панели они только для просмотра.
+    const roCond = !!o.conditionsReadOnly;
+    const roAttr = roCond ? ' disabled' : '';
     const reqHtml = (o.requirementsSchema || []).map(f => {
       const v = req[f.key];
       if (f.type === 'select') {
@@ -146,11 +150,11 @@ export function mountSelectionPanel(o) {
           return `<option value="${escH(val)}"${String(v) === String(val) ? ' selected' : ''}>${escH(lab)}</option>`;
         }).join('');
         return `<label class="rsp-field" title="${escH(f.tip || '')}">${escH(f.label)}${f.unit ? ', ' + escH(f.unit) : ''}
-          <select data-req="${escH(f.key)}">${opts}</select></label>`;
+          <select data-req="${escH(f.key)}"${roAttr}>${opts}</select></label>`;
       }
       const type = f.type === 'text' ? 'text' : 'number';
       return `<label class="rsp-field" title="${escH(f.tip || '')}">${escH(f.label)}${f.unit ? ', ' + escH(f.unit) : ''}
-        <input type="${type}" data-req="${escH(f.key)}" ${f.step ? `step="${f.step}"` : ''} value="${escH(v == null ? '' : v)}"></label>`;
+        <input type="${type}" data-req="${escH(f.key)}" ${f.step ? `step="${f.step}"` : ''} value="${escH(v == null ? '' : v)}"${roAttr}></label>`;
     }).join('');
 
     const curOpts = CURRENCIES.map(c =>
@@ -161,8 +165,9 @@ export function mountSelectionPanel(o) {
     const curLocked = ('currency' in pe);
 
     return `
-      <div class="rsp-sec-title" title="Общие УСЛОВИЯ подбора — одинаковы для всех вариантов. Конкретные решения задаются в вариантах.">📋 Условия подбора</div>
-      <div class="rsp-grid">${reqHtml || '<span class="rsp-empty">Нет полей условий</span>'}</div>
+      <div class="rsp-sec-title" title="Общие УСЛОВИЯ подбора — одинаковы для всех вариантов. Конкретные решения задаются в вариантах.">📋 Условия подбора${roCond ? ' <span style="color:#64748b;font-weight:400;font-size:11px">(из «Шаг 1. Требования»)</span>' : ''}</div>
+      ${roCond ? `<div class="rsp-note" style="margin:0 0 8px">ℹ Условия подбора задаются в «Шаг 1. Требования к ИБП» Конфигуратора (одинаковы для всех вариантов). Здесь — только просмотр; при сохранении варианта они записываются в подбор.</div>` : ''}
+      <div class="rsp-grid">${reqHtml || '<span class="rsp-empty">Нет полей условий — заполните «Шаг 1. Требования» и сохраните вариант.</span>'}</div>
       <div class="rsp-divider"></div>
       <div class="rsp-sec-title" title="Финансовые параметры — общие для всех вариантов, чтобы сравнение TCO было на одинаковых условиях (как в «Подбор холода»).">💰 Финансовые параметры (общие для всех вариантов)</div>
       <div class="rsp-grid">

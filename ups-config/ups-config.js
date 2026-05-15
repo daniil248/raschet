@@ -826,18 +826,49 @@ async function _saveWizardConfiguration() {
     composition: comp.composition,
   };
   try {
-    const { saveConfig, getActiveProjectCode } = await import('../shared/configuration-catalog.js');
+    const cat = await import('../shared/configuration-catalog.js');
+    const { saveConfig, getActiveProjectCode, ensureSelectionMeta, getSelectionMeta, saveSelectionMeta } = cat;
+    // v0.60.438: контекст подбора (проект / разовый) — синхронно с сайдбаром
+    // (raschet.cs.ctx.ups). Шаг 1 «Требования к ИБП» = УСЛОВИЯ ПОДБОРА.
+    const basePc = getActiveProjectCode() || null;
+    let ctxSA;
+    try { const s = localStorage.getItem('raschet.cs.ctx.ups'); ctxSA = s ? s === 'standalone' : !basePc; }
+    catch { ctxSA = !basePc; }
+    const pc = ctxSA ? null : basePc;
     const entry = saveConfig('ups', {
       label,
       description,
       // v0.60.422: selectionName — группа «Подбор» в сайдбаре.
       selectionName,
-      projectCode: getActiveProjectCode() || null,
+      projectCode: pc,
       payload,
     });
+    // v0.60.438: Шаг 1 «Требования к ИБП» — это и есть УСЛОВИЯ ПОДБОРА
+    // (одинаковы для всех вариантов). Пишем их в запись подбора, чтобы
+    // панель «Свойства подбора» и расчёт TCO брали их отсюда (единый
+    // источник, без дублирующего ввода).
+    try {
+      ensureSelectionMeta('ups', { projectCode: pc, selectionName },
+        { requirements: {}, eco: {} });
+      const meta = getSelectionMeta('ups', { projectCode: pc, selectionName });
+      const reqPrev = (meta && meta.requirements) || {};
+      saveSelectionMeta('ups', {
+        projectCode: pc, selectionName,
+        requirements: {
+          ...reqPrev,
+          loadKw: rq.loadKw,
+          autonomyMin: rq.autonomyMin,
+          redundancy: rq.redundancy,
+          cosPhi: rq.cosPhi,
+          phases: rq.phases,
+        },
+      });
+    } catch (e) { console.warn('[ups-config] saveSelectionMeta failed', e); }
     flash(`Сохранено: ${entry.id} · ${label} (подбор «${selectionName}»)`, 'success');
     // Тригернём refresh сайдбара (он подписан на onConfigsChange)
     try { window.dispatchEvent(new CustomEvent('ups-config:configs-changed')); } catch {}
+    // Активируем этот подбор в панели «Свойства подбора / TCO».
+    try { window.dispatchEvent(new CustomEvent('rs-selection-change', { detail: { kind: 'ups', selectionName } })); } catch {}
 
     // v0.60.89 (Phase 36.2 / Phase 30.2 PULL): сохраняем выбранную модель в
     // LS-bridge для tech-workspace round-trip. TW читает её и предлагает
