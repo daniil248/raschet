@@ -421,6 +421,13 @@
         activeSel = d.selectionName || null;
         api.setSelection(activeSel);
       });
+      // v0.60.434: смена «Контекст подбора» (проект ↔ разовый) — перепривязка.
+      window.addEventListener('rs-cs-context', (ev) => {
+        const d = ev.detail || {};
+        if (d.kind && d.kind !== 'ups') return;
+        activeSel = null;
+        api.setProjectCode(d.projectCode || null);
+      });
     }
   </script>
 

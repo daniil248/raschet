@@ -668,6 +668,13 @@
       activeSel = d.selectionName || null;
       sp.setSelection(activeSel);
     });
+    // v0.60.434: смена «Контекст подбора» (проект ↔ разовый) — перепривязка.
+    window.addEventListener('rs-cs-context', (ev) => {
+      const d = ev.detail || {};
+      if (d.kind && d.kind !== 'battery') return;
+      activeSel = null;
+      sp.setProjectCode(d.projectCode || null);
+    });
   </script>
 </body>
 </html>

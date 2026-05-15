@@ -73,6 +73,28 @@ const SIDEBAR_CSS = `
 .rs-cs-sel-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rs-cs-sel-count { color: #64748b; font-weight: 400; font-size: 10px; }
 .rs-cs-main-badge { background: #fef3c7; color: #92400e; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 600; margin-left: 4px; }
+/* v0.60.434: дизайн как в «Подбор холода» (groupBySelection). */
+.rs-cs-ctx { padding: 10px; }
+.rs-cs-ctx label { display:block; font-size:11px; font-weight:600; color:#475569; margin-bottom:3px; text-transform:uppercase; letter-spacing:.3px; }
+.rs-cs-ctx select { width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:4px; font:inherit; font-size:12px; background:#fff; cursor:pointer; }
+.rs-cs-ctx-hint { font-size:10.5px; color:#64748b; margin-top:4px; }
+.rs-cs-gbs .rs-cs-list { border:0; border-radius:0; max-height:none; overflow:visible; background:transparent; }
+.rs-cs-gbs .rs-cs-sel-block { border:0; padding:8px 10px 0; }
+.rs-cs-gbs .rs-cs-sel-head { padding:8px 12px; background:#fef3c7; border:1px solid #fde68a; border-radius:5px; font-size:12.5px; font-weight:600; color:#92400e; }
+.rs-cs-gbs .rs-cs-sel-head:hover { background:#fde68a; }
+.rs-cs-gbs .rs-cs-sel-head.rs-cs-sel-active { background:#fbbf24; border-color:#d97706; color:#78350f; }
+.rs-cs-gbs .rs-cs-sel-head::before { color:#92400e; }
+.rs-cs-gbs .rs-cs-sel-count { color:#78350f; opacity:.8; }
+.rs-cs-gbs .rs-cs-sel-block > ul { margin:4px 0 0 14px; }
+.rs-cs-gbs .rs-cs-item { border:1px solid #e5e7eb; background:#f9fafb; border-radius:5px; margin-bottom:4px; padding:8px 12px; }
+.rs-cs-gbs .rs-cs-item:hover { background:#eff6ff; border-color:#93c5fd; }
+.rs-cs-gbs .rs-cs-item.rs-active { background:#dbeafe; border-color:#1e40af; }
+.rs-cs-gbs .rs-cs-item.rs-cs-item-main { background:#ecfdf5; border-color:#22c55e; }
+.rs-cs-gbs .rs-cs-item.rs-cs-item-main.rs-active { background:#d1fae5; border-color:#16a34a; }
+.rs-cs-gbs .rs-cs-main-badge { background:transparent; color:#16a34a; padding:0; margin-left:4px; font-size:10px; font-weight:700; }
+.rs-cs-gbs .rs-cs-item-actions { display:flex; }
+.rs-cs-addrow { display:flex; gap:6px; padding:10px; }
+.rs-cs-addrow .rs-cs-btn { flex:1; padding:8px 10px; font-size:12.5px; text-align:center; }
 `;
 
 function injectCss() {
@@ -114,13 +136,36 @@ export function mountConfigSidebar(opts) {
     ? o.sections : ['settings', 'properties', 'list'];
   const has = (s) => sections.includes(s);
   // Авто-привязка к активному проекту, если не задано явно
-  const projectCode = o.projectCode != null ? o.projectCode : getActiveProjectCode();
-  const projHint = projectCode
-    ? `<span style="font-size:10px;color:#64748b;font-weight:400;margin-left:6px">@ ${esc(projectCode)}</span>` : '';
+  const baseProjectCode = o.projectCode != null ? o.projectCode : getActiveProjectCode();
+  // v0.60.434: «КОНТЕКСТ ПОДБОРА» как в «Подбор холода» — привязка к проекту
+  // ИЛИ разовый подбор (standalone). По умолчанию: если есть активный проект
+  // — привязка к нему, иначе разовый. Выбор запоминается per-kind.
+  const CTX_KEY = 'raschet.cs.ctx.' + kind;
+  let ctxStandalone;
+  try {
+    const stored = o.groupBySelection ? localStorage.getItem(CTX_KEY) : null;
+    ctxStandalone = stored ? stored === 'standalone' : !baseProjectCode;
+  } catch { ctxStandalone = !baseProjectCode; }
+  if (!baseProjectCode) ctxStandalone = true;
+  // projectCode — действующий контекст (let: меняется при переключении).
+  let projectCode = ctxStandalone ? null : baseProjectCode;
+  const projHint = '';
 
   const root = document.createElement('div');
-  root.className = 'rs-cs-sidebar';
+  root.className = 'rs-cs-sidebar' + (o.groupBySelection ? ' rs-cs-gbs' : '');
+  const ctxBlock = (o.groupBySelection && has('list')) ? `
+    <div class="rs-cs-sect">
+      <div class="rs-cs-ctx">
+        <label title="Контекст хранения подборов: привязка к проекту или разовый подбор (без проекта).">Контекст подбора</label>
+        <select data-act="ctx" title="🔓 Разовый подбор — данные в общем хранилище, не привязаны к проекту. 📁 Проект — подборы сохраняются в активном проекте.">
+          <option value="standalone"${ctxStandalone ? ' selected' : ''}>🔓 Разовый подбор</option>
+          ${baseProjectCode ? `<option value="project"${!ctxStandalone ? ' selected' : ''}>📁 ${esc(baseProjectCode)}</option>` : ''}
+        </select>
+        <div class="rs-cs-ctx-hint">${ctxStandalone ? 'Разовый подбор — без привязки к проекту.' : 'Подборы сохраняются в проекте «' + esc(baseProjectCode) + '».'}</div>
+      </div>
+    </div>` : '';
   root.innerHTML = `
+    ${ctxBlock}
     ${has('settings') ? `
     <div class="rs-cs-sect">
       <div class="rs-cs-sect-head">Основные настройки</div>
@@ -136,17 +181,17 @@ export function mountConfigSidebar(opts) {
     ${has('list') ? `
     <div class="rs-cs-sect">
       <div class="rs-cs-sect-head">
-        <span>${esc(o.title || 'Конфигурации')}${projHint}</span>
-        ${o.groupBySelection
-          ? `<span style="display:flex;gap:4px">
-               <button type="button" class="rs-cs-btn rs-cs-btn-primary" data-act="addsel" title="Создать новый ПОДБОР (группа вариантов с общими условиями). Условия и финансы задаются в панели «Свойства подбора».">+ Подбор</button>
-               <button type="button" class="rs-cs-btn" data-act="save" title="Сохранить текущее решение как ВАРИАНТ активного подбора (конкретное решение для сравнения).">+ Вариант</button>
-             </span>`
-          : `<button type="button" class="rs-cs-btn rs-cs-btn-primary" data-act="save">+ Сохранить</button>`}
+        <span>${o.groupBySelection ? '📋 ' + esc(o.title || 'Подборы') : esc(o.title || 'Конфигурации') + projHint}</span>
+        ${o.groupBySelection ? '' : `<button type="button" class="rs-cs-btn rs-cs-btn-primary" data-act="save">+ Сохранить</button>`}
       </div>
-      <div class="rs-cs-sect-body">
-        <input class="rs-cs-search" type="text" placeholder="Поиск по id/метке/описанию…">
+      <div class="rs-cs-sect-body" style="${o.groupBySelection ? 'padding:0' : ''}">
+        ${o.groupBySelection ? '' : '<input class="rs-cs-search" type="text" placeholder="Поиск по id/метке/описанию…">'}
         <ul class="rs-cs-list" data-slot="list"><li class="rs-cs-empty">Нет записей</li></ul>
+        ${o.groupBySelection ? `
+        <div class="rs-cs-addrow">
+          <button type="button" class="rs-cs-btn rs-cs-btn-primary" data-act="addsel" title="Создать новый ПОДБОР (группа вариантов с общими условиями). Условия и финансы — в панели «Свойства подбора».">+ Подбор</button>
+          <button type="button" class="rs-cs-btn" data-act="save" title="Сохранить текущее решение как ВАРИАНТ активного подбора.">+ Вариант</button>
+        </div>` : ''}
       </div>
     </div>` : ''}
   `;
@@ -202,8 +247,9 @@ export function mountConfigSidebar(opts) {
     for (const [selName, entries] of groups) {
       const collapsed = collapsedSelections.get(selName) === true;
       const mainEntry = entries.find(e => e.isMainVariant);
+      const selActive = activeSelName && selName === activeSelName;
       html.push(`<li class="rs-cs-sel-block">
-        <div class="rs-cs-sel-head${collapsed ? ' collapsed' : ''}" data-act-sel="toggle" data-sel-name="${esc(selName)}">
+        <div class="rs-cs-sel-head${collapsed ? ' collapsed' : ''}${selActive ? ' rs-cs-sel-active' : ''}" data-act-sel="toggle" data-sel-name="${esc(selName)}" title="Активный подбор — общие условия и финансы задаются в панели «Свойства подбора».">
           <span class="rs-cs-sel-name">📋 ${esc(selName)}</span>
           <span class="rs-cs-sel-count">${entries.length} вар.${mainEntry ? ' · ★ ' + esc(mainEntry.label || mainEntry.id) : ''}</span>
         </div>
@@ -215,10 +261,10 @@ export function mountConfigSidebar(opts) {
 
   function renderEntryItem(e) {
     const mainBadge = e.isMainVariant
-      ? '<span class="rs-cs-main-badge" title="Основной вариант подбора">★</span>'
+      ? '<span class="rs-cs-main-badge" title="Основной вариант подбора">★ основной</span>'
       : '';
     return `
-      <li class="rs-cs-item ${e.id === activeId ? 'rs-active' : ''}" data-id="${esc(e.id)}">
+      <li class="rs-cs-item ${e.id === activeId ? 'rs-active' : ''}${e.isMainVariant ? ' rs-cs-item-main' : ''}" data-id="${esc(e.id)}">
         <div class="rs-cs-item-main">
           <span class="rs-cs-item-id">${esc(e.id)}</span>${mainBadge}
           ${e.label ? ` · <span class="rs-cs-item-label">${esc(e.label)}</span>` : ''}
@@ -407,6 +453,25 @@ export function mountConfigSidebar(opts) {
   if (searchInput) searchInput.addEventListener('input', () => {
     filter = searchInput.value.trim();
     render();
+  });
+
+  // v0.60.434: переключение «Контекст подбора» (проект ↔ разовый подбор).
+  const ctxSel = root.querySelector('[data-act="ctx"]');
+  if (ctxSel) ctxSel.addEventListener('change', () => {
+    ctxStandalone = ctxSel.value === 'standalone';
+    try { localStorage.setItem(CTX_KEY, ctxStandalone ? 'standalone' : 'project'); } catch {}
+    projectCode = ctxStandalone ? null : baseProjectCode;
+    activeSelName = null;
+    activeId = null;
+    const hint = root.querySelector('.rs-cs-ctx-hint');
+    if (hint) hint.textContent = ctxStandalone
+      ? 'Разовый подбор — без привязки к проекту.'
+      : 'Подборы сохраняются в проекте «' + baseProjectCode + '».';
+    render();
+    // Панель «Свойства подбора / TCO» должна перепривязаться к новому
+    // контексту (projectCode) и сбросить активный подбор.
+    try { window.dispatchEvent(new CustomEvent('rs-cs-context', { detail: { kind, projectCode } })); } catch {}
+    fireSel(null);
   });
 
   const unsub = onConfigsChange(kind, () => render());

@@ -85,7 +85,7 @@ export function mountSelectionPanel(o) {
   const mountEl = o.mountEl;
   if (!mountEl) return { refresh() {}, setSelection() {} };
   const kind = o.kind;
-  const pc = o.projectCode || null;
+  let pc = o.projectCode || null; // v0.60.434: меняется при смене контекста
   let activeTab = 'general';
   let selName = (typeof o.getActiveSelectionName === 'function' ? o.getActiveSelectionName() : null) || null;
 
@@ -376,6 +376,7 @@ export function mountSelectionPanel(o) {
   return {
     refresh: render,
     setSelection(name) { selName = name || null; render(); },
+    setProjectCode(v) { pc = v || null; selName = null; render(); },
     destroy() { try { off && off(); } catch {} },
   };
 }
