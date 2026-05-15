@@ -324,8 +324,8 @@ export function mountConfigSidebar(opts) {
     if (selHead) {
       const name = selHead.getAttribute('data-sel-name');
       collapsedSelections.set(name, !(collapsedSelections.get(name) === true));
-      render();
-      fireSel(name);
+      fireSel(name);   // сначала отметить активным…
+      render();        // …затем перерисовать с подсветкой активного подбора
       return;
     }
     const btn = ev.target.closest('[data-act]');
