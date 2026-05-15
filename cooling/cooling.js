@@ -22,7 +22,7 @@
 //   raschet.project.<pid>.cooling.cols.v1
 //   raschet.project.<pid>.cooling.tariff.v1
 
-import { ensureDefaultProject, projectKey, listProjects, getProject, setActiveProjectId } from '../shared/project-storage.js';
+import { ensureDefaultProject, projectKey, listProjects, getProject, setActiveProjectId, getActiveProjectId } from '../shared/project-storage.js';
 import * as util from '../meteo/util.js';
 
 import { DEFAULT_CHILLER, COLUMNS, DEFAULT_COLS, CHILLER_COLS, isCracType as isCracTypeLocal } from './calc/chiller-defaults.js';
@@ -1491,7 +1491,12 @@ async function init() {
         _pid = ensureDefaultProject();
       }
     } else {
-      _pid = ensureDefaultProject();
+      // v0.60.439 (по замечанию Пользователя 2026-05-15: «не нужно в
+      // нескольких местах отображать разные проекты»): без ?pid берём
+      // АКТИВНЫЙ проект из шапки (единый источник), а не первый/default —
+      // иначе cooling показывал другой проект, чем бейдж в шапке.
+      const aid = (() => { try { return getActiveProjectId(); } catch { return null; } })();
+      _pid = (aid && getProject(aid)) || ensureDefaultProject();
     }
   }
 

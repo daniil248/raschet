@@ -357,17 +357,43 @@ export function deleteSelection(kind, opts) {
 
 // =========================================================================
 // Активный проект (для привязки конфигураций к коду проекта).
-// Структура: localStorage['raschet.activeProject.v1'] = { name, code, ... }
+//
+// v0.60.439 (по замечанию Пользователя 2026-05-15: «не нужно в нескольких
+// местах отображать разные проекты»): ЕДИНЫЙ источник активного проекта —
+// тот же, что у бейджа проекта в шапке (`raschet.activeProjectId.v1` →
+// `raschet.projects.v1`). Раньше этот код читал отдельный ключ
+// `raschet.activeProject.v1` (его пишет только главная схема js/main.js),
+// поэтому в ups/cooling/battery сайдбар показывал ДРУГОЙ проект (или
+// «Разовый»), чем шапка. Теперь единый источник; старый ключ — fallback.
 // =========================================================================
-export function getActiveProjectCode() {
+
+// Ссылка на активный проект из ЕДИНОГО источника (шапка): {id, code, name}.
+export function getActiveProjectRef() {
   if (typeof localStorage === 'undefined') return null;
+  try {
+    const aid = localStorage.getItem('raschet.activeProjectId.v1');
+    if (aid) {
+      const arr = JSON.parse(localStorage.getItem('raschet.projects.v1') || '[]');
+      const p = Array.isArray(arr) ? arr.find(x => x && x.id === aid) : null;
+      if (p) {
+        const code = p.code || p.projectCode || p.internalCode || p.designation || p.id;
+        return { id: p.id, code: code ? String(code).trim().toUpperCase() : null, name: p.name || p.designation || p.id };
+      }
+    }
+  } catch {}
+  // legacy fallback — отдельный ключ, который пишет только главная схема
   try {
     const raw = localStorage.getItem('raschet.activeProject.v1');
     if (!raw) return null;
     const p = JSON.parse(raw);
     const code = p && (p.code || p.projectCode || p.internalCode);
-    return code ? String(code).trim().toUpperCase() : null;
+    return { id: p && p.id || null, code: code ? String(code).trim().toUpperCase() : null, name: (p && p.name) || (code || null) };
   } catch { return null; }
+}
+
+export function getActiveProjectCode() {
+  const ref = getActiveProjectRef();
+  return ref ? ref.code : null;
 }
 
 // =========================================================================

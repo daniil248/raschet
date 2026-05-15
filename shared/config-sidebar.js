@@ -29,6 +29,7 @@ import {
   listConfigs, listConfigsGrouped, listSelectionNames, setMainVariant,
   getConfig, saveConfig, removeConfig,
   onConfigsChange, formatConfigLine, isEmbeddedMode, getActiveProjectCode,
+  getActiveProjectRef,
   ensureSelectionMeta, listSelectionMetas, renameSelection, deleteSelection,
 } from './configuration-catalog.js';
 import { rsConfirm, rsPrompt, rsToast } from './dialog.js';
@@ -139,8 +140,12 @@ export function mountConfigSidebar(opts) {
   const sections = Array.isArray(o.sections) && o.sections.length
     ? o.sections : ['settings', 'properties', 'list'];
   const has = (s) => sections.includes(s);
-  // Авто-привязка к активному проекту, если не задано явно
-  const baseProjectCode = o.projectCode != null ? o.projectCode : getActiveProjectCode();
+  // Авто-привязка к активному проекту, если не задано явно. v0.60.439:
+  // ЕДИНЫЙ источник — активный проект из шапки (getActiveProjectRef),
+  // чтобы сайдбар и бейдж в шапке всегда показывали ОДИН и тот же проект.
+  const _projRef = getActiveProjectRef();
+  const baseProjectCode = o.projectCode != null ? o.projectCode : (_projRef && _projRef.code) || null;
+  const baseProjectName = (_projRef && _projRef.name) || baseProjectCode || '';
   // v0.60.434: «КОНТЕКСТ ПОДБОРА» как в «Подбор холода» — привязка к проекту
   // ИЛИ разовый подбор (standalone). По умолчанию: если есть активный проект
   // — привязка к нему, иначе разовый. Выбор запоминается per-kind.
@@ -160,12 +165,14 @@ export function mountConfigSidebar(opts) {
   const ctxBlock = (o.groupBySelection && has('list')) ? `
     <div class="rs-cs-sect">
       <div class="rs-cs-ctx">
-        <label title="Контекст хранения подборов: привязка к проекту или разовый подбор (без проекта).">Контекст подбора</label>
-        <select data-act="ctx" title="🔓 Разовый подбор — данные в общем хранилище, не привязаны к проекту. 📁 Проект — подборы сохраняются в активном проекте.">
+        <label title="Привязывать подборы к активному проекту (проект выбирается ТОЛЬКО в шапке) или вести разовый подбор без проекта.">Контекст подбора</label>
+        <select data-act="ctx" title="🔓 Разовый подбор — данные в общем хранилище, не привязаны к проекту. 📁 К активному проекту — подборы привязаны к проекту, выбранному в ШАПКЕ (единый источник; здесь проект не переключается).">
           <option value="standalone"${ctxStandalone ? ' selected' : ''}>🔓 Разовый подбор</option>
-          ${baseProjectCode ? `<option value="project"${!ctxStandalone ? ' selected' : ''}>📁 ${esc(baseProjectCode)}</option>` : ''}
+          ${baseProjectCode ? `<option value="project"${!ctxStandalone ? ' selected' : ''}>📁 К активному проекту (из шапки)</option>` : ''}
         </select>
-        <div class="rs-cs-ctx-hint">${ctxStandalone ? 'Разовый подбор — без привязки к проекту.' : 'Подборы сохраняются в проекте «' + esc(baseProjectCode) + '».'}</div>
+        <div class="rs-cs-ctx-hint">${ctxStandalone
+          ? 'Разовый подбор — без привязки к проекту.'
+          : 'Привязан к активному проекту из шапки: <b>' + esc(baseProjectName) + '</b>. Сменить проект — бейджем в шапке.'}</div>
       </div>
     </div>` : '';
   root.innerHTML = `
