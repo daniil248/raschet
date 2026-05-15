@@ -147,6 +147,9 @@
     <!-- v0.60.432: панель ПОДБОРА АКБ — ВВЕРХУ, как в «Подбор холода»
          (сначала условия подбора, затем расчёт конкретного варианта). -->
     <div id="bt-selection-panel"></div>
+    <!-- v0.60.447: ЗОНА ВАРИАНТА (расчёт/компоновка/справочник). Две зоны
+         как в «Подбор холода»: подбор → панель; вариант → этот редактор. -->
+    <div id="bt-editor" style="display:none">
     <div class="tabs">
       <button class="tab-btn active" data-tab="tab-calc">Расчёт разряда</button>
       <button class="tab-btn" data-tab="tab-rack">Компоновка VRLA-шкафа</button>
@@ -576,6 +579,7 @@
       </form>
       <div id="rack-result"></div>
     </section>
+    </div><!-- /#bt-editor -->
   </main>
   </div><!-- /.bt-shell -->
 
@@ -677,6 +681,29 @@
       activeSel = null;
       sp.setProjectCode(d.projectCode || null);
     });
+
+    // v0.60.447: ДВЕ ЗОНЫ как в «Подбор холода» (паритет с ИБП).
+    //  • Подбор → панель «Свойства подбора / TCO / Сравнение». Редактор скрыт.
+    //  • Вариант → редактор АКБ (расчёт разряда / компоновка / справочник).
+    const editorEl = document.getElementById('bt-editor');
+    function setScope(scope) {
+      const variant = scope === 'variant';
+      if (mountEl) mountEl.style.display = variant ? 'none' : '';
+      if (editorEl) editorEl.style.display = variant ? '' : 'none';
+    }
+    window.addEventListener('rs-cs-focus', (ev) => {
+      const d = ev.detail || {};
+      if (d.kind && d.kind !== 'battery') return;
+      if (d.scope === 'selection') {
+        activeSel = d.selectionName || activeSel;
+        sp.setSelection(activeSel);
+        setScope('selection');
+      } else if (d.scope === 'variant') {
+        setScope('variant');
+      }
+    });
+    // Старт: зона подбора (условия + TCO). Редактор — по выбору варианта.
+    setScope('selection');
   </script>
 </body>
 </html>
