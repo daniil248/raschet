@@ -106,8 +106,10 @@
          wizard подбирает конкретный вариант. -->
     <div id="uc-selection-panel"></div>
 
-    <!-- Wizard конфигуратора (Фаза 1.4.5): основной UI модуля, виден по умолчанию -->
-    <section id="configurator-wizard" class="panel" style="margin-bottom:16px;border:2px solid #1976d2">
+    <!-- Wizard = ЗОНА ВАРИАНТА. v0.60.445: скрыт по умолчанию (нет мигания
+         при загрузке); показывается setScope('variant') / initWizard
+         (?nodeId|?capacityKw) / «🧙 Мастер подбора» / выбором варианта. -->
+    <section id="configurator-wizard" class="panel" style="margin-bottom:16px;border:2px solid #1976d2;display:none">
       <div class="panel-head" style="background:#f0f4ff">
         <h3>🧙 Конфигуратор ИБП для проекта</h3>
         <div id="wiz-step-indicator" class="muted" style="font-size:12px"></div>
