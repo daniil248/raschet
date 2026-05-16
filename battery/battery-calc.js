@@ -3055,10 +3055,40 @@ function _wireUpsPicker() {
   } catch {}
 }
 
+// v0.60.483 (по замечанию Пользователя: «после обновления страницы
+// пропадает расчёт, количество АКБ и график разряда»): сохраняем
+// входные поля расчёта (пер-вариантно — по _lcCtx) и при загрузке
+// восстанавливаем + авто-пересчёт, чтобы результат/график не пропадали.
+const _CALC_INPUT_IDS = ['calc-battery', 'calc-mode', 'calc-chem', 'calc-load',
+  'calc-vdcmin', 'calc-vdcmax', 'calc-blockv', 'calc-capAh', 'calc-endv',
+  'calc-inveff', 'calc-target', 'calc-target-auto', 'calc-strings-manual', 'calc-dcv'];
+function _calcInputsKey() { return 'raschet.battery.lastCalcInputs.v1' + (_lcCtx ? '::' + _lcCtx : ''); }
+function _persistCalcInputs() {
+  try {
+    const o = {};
+    _CALC_INPUT_IDS.forEach(id => { const el = document.getElementById(id); if (el && el.value !== '') o[id] = el.value; });
+    localStorage.setItem(_calcInputsKey(), JSON.stringify(o));
+  } catch {}
+}
+function _restoreCalcInputs() {
+  let o = null;
+  try { o = JSON.parse(localStorage.getItem(_calcInputsKey()) || 'null'); } catch {}
+  if (!o || typeof o !== 'object') return false;
+  let any = false;
+  _CALC_INPUT_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && o[id] != null && o[id] !== '' && !el.dataset.hoLocked) {
+      el.value = o[id];
+      try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch {}
+      any = true;
+    }
+  });
+  return any && (!!o['calc-load'] || !!o['calc-battery']);
+}
 function wireCalcForm() {
   const form = document.getElementById('calc-form');
   if (!form) return;
-  form.addEventListener('submit', e => { e.preventDefault(); doCalc(); });
+  form.addEventListener('submit', e => { e.preventDefault(); doCalc(); try { _persistCalcInputs(); } catch {} });
   // Пересчёт при смене режима
   const modeSel = document.getElementById('calc-mode');
   modeSel.addEventListener('change', () => {
@@ -4077,6 +4107,30 @@ window.addEventListener('DOMContentLoaded', () => {
     _lcSave();
     try { if (lastBatteryCalc) doCalc(); } catch {}
   });
+  // v0.60.483: восстановить расчёт после обновления страницы. Если ни
+  // handoff (?fromUps/?nodeId), ни открытие варианта не выполнили расчёт
+  // — восстанавливаем входы из LS и авто-пересчитываем (результат и
+  // график не пропадают). С задержкой, чтобы не конкурировать с handoff.
+  setTimeout(() => {
+    try {
+      const res = document.getElementById('calc-result');
+      const hasResult = res && res.querySelector('.result-value, .result-block, svg');
+      if (hasResult) { _persistCalcInputs(); return; }
+      const qp = new URLSearchParams(location.search);
+      const inFlow = qp.get('fromUps') === '1' || qp.get('nodeId') || qp.get('capacityKw') || qp.get('fromCtx') === '1';
+      const restored = _restoreCalcInputs();
+      if (restored && !inFlow) {
+        const f = document.getElementById('calc-form');
+        if (f) { f.requestSubmit ? f.requestSubmit() : f.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })); }
+      } else if (inFlow) {
+        // handoff/контекст уже заполнил поля — просто пересчитать.
+        const f = document.getElementById('calc-form');
+        if (f && (document.getElementById('calc-load')?.value)) {
+          f.requestSubmit ? f.requestSubmit() : f.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+        }
+      }
+    } catch (e) { console.warn('[battery] restore calc failed', e); }
+  }, 500);
 });
 
 // ================= Интеграция с Конструктором схем (Фаза 1.4.4) =================
