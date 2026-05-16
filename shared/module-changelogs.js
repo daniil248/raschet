@@ -4,6 +4,10 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.467', date: '2026-05-16', items: [
+      '🧾 <b>B2.2 i4: вкладка «Итог» варианта ИБП — мосты «Применить к схеме» и «Отчёт»</b>.',
+      'selection-panel: generic-хук <code>variantItog</code>. ups-config: «✓ Применить к схеме/в Конструктор» пишет тот же <code>raschet.pendingUpsSelection.v1</code> (при <code>?nodeId</code>) / <code>lastUpsConfig.v1</code> (standalone), что и старый wizard — payload из варианта (модель/тип/резерв/АКБ-решение/V_DC). «🖨 Отчёт по варианту» — через модуль reports/ (pickTemplate→createTemplate→blocks→exportPDF), без window.open+хардкод-CSS.',
+    ] },
     { version: '0.60.466', date: '2026-05-16', items: [
       '🔋 <b>B2.2 i3: АКБ-вкладка варианта ИБП</b> — решение «Подобрать АКБ / Без АКБ», топология (общая шина / на каждый ИБП), мост к модулю «Расчёт АКБ».',
       'selection-panel: generic-хук <code>variantAkb({host,entry,req,kind,selectionName,save})</code> (тот же паттерн, что variantSpec). ups-config: кнопка «⚡ Подобрать АКБ» пишет <code>raschet.upsHandoff.v1</code> (нагрузка/автономия/cosφ из условий подбора; V_DC/КПД из выбранной в Spec модели; типы АКБ; selectionName) и открывает battery/?fromUps=1 — сайдбар АКБ сфокусируется на «АКБ для &lt;подбор&gt;» (v0.60.463).',

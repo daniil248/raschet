@@ -360,6 +360,10 @@
     import { detectUpsType } from '../shared/ups-types/index.js';
     import { mountUpsPicker } from '../shared/ups-picker.js';
     import '../shared/ups-seed.js';
+    // B2.2 i4: отчёт по варианту — через модуль reports (правило
+    // «отчёты только через reports/», без window.open + хардкод-CSS).
+    import * as Report from '../shared/report/index.js';
+    import * as B from '../shared/report/blocks.js';
     if (!isEmbeddedMode()) {
       const mountEl = document.getElementById('uc-selection-panel');
       const pc = getActiveProjectCode();
@@ -542,10 +546,98 @@
       }
       const escHtmlSafe = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+      // B2.2 i4: Итог варианта — «Применить к схеме» (мост к
+      // Конструктору схем: тот же raschet.pendingUpsSelection.v1 /
+      // lastUpsConfig.v1, что у wizard) + «Отчёт» (через reports/).
+      function variantItog(ctx) {
+        const { host, entry, req, selectionName } = ctx;
+        const p = (entry && entry.payload) || {};
+        const u = p.upsId ? getUps(p.upsId) : null;
+        const qp = new URLSearchParams(location.search);
+        const nodeId = qp.get('nodeId') || null;
+        host.innerHTML = `
+          <div class="rsp-note" data-vitog-info></div>
+          <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+            <button type="button" class="rs-cs-btn rs-cs-btn-primary" data-vitog="apply"${u ? '' : ' disabled'}>${nodeId ? '✓ Применить к схеме' : '✓ Применить в Конструктор'}</button>
+            <button type="button" class="rs-cs-btn" data-vitog="report"${u ? '' : ' disabled'}>🖨 Отчёт по варианту</button>
+          </div>`;
+        const info = host.querySelector('[data-vitog-info]');
+        info.innerHTML = u
+          ? `Модель: <b>${(u.supplier || '')} ${(u.model || u.id)}</b>${p.capacityKw ? ' · ' + p.capacityKw + ' кВт' : ''} · тип <b>${p.upsType || (detectUpsType(u) || {}).id || '—'}</b> · резерв <b>${p.redundancy || req.redundancy || 'N'}</b> · АКБ: <b>${p.batteryChoice === 'skip' ? 'без АКБ' : 'подбор'}</b>.${nodeId ? ' Вернётся в узел Конструктора схем.' : ' Сохранится для «⬇ Применить из Конфигуратора» в инспекторе ИБП.'}`
+          : 'Сначала выберите модель ИБП во вкладке «⚙ Spec».';
+        const applyBtn = host.querySelector('[data-vitog="apply"]');
+        if (applyBtn) applyBtn.addEventListener('click', () => {
+          if (!u) return;
+          const payload = {
+            nodeId,
+            ups: u,
+            configuration: {
+              frameId: u.id,
+              upsType: p.upsType || (detectUpsType(u) || {}).id || null,
+              capacityKw: Number(p.capacityKw) || Number(u.capacityKw) || 0,
+              redundancyScheme: p.redundancy || req.redundancy || 'N',
+              batteryVdcMin: u.vdcMin || null,
+              batteryVdcMax: u.vdcMax || null,
+              batteryAutonomyMin: Number(req.autonomyMin) || 0,
+              batteryChoice: p.batteryChoice || null,
+              batteryTopology: p.batteryTopology || 'shared',
+              selectionName: selectionName || null,
+            },
+            selectedAt: Date.now(),
+          };
+          try {
+            if (nodeId) {
+              localStorage.setItem('raschet.pendingUpsSelection.v1', JSON.stringify(payload));
+              info.innerHTML = '✓ Конфигурация передана в Конструктор схем. Возврат…';
+              setTimeout(() => { try { window.close(); } catch {} }, 1200);
+            } else {
+              localStorage.setItem('raschet.lastUpsConfig.v1', JSON.stringify(payload));
+              info.innerHTML = '✓ Сохранено. Откройте Конструктор схем → параметры ИБП → «⬇ Применить из Конфигуратора».';
+            }
+          } catch (e) { info.innerHTML = 'Не удалось применить: ' + (e && e.message || e); }
+        });
+        const rptBtn = host.querySelector('[data-vitog="report"]');
+        if (rptBtn) rptBtn.addEventListener('click', async () => {
+          if (!u) return;
+          try {
+            const rec = await Report.pickTemplate({
+              title: 'Выбор шаблона для отчёта по варианту ИБП',
+              tags: ['ибп','ups','подбор','расчёты','общее','инженерный'],
+            });
+            if (!rec) return;
+            const tpl = Report.createTemplate(rec.template);
+            tpl.meta.title = 'Вариант подбора ИБП — ' + (entry.label || entry.id);
+            tpl.content = [
+              B.h1('Вариант подбора ИБП'),
+              B.caption('Подбор: ' + (selectionName || '—') + ' · вариант: ' + (entry.label || entry.id)),
+              B.h2('1. Условия подбора (общие)'),
+              B.table([{ text: 'Параметр', width: 70 }, { text: 'Значение', align: 'right', width: 40 }], [
+                ['Критическая нагрузка, кВт', String(req.loadKw ?? '—')],
+                ['Автономия, мин', String(req.autonomyMin ?? '—')],
+                ['Резервирование', String(p.redundancy || req.redundancy || '—')],
+                ['Топология (IEC 62040-3)', String(req.topology || '—')],
+                ['Допустимые типы АКБ', (Array.isArray(req.batteryTypes) && req.batteryTypes.length) ? req.batteryTypes.join(' / ') : 'любые'],
+              ]),
+              B.h2('2. Выбранная модель ИБП'),
+              B.table([{ text: 'Параметр', width: 70 }, { text: 'Значение', align: 'right', width: 40 }], [
+                ['Производитель', String(u.supplier || '—')],
+                ['Модель', String(u.model || u.id)],
+                ['Тип конструктива', String(p.upsType || (detectUpsType(u) || {}).id || '—')],
+                ['Номинал, кВт', String(p.capacityKw || u.capacityKw || '—')],
+                ['КПД, %', String(u.efficiency || '—')],
+                ['Окно V_DC, В', (u.vdcMin && u.vdcMax) ? (u.vdcMin + '…' + u.vdcMax) : '—'],
+                ['Решение по АКБ', p.batteryChoice === 'skip' ? 'без АКБ' : 'подбор АКБ'],
+              ]),
+            ];
+            await Report.exportPDF(tpl, 'Вариант ИБП — ' + (entry.label || entry.id));
+          } catch (e) { info.innerHTML = 'Не удалось сформировать отчёт: ' + (e && e.message || e); }
+        });
+      }
+
       const api = mountSelectionPanel({
         kind: 'ups', mountEl, projectCode: pc,
         getActiveSelectionName: () => activeSel,
-        requirementsSchema, variantEconomics, variantSpec, variantAkb,
+        requirementsSchema, variantEconomics, variantSpec, variantAkb, variantItog,
         variantLabel: (e) => e.label || e.id,
         convertFn: null,
         // v0.60.446: УСЛОВИЯ подбора задаются ЗДЕСЬ (зона подбора —

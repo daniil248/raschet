@@ -80,6 +80,9 @@ const FIN_FIELDS = [
  *  @param {function({host,entry,req,kind,selectionName,save,refresh}):void} [o.variantAkb]
  *      — B2.2 i3: хост рисует решение по АКБ (подобрать/пропуск) и мост
  *        к модулю «Расчёт АКБ» во вкладке АКБ варианта.
+ *  @param {function({host,entry,req,kind,selectionName,save,refresh}):void} [o.variantItog]
+ *      — B2.2 i4: хост рисует действия Итога (применить к схеме / печать)
+ *        — мост к существующей логике модуля.
  *  @param {function|null} [o.convertFn]
  */
 export function mountSelectionPanel(o) {
@@ -558,7 +561,9 @@ export function mountSelectionPanel(o) {
           ${entry.isMainVariant ? '' : `<button type="button" class="rs-cs-btn" data-var-act="setmain">★ Сделать основным</button>`}
           <button type="button" class="rs-cs-btn" data-var-act="compare">📈 К сравнению вариантов</button>
         </div>
-        <div class="rsp-note">ℹ «Применить к схеме» / печать (мост к существующей логике) — инкремент i4. Сейчас вариант сохраняется автоматически (имя — во вкладке Spec).</div>`;
+        ${typeof o.variantItog === 'function'
+          ? `<div data-vitog-host style="margin-top:10px"></div>`
+          : `<div class="rsp-note">ℹ Вариант сохраняется автоматически (имя — во вкладке Spec).</div>`}`;
     }
     const tab = (id, lbl) => `<div class="rsp-tab ${variantTab === id ? 'active' : ''}" data-vtab="${id}">${lbl}</div>`;
     return `__VARIANT__
@@ -640,6 +645,11 @@ export function mountSelectionPanel(o) {
           const host = mountEl.querySelector('[data-vakb-host]');
           if (host) { try { o.variantAkb(_vctx(host)); }
             catch (e) { console.warn('[selection-panel] variantAkb failed', e); } }
+        }
+        if (variantTab === 'itog' && typeof o.variantItog === 'function') {
+          const host = mountEl.querySelector('[data-vitog-host]');
+          if (host) { try { o.variantItog(_vctx(host)); }
+            catch (e) { console.warn('[selection-panel] variantItog failed', e); } }
         }
         return;
       }
