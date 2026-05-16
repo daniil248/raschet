@@ -350,7 +350,7 @@
       "id": "cooling",
       "name": "Подбор холодильных систем",
       "description": "Подбор чиллеров/DX-систем, free-cooling, расчёт CAPEX/TCO/payback и технико-экономическое сравнение нескольких опций. Климат — из проекта (Meteo) через мост.",
-      "path": "cooling/",
+      "path": "apps/cooling/",
       "icon": "green",
       "badge": "active",
       "requires": [

@@ -104,7 +104,7 @@ async function _loadCableTypes() {
 // Vertiv/Generic/Kehua) регистрируются в element-library с kind='climate'.
 async function _loadCoolingDatasheets() {
   try {
-    const m = await import('../cooling/datasheets/index.js');
+    const m = await import('cooling/datasheets/index.js');
     return m.listBuiltinCoolingElements ? m.listBuiltinCoolingElements() : [];
   } catch (e) { console.warn('[catalog-bridge] cooling-datasheets', e.message); return []; }
 }

@@ -731,7 +731,7 @@ const PROJECT_MODULES = [
   },
   {
     id: 'cooling',
-    href: '../cooling/',
+    href: '../apps/cooling/',
     icon: '❄',
     label: 'Подбор холодильных систем',
     desc: 'Технико-экономическое сравнение чиллеров (CHW), DX-систем, free-cooling и CRAC. CAPEX/OPEX/TCO/payback по климатическим данным проекта. Несколько подборов разных систем, в каждом — варианты с ★-основным.',
@@ -2208,7 +2208,7 @@ function render() {
         id: 'cooling', type: 'multi',
         title: '❄ Подборы холодильных систем', count: subCoolings.length,
         color: '#0891b2',
-        href: '../cooling/',
+        href: '../apps/cooling/',
         visible: subCoolings.length > 0,
         addLabel: '❄ Добавить подбор холодильных систем',
         bodyHtml: subCoolings.length
@@ -2217,7 +2217,7 @@ function render() {
                 <span style="font-size:16px">❄</span>
                 <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(s.name)} — ${esc(s.meta)}">${esc(s.name)}</span>
                 <span class="muted" style="font-size:11px">${esc(s.meta)}</span>
-                <a href="${esc(buildModuleHref('../cooling/', { projectId: p.id, fromModule: 'projects', openSelection: s.id }))}" class="pr-btn-sel" style="font-size:12px;padding:3px 10px" title="Открыть этот подбор в модуле «Подбор холодильных систем»">Открыть →</a>
+                <a href="${esc(buildModuleHref('../apps/cooling/', { projectId: p.id, fromModule: 'projects', openSelection: s.id }))}" class="pr-btn-sel" style="font-size:12px;padding:3px 10px" title="Открыть этот подбор в модуле «Подбор холодильных систем»">Открыть →</a>
               </div>`).join('')
           : '',
       },
@@ -2349,7 +2349,7 @@ function render() {
       'tech-workspace':     { kind: 'singleton',        label: 'Технолог ЦОД',  href: '../tech-workspace/' },
       'inventory-it':       { kind: 'singleton',        label: 'Реестр IT-оборудования', href: '../scs-config/inventory.html' },
       'facility-inventory': { kind: 'singleton',        label: 'Реестр оборудования объекта', href: '../facility-inventory/' },
-      'cooling':            { kind: 'multi-cooling',    label: 'подбор холодильных систем', href: '../cooling/', defaultName: 'Подбор холодильных систем' },
+      'cooling':            { kind: 'multi-cooling',    label: 'подбор холодильных систем', href: '../apps/cooling/', defaultName: 'Подбор холодильных систем' },
     };
     modulesHost.querySelectorAll('[data-add]').forEach(btn => {
       btn.addEventListener('click', async () => {

@@ -18,7 +18,7 @@
 <body>
   <div id="rs-header-mount"></div>
   <script type="importmap">
-  { "imports": { "shared/": "../shared/", "engine/": "../js/engine/", "cooling/": "../cooling/", "meteo/": "../meteo/", "service/": "../service/", "suppression-methods/": "../suppression-methods/" } }
+  { "imports": { "shared/": "../shared/", "engine/": "../js/engine/", "cooling/": "../apps/cooling/", "meteo/": "../meteo/", "service/": "../service/", "suppression-methods/": "../suppression-methods/" } }
   </script>
   <script type="module">
     import { mountHeader } from 'shared/app-header.js';
@@ -228,7 +228,7 @@
             <div class="mt-annual-toolbar">
               <h3 style="margin:0" title="Сводная таблица: интервалы температуры наружного воздуха (целочисленные диапазоны 1°C) × агрегированные показатели (часы/год, дни/год, RH avg/min/max, ветер). Расчёт мощности чиллера/DX и годовой энергии — в отдельном модуле «Подбор холодильных систем».">📐 Годовые часы (сводная таблица)</h3>
               <span class="muted" style="flex:1;font-size:11.5px" title="Период выборки задаётся ГЛОБАЛЬНЫМ фильтром выше (📅 Период).">Интервалы температуры наружного воздуха × часы/дни в году.</span>
-              <a href="../cooling/" class="mt-btn-ghost" style="text-decoration:none"
+              <a href="../apps/cooling/" class="mt-btn-ghost" style="text-decoration:none"
                  title="Перейти в модуль «Подбор холодильных систем» — расчёт чиллеров/DX/free-cooling по этим климатическим данным.">❄ Подбор оборудования →</a>
               <button type="button" class="mt-btn-ghost" id="mt-cols-btn"
                       title="Выбор отображаемых столбцов: hours/days/% года, RH avg/min/max, ветер.">🔧 Столбцы</button>

@@ -4,18 +4,18 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Raschet · Подбор холодильных систем</title>
-  <link rel="stylesheet" href="../shared/styles/base.css">
-  <link rel="stylesheet" href="../shared/app-header.css">
-  <link rel="stylesheet" href="../shared/configurator-shell.css">
+  <link rel="stylesheet" href="../../shared/styles/base.css">
+  <link rel="stylesheet" href="../../shared/app-header.css">
+  <link rel="stylesheet" href="../../shared/configurator-shell.css">
   <!-- v0.60.442: единая тема подбора (токены --sel-*, один источник вида) -->
-  <link rel="stylesheet" href="../shared/styles/selection-theme.css">
+  <link rel="stylesheet" href="../../shared/styles/selection-theme.css">
   <link rel="stylesheet" href="cooling.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <script src="../firebase-config.js"></script>
+  <script src="../../firebase-config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
-  <script src="../shared/auth.js"></script>
-  <script src="../shared/auth-gate.js" defer></script>
+  <script src="../../shared/auth.js"></script>
+  <script src="../../shared/auth-gate.js" defer></script>
 </head>
 <body>
   <div id="rs-header-mount"></div>
@@ -27,12 +27,12 @@
   <script type="importmap">
   {
     "imports": {
-      "shared/": "../shared/",
-      "engine/": "../js/engine/",
-      "cooling/": "../cooling/",
-      "meteo/": "../meteo/",
-      "service/": "../service/",
-      "suppression-methods/": "../suppression-methods/"
+      "shared/": "../../shared/",
+      "engine/": "../../js/engine/",
+      "cooling/": "./",
+      "meteo/": "../../meteo/",
+      "service/": "../../service/",
+      "suppression-methods/": "../../suppression-methods/"
     }
   }
   </script>
@@ -40,7 +40,7 @@
     import { mountHeader } from 'shared/app-header.js';
     import { mountHelp } from 'shared/help-panel.js';
     import { getDatasheetFormatDocsHtml } from './calc/datasheet.js';
-    mountHeader({ title: 'Подбор холодильных систем', home: '../hub.html', moduleId: 'cooling', moduleTitle: 'Подбор холодильных систем' });
+    mountHeader({ title: 'Подбор холодильных систем', home: '../../hub.html', moduleId: 'cooling', moduleTitle: 'Подбор холодильных систем' });
     mountHelp({
       module: 'cooling',
       title: 'Модуль подбора холодильных систем',

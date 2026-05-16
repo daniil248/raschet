@@ -419,7 +419,7 @@ function renderModuleActionsHere() {
   renderModuleActions(root, {
     navContext: { mode: _navMode, return: _navReturn },
     crossLinks: [
-      { href: '../cooling/', label: '❄ Подбор холода', title: 'Перейти в модуль подбора холодильных систем' },
+      { href: '../apps/cooling/', label: '❄ Подбор холода', title: 'Перейти в модуль подбора холодильных систем' },
       { href: '../projects/', label: '📁 Проекты', title: 'Перейти в список проектов' },
     ],
     getPayload: () => ({ module: 'service' }),

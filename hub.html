@@ -288,7 +288,7 @@
         // Точечные расчёты — все базовые
         'cable/': ['all'], 'battery/': ['datacenter', 'custom'],
         'psychrometrics/': ['datacenter', 'factory', 'custom'],
-        'meteo/': ['all'], 'cooling/': ['datacenter', 'factory', 'custom'],
+        'meteo/': ['all'], 'apps/cooling/': ['datacenter', 'factory', 'custom'],
         // Сервис / общее
         'service/': ['all'], 'catalog/': ['all'], 'reports/': ['all'],
         'logistics/': ['all'], 'genset-config/': ['datacenter', 'factory', 'pump-station', 'custom'],
@@ -381,12 +381,15 @@
       const idToMod = new Map();
       for (const m of (manifest.modules || [])) idToMod.set(m.id, m);
 
-      // Извлекаем moduleId из href: «cooling/» → 'cooling', «index.html» → 'constructor'.
+      // Извлекаем moduleId из href: последний сегмент пути. «cooling/» и
+      // «apps/cooling/» → 'cooling'; «index.html» → 'constructor'.
+      // Move-proof: работает для любой группировки (apps/lib/platform).
       const extractId = (href) => {
         if (!href) return null;
         if (href === 'index.html' || href === './index.html' || href === '/') return 'constructor';
-        const m = href.match(/^([a-z-]+)\/?$/) || href.match(/^\.\/([a-z-]+)\/?$/);
-        return m ? m[1] : null;
+        const norm = href.replace(/^\.\//, '').replace(/[?&#].*$/, '').replace(/\/+$/, '');
+        const seg = norm.split('/').pop();
+        return /^[a-z0-9-]+$/.test(seg) ? seg : null;
       };
 
       document.querySelectorAll('.hub-card').forEach(card => {
@@ -580,7 +583,7 @@
         <p>Импорт климатических рядов для расчёта PUE и FreeCool-потенциала: Open-Meteo REST API (по координатам, бесплатно) + ручная загрузка архива rp5.kz/rp5.ru CSV. Сводка T<sub>min/max/средн</sub>, гистограмма распределения, HDD/CDD. Активный датасет используется в Подборе холодильных систем, Технологе ЦОД и ID-диаграмме.</p>
         <span class="badge new">Новый</span>
       </a>
-      <a class="hub-card" href="cooling/">
+      <a class="hub-card" href="apps/cooling/">
         <div class="hub-card-icon cyan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg></div>
         <h2>Подбор холодильных систем</h2>
         <p>Технико-экономическое сравнение чиллеров (CHW), DX-систем (air-cooled, pumped refrigerant) и решений с фрикулингом (dry/wet) по климатическим данным проекта. Расчёт capacity/COP/FC%/Power/Energy по интервалам T_amb. CAPEX, OPEX, TCO с дисконтированием, payback период, side-by-side сравнение нескольких опций. Курсы валют через НБ РК/ЦБ РФ/ECB/exchangerate.host.</p>

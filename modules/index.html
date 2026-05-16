@@ -48,7 +48,7 @@
 <body>
   <div id="rs-header-mount"></div>
   <script type="importmap">
-  { "imports": { "shared/": "../shared/", "engine/": "../js/engine/", "cooling/": "../cooling/", "meteo/": "../meteo/", "service/": "../service/", "suppression-methods/": "../suppression-methods/" } }
+  { "imports": { "shared/": "../shared/", "engine/": "../js/engine/", "cooling/": "../apps/cooling/", "meteo/": "../meteo/", "service/": "../service/", "suppression-methods/": "../suppression-methods/" } }
   </script>
   <script type="module">
     import { mountHeader } from 'shared/app-header.js';
@@ -70,11 +70,13 @@
       const idToMod = new Map();
       for (const m of (manifest.modules || [])) idToMod.set(m.id, m);
 
-      // Извлекаем moduleId из href: «../cooling/» → 'cooling'.
+      // Извлекаем moduleId из href: последний сегмент пути.
+      // «../apps/cooling/» и «../apps/cooling/» → 'cooling'. Move-proof.
       const extractId = (href) => {
         if (!href) return null;
-        const m = href.match(/\.\.\/([a-z-]+)\//);
-        return m ? m[1] : null;
+        const norm = href.replace(/[?&#].*$/, '').replace(/\/+$/, '');
+        const seg = norm.split('/').pop();
+        return /^[a-z0-9-]+$/.test(seg) ? seg : null;
       };
 
       // Walk через все mod-card.
@@ -273,7 +275,7 @@
           <span class="desc">Климатические ряды (Open-Meteo, ASHRAE, rp5). Гистограмма T, HDD/CDD, FreeCool часы.</span>
           <span class="meta"><span class="tag standalone">standalone</span></span>
         </a>
-        <a class="mod-card" href="../cooling/">
+        <a class="mod-card" href="../apps/cooling/">
           <span class="title">Подбор холодильных систем</span>
           <span class="desc">Технико-эконом. сравнение чиллеров, DX, free-cooling, CRAC. CAPEX/OPEX/TCO/payback.</span>
           <span class="meta"><span class="tag standalone">standalone</span></span>
@@ -441,7 +443,7 @@
         <li><code>pdu-config/</code> — Конфигурация PDU</li>
         <li><code>facility-inventory/</code> — Не-IT инвентарь объекта</li>
         <li><code>meteo/</code> — Метеоданные</li>
-        <li><code>cooling/</code> — Подбор холодильных систем</li>
+        <li><code>apps/cooling/</code> — Подбор холодильных систем</li>
         <li><code>psychrometrics/</code> — ID-диаграмма Молье-Рамзина</li>
         <li><code>service/</code> — Сервис: монтаж и ТО</li>
         <li><code>genset-config/</code> — Конфигуратор ДГУ (ISO 8528-1, climate derate, fuel)</li>
@@ -462,11 +464,11 @@
 
       <h3 style="font-size:13px;margin:14px 0 6px;color:#475569">Calc-библиотеки (без UI, переиспользуются модулями)</h3>
       <ul class="muted" style="font-size:12px;column-count:2;column-gap:24px;margin:0;padding-left:18px">
-        <li><code>cooling/calc/</code> — chiller-bin-calc, capex-tco, fc-summary, topology, comparison, datasheet, psychro-formulas, chiller-defaults</li>
-        <li><code>cooling/datasheets/</code> — каталог даташитов вендоров (Daikin/York/Carrier/Trane/Stulz/Vertiv/Kehua/Generic)</li>
+        <li><code>apps/cooling/calc/</code> — chiller-bin-calc, capex-tco, fc-summary, topology, comparison, datasheet, psychro-formulas, chiller-defaults</li>
+        <li><code>apps/cooling/datasheets/</code> — каталог даташитов вендоров (Daikin/York/Carrier/Trane/Stulz/Vertiv/Kehua/Generic)</li>
         <li><code>genset-config/calc/</code> — genset-calc (ISO 8528-1 modes, ISO 3046-1 derate, fuel SFC)</li>
         <li><code>shared/catalogs/genset/</code> — каталог ДГУ (Caterpillar/Cummins/Volvo Penta/FG Wilson/MTU/AKSA/AJ Power)</li>
-        <li><code>cooling/ui/</code> — UI-компоненты cooling (chiller-form, capex-form, topology-view, comparison-view, energy-chart)</li>
+        <li><code>apps/cooling/ui/</code> — UI-компоненты cooling (chiller-form, capex-form, topology-view, comparison-view, energy-chart)</li>
         <li><code>service/calc/</code> — order-model (с vatEnabled / vatLabel v0.60.112), order-builder, export-offer</li>
         <li><code>service/catalog/</code> — work-templates (личные ✏ + общие команды 👥, Phase 41.2 v0.60.116)</li>
         <li><code>service/catalog/wizards/</code> — Phase 42 v0.60.109+: мастер составления нарядов (ventilation-to / chiller-to / ups-to + DSL для пользовательских)</li>

@@ -12,7 +12,7 @@ export const MODULE_PATHS = {
   cable: 'cable/',
   catalog: 'catalog/',
   configurator3d: 'configurator3d/',
-  cooling: 'cooling/',
+  cooling: 'apps/cooling/',
   'facility-inventory': 'facility-inventory/',
   'genset-config': 'genset-config/',
   logistics: 'logistics/',
