@@ -23,7 +23,7 @@
 import {
   getSelectionMeta, saveSelectionMeta, ensureSelectionMeta,
   listSelectionMetas, listConfigs, onConfigsChange,
-  getConfig, saveConfig,
+  getConfig, saveConfig, setMainVariant,
 } from './configuration-catalog.js';
 import {
   DEFAULT_ECONOMICS, computeTco, discountedPaybackYears, convertEcoToCurrency,
@@ -78,6 +78,11 @@ export function mountSelectionPanel(o) {
   const kind = o.kind;
   let pc = o.projectCode || null; // v0.60.434: меняется при смене контекста
   let activeTab = 'general';
+  // v0.60.455 (B2.2 i1): зона варианта = cooling-style вкладки в этой же
+  // панели (а не старый wizard). scopeMode: 'selection' | 'variant'.
+  let scopeMode = 'selection';
+  let activeVariantId = null;
+  let variantTab = 'spec';
   let selName = (typeof o.getActiveSelectionName === 'function' ? o.getActiveSelectionName() : null) || null;
 
   function selEcoOf(meta) {
@@ -401,6 +406,82 @@ export function mountSelectionPanel(o) {
     `;
   }
 
+  // v0.60.455 (B2.2 i1): read-only баннер УСЛОВИЙ ПОДБОРА для зоны варианта.
+  function condBannerHtml(meta) {
+    const req = (meta && meta.requirements) || {};
+    const pr = projReq() || {};
+    const parts = (o.requirementsSchema || []).map(f => {
+      let v = (f.key in pr) ? pr[f.key] : req[f.key];
+      if (v == null || v === '' || (Array.isArray(v) && !v.length)) return null;
+      if (f.type === 'multiselect') {
+        const map = {}; (f.options || []).forEach(op => { const val = typeof op === 'string' ? op : op.value; const lab = typeof op === 'string' ? op : op.label; map[val] = lab; });
+        v = (Array.isArray(v) ? v : [v]).map(x => map[x] || x).join('/');
+      } else if (f.type === 'select') {
+        const op = (f.options || []).find(x => String(typeof x === 'string' ? x : x.value) === String(v));
+        v = op ? (typeof op === 'string' ? op : op.label) : v;
+      }
+      return `${escH(f.label)}: <b>${escH(v)}</b>${f.unit ? ' ' + escH(f.unit) : ''}`;
+    }).filter(Boolean);
+    return `<div class="rsp-note" style="margin:0 0 12px;background:var(--sel-accent-bg,#eef2ff);border-color:var(--sel-accent-bd,#c7d2fe);color:var(--sel-accent-ink,#3730a3)">
+      📋 Условия подбора (общие, задаются в зоне ПОДБОРА): ${parts.join(' · ') || '—'}
+      <button type="button" data-var-act="back" style="margin-left:8px;padding:3px 9px;font-size:11px;background:#fff;border:1px solid var(--sel-accent-bd,#c7d2fe);border-radius:4px;color:var(--sel-accent-ink,#3730a3);cursor:pointer">↩ К условиям подбора</button>
+    </div>`;
+  }
+
+  // v0.60.455 (B2.2 i1): зона ВАРИАНТА — cooling-style вкладки.
+  function renderVariant(meta) {
+    const entry = activeVariantId ? getConfig(kind, activeVariantId) : null;
+    if (!entry) { scopeMode = 'selection'; return renderGeneral(meta); }
+    const eco = effEco(meta);
+    const cur0 = eco.currency || '₸';
+    const ci = (entry.eco && Array.isArray(entry.eco.costItems) && entry.eco.costItems.length)
+      ? entry.eco.costItems : null;
+    let items = ci;
+    if (!items) { try { const e = o.variantEconomics(entry, eco, (meta && meta.requirements) || {}) || {}; items = Array.isArray(e.costItems) ? e.costItems : []; } catch { items = []; } }
+    const t = computeEcoTotals({ costItems: items, currency: cur0 }, cur0, o.convertFn || null);
+    const p = entry.payload || {};
+    let body = '';
+    if (variantTab === 'spec') {
+      body = `<div class="rsp-sec-title">⚙ Spec — конкретное решение варианта</div>
+        <div class="rsp-grid">
+          <label class="rsp-field">Название варианта<input type="text" data-var="label" value="${escH(entry.label || '')}"></label>
+        </div>
+        <div class="rsp-note">ℹ Здесь выбирается конкретная модель ИБП (каскад поставщик→серия→модель) и резерв — следующий инкремент (i2). Тип варианта = тип выбранной модели; список моделей фильтруется по допустимым типам подбора. Текущее: <b>${escH(p.upsSupplier || '')} ${escH(p.upsModel || p.upsId || entry.label || '—')}</b>${p.capacityKw ? ' · ' + escH(p.capacityKw) + ' кВт' : ''}.</div>`;
+    } else if (variantTab === 'akb') {
+      body = `<div class="rsp-sec-title">🔋 АКБ варианта</div>
+        <div class="rsp-note">ℹ Выбор/пропуск АКБ и мост к модулю «Расчёт АКБ» — инкремент i3. Текущее: <b>${escH(p.batteryChoice === 'skip' ? 'без АКБ' : (p.battery ? ((p.battery.supplier || '') + ' ' + (p.battery.model || '')) : '— не задано'))}</b>.</div>`;
+    } else if (variantTab === 'capex') {
+      body = `<div class="rsp-sec-title" title="Построчный состав статей затрат варианта — цена+валюта на пункт, как в «Подбор холода».">💰 CAPEX варианта · валюта ${escH(cur0)}</div>
+        <table class="rsp-table"><tbody>
+          <tr><td class="rsp-lft">Σ Оборудование</td><td>${fmtMoney(t.equipmentCost, cur0)}</td></tr>
+          <tr><td class="rsp-lft">Σ Монтаж/ПНР</td><td>${fmtMoney(t.installationCost, cur0)}</td></tr>
+          <tr><td class="rsp-lft">Σ ТО за год</td><td>${fmtMoney(t.maintenanceRubPerYear, cur0)}</td></tr>
+          <tr class="rsp-main"><td class="rsp-lft"><b>CAPEX (год 0)</b></td><td><b>${fmtMoney(t.equipmentCost + t.installationCost, cur0)}</b></td></tr>
+        </tbody></table>
+        <div style="margin-top:10px"><button type="button" class="rs-cs-btn rs-cs-btn-primary" data-cap-edit="${escH(entry.id)}">✏ Редактировать состав (${items.length})</button></div>
+        <div class="rsp-note">ℹ Построчная таблица: Статья / Кол-во / Оборудование / Монтаж+ПНР / ТО за год — цена и валюта на каждый пункт (единый редактор, как cooling). Хранится в этом варианте.</div>`;
+    } else { // итог
+      body = `<div class="rsp-sec-title">🧾 Итог варианта</div>
+        <table class="rsp-table"><tbody>
+          <tr><td class="rsp-lft">Вариант</td><td>${escH(entry.label || entry.id)}${entry.isMainVariant ? ' · <b style="color:#16a34a">★ основной</b>' : ''}</td></tr>
+          <tr><td class="rsp-lft">CAPEX (год 0)</td><td><b>${fmtMoney(t.equipmentCost + t.installationCost, cur0)}</b></td></tr>
+        </tbody></table>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          ${entry.isMainVariant ? '' : `<button type="button" class="rs-cs-btn" data-var-act="setmain">★ Сделать основным</button>`}
+          <button type="button" class="rs-cs-btn" data-var-act="compare">📈 К сравнению вариантов</button>
+        </div>
+        <div class="rsp-note">ℹ «Применить к схеме» / печать (мост к существующей логике) — инкремент i4. Сейчас вариант сохраняется автоматически (имя — во вкладке Spec).</div>`;
+    }
+    const tab = (id, lbl) => `<div class="rsp-tab ${variantTab === id ? 'active' : ''}" data-vtab="${id}">${lbl}</div>`;
+    return `__VARIANT__
+      <div class="rsp-head">
+        <h3 title="Редактирование конкретного варианта подбора.">📋 Подбор «${escH(selName)}» → Вариант «${escH(entry.label || entry.id)}»</h3>
+        <span class="rsp-sub">${escH(o.kind)} · вариант</span>
+      </div>
+      <div class="rsp-tabs">${tab('spec', '⚙ Spec')}${tab('akb', '🔋 АКБ')}${tab('capex', '💰 CAPEX (входные)')}${tab('itog', '🧾 Итог')}</div>
+      <div class="rsp-body">${condBannerHtml(meta)}${body}</div>`;
+  }
+
   // v0.60.430: авто-выбор активного подбора, если явный ещё не задан —
   // самый свежий по записи подбора, иначе по самому свежему варианту.
   // Чтобы панель не была пустой при заходе/после сохранения из wizard.
@@ -423,6 +504,28 @@ export function mountSelectionPanel(o) {
       return;
     }
     const meta = getSelectionMeta(kind, { projectCode: pc, selectionName: selName });
+    if (scopeMode === 'variant' && activeVariantId) {
+      const vinner = renderVariant(meta);
+      if (typeof vinner === 'string' && vinner.startsWith('__VARIANT__')) {
+        mountEl.innerHTML = `<div class="rsp-wrap">${vinner.slice('__VARIANT__'.length)}</div>`;
+        mountEl.querySelectorAll('.rsp-tab[data-vtab]').forEach(t =>
+          t.addEventListener('click', () => { variantTab = t.dataset.vtab; render(); }));
+        mountEl.querySelectorAll('[data-var]').forEach(inp => inp.addEventListener('change', () => {
+          const e = getConfig(kind, activeVariantId); if (!e) return;
+          saveConfig(kind, { ...e, [inp.dataset.var]: inp.value });
+        }));
+        mountEl.querySelectorAll('[data-var-act]').forEach(b => b.addEventListener('click', () => {
+          const act = b.dataset.varAct;
+          if (act === 'back') { scopeMode = 'selection'; activeTab = 'general'; render();
+            try { window.dispatchEvent(new CustomEvent('rs-cs-focus', { detail: { kind, scope: 'selection', selectionName: selName } })); } catch {} }
+          else if (act === 'compare') { scopeMode = 'selection'; activeTab = 'compare'; render();
+            try { window.dispatchEvent(new CustomEvent('rs-cs-focus', { detail: { kind, scope: 'selection', selectionName: selName } })); } catch {} }
+          else if (act === 'setmain') { try { setMainVariant(kind, selName, activeVariantId); } catch {} render(); }
+        }));
+        _bindCapEdit();
+        return;
+      }
+    }
     const inner = activeTab === 'general' ? renderGeneral(meta)
       : activeTab === 'capex' ? renderCapex(meta)
       : renderCompare(meta);
@@ -434,13 +537,13 @@ export function mountSelectionPanel(o) {
         </div>
         <div class="rsp-tabs">
           <div class="rsp-tab ${activeTab === 'general' ? 'active' : ''}" data-tab="general" title="Общие условия подбора и финансовые параметры.">📋 Свойства подбора</div>
-          <div class="rsp-tab ${activeTab === 'capex' ? 'active' : ''}" data-tab="capex" title="Конкретные цены каждого варианта: оборудование / монтаж / ТО-год + валюта.">💰 CAPEX (по вариантам)</div>
+          <div class="rsp-tab ${activeTab === 'capex' ? 'active' : ''}" data-tab="capex" title="Цены вариантов построчно (Состав оборудования).">💰 CAPEX (по вариантам)</div>
           <div class="rsp-tab ${activeTab === 'compare' ? 'active' : ''}" data-tab="compare" title="Сравнение вариантов: CAPEX / OPEX / TCO / окупаемость.">📈 TCO / Сравнение</div>
         </div>
         <div class="rsp-body">${inner}</div>
       </div>`;
 
-    mountEl.querySelectorAll('.rsp-tab').forEach(t => t.addEventListener('click', () => {
+    mountEl.querySelectorAll('.rsp-tab[data-tab]').forEach(t => t.addEventListener('click', () => {
       activeTab = t.dataset.tab; render();
     }));
     mountEl.querySelectorAll('[data-req]').forEach(inp => {
@@ -476,9 +579,13 @@ export function mountSelectionPanel(o) {
         if (activeTab === 'compare') render();
       });
     });
-    // v0.60.454: «✏ Состав» — построчный редактор статей затрат варианта
-    // (единый shared/ui/cost-items-modal.js, как «Подбор холода»). Цена и
-    // валюта на каждый пункт. Сохраняется в сам вариант entry.eco.costItems.
+    _bindCapEdit();
+  }
+
+  // v0.60.454/455: «✏ Состав» — построчный редактор статей затрат варианта
+  // (единый shared/ui/cost-items-modal.js, как «Подбор холода»). Используется
+  // и в подбор-зоне (список вариантов), и в зоне варианта (вкладка CAPEX).
+  function _bindCapEdit() {
     mountEl.querySelectorAll('[data-cap-edit]').forEach(btn => {
       btn.addEventListener('click', async () => {
         const id = btn.getAttribute('data-cap-edit');
@@ -486,7 +593,6 @@ export function mountSelectionPanel(o) {
         if (!entry) return;
         const m = getSelectionMeta(kind, { projectCode: pc, selectionName: selName });
         const cur0 = (effEco(m).currency) || '₸';
-        // стартовый состав: уже сохранённый, иначе авто-оценка из параметров
         let start = (entry.eco && Array.isArray(entry.eco.costItems) && entry.eco.costItems.length)
           ? entry.eco.costItems : null;
         if (!start) {
@@ -494,7 +600,7 @@ export function mountSelectionPanel(o) {
             start = Array.isArray(e.costItems) ? e.costItems : []; } catch { start = []; }
         }
         const res = await openCostItemsModal(start, cur0, o.convertFn || null);
-        if (res == null) return;            // Отмена
+        if (res == null) return;
         saveConfig(kind, { ...entry, eco: { ...(entry.eco || {}), costItems: res } });
         render();
       });
@@ -509,8 +615,11 @@ export function mountSelectionPanel(o) {
 
   return {
     refresh: render,
-    setSelection(name) { selName = name || null; render(); },
-    setProjectCode(v) { pc = v || null; selName = null; render(); },
+    setSelection(name) { selName = name || null; scopeMode = 'selection'; render(); },
+    setProjectCode(v) { pc = v || null; selName = null; scopeMode = 'selection'; render(); },
+    // v0.60.455 (B2.2 i1): зона варианта в самой панели (cooling-style).
+    setVariant(id) { activeVariantId = id || null; scopeMode = id ? 'variant' : 'selection'; variantTab = 'spec'; render(); },
+    setScopeSelection() { scopeMode = 'selection'; render(); },
     destroy() { try { off && off(); } catch {} },
   };
 }

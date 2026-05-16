@@ -447,38 +447,44 @@
       //    TCO/Сравнение. Wizard скрыт.
       //  • Выбран ВАРИАНТ (Опция) → редактор конкретной конфигурации
       //    (wizard, загруженный этим вариантом). Панель подбора скрыта.
+      // v0.60.455 (B2.2 i1): редактор варианта = cooling-style вкладки В
+      // САМОЙ ПАНЕЛИ. Старый 4-шаговый wizard оставлен ТОЛЬКО как мост для
+      // входа из Конструктора схем (?nodeId), PUSH технолога (?capacityKw)
+      // и кнопки «🧙 Мастер подбора». В обычном потоке подбор↔вариант
+      // wizard НЕ показывается — обе зоны рендерит панель.
       const wizEl = document.getElementById('configurator-wizard');
-      function setScope(scope) {
-        const variant = scope === 'variant';
-        if (mountEl) mountEl.style.display = variant ? 'none' : '';
-        if (wizEl)  wizEl.style.display  = variant ? '' : 'none';
+      const _wizardEntry = (() => {
+        try { const q = new URLSearchParams(location.search);
+          return !!(q.get('nodeId') || q.get('capacityKw')); } catch { return false; }
+      })();
+      let _wizardMode = _wizardEntry;   // мост-режим (wizard виден)
+      function applyZones() {
+        if (_wizardMode) {            // мост: wizard виден, панель скрыта
+          if (mountEl) mountEl.style.display = 'none';
+          if (wizEl) wizEl.style.display = '';
+        } else {                      // обычный поток: всё рендерит панель
+          if (mountEl) mountEl.style.display = '';
+          if (wizEl) wizEl.style.display = 'none';
+        }
       }
       window.addEventListener('rs-cs-focus', (ev) => {
         const d = ev.detail || {};
         if (d.kind && d.kind !== 'ups') return;
         if (d.scope === 'selection') {
           activeSel = d.selectionName || activeSel;
+          _wizardMode = false;
           api.setSelection(activeSel);
-          setScope('selection');
         } else if (d.scope === 'variant') {
-          setScope('variant');
+          _wizardMode = false;
+          if (d.selectionName) { activeSel = d.selectionName; }
+          api.setVariant(d.entryId || null);   // панель показывает вкладки варианта
         }
+        applyZones();
       });
-      // «🧙 Мастер подбора» — создаём новый вариант → зона варианта.
+      // «🧙 Мастер подбора» — мост к старому wizard (power-path).
       document.getElementById('btn-wizard-standalone')
-        ?.addEventListener('click', () => setScope('variant'), true);
-      // Старт: если открыто из Конструктора схем (?nodeId=…) — сразу
-      // зона варианта (wizard). Иначе зона подбора (исходные + сравнение).
-      // Зона варианта на старте, если открыто из Конструктора схем
-      // (?nodeId=) или PUSH из технолога ЦОД (?capacityKw=) — initWizard
-      // сам откроет wizard. Иначе — зона подбора.
-      const _wizardEntry = (() => {
-        try {
-          const q = new URLSearchParams(location.search);
-          return !!(q.get('nodeId') || q.get('capacityKw'));
-        } catch { return false; }
-      })();
-      setScope(_wizardEntry ? 'variant' : 'selection');
+        ?.addEventListener('click', () => { _wizardMode = true; applyZones(); }, true);
+      applyZones();
     }
   </script>
 
