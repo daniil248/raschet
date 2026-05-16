@@ -2792,6 +2792,23 @@ function _planUnitDefs(c) {
     const base = _tagBase(cu.name, 'AC');
     push('cool', cu, cu.count, 700, 900, base, cu.name || 'Климат', '❄');
   }
+  // v0.60.510 (правка Пользователя «так для всего»): набор охватывает
+  // ВСЁ дискретное оборудование, не только стойки/ИБП/климат.
+  // МЦОД-блоки (контейнерные здания) — по count, типовой габарит.
+  for (const b of (c.mdcBuildings || [])) {
+    const base = _tagBase(b.name, 'MDC');
+    push('mdc', b, b.count || 1, 6000, 2400, base, b.name || 'МЦОД', '📦');
+  }
+  // Ввод: ТП и ДГУ — отдельными конструктивами (по схеме резервирования).
+  const fd = c.feed || {};
+  if (fd.tp && fd.tp.needed) {
+    const tpN = (String(fd.tp.redundancy || '1').startsWith('2')) ? 2 : 1;
+    push('tp', { id: 'feed-tp' }, tpN, 3000, 2000, 'TP', `ТП ${fd.tp.kva ? fd.tp.kva + ' кВА' : ''}`.trim(), '🔌');
+  }
+  if (fd.dgu && fd.dgu.needed) {
+    const dgN = Math.max(1, Number(fd.dgu.count) || 1);
+    push('dgu', { id: 'feed-dgu' }, dgN, 4000, 1600, 'DGU', `ДГУ ${fd.dgu.kw ? fd.dgu.kw + ' кВт' : ''}`.trim(), '⚡');
+  }
   return defs;
 }
 function _tagBase(name, fallback) {
