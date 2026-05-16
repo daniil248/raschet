@@ -2842,26 +2842,30 @@ function renderActiveVariant() {
       <button type="button" class="tw-layout-btn${_layoutMode === 'table' ? ' active' : ''}" data-layout="table" title="Сводная таблица всех блоков">📊 Таблица</button>
     </div>`;
 
+    // v0.60.502 (правка Пользователя 2026-05-16): «второй левый сайдбар →
+    // первый левый сайдбар». В split/compact rail рендерится в сайдбаре
+    // (#tw-rail-mount), а основное окно занимает full-width details/данные.
+    const railMount = $('tw-rail-mount');
     let bodyHtml = '';
+    let railHtml = '';
     if (_layoutMode === 'split') {
-      bodyHtml = `<div class="tw-list-layout">
-        <aside class="tw-list-rail">${renderListRail(c, ro)}</aside>
-        <div class="tw-list-details">${renderDetails(c, ro)}</div>
-      </div>`;
+      railHtml = renderListRail(c, ro);
+      bodyHtml = `<div class="tw-list-details tw-list-details-full">${renderDetails(c, ro)}</div>`;
     } else if (_layoutMode === 'cards') {
       bodyHtml = renderAllCardsLayout(c, ro);
     } else if (_layoutMode === 'compact') {
-      bodyHtml = `<div class="tw-list-layout tw-layout-compact">
-        <aside class="tw-list-rail">${renderListRail(c, ro)}</aside>
-      </div>`;
+      railHtml = renderListRail(c, ro);
+      bodyHtml = `<div class="tw-compact-hint muted">Состав разделов — в левой панели. Выберите элемент для редактирования здесь.</div>`;
     } else if (_layoutMode === 'table') {
       bodyHtml = renderTableLayout(c, ro);
     }
 
+    if (railMount) railMount.innerHTML = railHtml;
     listPane.innerHTML = `${layoutPicker}${summaryBar}${bodyHtml}`;
     // v0.60.495 (Phase 47.1.4): состав разделов sidebar по типу объекта.
     // Datacenter — все; factory/pump-station/office — generic набор
     // (помещения/ввод/площади/сводки); custom — proj.objectModules.
+    // v0.60.502: rail теперь в #tw-rail-mount — фильтруем там (+ details).
     try {
       const _proj = _pid ? getProject(_pid) : null;
       const _ok = _proj?.objectKind || 'datacenter';
@@ -2874,11 +2878,18 @@ function renderActiveVariant() {
           ? _proj.objectModules : _DC,
       };
       const _set = new Set(_SETS[_ok] || _DC);
-      listPane.querySelectorAll('[data-objsec]').forEach(el => {
-        if (!_set.has(el.dataset.objsec)) el.remove();
+      [railMount, listPane].forEach(host => {
+        if (!host) return;
+        host.querySelectorAll('[data-objsec]').forEach(el => {
+          if (!_set.has(el.dataset.objsec)) el.remove();
+        });
       });
     } catch (e) { console.warn('[tw] objectKind section filter', e); }
     $('tw-content-summary').textContent = `${totalRacks} стоек · ${itKw.toFixed(1)} кВт IT · Σ ${sumM2} м²`;
+  } else {
+    // Не-list режим — очищаем rail-mount в сайдбаре.
+    const railMount = $('tw-rail-mount');
+    if (railMount) railMount.innerHTML = '';
   }
 }
 
@@ -2896,7 +2907,12 @@ function persistActive() { saveJson(KEY_ACTIVE, _activeId); }
 // (fires on blur / Enter) — после ввода полного значения. Пользователь просил
 // дважды: «символы можно вводить только по одному так как теряется фокус».
 function bindListEvents() {
-  const root = $('tw-mode-list');
+  // v0.60.502: rail переехал в сайдбар (#tw-rail-mount), а детали — в
+  // #tw-mode-list. Делегируем с общего предка .tw-main, чтобы клики/
+  // change работали и в сайдбаре, и в основном окне. Селекторы строгие
+  // (closest по data-bk / data-card-kind / data-add-card и т.п.) —
+  // конфликта с обработчиками списка вариантов нет.
+  const root = document.querySelector('.tw-main') || $('tw-mode-list');
   if (!root) return;
   const handle = (e) => {
     const cur = _variants.find(x => x.id === _activeId);

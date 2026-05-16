@@ -74,7 +74,12 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex: 1;
+  /* v0.60.502: больше не растягиваем на всю высоту (раньше flex:1
+     выталкивал кросс-модули вниз). Теперь под списком вариантов идёт
+     состав разделов (#tw-rail-mount) — он и занимает основное место. */
+  flex: 0 0 auto;
+  max-height: 38vh;
+  overflow-y: auto;
 }
 .tw-no-variants {
   padding: 12px;
@@ -177,19 +182,33 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
 }
 
 /* Phase 30.6 (v0.60.62): кросс-модульная панель «Связанные модули проекта» */
+/* v0.60.502 (правка Пользователя): «Связанные модули» — свёрнутый
+   <details> внизу сайдбара. */
 .tw-cross-modules {
-  margin-top: 14px;
-  padding-top: 10px;
+  margin-top: 6px;
+  padding-top: 8px;
   border-top: 1px solid #e5e7eb;
 }
-.tw-cross-modules h3 {
-  margin: 0 0 6px;
+.tw-cross-modules > summary {
+  cursor: pointer;
+  list-style: none;
   font-size: 11.5px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
   color: #475569;
   font-weight: 600;
+  padding: 6px 4px;
+  border-radius: 4px;
+  user-select: none;
 }
+.tw-cross-modules > summary::-webkit-details-marker { display: none; }
+.tw-cross-modules > summary::before {
+  content: '▸ ';
+  color: #94a3b8;
+}
+.tw-cross-modules[open] > summary::before { content: '▾ '; }
+.tw-cross-modules > summary:hover { background: #f1f5f9; color: #1e293b; }
+.tw-cross-modules-list { margin-top: 6px; }
 .tw-cross-modules-list {
   display: flex;
   flex-direction: column;
@@ -771,6 +790,71 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
   grid-template-columns: 290px 1fr;
   gap: 12px;
   align-items: start;
+}
+
+/* v0.60.502 (правка Пользователя 2026-05-16): rail (состав разделов)
+   переехал в левый сайдбар (#tw-rail-mount); основное окно отдано
+   полностью под данные/группы/редакторы — это чинит «второй и
+   последующие блоки проваливаются» (раньше details был зажат в
+   290px+1fr грид и переполнялся). */
+.tw-rail-mount {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 8px;
+}
+.tw-rail-mount:empty { display: none; }
+/* Разделы — компактной строкой с мини-анализом; данные/группы —
+   в основном окне. Подпункты-элементы внутри секции сведены к одной
+   строке (truncate), Σ-итог секции (.tw-rail-foot) = мини-анализ. */
+.tw-rail-mount .tw-rail-section { overflow: hidden; }
+.tw-rail-mount .tw-rail-head { padding: 6px 8px; }
+.tw-rail-mount .tw-rail-list {
+  max-height: 184px;
+  overflow-y: auto;
+}
+.tw-rail-mount .tw-rail-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2px 6px;
+  padding: 5px 8px;
+}
+.tw-rail-mount .tw-rail-item .tw-rail-name {
+  grid-column: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.tw-rail-mount .tw-rail-item .tw-rail-sub {
+  grid-column: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  font-size: 10.5px;
+}
+.tw-rail-mount .tw-rail-item .tw-rail-chip { grid-column: 2; grid-row: 1 / span 2; }
+.tw-rail-mount .tw-rail-foot {
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #334155;
+  background: #f8fafc;
+  border-top: 1px solid #eef2f7;
+}
+
+/* Основное окно: details на всю ширину (без рельсовой колонки). */
+.tw-list-details-full {
+  width: 100%;
+  box-sizing: border-box;
+}
+.tw-compact-hint {
+  padding: 28px 16px;
+  text-align: center;
+  font-size: 13px;
 }
 .tw-list-rail {
   display: flex;
