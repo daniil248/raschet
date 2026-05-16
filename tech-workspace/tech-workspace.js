@@ -2927,7 +2927,10 @@ function _planSnap(c, draggedId, x, y) {
   const dd = defs.find(d => d.id === draggedId);
   const gx = Math.round(x / 10) * 10;
   const gy = Math.round(y / 10) * 10;
-  if (!dd) return { x: Math.max(0, gx), y: Math.max(0, gy) };
+  // v0.60.509 (правка Пользователя 2026-05-16): холст безразмерный во ВСЕ
+  // стороны — координаты могут быть отрицательными (выше/левее нуля).
+  // Раньше Math.max(0,…) запрещал уход за нулевую точку.
+  if (!dd) return { x: gx, y: gy };
   const dw = mm2(dd.wMm), dh = mm2(dd.hMm);
   const TH = 14; // порог притяжения (мировые px)
   let bx = gx, by = gy, bestDX = TH + 1, bestDY = TH + 1;
@@ -2948,7 +2951,7 @@ function _planSnap(c, draggedId, x, y) {
   }
   if (bestDX > TH) bx = gx;
   if (bestDY > TH) by = gy;
-  return { x: Math.max(0, Math.round(bx)), y: Math.max(0, Math.round(by)) };
+  return { x: Math.round(bx), y: Math.round(by) };
 }
 
 // Авто-раскладка: размещает указанные defs сеткой, не накладываясь.
