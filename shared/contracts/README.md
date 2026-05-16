@@ -30,19 +30,33 @@ legacy-rack-migration).
 ## 3. Закон импортов
 
 **Разрешено:** `module → CORE | SHARED | CATALOGS`;
-`SHARED → CORE | SHARED | CATALOGS`; `CATALOGS` — без импортов.
+`CORE → CORE | SHARED | CATALOGS`; `SHARED → CORE | SHARED | CATALOGS`;
+`CATALOGS` — без импортов. *(Уточнено по аудиту 2026-05-16: ядро
+`js/engine/*` фактически широко использует `shared/*` — это
+нижний стабильный контракт-слой; запрещена лишь зависимость ядра
+от ПОДКЛЮЧАЕМОГО модуля.)*
 
-**Запрещено:**
-- `CORE → SHARED` или `CORE → <module>` (Ядро самодостаточно).
-- `SHARED → <module>` (включая `*-seed.js` → модуль; известное
-  нарушение `battery-seed → battery/battery-catalog` — в allowlist,
-  гасится переносом данных в `shared/catalogs/battery/`).
+**Запрещено (жёсткие правила boundary-lint):**
+- `CORE → <module>` (ядро не зависит от подключаемого модуля).
+- `SHARED → <module>` (включая `*-seed.js`/CATALOGS → модуль;
+  известное нарушение `battery-seed → battery/battery-catalog` —
+  в allowlist, гасится переносом данных в `shared/catalogs/battery/`).
 - `<module>/** → ../<другой-module>/**` (импорт во внутренности
   соседа). Кросс-модульное общение — ТОЛЬКО через контракты §4.
 - `CATALOGS → <module>`.
-- Сырой чужой `localStorage` ключ `raschet.(project|projects|
-  configurations|subscription).*` вне `project-storage.js`/
-  `configuration-catalog.js`/`subscriptions.js`/объявленного моста.
+
+**Исключение — мосты:** `shared/<m>-bridge.js` и
+`shared/legacy-rack-migration.js` — санкционированный слабый адаптер
+(§4.5): вправе импортировать модуль и читать мульти-модульные LS;
+исключены из всех импортных правил и из R2.
+
+**Advisory (WARN, не блокирует до Фазы 2):** сырой чужой
+`localStorage` ключ `raschet.(project|projects|configurations|
+subscription).*` literal/template вне `project-storage.js`/
+`configuration-catalog.js`/`subscriptions.js`/`project-context.js`/
+`project-bootstrap.js`/моста. Эвристика шумит (ловит
+`projectKey()`-helper) → genuine рефактор сырого доступа —
+ROADMAP X.1.3 / Фаза 2.
 
 ## 4. Каналы кросс-модульного общения (единственно допустимые)
 1. **project-storage** — данные проекта (ключи `raschet.project.<pid>.
@@ -61,17 +75,24 @@ legacy-rack-migration).
 Никаких прямых относительных импортов в соседний модуль; никаких
 сырых чужих LS-ключей вне §4.
 
-## 5. boundary-lint (правила; реализация — `tools/boundary-lint.mjs`, Фаза 0)
-- **FORBID** в `<module>/**`: `from\s+['"]\.\./(?!shared/|js/)[^'"]+['"]`.
-- **FORBID** сырой чужой LS: `localStorage\.(get|set|removeItem)Item?`
-  с литералом `raschet\.(project|projects|configurations|subscription)\.`
-  вне разрешённых файлов (§3).
-- **FORBID** импорт в `js/engine/**` из `shared/**` или `<module>/**`.
-- **FORBID** файлам CATALOGS импортировать пути модулей.
-- **WARN** (до i18n-фазы): новые кириллические UI-литералы в
-  изменённых строках вне изолируемой обёртки (`t(...)`).
-- Санкционированные текущие нарушения — в `lint-allowlist.json`
-  (CI зелёный с дня 1, каждое гасится по тикету X.1.3).
+## 5. boundary-lint (реализация — `tools/boundary-lint.mjs`, Фаза 0 ✅)
+Резолвит относительные импорты в репо-путь и классифицирует по слою.
+Жёсткие правила (fail при НОВОМ, не в allowlist):
+- **R1-cross-module-import** — файл модуля импортирует внутренности
+  другого модуля (резолв в чужой module-dir).
+- **R3-core-imports-module** — `js/engine|calc|methods` → модуль.
+- **R4-catalog-imports-module** — `shared/catalogs|*-seed|*-types|
+  por-types` → модуль.
+- **R-shared-imports-module** — `shared/*` (не мост) → модуль.
+Advisory (не блокирует, Фаза 2):
+- **R2-raw-foreign-ls** — сырой чужой `raschet.(project|projects|
+  configurations|subscription).*` literal/template (эвристика).
+- **WARN (i18n)** — новые кириллические UI-литералы вне `t(...)`
+  (вводится в i18n-фазе).
+Мосты исключены (см. §3). Санкционированный baseline — машинный
+`lint-allowlist.json` (`allow[]`, ключ `rule::file::target`); CI
+зелёный с дня 1, каждое гасится по тикету ROADMAP X.1.3.
+`node tools/boundary-lint.mjs --update-baseline` пересобирает baseline.
 
 ## 6. Манифест модуля — `<module>/manifest.json`
 Схема (Фаза 1; генерирует корневой `modules.json` v1.2.0 через
