@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.524', date: '2026-05-16', items: [
+      '🧩 <b>Модуляризация Фаза 2 (burndown #4): service → shared/money</b>. <code>service/service.js</code> импортировал <code>CURRENCIES/currencyToIso</code> из <code>cooling/calc/fc-summary.js</code> (кросс-модуль), хотя <code>shared/money.js</code> содержит их байт-в-байт идентично. Импорт перенаправлен на <code>shared/money.js</code> — кросс-модульный импорт service→cooling устранён, запись убрана из allowlist. Без переноса файлов/shim (одиночный деплой, без cache-нюанса). Поведение идентично.',
+    ] },
     { version: '0.60.523', date: '2026-05-16', items: [
       '🧩 <b>Модуляризация Фаза 2 (burndown #3): CSV-хелперы → SHARED</b>. <code>tableToCsv</code>/<code>downloadCsv</code> перенесены из <code>meteo/charts.js</code> в <code>shared/meteo-util.js</code> (generic, используются meteo annual-table и cooling-экспорт). <code>meteo/charts.js</code> re-export\\'ит их (старый путь <code>./charts.js</code> для <code>meteo/annual-table.js</code> цел, zero-build). <code>cooling/cooling.js</code> импортирует из shared — последний кросс-модульный импорт cooling→meteo устранён; запись убрана из allowlist. Поведение идентично.',
     ] },

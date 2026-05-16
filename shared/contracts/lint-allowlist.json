@@ -6,12 +6,6 @@
   "allow": [
     {
       "rule": "R1-cross-module-import",
-      "file": "service/service.js",
-      "target": "cooling/calc/fc-summary.js",
-      "note": "service тянет cooling-экономику (CURRENCIES/currencyToIso). Burndown X.1.3: через service-bridge или shared/calc."
-    },
-    {
-      "rule": "R1-cross-module-import",
       "file": "js/main.js",
       "target": "reports/templates-seed.js",
       "note": "constructor тянет seed-шаблоны отчётов. Burndown 1.7 (reports-only-via-reports): экспонировать через reports/ API."

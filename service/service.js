@@ -21,7 +21,7 @@ import { fetchRates, convert as convertRate } from '../shared/currency-rates/ind
 import { open as openRatesDialog } from '../shared/currency-rates/rates-dialog.js';
 import '../shared/currency-rates/sources/index.js';
 import * as util from '../shared/meteo-util.js'; // v0.60.522: SHARED (burndown service→meteo)
-import { CURRENCIES, currencyToIso } from '../cooling/calc/fc-summary.js';
+import { CURRENCIES, currencyToIso } from '../shared/money.js'; // v0.60.524: SHARED (burndown service→cooling/calc; fc-summary дублирует money.js байт-в-байт)
 import { openKpTemplateEditor } from './report/kp-editor.js';
 import { DEFAULT_ORDER, ORDER_TYPES, defaultPosition, formatOrderNumber, DEFAULT_NUMBER_PATTERNS } from './calc/order-model.js';
 import { renderOrderForm } from './ui/order-form.js';
