@@ -18,12 +18,6 @@
     },
     {
       "rule": "R1-cross-module-import",
-      "file": "meteo/ashrae-datasheet.js",
-      "target": "psychrometrics/psychrometrics-core.js",
-      "note": "meteo тянет психрометрические формулы. Burndown X.1.3: psychrometrics-core → shared/calc/."
-    },
-    {
-      "rule": "R1-cross-module-import",
       "file": "service/service.js",
       "target": "meteo/util.js",
       "note": "service использует meteo-утилиты. Burndown X.1.3: shared/ или bridge."

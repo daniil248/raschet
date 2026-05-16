@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.521', date: '2026-05-16', items: [
+      '🧩 <b>Модуляризация Фаза 2 (burndown #1): psychrometrics-core → SHARED</b>. Чистые психрометрические формулы ASHRAE перенесены из модуля <code>psychrometrics/psychrometrics-core.js</code> в переиспользуемую calc-библиотеку <code>shared/calc/psychrometrics-core.js</code>. На старом пути — совместимостный shim (<code>export *</code>), внутримодульные импорты <code>./psychrometrics-core.js</code> не тронуты (zero-build). <code>meteo/ashrae-datasheet.js</code> импортирует из shared (кросс-модульный импорт meteo→psychrometrics устранён, запись убрана из boundary-lint allowlist). Поведение идентично — только границы модулей.',
+    ] },
     { version: '0.60.520', date: '2026-05-16', items: [
       '🧹 <b>Чистка структуры: удалён мёртвый код и мусор</b>. Удалены неиспользуемые файлы: <code>shared/mv-short-circuit.js</code> (модуль ТКЗ IEC 60909 — 0 импортёров с v0.54.3), <code>js/auth.js</code> (no-op DEPRECATED-shim, логика давно в <code>shared/auth.js</code>), <code>dgu-config/datasheets/drups.js</code> (re-export shim v0.60.92 — 0 импортёров), <code>shared/report/demo.html</code> (демо-артефакт). Удалены мёртвые экспорты: <code>buildTopologyFromOption</code> (<code>cooling/calc/topology.js</code>, @deprecated v0.60.15, без вызывающих) и <code>fmtRub</code> (<code>cooling/calc/fc-summary.js</code>, @deprecated, без вызывающих). Удалён мусор из корня: <code>Текстовый документ.txt</code> (черновые заметки), <code>Roadmap.docx</code> (устаревший бинарный дубль ROADMAP.md), <code>scripts/audit-design.mjs</code> (дубль — канонична Python-версия audit-design.py). Обновлён <code>shared/report/README.md</code> (убраны ссылки на demo.html). Без регрессий: все удалённые сущности проверены на отсутствие статических и динамических (<code>import()</code>) ссылок.',
     ] },
