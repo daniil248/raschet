@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.489', date: '2026-05-16', items: [
+      '🗂 <b>Принадлежности ИБП вынесены в каталог</b> (правило «справочники — в каталоге»). Новый <code>shared/catalogs/ups-accessories.js</code> — записи {id,sku,cls,kitInclusion,applies(ctx),qty(ctx),label(ctx)}. <code>buildUpsAccessories</code> теперь применяет правила каталога (не хардкод), формат строк состава прежний; расширяемо без правки сборщика.',
+    ] },
     { version: '0.60.488', date: '2026-05-16', items: [
       '📋 <b>Состав ИБП (с принадлежностями) — построчно в варианте</b>. <code>variantEconomics</code> ups-config раскладывает <code>payload.composition</code> (фрейм/модули + кабели/наконечники/связь/parallel-kit/ПНР/ЗИП) в построчные costItems → редактируются ценами во вкладке «💰 CAPEX» (cost-items-modal), приоритет у ручных правок. Во вкладке «🧾 Итог» — таблица «Состав комплекта (BOM)» с бейджами «в комплекте/заказ отдельно».',
     ] },
