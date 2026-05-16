@@ -2954,7 +2954,7 @@ function _applyUpsPickerLock() {
     // Из паспорта ИБП: КПД и V_DC берём жёстко, нагрузка остаётся за
     // пользователем (ИБП на 1000 кВт может питать и 100 кВт нагрузку).
     const loadEl = document.getElementById('calc-load');
-    if (loadEl) {
+    if (loadEl && loadEl.dataset.hoLocked !== '1') {
       loadEl.readOnly = false;
       loadEl.style.background = '';
       loadEl.title = `Номинал ИБП ${u.capacityKw} кВт — введите фактическую нагрузку`;
@@ -2990,7 +2990,7 @@ function _applyUpsPickerLock() {
     }
   } else {
     const loadEl = document.getElementById('calc-load');
-    if (loadEl) { loadEl.readOnly = false; loadEl.style.background = ''; loadEl.title = ''; loadEl.placeholder = ''; loadEl.removeAttribute('max'); }
+    if (loadEl && loadEl.dataset.hoLocked !== '1') { loadEl.readOnly = false; loadEl.style.background = ''; loadEl.title = ''; loadEl.placeholder = ''; loadEl.removeAttribute('max'); }
     lock('calc-inveff', null);
     const dc = document.getElementById('calc-dcv');
     if (dc) { dc.style.background = '#f0f0f0'; dc.title = ''; dc.removeAttribute('max'); }
@@ -4178,6 +4178,21 @@ function initUpsHandoff() {
     const set = (id, v) => { const el = document.getElementById(id); if (el && v != null && v !== '') el.value = v; };
     set('calc-load', loadKw);
     set('calc-target', autonomyMin);
+    set('calc-target-auto', autonomyMin);
+    // v0.60.481 (по замечанию Пользователя): при передаче из конфигуратора
+    // ИБП нагрузка и целевая автономия НЕ редактируются — это исходные
+    // данные ИБП-подбора. Блокируем поля (как V_DC/КПД).
+    const lockHO = (id, title) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.readOnly = true; el.style.background = '#f0f0f0';
+      el.title = title; el.dataset.hoLocked = '1';
+    };
+    if (loadKw != null && loadKw !== '') lockHO('calc-load', 'Из конфигуратора ИБП — нагрузка задаётся в подборе ИБП');
+    if (autonomyMin != null && autonomyMin !== '') {
+      lockHO('calc-target', 'Из конфигуратора ИБП — автономия задаётся в подборе ИБП');
+      lockHO('calc-target-auto', 'Из конфигуратора ИБП — автономия задаётся в подборе ИБП');
+    }
     if (vdcMin || vdcMax) {
       const mid = (Number(vdcMin || vdcMax) + Number(vdcMax || vdcMin)) / 2;
       if (Number.isFinite(mid)) set('calc-dcv', Math.round(mid));
