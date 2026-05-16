@@ -2297,9 +2297,39 @@ function render() {
           <div style="font-size:12px">Нажмите «＋ Добавить ▾» вверху, чтобы начать с концепции (Технолог ЦОД), схемы, СКС или шкафа.</div>
         </div>` : ''}
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px">
-        ${MODULES.filter(m => m.visible || m.latent).map(moduleCardHtml).join('')}
-      </div>`;
+      ${(() => {
+        // v0.60.511 (Roadmap 47.4.4): расчёты/модули сгруппированы по
+        // инженерной дисциплине. Электротехнические (схема: cable/breaker/
+        // UPS/DGU) рядом друг с другом; ОВК/холод — отдельно; концепция,
+        // слаботочка/СКС, реестры/сервис — своими группами. Дисциплина
+        // схемы (scheme.discipline, Phase 47.4.1) задаётся в Конструкторе.
+        const MOD_DISC = {
+          'tech-workspace': 'concept', 'mdc-config': 'concept',
+          'schematic': 'electrical',
+          'scs-design': 'lowvolt', 'scs-config': 'lowvolt',
+          'cooling': 'hvac',
+          'service': 'common', 'inventory-it': 'common', 'facility-inventory': 'common',
+        };
+        const DISC_ORDER = [
+          ['concept',    '🧮 Концепция объекта'],
+          ['electrical', '⚡ Электротехнические расчёты'],
+          ['hvac',       '❄ Холодоснабжение / ОВК'],
+          ['lowvolt',    '🔗 Слаботочные системы / СКС'],
+          ['common',     '📦 Реестры и сервис'],
+        ];
+        const shown = MODULES.filter(m => m.visible || m.latent);
+        const groups = DISC_ORDER.map(([key, label]) => {
+          const mods = shown.filter(m => (MOD_DISC[m.id] || 'common') === key);
+          if (!mods.length) return '';
+          return `<div class="pr-disc-group" data-disc="${key}" style="margin-bottom:18px">
+            <h4 style="margin:0 0 8px;font-size:12.5px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #e2e8f0;padding-bottom:5px">${label}</h4>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px">
+              ${mods.map(moduleCardHtml).join('')}
+            </div>
+          </div>`;
+        }).filter(Boolean).join('');
+        return groups || `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px">${shown.map(moduleCardHtml).join('')}</div>`;
+      })()}`;
 
     // — меню «+ Добавить ▾»
     const addBtn = modulesHost.querySelector('#pr-add-btn');
