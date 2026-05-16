@@ -322,6 +322,7 @@ export function mountSelectionPanel(o) {
       // добавляем недисконтированную сумму в соответствующий год — так
       // discountedPaybackYears учтёт замену корректно.
       const events = Array.isArray(ec.extraCapexEvents) ? ec.extraCapexEvents : [];
+      let akbReplRaw = 0, akbReplCount = 0;
       if (events.length) {
         const rr = (Number(t.discountRatePct) || 0) / 100;
         let addDisc = 0, addRaw = 0;
@@ -331,9 +332,11 @@ export function mountSelectionPanel(o) {
           if (yr < 1 || yr > t.projectLifetimeYears || amt <= 0) continue;
           addDisc += amt / Math.pow(1 + rr, yr);
           addRaw += amt;
+          akbReplCount += 1;
           const ye = t.yearlyOpex.find(y => y.year === yr);
           if (ye) { ye.totalRub += amt; ye.cumDiscounted += amt / Math.pow(1 + rr, yr); }
         }
+        akbReplRaw = addRaw;
         if (addDisc || addRaw) {
           t.tco += addDisc;
           t.tcoUndiscounted += addRaw;
@@ -341,7 +344,22 @@ export function mountSelectionPanel(o) {
           t._replacementNote = true;
         }
       }
-      return { v, t, isMain: !!v.isMainVariant };
+      // v0.60.476 (по замечанию Пользователя): отдельно стоимость АКБ с
+      // учётом замены за срок проекта. АКБ-строки состава определяем по
+      // id 'akb-main' или метке, начинающейся с «АКБ».
+      let akbInitial = 0;
+      try {
+        const ciAll = Array.isArray(ecoForCalc.costItems) ? ecoForCalc.costItems : [];
+        const akbItems = ciAll.filter(it => it && (String(it.id) === 'akb-main'
+          || /^\s*АКБ/i.test(String(it.label || ''))));
+        if (akbItems.length) {
+          const at = computeEcoTotals({ costItems: akbItems, currency: cur }, cur, cvFn());
+          akbInitial = (Number(at.equipmentCost) || 0) + (Number(at.installationCost) || 0);
+        }
+      } catch {}
+      const akb = { initial: akbInitial, repl: akbReplRaw, replCount: akbReplCount,
+        total: akbInitial + akbReplRaw };
+      return { v, t, akb, isMain: !!v.isMainVariant };
     });
     const main = rows.find(r => r.isMain) || rows[0];
     const best = { capex: Math.min(...rows.map(r => r.t.capex)), tco: Math.min(...rows.map(r => r.t.tco)) };
@@ -406,9 +424,13 @@ export function mountSelectionPanel(o) {
       const payTxt = !pay ? (r.isMain ? '— (база)' : '—')
         : pay.neverPaysBack ? `> ${r.t.projectLifetimeYears} лет`
         : `${pay.exact.toFixed(1)} лет`;
+      const akbTitle = r.akb && r.akb.total > 0
+        ? `Первичная АКБ ${fmtMoney(r.akb.initial, cur)}${r.akb.replCount ? ` + ${r.akb.replCount} замен(ы) ${fmtMoney(r.akb.repl, cur)}` : ' (замен за срок нет)'}`
+        : 'АКБ в варианте не подобрана';
       return `<tr class="${r.isMain ? 'rsp-main' : ''}">
         <td class="rsp-lft">${r.isMain ? '★ ' : ''}${escH(lblOf(r.v))}</td>
         <td class="${r.t.capex === best.capex ? 'rsp-best' : ''}">${fmtMoney(r.t.capex, cur)}</td>
+        <td title="${escH(akbTitle)}">${r.akb && r.akb.total > 0 ? fmtMoney(r.akb.total, cur) : '—'}${r.akb && r.akb.replCount ? ` <span style="color:#9a3412;font-size:11px">(×${r.akb.replCount})</span>` : ''}</td>
         <td>${fmtMoney(op1, cur)}</td>
         <td class="${r.t.tco === best.tco ? 'rsp-best' : ''}">${fmtMoney(r.t.tco, cur)}</td>
         <td>${fmtMoney(r.t.averageRubPerYear, cur)}</td>
@@ -437,6 +459,7 @@ export function mountSelectionPanel(o) {
         <thead><tr>
           <th class="rsp-lft" title="Вариант подбора. ★ — основной (база для срока окупаемости).">Вариант</th>
           <th title="Капитальные затраты, год 0 (оборудование + монтаж).">CAPEX</th>
+          <th title="Стоимость АКБ за срок проекта: первичный комплект + плановые замены (×N — число замен). «—» если АКБ в варианте не подобрана.">АКБ (с заменой)</th>
           <th title="Операционные затраты за 1-й год (энергия потерь + ТО).">OPEX (год 1)</th>
           <th title="Total Cost of Ownership = CAPEX + Σ дисконтированных OPEX.">TCO (NPV)</th>
           <th title="Среднегодовая стоимость владения = TCO / срок.">Σ/год</th>
