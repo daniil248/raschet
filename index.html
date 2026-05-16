@@ -635,6 +635,15 @@
             <input type="text" id="pi-stage" placeholder="П / РД"></div>
           <div class="field"><label>ГИП / Исполнитель</label>
             <input type="text" id="pi-author" placeholder="Иванов И.И."></div>
+          <div class="field"><label>Дисциплина схемы<span class="help-icon" title="Тип инженерной схемы. Определяет расчётный движок и библиотеку узлов: электрика — IEC (ток КЗ, ΔU, cos φ); гидравлика — расход/давление/потери в трубах; ОВК — воздухообмен/теплоприток; газ — давление в газопроводе; данные — слаботочка/СКС; механика — кинематика/нагрузки. Сейчас полноценно считается «Электрика»; остальные — каркас (Phase 47.4)." tabindex="0">?</span></label>
+            <select id="pi-discipline">
+              <option value="electrical">⚡ Электрика</option>
+              <option value="hydraulic">💧 Гидравлика</option>
+              <option value="hvac">❄ ОВК / климат</option>
+              <option value="gas">🔥 Газоснабжение</option>
+              <option value="mechanical">⚙ Механика</option>
+              <option value="data">🌐 Данные / СКС</option>
+            </select></div>
         </div>
         <div class="field"><label>Общее описание</label>
           <textarea id="pi-description" rows="4" style="width:100%;font:inherit;font-size:12px;resize:vertical" placeholder="Краткое описание проекта"></textarea></div>

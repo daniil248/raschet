@@ -278,6 +278,8 @@ export function deserialize(data) {
       stage: data.project.stage || '',
       author: data.project.author || '',
       description: data.project.description || '',
+      // v0.60.499 (Roadmap 47.4.1): дисциплина схемы (default electrical).
+      discipline: data.project.discipline || 'electrical',
       // v0.58.27: пользовательские системы проекта — сохраняются в файле схемы
       customSystems: Array.isArray(data.project.customSystems) ? data.project.customSystems.map(s => ({
         id: String(s.id || ''),
@@ -301,7 +303,7 @@ export function deserialize(data) {
       })).filter(p => p.id) : [],
     };
   } else {
-    state.project = { designation: '', name: '', customer: '', object: '', stage: '', author: '', description: '', customSystems: [], floorNames: {}, productCatalog: [] };
+    state.project = { designation: '', name: '', customer: '', object: '', stage: '', author: '', description: '', discipline: 'electrical', customSystems: [], floorNames: {}, productCatalog: [] };
   }
   // v0.58.27: синхронизация hook для getSystemMeta/getAllSystems сразу после загрузки
   try { globalThis.__raschetCustomSystems = state.project.customSystems.slice(); } catch {}

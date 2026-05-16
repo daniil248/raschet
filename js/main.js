@@ -2502,6 +2502,8 @@ function openProjectInfoModal() {
   set('pi-stage',       pi.stage);
   set('pi-author',      pi.author);
   set('pi-description', pi.description);
+  // v0.60.499 (Roadmap 47.4.1): дисциплина схемы (default electrical).
+  { const el = document.getElementById('pi-discipline'); if (el) el.value = pi.discipline || 'electrical'; }
   // v0.58.53 (1.22.4): рендер каталога изделий проекта
   renderProductCatalogList();
   openModal('modal-project-info');
@@ -2689,6 +2691,8 @@ function saveProjectInfoModal() {
     stage:       get('pi-stage').trim(),
     author:      get('pi-author').trim(),
     description: get('pi-description').trim(),
+    // v0.60.499 (Roadmap 47.4.1): дисциплина схемы в schemeMeta.
+    discipline:  get('pi-discipline') || 'electrical',
   };
   closeModal('modal-project-info');
   flash('Свойства проекта сохранены');

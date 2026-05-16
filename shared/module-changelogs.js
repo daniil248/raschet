@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.499', date: '2026-05-16', items: [
+      '🧩 <b>Phase 47.4.1: дисциплина схемы в schemeMeta</b>. «Свойства проекта» Конструктора → новое поле «Дисциплина схемы»: ⚡ Электрика (default) / 💧 Гидравлика / ❄ ОВК / 🔥 Газоснабжение / ⚙ Механика / 🌐 Данные-СКС. Хранится в <code>state.project.discipline</code> (serialize/deserialize, обратная совместимость — старые схемы → electrical). Фундамент для per-discipline движков (47.4.2) и фильтра схем по дисциплине (47.3.2). Существующие расчёты не затронуты (electrical = текущий recalc).',
+    ] },
     { version: '0.60.498', date: '2026-05-16', items: [
       '📊 <b>Phase 47.2.7-followup: Gantt — критический путь, зависимости, drag-resize</b>. Карточка проекта → таб «📅 План»: (1) задача получает <code>deps[]</code> (предшественники) — полноценный in-page редактор задачи (<code>_openTaskEditModal</code>: название/дисциплина/статус/даты/чекбоксы зависимостей) вместо rename-only. (2) CPM (<code>_computeCriticalPath</code>: Kahn topo-sort + forward ES/EF + backward LS/LF → slack; cycle-safe) — bar\\'ы крит. пути с красной обводкой и ★, счётчик в легенде, предупреждение при цикле. (3) Стрелки зависимостей (Безье finish→start, красные на крит. пути). (4) Drag-move / resize правого края bar\\'ов мышью (<code>_wireGanttInteractions</code>, pointer events, scale viewBox→client, snap по дням, запись start/endDate). (5) Day-сетка для диапазонов ≤21 дн. Фаза 47.2 закрыта.',
     ] },
