@@ -34,6 +34,12 @@ import { s3LiIonType } from '../shared/battery-types/s3-li-ion.js';
 import { renderS3IsoSvg } from '../shared/battery-types/s3-iso-view.js';
 import { mountS3ThreeDView } from '../shared/battery-types/s3-3d-view.js';
 import { saveConfig as _saveConfig, nextConfigId as _nextConfigId, getActiveProjectCode as _getActiveProjectCode } from '../shared/configuration-catalog.js';
+// v0.60.459: ТЭО АКБ — стоимость комплекта построчно (общий редактор) +
+// централизованный курс валют на дату (как «Подбор холода»).
+import { openCostItemsModal } from '../shared/ui/cost-items-modal.js';
+import { makeConvertFn } from '../shared/currency-rates/provider.js';
+import { computeEcoTotals } from '../shared/calc/capex-tco.js';
+import { fmtMoney } from '../shared/money.js';
 
 const fmt = (n, d = 2) => {
   if (!Number.isFinite(n)) return '—';
@@ -1581,18 +1587,71 @@ function _refreshDerateLabel() {
   el.textContent = _PRESET_LABELS[_lastAppliedPreset] || '· IEEE 485 (VRLA)';
 }
 
+// v0.60.459: ТЭО АКБ — стоимость комплекта построчно (общий
+// shared/ui/cost-items-modal.js, как «Подбор холода») + ЦЕНТРАЛИЗОВАННЫЙ
+// курс валют на дату (shared/currency-rates). Заменяет прежнее одиночное
+// поле «Стоимость комплекта АКБ, тыс. руб.» (моно-валюта).
+const LC_KEY = 'raschet.battery.lifecycleCostItems.v1';
+let _lcState = {
+  costItems: [], currency: '₸',
+  rateDate: new Date().toISOString().slice(0, 10), sourceId: null,
+};
+let _lcConvertFn = null;
+function _lcLoad() {
+  try {
+    const r = JSON.parse(localStorage.getItem(LC_KEY) || 'null');
+    if (r && typeof r === 'object') _lcState = { ..._lcState, ...r };
+  } catch {}
+}
+function _lcSave() { try { localStorage.setItem(LC_KEY, JSON.stringify(_lcState)); } catch {} }
+async function _lcEnsureRates(force) {
+  try {
+    const r = await makeConvertFn({ date: _lcState.rateDate, sourceId: _lcState.sourceId, force: !!force });
+    _lcConvertFn = r.convertFn;
+    return r;
+  } catch { _lcConvertFn = null; return null; }
+}
+function _lcTotals() {
+  const items = Array.isArray(_lcState.costItems) ? _lcState.costItems : [];
+  if (!items.length) return { setCost: 0, maintPerYear: 0 };
+  const t = computeEcoTotals({ costItems: items, currency: _lcState.currency }, _lcState.currency, _lcConvertFn);
+  return {
+    setCost: (Number(t.equipmentCost) || 0) + (Number(t.installationCost) || 0),
+    maintPerYear: Number(t.maintenanceRubPerYear) || 0,
+  };
+}
+function _lcRefreshLabel() {
+  const el = document.getElementById('calc-lc-cost-label');
+  if (!el) return;
+  const c = _lcTotals().setCost;
+  el.textContent = c > 0 ? fmtMoney(c, _lcState.currency) + ' / комплект' : 'не задано';
+}
+async function _lcOpenEditor() {
+  await _lcEnsureRates(false);
+  const start = Array.isArray(_lcState.costItems) ? _lcState.costItems : [];
+  const res = await openCostItemsModal(start, _lcState.currency, _lcConvertFn);
+  if (res == null) return;
+  _lcState.costItems = res;
+  _lcSave();
+  _lcRefreshLabel();
+  // Если расчёт уже выполнен — пересчитать, чтобы блок ЖЦ обновился.
+  try { if (lastBatteryCalc) doCalc(); } catch {}
+}
+
 // Срок службы АКБ по умолчанию (лет до EOL 80% ёмкости)
 function _defaultBattLife(chemistry) {
   if (chemistry === 'li-ion') return 15;
   return 5; // VRLA/AGM: IEEE 1188
 }
 
-// Расчёт жизненного цикла: число замен, суммарные затраты
-function _calcLifecycle({ designLife, battLife, chemistry, battPriceK }) {
+// Расчёт жизненного цикла: число замен, суммарные затраты.
+// setCost — стоимость ОДНОГО комплекта АКБ в валюте отображения (полные
+// единицы, не «тыс.»); currency — символ валюты для вывода.
+function _calcLifecycle({ designLife, battLife, chemistry, setCost = 0, currency = '₸' }) {
   const sets = Math.max(1, Math.ceil(designLife / battLife));   // всего комплектов
   const replacements = sets - 1;                                // число замен (первый = начало)
-  const totalCostK = battPriceK > 0 ? sets * battPriceK : null;
-  return { designLife, battLife, sets, replacements, totalCostK, chemistry };
+  const totalCost = setCost > 0 ? sets * setCost : null;
+  return { designLife, battLife, sets, replacements, totalCost, setCost, currency, chemistry };
 }
 
 // Строит HTML-блок жизненного цикла для вставки в результаты
@@ -1607,8 +1666,8 @@ function _lifecycleHtml(lc) {
   h += `<div style="padding:8px;background:#f5f5f5;border-radius:6px;text-align:center"><div class="muted" style="font-size:10px">Срок службы АКБ</div><div style="font-size:18px;font-weight:700;color:#1565c0">${lc.battLife} лет</div><div class="muted" style="font-size:10px">${battLabel}</div></div>`;
   h += `<div style="padding:8px;background:#f5f5f5;border-radius:6px;text-align:center"><div class="muted" style="font-size:10px">Всего комплектов АКБ</div><div style="font-size:18px;font-weight:700;color:${color}">${lc.sets}</div><div class="muted" style="font-size:10px">за ${lc.designLife} лет</div></div>`;
   h += `<div style="padding:8px;background:#f5f5f5;border-radius:6px;text-align:center"><div class="muted" style="font-size:10px">Замен АКБ</div><div style="font-size:18px;font-weight:700;color:${color}">${lc.replacements}</div><div class="muted" style="font-size:10px">${lc.replacements === 0 ? 'не требуется' : 'плановых замен'}</div></div>`;
-  if (lc.totalCostK) {
-    h += `<div style="padding:8px;background:#f5f5f5;border-radius:6px;text-align:center"><div class="muted" style="font-size:10px">Стоимость АКБ (ЖЦ)</div><div style="font-size:18px;font-weight:700;color:#4a148c">${lc.totalCostK.toLocaleString('ru-RU')} тыс.</div><div class="muted" style="font-size:10px">${lc.sets} × ${lc.battPriceK?.toLocaleString('ru-RU') || '?'} тыс.</div></div>`;
+  if (lc.totalCost) {
+    h += `<div style="padding:8px;background:#f5f5f5;border-radius:6px;text-align:center"><div class="muted" style="font-size:10px">Стоимость АКБ (ЖЦ)</div><div style="font-size:18px;font-weight:700;color:#4a148c">${fmtMoney(lc.totalCost, lc.currency)}</div><div class="muted" style="font-size:10px">${lc.sets} × ${fmtMoney(lc.setCost, lc.currency)}</div></div>`;
   }
   h += `</div>`;
   if (!isLi && lc.replacements > 0) {
@@ -2072,8 +2131,8 @@ function _doCalcS3({ battery, loadKw, mode, targetMin, vRange, derate, invEff })
     const get2 = id => document.getElementById(id);
     const designLife = Number(get2('calc-design-life')?.value) || 10;
     const battLife   = Number(get2('calc-batt-life')?.value)   || _defaultBattLife('li-ion');
-    const battPriceK = Number(get2('calc-batt-price')?.value)  || 0;
-    html += _lifecycleHtml(_calcLifecycle({ designLife, battLife, chemistry: 'li-ion', battPriceK }));
+    const _lct = _lcTotals();
+    html += _lifecycleHtml(_calcLifecycle({ designLife, battLife, chemistry: 'li-ion', setCost: _lct.setCost, currency: _lcState.currency }));
   }
   // График разряда + zoom (как для обычной АКБ — battery.dischargeTable есть).
   html += `<div class="result-block" style="margin-top:14px"><div class="result-title" style="margin-bottom:8px">График разряда модуля</div><div id="calc-chart-mount" style="background:#fafbfc;border:1px solid #e0e3ea;border-radius:6px;padding:12px"></div><div class="muted" style="font-size:11px;margin-top:6px">Кривая P(t) для одного модуля. Красный маркер — рабочая точка.</div></div>`;
@@ -2338,8 +2397,8 @@ function doCalc() {
   {
     const designLife = Number(get('calc-design-life')?.value) || 10;
     const battLife   = Number(get('calc-batt-life')?.value)   || _defaultBattLife(chemistry);
-    const battPriceK = Number(get('calc-batt-price')?.value)  || 0;
-    const lc = _calcLifecycle({ designLife, battLife, chemistry, battPriceK });
+    const _lct = _lcTotals();
+    const lc = _calcLifecycle({ designLife, battLife, chemistry, setCost: _lct.setCost, currency: _lcState.currency });
     html += _lifecycleHtml(lc);
   }
   // Контейнер для графика разряда с отметкой рассчитанной точки
@@ -3817,6 +3876,11 @@ window.addEventListener('DOMContentLoaded', () => {
   initSchemaContext();
   // v0.59.400: handoff из ups-config (?fromUps=1) — предзаполнение и возврат.
   initUpsHandoff();
+  // v0.60.459: ТЭО АКБ — построчная стоимость комплекта + курс на дату.
+  _lcLoad();
+  const _lcBtn = document.getElementById('calc-lc-cost-edit');
+  if (_lcBtn) _lcBtn.addEventListener('click', _lcOpenEditor);
+  _lcEnsureRates(false).then(_lcRefreshLabel).catch(() => _lcRefreshLabel());
 });
 
 // ================= Интеграция с Конструктором схем (Фаза 1.4.4) =================

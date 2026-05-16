@@ -455,11 +455,14 @@
                 title="Срок до замены АКБ. VRLA: 5 лет. LFP: 15 лет. Автоматически обновляется при смене типа батареи.">
             </div>
             <div>
-              <label style="font-size:11px">Стоимость комплекта АКБ, тыс. руб.
-                <span style="cursor:help;color:#5a6680" title="Ориентировочная стоимость одного полного комплекта АКБ (все блоки). Используется для расчёта суммарных затрат на замену за жизненный цикл. Оставьте 0 если не известна.">ⓘ</span>
+              <label style="font-size:11px">Стоимость комплекта АКБ
+                <span style="cursor:help;color:#5a6680" title="Стоимость одного полного комплекта АКБ — построчно (Статья / Кол-во / Оборудование+валюта / Монтаж+ПНР / ТО за год). Единый редактор, как в «Подбор холода»; валюта и курс на дату — из централизованного справочника валют. Σ(Оборуд.+Монтаж) = стоимость 1 комплекта для ТЭО (× число замен за срок службы системы).">ⓘ</span>
               </label>
-              <input id="calc-batt-price" type="number" min="0" step="100" value="0" placeholder="необязательно"
-                title="Стоимость комплекта АКБ для ТЭО. Необязательное поле.">
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                <button type="button" id="calc-lc-cost-edit" class="btn-sm" style="font-size:11px"
+                  title="Открыть построчный состав стоимости комплекта АКБ (цена и валюта на каждый пункт), курс на дату из общего справочника валют.">✏ Состав / стоимость</button>
+                <span id="calc-lc-cost-label" class="muted" style="font-size:11px">не задано</span>
+              </div>
             </div>
           </div>
           <div id="calc-lifecycle-summary" style="font-size:11px;margin-top:8px;padding:6px 8px;background:#f0f7ff;border:1px solid #b3d4ff;border-radius:4px;line-height:1.6;display:none"></div>
