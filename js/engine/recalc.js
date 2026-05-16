@@ -3866,6 +3866,47 @@ function recalc() {
         break; // один генератор управляет этим щитом
       }
       n._maxLoadKw = panelMaxKw !== null ? panelMaxKw : maxDownstreamLoad(n.id);
+      // v0.60.518 (репорт Пользователя 2026-05-16, проект TBC Bank:
+      // «ЩС P1.MDB1 питает 4 ИБП параллельными парами с байпасом, реальная
+      // нагрузка ~410-450 кВт, а Макс посчитан 1702.6 кВт / 2464.6 А —
+      // больше суммы паспортов всех 4 ИБП (1100 кВт)»). Корень: BFS
+      // maxDownstreamLoad при параллельно-резервных ИБП + байпасе
+      // обходит downstream нескольких путей и/или двойного байпас-плеча,
+      // давая физически невозможное значение. Физический предел: если щит
+      // питает ТОЛЬКО ИБП (галерея ИБП — классический MDB→UPS), его
+      // максимальная передаваемая в UPS-only downstream мощность не может
+      // превышать суммарный ВХОДНОЙ рейтинг подключённых ИБП =
+      // Σ(capacityKw/η + заряд АКБ) по РАЗЛИЧНЫМ напрямую запитанным ИБП.
+      // Этот cap ТОЛЬКО снижает завышенную оценку (никогда не повышает) и
+      // включается лишь когда ВСЕ исходящие связи щита идут в ИБП — не
+      // затрагивает обычные щиты/смешанные топологии (без регрессий).
+      try {
+        const _outs = [];
+        let _allUps = true, _anyUps = false;
+        for (const c of state.conns.values()) {
+          if (c.from.nodeId !== n.id) continue;
+          if (c.lineMode === 'damaged' || c.lineMode === 'disabled') continue;
+          const t = state.nodes.get(c.to.nodeId);
+          if (!t) continue;
+          _outs.push(t);
+          if (t.type === 'ups') _anyUps = true; else _allUps = false;
+        }
+        if (_anyUps && _allUps && _outs.length) {
+          const _distinct = new Map();
+          for (const u of _outs) if (u.type === 'ups' && !_distinct.has(u.id)) _distinct.set(u.id, u);
+          let _cap = 0;
+          for (const u of _distinct.values()) {
+            const _eff = Math.max(0.5, Math.min(1, (Number(u.efficiency) || 95) / 100));
+            const _ucap = Number(u.capacityKw) || 0;
+            _cap += _ucap / _eff + (upsChargeKw(u) || 0);
+          }
+          if (_cap > 0 && Number(n._maxLoadKw) > _cap) {
+            n._maxLoadKwPreUpsGalleryCap = Number(n._maxLoadKw);
+            n._maxLoadKw = _cap;
+            n._maxLoadKwUpsGalleryCapped = true;
+          }
+        }
+      } catch (e) { /* cap — best-effort, не ломаем расчёт */ }
       // v0.60.234 (по запросу Пользователя 2026-05-05 «для панелей так же
       // введи номинал и расчет, согласно стандартов»): рядом с активным
       // _maxLoadKw считаем ОБА metric — Pном (без Ки) и Pрасч (× Ки).
