@@ -3011,6 +3011,27 @@ function recalc() {
           c._breakerUndersize = (c.manualBreakerIn < (maxCurrent / conductorsInParallel));
         } else {
           c._breakerUndersize = false;
+          // v0.60.506 (правка Пользователя 2026-05-16: «для линии выбрано
+          // авто и кабель и автомат, а ты выдаёшь «кабель не защищён,
+          // увеличьте сечение» — программа должна сама подбирать
+          // согласованные значения»). Корень: авто-кабель раньше
+          // подбирался по току нагрузки, а авто-автомат — по нагрузке +
+          // запас (пусковой / категория). Стандартный ряд автоматов
+          // «перескакивает» сечение → In > Iz → ложная ошибка координации
+          // IEC 60364-4-43 (Ib ≤ In ≤ Iz) при том что обе величины
+          // подобраны АВТОМАТически. Решение: в авто-режиме координируем
+          // кабель под прогнозируемый авто-автомат (Iz ≥ In), как уже
+          // делается для ручного автомата. Тогда авто-подбор само-
+          // согласован и не «противоречит сам себе».
+          try {
+            const _parN = Math.max(1, conductorsInParallel);
+            const _perLineI = sizingCurrent / _parN;             // уже с учётом chain/group
+            const _provIn = selectBreaker(_perLineI * (1 + (_sizingMarginPct || 0) / 100));
+            if (_provIn > 0) {
+              sizingCurrent = Math.max(sizingCurrent, _provIn * _parN);
+              _sizingMarginForCall = 0; // запас уже «зашит» в _provIn
+            }
+          } catch { /* selectBreaker недоступен — fallback к прежнему поведению */ }
         }
         // Режим защиты параллельных жил:
         //   групповая нагрузка (count>1 !serial)  → 'per-line' (N отдельных
