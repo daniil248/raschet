@@ -355,6 +355,11 @@
   <script type="module">
     import { mountSelectionPanel } from '../shared/selection-panel.js';
     import { getActiveProjectCode, isEmbeddedMode } from '../shared/configuration-catalog.js';
+    // B2.2 i2: выбор конкретной модели ИБП в Spec-вкладке варианта.
+    import { listUpses } from '../shared/ups-catalog.js';
+    import { detectUpsType } from '../shared/ups-types/index.js';
+    import { mountUpsPicker } from '../shared/ups-picker.js';
+    import '../shared/ups-seed.js';
     if (!isEmbeddedMode()) {
       const mountEl = document.getElementById('uc-selection-panel');
       const pc = getActiveProjectCode();
@@ -422,10 +427,60 @@
         };
       }
 
+      // B2.2 i2: Spec-вкладка варианта — каскад поставщик→серия→модель
+      // (shared/ups-picker), список фильтруется по «Допустимые типы ИБП»
+      // условий подбора; тип варианта = тип выбранной модели; +резерв.
+      function variantSpec(ctx) {
+        const { host, entry, req, save } = ctx;
+        const p = (entry && entry.payload) || {};
+        const allowed = Array.isArray(req.upsTypes) ? req.upsTypes : [];
+        const all = listUpses() || [];
+        const list = all.filter(u => {
+          const t = detectUpsType(u); const tid = t && t.id;
+          return !allowed.length || (tid && allowed.includes(tid));
+        });
+        const redOpts = ['N', 'N+1', 'N+2', '2N'].map(r =>
+          `<option value="${r}"${(p.redundancy || req.redundancy || 'N+1') === r ? ' selected' : ''}>${r}</option>`).join('');
+        host.innerHTML = `
+          <div class="rsp-sec-title" style="margin-top:4px" title="Конкретная модель ИБП этого варианта. Список ограничен допустимыми типами подбора.">Конкретная модель ИБП</div>
+          <div data-ups-pick-host></div>
+          <div class="rsp-grid" style="margin-top:8px">
+            <label class="rsp-field" title="Резервирование этого варианта (по умолчанию — из условий подбора).">Резервирование (вариант)
+              <select data-vspec="redundancy">${redOpts}</select></label>
+          </div>
+          <div class="rsp-note" data-ups-pick-info></div>`;
+        const pickHost = host.querySelector('[data-ups-pick-host]');
+        const info = host.querySelector('[data-ups-pick-info]');
+        const setInfo = (u) => {
+          const tt = u ? detectUpsType(u) : null;
+          info.innerHTML = u
+            ? `Выбрано: <b>${(u.supplier || '')} ${(u.model || '')}</b>${u.capacityKw ? ' · ' + u.capacityKw + ' кВт' : ''} · тип: <b>${tt ? (tt.label || tt.id) : '—'}</b>. Тип варианта = тип модели.`
+            : (allowed.length
+                ? `Список моделей отфильтрован по допустимым типам подбора. Моделей: ${list.length}.`
+                : `Выберите модель ИБП. Моделей в каталоге: ${list.length}.`);
+        };
+        mountUpsPicker(pickHost, {
+          list, selectedId: p.upsId || '',
+          currentSupplier: p.upsSupplier || '', currentSeries: p.upsSeries || '',
+          onChange({ supplier, series, modelId, ups }) {
+            const tt = ups ? detectUpsType(ups) : null;
+            save({ payload: {
+              upsId: modelId || '', upsSupplier: supplier || '', upsSeries: series || '',
+              upsModel: ups ? ups.model : '', capacityKw: ups ? (ups.capacityKw || 0) : 0,
+              upsType: tt ? tt.id : '', efficiency: ups ? (ups.efficiency || 0) : 0,
+            } });
+            setInfo(ups || null);
+          },
+        });
+        setInfo(p.upsId ? list.find(u => u.id === p.upsId) : null);
+        const redEl = host.querySelector('[data-vspec="redundancy"]');
+        if (redEl) redEl.addEventListener('change', () => save({ payload: { redundancy: redEl.value } }));
+      }
+
       const api = mountSelectionPanel({
         kind: 'ups', mountEl, projectCode: pc,
         getActiveSelectionName: () => activeSel,
-        requirementsSchema, variantEconomics,
+        requirementsSchema, variantEconomics, variantSpec,
         variantLabel: (e) => e.label || e.id,
         convertFn: null,
         // v0.60.446: УСЛОВИЯ подбора задаются ЗДЕСЬ (зона подбора —
