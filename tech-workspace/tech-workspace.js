@@ -130,6 +130,13 @@ function newCoolingUnit(name) {
     name: name || 'Климат',
     count: 3, kwPerUnit: 0, type: 'crac', redundancy: 'N+1',
     modelRef: null,
+    // v0.60.515 (правка Пользователя «всё что можно и актуально»):
+    // пока модель не подобрана, технолог вносит габариты и основные
+    // характеристики кондиционера вручную (площади, план зала, ТЗ).
+    widthMm: 700, depthMm: 900, heightMm: 2000,
+    weightKg: 0,            // масса (нагрузка на перекрытие)
+    airflowM3h: 0,          // расход воздуха, м³/ч (для воздухообмена зала)
+    manufacturer: '', model: '',
     // v0.60.111: scope ∈ 'room' | 'shared'.
     //   'room'   — закреплён за одним залом (CRAC/InRow); roomId = id зала.
     //   'shared' — обслуживает несколько залов (chiller-plant, AHU);
@@ -990,7 +997,22 @@ function renderCoolCard(cu, isReadOnly, rooms) {
         </select>
       </label>
     </div>
+    <h5 class="tw-section-h5" title="Пока конкретная модель кондиционера не подобрана — внесите габариты и паспортные данные вручную (нужны для площадей, плана зала, воздухообмена и ТЗ). При подборе в «Подбор холодильных систем» можно обновить.">📐 Габариты и характеристики ${(cu.modelRef && cu.modelRef.id) ? '<span class="muted" style="font-weight:400">(из каталога)</span>' : '<span class="muted" style="font-weight:400">(ручной ввод — до подбора модели)</span>'}</h5>
+    <div class="tw-grid">
+      <label title="Ширина блока кондиционера, мм (фронт). Для площади помещения и плана зала.">Ширина, мм:<input type="number" data-field="widthMm" min="200" step="50" value="${cu.widthMm ?? 700}" ${ro}></label>
+      <label title="Глубина блока, мм. Для площади и плана зала.">Глубина, мм:<input type="number" data-field="depthMm" min="200" step="50" value="${cu.depthMm ?? 900}" ${ro}></label>
+      <label title="Высота блока, мм. Для проверки высоты помещения / фальшпола.">Высота, мм:<input type="number" data-field="heightMm" min="200" step="50" value="${cu.heightMm ?? 2000}" ${ro}></label>
+      <label title="Расход воздуха одного блока, м³/ч. Для проверки воздухообмена зала и подбора воздуховодов.">Расход воздуха, м³/ч:<input type="number" data-field="airflowM3h" min="0" step="500" value="${cu.airflowM3h ?? 0}" ${ro}></label>
+      <label title="Масса блока, кг. Для проверки нагрузки на перекрытие / раму.">Масса, кг:<input type="number" data-field="weightKg" min="0" step="10" value="${cu.weightKg ?? 0}" ${ro}></label>
+      <label title="Производитель (если известен из ТЗ; без привязки к каталогу).">Производитель:<input type="text" data-field="manufacturer" value="${escAttr(cu.manufacturer || '')}" placeholder="напр. Vertiv / Stulz / Daikin" ${ro}></label>
+      <label title="Модель / серия (если известна из ТЗ).">Модель:<input type="text" data-field="model" value="${escAttr(cu.model || '')}" placeholder="напр. PCW / CyberAir" ${ro}></label>
+    </div>
     ${_bindBtnHtml('cool', cu.id, cu.modelRef)}
+    <a class="tw-bind-btn tw-bind-btn-bound" style="text-decoration:none;display:inline-block;margin-left:6px"
+       href="../cooling/?project=${escAttr(_pid || '')}" target="_blank"
+       title="Открыть «Подбор холодильных систем» в контексте проекта (ТЭО-сравнение чиллеров/CRAC/DX/free-cooling с требуемой холодопроизводительностью и климатом объекта).">
+      ⚙ Конфигуратор холода — подобрать →
+    </a>
   </div>`;
 }
 
@@ -2888,7 +2910,8 @@ function _planUnitDefs(c) {
   }
   for (const cu of (c.coolingUnits || [])) {
     const base = _tagBase(cu.name, 'AC');
-    push('cool', cu, cu.count, 700, 900, base, cu.name || 'Климат', '❄');
+    // v0.60.515: габариты кондиционера — из введённых технологом.
+    push('cool', cu, cu.count, cu.widthMm || 700, cu.depthMm || 900, base, cu.name || 'Климат', '❄');
   }
   // v0.60.510 (правка Пользователя «так для всего»): набор охватывает
   // ВСЁ дискретное оборудование, не только стойки/ИБП/климат.
