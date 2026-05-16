@@ -4,6 +4,11 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.458', date: '2026-05-16', items: [
+      '💱 <b>Централизованные курсы валют на дату — подключены в подбор/варианты</b> (по замечанию Пользователя: валюты и курсы общие для всей программы; если курс на дату уже загружен — переиспользовать, не грузить повторно, пока Пользователь не сменит дату/источник или не нажмёт «Обновить»).',
+      'Новый тонкий провайдер <code>shared/currency-rates/provider.js</code> → <code>makeConvertFn({date,sourceId,force})</code>: один раз загружает курсы (LS-кэш по дате из <code>currency-rates/index.js</code>), возвращает синхронный <code>convertFn(amount,from,to)</code>; символы валют (₸/₽/$/€…) → ISO через <code>money.js currencyToIso</code>.',
+      '<code>shared/selection-panel.js</code>: вместо <code>convertFn=null</code> — convertFn от провайдера; плашка «💱 Курс на дату» (дата + источник + «↻ Обновить курс») во вкладках «📈 TCO / Сравнение» и «💰 CAPEX варианта»; передаётся в <code>computeTco/convertEcoToCurrency/computeEcoTotals/openCostItemsModal</code> — авто-конвертация цен/итогов в валюту подбора.',
+    ] },
     { version: '0.60.457', date: '2026-05-16', items: [
       '🔋 <b>«Допустимые типы АКБ» — в условиях подбора ИБП и АКБ + проброс ИБП→АКБ</b> (по замечанию Пользователя).',
       'A: мультивыбор «Допустимые типы АКБ» (VRLA/AGM/Gel · Li-ion (LFP/NMC) · NiCd; пусто = любой) добавлен в условия подбора ИБП (ups-config) и условия подбора АКБ (battery, standalone).',

@@ -32,6 +32,9 @@ import {
 import { CURRENCIES, fmtMoney } from './money.js';
 import { openCostItemsModal } from './ui/cost-items-modal.js';
 import { getProject, getActiveProjectId } from './project-storage.js';
+// v0.60.458: централизованные курсы валют на дату (общий провайдер).
+import { makeConvertFn } from './currency-rates/provider.js';
+import { listSources, getActiveSourceId } from './currency-rates/index.js';
 
 // v0.60.440: стили .rsp-* вынесены в ЕДИНУЮ ТЕМУ
 // shared/styles/selection-theme.css (один источник для ups/battery/cooling,
@@ -84,6 +87,70 @@ export function mountSelectionPanel(o) {
   let activeVariantId = null;
   let variantTab = 'spec';
   let selName = (typeof o.getActiveSelectionName === 'function' ? o.getActiveSelectionName() : null) || null;
+
+  // v0.60.458: централизованный курс валют на дату. convertFn берётся из
+  // общего провайдера (shared/currency-rates) и кэшируется по дате —
+  // повторно не грузится, пока Пользователь не сменит дату/источник или
+  // не нажмёт «Обновить курс» (force). До загрузки — o.convertFn (если был).
+  let _rateDate = new Date().toISOString().slice(0, 10);
+  let _rateSourceId = null;            // null = активный источник
+  let _convertFn = (typeof o.convertFn === 'function') ? o.convertFn : null;
+  let _rateInfo = null;                // {date,sourceId,cached,base,error}
+  let _ratesLoading = false;
+  let _ratesReqId = 0;
+
+  async function loadRates(force) {
+    const myId = ++_ratesReqId;
+    _ratesLoading = true;
+    try { render(); } catch {}
+    let r;
+    try {
+      r = await makeConvertFn({ date: _rateDate, sourceId: _rateSourceId, force: !!force });
+    } catch (e) {
+      r = { convertFn: () => null, error: (e && e.message) || String(e) };
+    }
+    if (myId !== _ratesReqId) return;  // устаревший ответ — игнорируем
+    _convertFn = r.convertFn || _convertFn;
+    _rateInfo = r;
+    _ratesLoading = false;
+    try { render(); } catch {}
+  }
+
+  function ratesBarHtml() {
+    let srcs = [];
+    try { srcs = listSources(); } catch {}
+    let actId = _rateSourceId;
+    if (!actId) { try { actId = getActiveSourceId(); } catch { actId = ''; } }
+    const opts = srcs.map(s =>
+      `<option value="${escH(s.id)}"${s.id === actId ? ' selected' : ''}>${escH(s.label || s.id)}</option>`).join('')
+      || '<option value="">— нет источников —</option>';
+    const st = _ratesLoading ? '⏳ загрузка курса…'
+      : (_rateInfo && _rateInfo.error) ? '⚠ курс не загружен (значения без конвертации)'
+      : (_rateInfo ? (_rateInfo.cached ? '✓ курс из кэша' : '✓ курс загружен')
+        + (_rateInfo.base ? ` · база ${escH(_rateInfo.base)}` : '') : '— курс не запрошен');
+    return `<div class="rsp-note rsp-rates-bar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px">
+      <span title="Курс валют берётся из ЦЕНТРАЛИЗОВАННОГО справочника (shared/currency-rates) на указанную дату. Кэшируется по дате — повторно не загружается, пока дата/источник не изменены или не нажата «Обновить курс».">💱 Курс на дату</span>
+      <input type="date" data-rate="date" value="${escH(_rateDate)}" title="Дата курса валют. Курсы кэшируются по дате; смена даты — новый запрос (один раз на дату).">
+      <select data-rate="source" title="Источник курсов валют (нац. банк / провайдер). Единый для всей программы.">${opts}</select>
+      <button type="button" class="rs-cs-btn" data-rate="refresh" title="Принудительно перезапросить курс на эту дату (обновить кэш).">↻ Обновить курс</button>
+      <span style="color:#64748b">${st}</span>
+    </div>`;
+  }
+
+  function bindRateBar() {
+    mountEl.querySelectorAll('[data-rate]').forEach(el => {
+      const kindAttr = el.getAttribute('data-rate');
+      if (kindAttr === 'date') el.addEventListener('change', () => {
+        _rateDate = el.value || _rateDate; loadRates(false);
+      });
+      else if (kindAttr === 'source') el.addEventListener('change', () => {
+        _rateSourceId = el.value || null; loadRates(false);
+      });
+      else if (kindAttr === 'refresh') el.addEventListener('click', () => loadRates(true));
+    });
+  }
+  // Активная convertFn для расчётов/модалки (провайдер → fallback o.convertFn).
+  const cvFn = () => _convertFn || cvFn();
 
   function selEcoOf(meta) {
     return { ...DEFAULT_ECONOMICS, tariff: 0, ...(meta && meta.eco || {}) };
@@ -229,7 +296,7 @@ export function mountSelectionPanel(o) {
       const ecoForCalc = ec.eco
         ? ec.eco
         : { ...eco, costItems: storedCI || (Array.isArray(ec.costItems) ? ec.costItems : []) };
-      const flat = convertEcoToCurrency(ecoForCalc, cur, o.convertFn || null);
+      const flat = convertEcoToCurrency(ecoForCalc, cur, cvFn());
       const t = computeTco({
         annualEnergyKwh: Number(ec.annualEnergyKwh) || 0,
         tariffRubKwh: Number(eco.tariff) || 0,
@@ -336,6 +403,7 @@ export function mountSelectionPanel(o) {
     }).join('');
 
     return `
+      ${ratesBarHtml()}
       ${chartSvg}
       <div class="rsp-sec-title" title="Технико-экономическое сравнение вариантов подбора. TCO = CAPEX + Σ дисконтированных OPEX за срок проекта (ISO 15686-5).">⚖ Финансовая сводка по вариантам · TCO ${main ? main.t.projectLifetimeYears : eco.projectLifetimeYears} лет</div>
       <table class="rsp-table">
@@ -378,7 +446,7 @@ export function mountSelectionPanel(o) {
         try { const e = o.variantEconomics(v, eco, (meta && meta.requirements) || {}) || {};
           costItems = Array.isArray(e.costItems) ? e.costItems : []; } catch { costItems = []; }
       }
-      const t = computeEcoTotals({ costItems, currency: cur0 }, cur0, o.convertFn || null);
+      const t = computeEcoTotals({ costItems, currency: cur0 }, cur0, cvFn());
       const nRows = costItems.length;
       return `<tr data-cap-id="${escH(v.id)}">
         <td class="rsp-lft">${v.isMainVariant ? '★ ' : ''}${escH(v.label || v.id)}${isAuto ? ' <span style="color:#94a3b8">(авто)</span>' : ''}</td>
@@ -438,7 +506,7 @@ export function mountSelectionPanel(o) {
       ? entry.eco.costItems : null;
     let items = ci;
     if (!items) { try { const e = o.variantEconomics(entry, eco, (meta && meta.requirements) || {}) || {}; items = Array.isArray(e.costItems) ? e.costItems : []; } catch { items = []; } }
-    const t = computeEcoTotals({ costItems: items, currency: cur0 }, cur0, o.convertFn || null);
+    const t = computeEcoTotals({ costItems: items, currency: cur0 }, cur0, cvFn());
     const p = entry.payload || {};
     let body = '';
     if (variantTab === 'spec') {
@@ -451,7 +519,7 @@ export function mountSelectionPanel(o) {
       body = `<div class="rsp-sec-title">🔋 АКБ варианта</div>
         <div class="rsp-note">ℹ Выбор/пропуск АКБ и мост к модулю «Расчёт АКБ» — инкремент i3. Текущее: <b>${escH(p.batteryChoice === 'skip' ? 'без АКБ' : (p.battery ? ((p.battery.supplier || '') + ' ' + (p.battery.model || '')) : '— не задано'))}</b>.</div>`;
     } else if (variantTab === 'capex') {
-      body = `<div class="rsp-sec-title" title="Построчный состав статей затрат варианта — цена+валюта на пункт, как в «Подбор холода».">💰 CAPEX варианта · валюта ${escH(cur0)}</div>
+      body = `${ratesBarHtml()}<div class="rsp-sec-title" title="Построчный состав статей затрат варианта — цена+валюта на пункт, как в «Подбор холода».">💰 CAPEX варианта · валюта ${escH(cur0)}</div>
         <table class="rsp-table"><tbody>
           <tr><td class="rsp-lft">Σ Оборудование</td><td>${fmtMoney(t.equipmentCost, cur0)}</td></tr>
           <tr><td class="rsp-lft">Σ Монтаж/ПНР</td><td>${fmtMoney(t.installationCost, cur0)}</td></tr>
@@ -523,6 +591,7 @@ export function mountSelectionPanel(o) {
           else if (act === 'setmain') { try { setMainVariant(kind, selName, activeVariantId); } catch {} render(); }
         }));
         _bindCapEdit();
+        bindRateBar();
         return;
       }
     }
@@ -582,6 +651,7 @@ export function mountSelectionPanel(o) {
       });
     });
     _bindCapEdit();
+    bindRateBar();
   }
 
   // v0.60.454/455: «✏ Состав» — построчный редактор статей затрат варианта
@@ -601,7 +671,7 @@ export function mountSelectionPanel(o) {
           try { const e = o.variantEconomics(entry, effEco(m), (m && m.requirements) || {}) || {};
             start = Array.isArray(e.costItems) ? e.costItems : []; } catch { start = []; }
         }
-        const res = await openCostItemsModal(start, cur0, o.convertFn || null);
+        const res = await openCostItemsModal(start, cur0, cvFn());
         if (res == null) return;
         saveConfig(kind, { ...entry, eco: { ...(entry.eco || {}), costItems: res } });
         render();
@@ -614,6 +684,9 @@ export function mountSelectionPanel(o) {
   // (в т.ч. сохранение из wizard, минующее сайдбар).
   const off = onConfigsChange(kind, () => { if (activeTab === 'compare' || !selName) render(); });
   render();
+  // v0.60.458: подгрузить курс на сегодня из централизованного кэша
+  // (повторно не грузится — берётся из LS, если дата уже была).
+  loadRates(false);
 
   return {
     refresh: render,
