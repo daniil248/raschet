@@ -98,6 +98,89 @@ let _compareMode = 'variants';
 let _activeCols = [...DEFAULT_COLS, ...CHILLER_COLS];
 let _tariffRubKwh = 7.5;     // тариф в его «родной» валюте _tariffCurrency
 let _tariffCurrency = '₽';   // v0.60.18: тариф может быть введён в любой валюте, в расчётах конвертируется по курсу
+// v0.60.492 (Roadmap 23.6): профиль тарифа день/ночь/ПИК-надбавка.
+// bands: [{key,label,rate,hours}]. null = простой одиночный тариф.
+let _tariffProfile = null;
+function _tariffWeightedAvg(prof) {
+  if (!prof || !Array.isArray(prof.bands) || !prof.bands.length) return null;
+  let sumRH = 0, sumH = 0, peakAdd = 0;
+  for (const b of prof.bands) {
+    const r = Number(b.rate) || 0, h = Number(b.hours) || 0;
+    if (b.key === 'peak') { peakAdd += r * h; sumH += 0; }   // надбавка за ПИК
+    else { sumRH += r * h; sumH += h; }
+  }
+  if (sumH <= 0) return null;
+  // средневзвешенная база + аллокация ПИК-надбавки на сутки (на 24 ч)
+  const avg = (sumRH + peakAdd) / sumH;
+  return Number.isFinite(avg) && avg >= 0 ? +avg.toFixed(4) : null;
+}
+// v0.60.492 (Roadmap 23.6): in-page модал тарифа день/ночь/ПИК.
+// Без браузерных диалогов. onDone() — после Apply/Reset.
+function _openTariffProfileModal(onDone) {
+  const cur = _tariffCurrency || '₽';
+  const def = _tariffProfile && Array.isArray(_tariffProfile.bands) && _tariffProfile.bands.length
+    ? _tariffProfile.bands
+    : [
+        { key: 'day',   label: 'Дневной тариф',  rate: _tariffRubKwh || 0,        hours: 16 },
+        { key: 'night', label: 'Ночной тариф',   rate: +( (_tariffRubKwh||0)*0.5 ).toFixed(4), hours: 8 },
+        { key: 'peak',  label: 'Надбавка за ПИК', rate: 0,                         hours: 0 },
+      ];
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  const rowsHtml = def.map((b, i) => `
+    <tr data-i="${i}">
+      <td style="padding:4px 6px">${b.label}${b.key === 'peak' ? ' <span style="color:#9a3412;font-size:11px">(надбавка)</span>' : ''}</td>
+      <td style="padding:4px 6px"><input class="tp-rate" type="number" min="0" step="0.0001" value="${b.rate}" style="width:110px"> ${cur}/кВт·ч</td>
+      <td style="padding:4px 6px"><input class="tp-hours" type="number" min="0" max="24" step="0.5" value="${b.hours}" style="width:70px"> ч/сут</td>
+    </tr>`).join('');
+  ov.innerHTML = `<div style="background:#fff;border-radius:10px;max-width:560px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3);font:13px system-ui,sans-serif">
+      <div style="padding:12px 16px;border-bottom:1px solid #e2e8f0;font-weight:700">📊 Тариф: день / ночь / ПИК</div>
+      <div style="padding:14px 16px">
+        <table style="width:100%;border-collapse:collapse"><tbody>${rowsHtml}</tbody></table>
+        <div id="tp-res" style="margin-top:10px;padding:8px 10px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:6px;color:#3730a3"></div>
+        <div class="muted" style="font-size:11px;margin-top:6px">Средневзвешенный = Σ(тариф×часы)/Σ(часы) по день/ночь + надбавка за ПИК (часы×ставка, аллоцируется на сутки). Питает все OPEX/TCO cooling.</div>
+      </div>
+      <div style="padding:12px 16px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end">
+        ${_tariffProfile ? '<button id="tp-reset" type="button" style="padding:7px 12px;margin-right:auto">Сбросить профиль</button>' : ''}
+        <button id="tp-cancel" type="button" style="padding:7px 14px">Отмена</button>
+        <button id="tp-ok" type="button" style="padding:7px 14px;background:#2563eb;color:#fff;border:0;border-radius:5px">Применить</button>
+      </div></div>`;
+  document.body.appendChild(ov);
+  const readBands = () => [...ov.querySelectorAll('tr[data-i]')].map((tr, i) => ({
+    key: def[i].key, label: def[i].label,
+    rate: Number(tr.querySelector('.tp-rate').value) || 0,
+    hours: Number(tr.querySelector('.tp-hours').value) || 0,
+  }));
+  const refresh = () => {
+    const avg = _tariffWeightedAvg({ bands: readBands() });
+    const totH = readBands().filter(b => b.key !== 'peak').reduce((s, b) => s + b.hours, 0);
+    ov.querySelector('#tp-res').innerHTML = avg != null
+      ? `Средневзвешенный тариф: <b>${avg} ${cur}/кВт·ч</b>` + (Math.abs(totH - 24) > 0.01 ? ` <span style="color:#9a3412">⚠ часы день+ночь = ${totH} (обычно 24)</span>` : '')
+      : '⚠ Укажите ставки и часы (день/ночь, Σ часов > 0).';
+  };
+  ov.querySelectorAll('input').forEach(i => i.addEventListener('input', refresh));
+  refresh();
+  const close = () => ov.remove();
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  ov.querySelector('#tp-cancel').addEventListener('click', close);
+  const resetBtn = ov.querySelector('#tp-reset');
+  if (resetBtn) resetBtn.addEventListener('click', () => {
+    _tariffProfile = null;
+    persist(); renderActiveTab();
+    close(); if (typeof onDone === 'function') onDone();
+    try { util.toast('Профиль тарифа сброшен — ручной ввод тарифа доступен', 'ok'); } catch {}
+  });
+  ov.querySelector('#tp-ok').addEventListener('click', () => {
+    const bands = readBands();
+    const avg = _tariffWeightedAvg({ bands });
+    if (avg == null) { try { util.toast('Укажите ставки и часы (Σ часов день/ночь > 0)', 'err'); } catch {} return; }
+    _tariffProfile = { bands };
+    _tariffRubKwh = avg;
+    persist(); renderActiveTab();
+    close(); if (typeof onDone === 'function') onDone();
+    try { util.toast(`Тариф: средневзвешенный ${avg} ${cur}/кВт·ч`, 'ok'); } catch {}
+  });
+}
 let _currency = '₽';
 let _seq = 1;
 let _selSeq = 1;
@@ -137,6 +220,10 @@ const KEY_ACTIVE_SEL    = ['cooling', 'activeSelectionId.v1'];
 const KEY_COLS          = ['cooling', 'cols.v1'];
 const KEY_TARIFF        = ['cooling', 'tariff.v1'];
 const KEY_TARIFF_CUR    = ['cooling', 'tariffCurrency.v1'];
+// v0.60.492 (Roadmap 23.6): опц. профиль тарифа день/ночь/ПИК.
+// Если задан — _tariffRubKwh = средневзвешенный (Σ rate·hours / Σ hours);
+// нет профиля → поведение неизменно (одно значение).
+const KEY_TARIFF_PROF   = ['cooling', 'tariffProfile.v1'];
 const KEY_CURRENCY      = ['cooling', 'currency.v1'];
 const LEGACY_KEY_OPTS   = ['cooling', 'options.v1'];
 const LEGACY_KEY_ACTIVE = ['cooling', 'activeId.v1'];
@@ -163,6 +250,7 @@ function persist() {
   saveJson(KEY_COLS,       _activeCols);
   saveJson(KEY_TARIFF,     _tariffRubKwh);
   saveJson(KEY_TARIFF_CUR, _tariffCurrency);
+  saveJson(KEY_TARIFF_PROF, _tariffProfile);
   saveJson(KEY_CURRENCY,   _currency);
 }
 
@@ -1542,6 +1630,14 @@ async function init() {
   // v0.60.18: тариф может быть в любой валюте; default = валюта проекта.
   const savedTarCur = loadJson(KEY_TARIFF_CUR, null);
   if (typeof savedTarCur === 'string' && savedTarCur && !projectEco) _tariffCurrency = savedTarCur;
+  // v0.60.492 (Roadmap 23.6): профиль день/ночь/ПИК — если был сохранён,
+  // _tariffRubKwh = средневзвешенный (приоритетнее простого значения).
+  const savedProf = loadJson(KEY_TARIFF_PROF, null);
+  if (savedProf && Array.isArray(savedProf.bands) && savedProf.bands.length) {
+    _tariffProfile = savedProf;
+    const avg = _tariffWeightedAvg(_tariffProfile);
+    if (avg != null) _tariffRubKwh = avg;
+  }
   if (!_tariffCurrency) _tariffCurrency = _currency;
 
   // v0.59.995: загрузка подборов + миграция legacy bucket _options
@@ -1671,13 +1767,41 @@ async function init() {
   // Тариф input
   const tarInp = $('cl-tariff');
   if (tarInp) {
-    tarInp.value = _tariffRubKwh;
+    const _applyTarInpState = () => {
+      tarInp.value = _tariffRubKwh;
+      if (_tariffProfile) {
+        tarInp.readOnly = true;
+        tarInp.style.background = '#f0f0f0';
+        tarInp.title = 'Средневзвешенный из профиля день/ночь/ПИК. Кнопка «📊» — изменить/сбросить.';
+      } else {
+        tarInp.readOnly = false;
+        tarInp.style.background = '';
+        tarInp.title = '';
+      }
+    };
+    _applyTarInpState();
     tarInp.addEventListener('change', () => {
+      if (_tariffProfile) { _applyTarInpState(); return; }   // профиль активен — ручной ввод заблокирован
       const v = Number(tarInp.value);
       _tariffRubKwh = Number.isFinite(v) && v >= 0 ? v : 0;
       persist();
       renderActiveTab();
     });
+    // v0.60.492 (Roadmap 23.6): кнопка профиля тариф день/ночь/ПИК.
+    if (!document.getElementById('cl-tariff-prof-btn')) {
+      const pb = document.createElement('button');
+      pb.id = 'cl-tariff-prof-btn';
+      pb.type = 'button';
+      pb.className = 'btn-sm';
+      pb.style.cssText = 'margin-left:6px;font-size:11px';
+      pb.title = 'Клик-таблица тарифа: дневной/ночной + надбавка за ПИК → средневзвешенный тариф';
+      pb.textContent = _tariffProfile ? '📊 День/ночь/ПИК ✓' : '📊 День/ночь/ПИК';
+      tarInp.insertAdjacentElement('afterend', pb);
+      pb.addEventListener('click', () => _openTariffProfileModal(() => {
+        _applyTarInpState();
+        pb.textContent = _tariffProfile ? '📊 День/ночь/ПИК ✓' : '📊 День/ночь/ПИК';
+      }));
+    }
   }
 
   // v0.60.0: Дата курса валют (применяется ко всем конвертациям).

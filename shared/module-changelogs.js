@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.492', date: '2026-05-16', items: [
+      '⚡ <b>Roadmap 23.6: тариф э/э cooling — клик-таблица день/ночь/ПИК</b>. Кнопка «📊 День/ночь/ПИК» у поля тарифа → in-page модал: дневной/ночной тариф (ставка+часы) + надбавка за ПИК → <b>средневзвешенный</b> тариф. Профиль хранится (<code>KEY_TARIFF_PROF</code>); при активном профиле <code>_tariffRubKwh</code> = средневзвешенный, поле readonly. Нет профиля → поведение неизменно (одиночный тариф). <code>tariffInDisplayCurrency()</code> и вся экономика cooling — без изменений (backward-compat). «Сбросить профиль» возвращает ручной ввод.',
+    ] },
     { version: '0.60.491', date: '2026-05-16', items: [
       '💲 <b>Roadmap 23.4 (battery-catalog): цена модели АКБ + построчная разбивка</b>. В справочнике АКБ — колонка «Цена» и кнопка «✏» (per-user): построчная разбивка через общий <code>cost-items-modal</code> (оборуд./доставка/НДС…), курс на дату из общего провайдера, Σ → <code>price{value,currency}</code> + <code>priceItems[]</code> (<code>setBatteryPrice</code>). Цена авто-подхватывается в составе/ЖЦ (<code>_lcSyncFromBom</code>) и в TCO варианта (<code>variantEconomics</code> fallback = цена каталога × число блоков) — состав/CAPEX/TCO больше не нулевые «из коробки». Импорт XLSX и старые записи не затронуты. scs-config/breaker-catalog — тем же паттерном позже.',
     ] },
