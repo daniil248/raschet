@@ -6,23 +6,23 @@
 // будет применяться из инспектора ИБП главной схемы.
 // ======================================================================
 
-import { listUpses, addUps, removeUps, clearCatalog, makeUpsId } from '../shared/ups-catalog.js';
-import { parseUpsXlsx, downloadCatalogTemplate } from '../shared/catalog-xlsx-parser.js';
-import { mountUpsPicker, extractUpsSeries } from '../shared/ups-picker.js';
-import { KEHUA_MR33_UPSES } from '../shared/catalogs/ups/kehua-mr33.js';
-import { KEHUA_S3_AIO_UPSES } from '../shared/catalogs/ups/kehua-s3-aio.js';
+import { listUpses, addUps, removeUps, clearCatalog, makeUpsId } from 'shared/ups-catalog.js';
+import { parseUpsXlsx, downloadCatalogTemplate } from 'shared/catalog-xlsx-parser.js';
+import { mountUpsPicker, extractUpsSeries } from 'shared/ups-picker.js';
+import { KEHUA_MR33_UPSES } from 'shared/catalogs/ups/kehua-mr33.js';
+import { KEHUA_S3_AIO_UPSES } from 'shared/catalogs/ups/kehua-s3-aio.js';
 // v0.59.446: единый источник правды seed-данных ИБП (все 6 каталогов).
-import '../shared/ups-seed.js';
+import 'shared/ups-seed.js';
 // v0.59.385: типы ИБП — плагин-архитектура. Чтобы добавить новый тип
 // (моноблок/модульный/интегрированный/...), создайте файл в
 // shared/ups-types/ и зарегистрируйте его в shared/ups-types/index.js.
-import { listUpsTypes, getUpsType, detectUpsType, getUpsTypeOrFallback } from '../shared/ups-types/index.js';
-import { pricesForElement } from '../shared/price-records.js';
-import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
-import { wireExportImport } from '../shared/config-io.js';
-import { APP_VERSION } from '../js/engine/constants.js';
-import { getActiveProjectCode, getSelectionMeta } from '../shared/configuration-catalog.js';
-import { getProject as _getProjectD, getActiveProjectId as _getActiveProjectIdD } from '../shared/project-storage.js';
+import { listUpsTypes, getUpsType, detectUpsType, getUpsTypeOrFallback } from 'shared/ups-types/index.js';
+import { pricesForElement } from 'shared/price-records.js';
+import { rsToast, rsConfirm, rsPrompt } from 'shared/dialog.js';
+import { wireExportImport } from 'shared/config-io.js';
+import { APP_VERSION } from 'engine/constants.js';
+import { getActiveProjectCode, getSelectionMeta } from 'shared/configuration-catalog.js';
+import { getProject as _getProjectD, getActiveProjectId as _getActiveProjectIdD } from 'shared/project-storage.js';
 // v0.60.533: чистый расчётный слой выделен в calc/ (без DOM, переиспользуемо).
 import { parseRedundancy as _parseRedundancy } from './calc/ups-sizing.js';
 
@@ -948,7 +948,7 @@ async function _saveWizardConfiguration() {
   //    альтернативных вариантов (модулярный vs моноблок vs гибрид).
   //    Default: «Подбор N+R мощностью X кВт» (по требованиям).
   // 2) Вариант (label) — конкретная модель ИБП в этом подборе.
-  const { listSelectionNames } = await import('../shared/configuration-catalog.js');
+  const { listSelectionNames } = await import('shared/configuration-catalog.js');
   const existingSelections = listSelectionNames('ups').slice(0, 20);
   const defSelection = `${rq.loadKw} кВт · ${rq.unitRedundancy || rq.redundancy} ИБП${(rq.moduleRedundancy && rq.moduleRedundancy !== 'N') ? ' · модули ' + rq.moduleRedundancy : ''}`;
   let selectionName;
@@ -993,7 +993,7 @@ async function _saveWizardConfiguration() {
     composition: comp.composition,
   };
   try {
-    const cat = await import('../shared/configuration-catalog.js');
+    const cat = await import('shared/configuration-catalog.js');
     const { saveConfig, getActiveProjectCode, ensureSelectionMeta, getSelectionMeta, saveSelectionMeta } = cat;
     // v0.60.438: контекст подбора (проект / разовый) — синхронно с сайдбаром
     // (raschet.cs.ctx.ups). Шаг 1 «Требования к ИБП» = УСЛОВИЯ ПОДБОРА.
@@ -1044,7 +1044,7 @@ async function _saveWizardConfiguration() {
       const qp = new URLSearchParams(location.search);
       const pid = qp.get('project') || qp.get('pid');
       if (pid) {
-        const { projectKey } = await import('../shared/project-storage.js');
+        const { projectKey } = await import('shared/project-storage.js');
         const selectedPayload = {
           ts: Date.now(),
           supplier: u.supplier || null,
@@ -1079,7 +1079,7 @@ async function _finishWizardToVariant() {
   if (!comp) { flash('Сначала выберите конфигурацию (Шаг 4)', 'warn'); return; }
   const u = comp.ups, fi = comp.fitInfo, rq = wizState.requirements;
   try {
-    const cat = await import('../shared/configuration-catalog.js');
+    const cat = await import('shared/configuration-catalog.js');
     const { saveConfig, getActiveProjectCode, ensureSelectionMeta, getSelectionMeta, saveSelectionMeta } = cat;
     const basePc = getActiveProjectCode() || null;
     let ctxSA;

@@ -20,7 +20,7 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
+    import { mountHeader } from 'shared/app-header.js';
     mountHeader({ title: 'Конфигуратор стойки', home: '../hub.html' });
   </script>
 
@@ -361,7 +361,7 @@
     }
   </script>
   <script type="module">
-    import { mountHelp } from '../shared/help-panel.js';
+    import { mountHelp } from 'shared/help-panel.js';
     mountHelp({
       module: 'rack-config',
       title: 'Конфигуратор стойки — справка',
@@ -529,8 +529,8 @@
     });
   </script>
   <script type="module">
-    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'rack-config', moduleTitle: 'Стойка' });
   </script>
 </body>

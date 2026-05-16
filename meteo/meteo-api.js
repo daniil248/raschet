@@ -3,7 +3,7 @@
 // Возвращает только базовые stats + ссылку на raw-hourly при необходимости.
 // Не импортирует тяжёлый UI из meteo.js.
 
-import { projectKey } from '../shared/project-storage.js';
+import { projectKey } from 'shared/project-storage.js';
 
 export function getActiveDataset(pid) {
   if (!pid) return null;

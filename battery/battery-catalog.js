@@ -6,4 +6,4 @@
 // и динамический импорт catalog-bridge продолжали резолвиться.
 // Новый код импортирует из '../shared/battery-catalog.js'.
 // ======================================================================
-export * from '../shared/battery-catalog.js';
+export * from 'shared/battery-catalog.js';

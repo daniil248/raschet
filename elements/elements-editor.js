@@ -11,10 +11,10 @@ import {
   listElements, getElement, saveElement, removeElement, cloneElement,
   exportLibraryJSON, importLibraryJSON, onLibraryChange,
   ELEMENT_KINDS,
-} from '../shared/element-library.js';
-import { initCatalogBridge } from '../shared/catalog-bridge.js';
-import { createElement } from '../shared/element-schemas.js';
-import { rsConfirm, rsPrompt } from '../shared/dialog.js';
+} from 'shared/element-library.js';
+import { initCatalogBridge } from 'shared/catalog-bridge.js';
+import { createElement } from 'shared/element-schemas.js';
+import { rsConfirm, rsPrompt } from 'shared/dialog.js';
 
 // Важно: bridge регистрирует legacy-каталоги как builtin — иначе список
 // будет пустой (elements/ страница не загружает engine).

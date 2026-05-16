@@ -21,11 +21,11 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
-    import { mountHelp } from '../shared/help-panel.js';
+    import { mountHeader } from 'shared/app-header.js';
+    import { mountHelp } from 'shared/help-panel.js';
     mountHeader({ title: 'Шаблоны отчётов', home: '../hub.html' });
     // v0.60.137: defence-in-depth для прямого URL. reports — internalOnly.
-    import('../shared/subscriptions.js').then(m => m.requireModuleAccess('reports', 'Шаблоны отчётов').then(allowed => {
+    import('shared/subscriptions.js').then(m => m.requireModuleAccess('reports', 'Шаблоны отчётов').then(allowed => {
       if (!allowed) document.querySelectorAll('main').forEach(el => el.style.display = 'none');
     }));
     mountHelp({
@@ -140,8 +140,8 @@
 
   <script type="module" src="./reports.js"></script>
   <script type="module">
-    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'reports', moduleTitle: 'Отчёты' });
   </script>
 </body>

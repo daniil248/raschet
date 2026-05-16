@@ -10,12 +10,12 @@
 // модуль в свои подпрограммы — shared/report/README.md.
 // ======================================================================
 
-import * as Report   from '../shared/report/index.js';
-import * as B        from '../shared/report/blocks.js';
-import * as Catalog  from '../shared/report-catalog.js';
-import { BUILTIN_TEMPLATES, BUILTIN_VERSION, getDemoContent } from '../shared/report/templates-seed.js';
+import * as Report   from 'shared/report/index.js';
+import * as B        from 'shared/report/blocks.js';
+import * as Catalog  from 'shared/report-catalog.js';
+import { BUILTIN_TEMPLATES, BUILTIN_VERSION, getDemoContent } from 'shared/report/templates-seed.js';
 import { openHelp }  from './help.js';
-import { rsToast, rsConfirm } from '../shared/dialog.js';
+import { rsToast, rsConfirm } from 'shared/dialog.js';
 
 // Версия встроенных шаблонов хранится отдельно — при смене перезаседаем
 // только builtin-записи, пользовательские не трогаем.

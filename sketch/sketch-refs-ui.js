@@ -24,7 +24,7 @@
 //   атрибуты UserObject через export/import).
 // =============================================================================
 
-import { rsToast, rsConfirm } from '../shared/dialog.js';
+import { rsToast, rsConfirm } from 'shared/dialog.js';
 import {
   getRefTypes,
   getRefType,
@@ -35,7 +35,7 @@ import {
   buildOpenUrl,
   resolveLabel,
   buildDrawioCellXml,
-} from '../shared/sketch-refs.js';
+} from 'shared/sketch-refs.js';
 
 // ───────── Module state (set by setContext from sketch.js) ──────────────────
 

@@ -16,10 +16,10 @@
 //                           источник, регистрирующийся через registry.
 // =========================================================================
 
-import { ensureDefaultProject, projectKey, getProject, setActiveProjectId } from '../shared/project-storage.js';
-import { detectNavMode, renderModuleActions, completeReturn, cancelReturn } from '../shared/module-nav.js';
-import { idbGet, idbSet, idbDelete, idbAvailable } from '../shared/idb-store.js';
-import { historyAppend, historyTrash, historyRestore, historyPurge, historyList } from '../shared/history-log.js';
+import { ensureDefaultProject, projectKey, getProject, setActiveProjectId } from 'shared/project-storage.js';
+import { detectNavMode, renderModuleActions, completeReturn, cancelReturn } from 'shared/module-nav.js';
+import { idbGet, idbSet, idbDelete, idbAvailable } from 'shared/idb-store.js';
+import { historyAppend, historyTrash, historyRestore, historyPurge, historyList } from 'shared/history-log.js';
 import * as util from './util.js';
 import { getAll as getSources } from './sources/index.js';
 import { drawTempHistogram, drawHumidityHistogram, drawMonthlyTempChart, drawWindRose, renderDaysInRangeTable } from './charts.js';

@@ -17,8 +17,8 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
-    import { mountHelp } from '../shared/help-panel.js';
+    import { mountHeader } from 'shared/app-header.js';
+    import { mountHelp } from 'shared/help-panel.js';
     mountHeader({ title: 'Сервис: монтаж и ТО', home: '../hub.html', moduleId: 'service', moduleTitle: 'Сервис: монтаж и ТО' });
     mountHelp({
       module: 'service',
@@ -157,8 +157,8 @@
   <script type="module" src="service.js"></script>
   <div id="rs-footer-mount"></div>
   <script type="module">
-    import { mountFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
+    import { mountFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
     mountFooter({
       appVersion: APP_VERSION,
       moduleId: 'service',

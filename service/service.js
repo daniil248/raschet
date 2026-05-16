@@ -15,17 +15,17 @@
 // v0.60.37: explicit load-marker для диагностики кеша/import-проблем
 console.info('%c[service v0.60.37] script LOADED', 'color:#16a34a;font-weight:bold');
 
-import { detectNavMode, renderModuleActions, completeReturn, cancelReturn } from '../shared/module-nav.js';
-import { ensureDefaultProject, projectKey, listProjects, getProject, setActiveProjectId, createProject } from '../shared/project-storage.js';
-import { fetchRates, convert as convertRate } from '../shared/currency-rates/index.js';
-import { open as openRatesDialog } from '../shared/currency-rates/rates-dialog.js';
-import '../shared/currency-rates/sources/index.js';
-import * as util from '../shared/meteo-util.js'; // v0.60.522: SHARED (burndown service→meteo)
-import { CURRENCIES, currencyToIso } from '../shared/money.js'; // v0.60.524: SHARED (burndown service→cooling/calc; fc-summary дублирует money.js байт-в-байт)
+import { detectNavMode, renderModuleActions, completeReturn, cancelReturn } from 'shared/module-nav.js';
+import { ensureDefaultProject, projectKey, listProjects, getProject, setActiveProjectId, createProject } from 'shared/project-storage.js';
+import { fetchRates, convert as convertRate } from 'shared/currency-rates/index.js';
+import { open as openRatesDialog } from 'shared/currency-rates/rates-dialog.js';
+import 'shared/currency-rates/sources/index.js';
+import * as util from 'shared/meteo-util.js'; // v0.60.522: SHARED (burndown service→meteo)
+import { CURRENCIES, currencyToIso } from 'shared/money.js'; // v0.60.524: SHARED (burndown service→cooling/calc; fc-summary дублирует money.js байт-в-байт)
 import { openKpTemplateEditor } from './report/kp-editor.js';
 import { DEFAULT_ORDER, ORDER_TYPES, defaultPosition, formatOrderNumber, DEFAULT_NUMBER_PATTERNS } from './calc/order-model.js';
 import { renderOrderForm } from './ui/order-form.js';
-import { historyAppend } from '../shared/history-log.js';
+import { historyAppend } from 'shared/history-log.js';
 import { openWorkCatalogModal } from './ui/work-catalog.js';
 import { openMaterialsCatalogModal } from './ui/materials-catalog.js';
 import {

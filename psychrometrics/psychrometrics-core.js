@@ -8,4 +8,4 @@
 // путей). Новый код импортирует напрямую из shared/calc/.
 // Не удалять, пока есть импортёры старого пути.
 // =========================================================================
-export * from '../shared/calc/psychrometrics-core.js';
+export * from 'shared/calc/psychrometrics-core.js';

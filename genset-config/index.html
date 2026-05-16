@@ -15,7 +15,7 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
+    import { mountHeader } from 'shared/app-header.js';
     mountHeader({ title: 'ДГУ-конфигуратор', home: '../hub.html' });
   </script>
 
@@ -154,8 +154,8 @@
 
   <div id="rs-footer-mount"></div>
   <script type="module">
-    import { mountFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
+    import { mountFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
     mountFooter({ appVersion: APP_VERSION, moduleId: 'genset-config', moduleTitle: 'ДГУ-конфигуратор' });
   </script>
 

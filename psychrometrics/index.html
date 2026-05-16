@@ -17,8 +17,8 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
-    import { mountHelp } from '../shared/help-panel.js';
+    import { mountHeader } from 'shared/app-header.js';
+    import { mountHelp } from 'shared/help-panel.js';
     mountHeader({ title: 'ID-диаграмма Молье-Рамзина (ASHRAE 2021)', home: '../hub.html' });
     mountHelp({
       module: 'psychrometrics',
@@ -370,8 +370,8 @@
     setTimeout(syncAtm, 50);
   </script>
   <script type="module">
-    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'psychrometrics', moduleTitle: 'i-d диаграмма' });
   </script>
 </body>

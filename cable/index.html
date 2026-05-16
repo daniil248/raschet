@@ -20,8 +20,8 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
-    import { mountHelp } from '../shared/help-panel.js';
+    import { mountHeader } from 'shared/app-header.js';
+    import { mountHelp } from 'shared/help-panel.js';
     mountHeader({ title: 'Расчёт кабельной линии', home: '../hub.html', moduleId: 'cable', moduleTitle: 'Кабель' });
     mountHelp({
       module: 'cable',
@@ -261,8 +261,8 @@
   <script type="module" src="cable-calc.js"></script>
   <script type="module" src="protection-wizard.js"></script>
   <script type="module">
-    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'cable', moduleTitle: 'Кабель' });
   </script>
 </body>

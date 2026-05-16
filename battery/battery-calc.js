@@ -5,42 +5,42 @@
 //   2. Расчёт разряда — выбор АКБ + параметры нагрузки → автономия
 // ======================================================================
 
-import { listBatteries, addBattery, removeBattery, clearCatalog, getBattery, makeBatteryId, setBatteryPrice } from '../shared/battery-catalog.js';
-import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
+import { listBatteries, addBattery, removeBattery, clearCatalog, getBattery, makeBatteryId, setBatteryPrice } from 'shared/battery-catalog.js';
+import { rsToast, rsConfirm, rsPrompt } from 'shared/dialog.js';
 import { parseBatteryXlsx } from './battery-data-parser.js';
 import { calcAutonomy, calcRequiredBlocks, interpTimeByPower } from './battery-discharge.js';
-import * as Report from '../shared/report/index.js';
-import * as B      from '../shared/report/blocks.js';
+import * as Report from 'shared/report/index.js';
+import * as B      from 'shared/report/blocks.js';
 
 // Последнее состояние расчёта АКБ для экспорта отчёта
 let lastBatteryCalc = null;
-import { mountBatteryPicker, extractBatterySeries } from '../shared/battery-picker.js';
-import { KEHUA_S3_BATTERIES } from '../shared/catalogs/battery/kehua-s3.js';
-import { listUpses, getUps } from '../shared/ups-catalog.js';
-import { isUpsVdcVerified } from '../shared/ups-verified.js';
+import { mountBatteryPicker, extractBatterySeries } from 'shared/battery-picker.js';
+import { KEHUA_S3_BATTERIES } from 'shared/catalogs/battery/kehua-s3.js';
+import { listUpses, getUps } from 'shared/ups-catalog.js';
+import { isUpsVdcVerified } from 'shared/ups-verified.js';
 // v0.59.446: единый источник правды seed-данных ИБП (Kehua MR33/S3 AIO,
 // Schneider, Eaton, Legrand, DKC). Импорт инициализирует каталог.
-import '../shared/ups-seed.js';
+import 'shared/ups-seed.js';
 // v0.59.448: единый источник правды seed-данных АКБ (Kehua S³).
 // Аналогично ups-seed.js — раньше требовался ручной клик на кнопку.
-import '../shared/battery-seed.js';
+import 'shared/battery-seed.js';
 // v0.59.447: реестр типов ИБП (плагины) — single source of truth для
 // фильтра «Тип» (моноблок/модульный/интегрированный/all-in-one).
-import { listUpsTypes, detectUpsType } from '../shared/ups-types/index.js';
+import { listUpsTypes, detectUpsType } from 'shared/ups-types/index.js';
 // v0.59.417: ЕДИНЫЙ источник логики S³ — тот же модуль, что в инспекторе.
-import { isS3Module, getS3Limits, computeS3Configuration, findMinimalS3Config } from '../shared/battery-s3-logic.js';
+import { isS3Module, getS3Limits, computeS3Configuration, findMinimalS3Config } from 'shared/battery-s3-logic.js';
 // v0.59.427: плагин типа АКБ S³ — автосборка master/slave/combiner + аксессуары.
-import { s3LiIonType } from '../shared/battery-types/s3-li-ion.js';
-import { renderS3IsoSvg } from '../shared/battery-types/s3-iso-view.js';
-import { mountS3ThreeDView } from '../shared/battery-types/s3-3d-view.js';
-import { saveConfig as _saveConfig, nextConfigId as _nextConfigId, getActiveProjectCode as _getActiveProjectCode, listConfigs as _listConfigs } from '../shared/configuration-catalog.js';
+import { s3LiIonType } from 'shared/battery-types/s3-li-ion.js';
+import { renderS3IsoSvg } from 'shared/battery-types/s3-iso-view.js';
+import { mountS3ThreeDView } from 'shared/battery-types/s3-3d-view.js';
+import { saveConfig as _saveConfig, nextConfigId as _nextConfigId, getActiveProjectCode as _getActiveProjectCode, listConfigs as _listConfigs } from 'shared/configuration-catalog.js';
 // v0.60.459: ТЭО АКБ — стоимость комплекта построчно (общий редактор) +
 // централизованный курс валют на дату (как «Подбор холода»).
-import { openCostItemsModal } from '../shared/ui/cost-items-modal.js';
-import { makeConvertFn } from '../shared/currency-rates/provider.js';
-import { computeEcoTotals, syncCostItemsFromEquipment } from '../shared/calc/capex-tco.js';
-import { fmtMoney } from '../shared/money.js';
-import { DEFAULT_KIT_INCLUSION } from '../shared/battery-types/s3-li-ion.js';
+import { openCostItemsModal } from 'shared/ui/cost-items-modal.js';
+import { makeConvertFn } from 'shared/currency-rates/provider.js';
+import { computeEcoTotals, syncCostItemsFromEquipment } from 'shared/calc/capex-tco.js';
+import { fmtMoney } from 'shared/money.js';
+import { DEFAULT_KIT_INCLUSION } from 'shared/battery-types/s3-li-ion.js';
 
 const fmt = (n, d = 2) => {
   if (!Number.isFinite(n)) return '—';
@@ -3419,7 +3419,7 @@ async function _saveBatteryConfiguration() {
   const projectCode = _getActiveProjectCode();
   let selectionName;
   try {
-    const { listSelectionNames } = await import('../shared/configuration-catalog.js');
+    const { listSelectionNames } = await import('shared/configuration-catalog.js');
     const existing = listSelectionNames('battery', { projectCode: projectCode || undefined }).slice(0, 20);
     const defSel = `АКБ ${(lastBatteryCalc.params.loadKwEff || lastBatteryCalc.params.loadKw || '')} кВт · ${params.targetMin || autonomyMin || '?'} мин`;
     const hint = existing.length

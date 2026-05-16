@@ -29,14 +29,14 @@
 //   }
 // =========================================================================
 
-import { ensureDefaultProject, projectKey, listSubProjects, createSubProject, listProjects, getProject, setActiveProjectId, createProject, updateProject } from '../shared/project-storage.js';
-import { buildModuleHref } from '../shared/project-context.js';
-import { idbGet, idbAvailable } from '../shared/idb-store.js';
-import { pricesForElement } from '../shared/price-records.js';
+import { ensureDefaultProject, projectKey, listSubProjects, createSubProject, listProjects, getProject, setActiveProjectId, createProject, updateProject } from 'shared/project-storage.js';
+import { buildModuleHref } from 'shared/project-context.js';
+import { idbGet, idbAvailable } from 'shared/idb-store.js';
+import { pricesForElement } from 'shared/price-records.js';
 // v0.60.136 (Phase 44.3 follow-up): RBAC guards на approve-actions.
 // По правилу feedback_role_based_access.md — canApproveVariants только
 // для manager / gip. Для engineer / viewer кнопка disabled.
-import { hasPermission, currentRole, ROLES } from '../shared/subscriptions.js';
+import { hasPermission, currentRole, ROLES } from 'shared/subscriptions.js';
 // v0.60.537: чистый расчётный слой нагрузок/площадей концепции выделен
 // в calc/ (без DOM, переиспользуемо: карточки, отчёты, сравнение, тесты).
 import {
@@ -4218,7 +4218,7 @@ function bindListEvents() {
         // Динамически импортируем builder и service-bridge
         const [{ buildMaintenancePositionsFromCoolingOption }, { createServiceOrderForProject }] = await Promise.all([
           import('../service/calc/order-builder.js'),
-          import('../shared/service-bridge.js'),
+          import('shared/service-bridge.js'),
         ]);
         const positions = buildMaintenancePositionsFromCoolingOption(main, '₽', sel);
         if (!positions.length) {
@@ -4279,7 +4279,7 @@ function bindListEvents() {
         twToast(`📤 Открываю /cooling/ с req = ${reqCoolKw} кВт (PUE target ${pueTarget.toFixed(2)})…`, 'info');
         // Открываем в embed через openEmbed-like (но cooling использует
         // module-nav).
-        const { openEmbed } = await import('../shared/module-nav.js');
+        const { openEmbed } = await import('shared/module-nav.js');
         openEmbed(location.pathname + location.search, '../cooling/', 'Технолог ЦОД');
       } catch (err) {
         console.error('[open-cooling-prefill]', err);
@@ -4533,7 +4533,7 @@ async function openModelPicker(domain, refId) {
   if (!kind) return;
   let elements = [];
   try {
-    const lib = await import('../shared/element-library.js');
+    const lib = await import('shared/element-library.js');
     elements = lib.listElements({ kind }) || [];
   } catch (e) { twToast(`Не удалось загрузить библиотеку: ${e.message || e}`, 'warn'); return; }
   // Ищем текущий modelRef для подсветки

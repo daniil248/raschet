@@ -6,7 +6,7 @@
 // Если engineId не находится в ENGINE_DERATE_PROFILES — пытаемся прочитать
 // из shared/catalogs/engines/. Это позволяет ссылаться на двигатели в
 // каталоге через id (perkins-4008-30tag3, volvo-tad732ge и т.п.).
-import { getEngineDerateProfile } from '../../shared/catalogs/engines/index.js';
+import { getEngineDerateProfile } from 'shared/catalogs/engines/index.js';
 
 // Phase 30.3 (v0.60.70): По требованию Пользователя 2026-05-03 «надеюсь ты уже
 // проработал план интеграции модуля Технолог ЦОД с модулями климата, подбора

@@ -32,13 +32,13 @@
 
 import {
   ensureDefaultProject, getActiveProjectId, projectKey, listProjects
-} from '../shared/project-storage.js';
+} from 'shared/project-storage.js';
 // v0.59.278: единая точка доступа к стойкам. Шаблоны — глобальные
 // (rack-config.templates.v1), экземпляры — project-scoped.
 import {
   loadAllRacksForActiveProject, saveAllRacksForActiveProject,
   migrateLegacyInstances, LS_TEMPLATES_GLOBAL
-} from '../shared/rack-storage.js';
+} from 'shared/rack-storage.js';
 // v0.59.516/521: POR-источник стоек теперь интегрирован в
 // shared/rack-storage.js::loadAllRacksForActiveProject (третий источник
 // после templates/instances). scs-config/loadRacks() лишь делегирует
@@ -52,13 +52,13 @@ import {
   loadSchemeVirtualRacks, loadPorGroupVirtualRacks,
   // v0.60.209: per-project blacklist (soft-delete) для виртуалов schema.
   addVirtualRackToBlacklist,
-} from '../shared/scheme-rack-bridge.js';
+} from 'shared/scheme-rack-bridge.js';
 // v0.59.580: жадный импорт POR — иначе window.RaschetPOR undefined,
 // rack-storage._loadPorRacks возвращает [], в sidebar Компоновщика
 // «В проекте нет физических шкафов» при том что в POR есть 16 стоек
 // родителя. Симметрично fix v0.59.578 для scs-design.
-import '../shared/por.js';
-import '../shared/por-types/index.js';
+import 'shared/por.js';
+import 'shared/por-types/index.js';
 
 const LS_RACK      = LS_TEMPLATES_GLOBAL;               // оставлен для storage-listener совместимости
 const LS_CATALOG   = 'scs-config.catalog.v1';           // глобальный каталог IT-типов
@@ -150,9 +150,9 @@ rescopeToActiveProject();
 // side-view и depth-collision check. Дефолты — типичные для категории.
 /* v0.59.257: каталог вынесен в shared/scs-catalog-data.js (по образцу
    rack-catalog-data.js). Здесь — только импорт под прежними именами. */
-import { SCS_DEFAULT_CATALOG, KIND_LABEL as _KIND_LABEL } from '../shared/scs-catalog-data.js';
-import { wireExportImport } from '../shared/config-io.js';
-import { APP_VERSION } from '../js/engine/constants.js';
+import { SCS_DEFAULT_CATALOG, KIND_LABEL as _KIND_LABEL } from 'shared/scs-catalog-data.js';
+import { wireExportImport } from 'shared/config-io.js';
+import { APP_VERSION } from 'engine/constants.js';
 // v0.60.535: чистый расчётный слой геометрии U-слотов выделен в calc/
 // (без DOM). Тонкие обёртки ниже подставляют state.catalog.
 import {

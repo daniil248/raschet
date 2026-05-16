@@ -10,7 +10,7 @@
 // v0.60.521 (Фаза 2 модуляризации): импорт из SHARED-слоя вместо
 // модуля psychrometrics/ (burndown allowlist R1 — кросс-модульный
 // импорт устранён; psychrometrics-core теперь shared/calc).
-import { humidityRatio, enthalpy, wetBulb, pressureAtAltitude } from '../shared/calc/psychrometrics-core.js';
+import { humidityRatio, enthalpy, wetBulb, pressureAtAltitude } from 'shared/calc/psychrometrics-core.js';
 import { escHtml } from './util.js';
 
 // Главная функция — расширенный набор design conditions

@@ -8,10 +8,10 @@
 
 import {
   listTransformers, addTransformer, removeTransformer, clearCatalog, makeTransformerId,
-} from '../shared/transformer-catalog.js';
-import { mountTransformerPicker, computeTransformerIk } from '../shared/transformer-picker.js';
-import { parseTransformerXlsx, downloadCatalogTemplate } from '../shared/catalog-xlsx-parser.js';
-import { rsToast, rsConfirm } from '../shared/dialog.js';
+} from 'shared/transformer-catalog.js';
+import { mountTransformerPicker, computeTransformerIk } from 'shared/transformer-picker.js';
+import { parseTransformerXlsx, downloadCatalogTemplate } from 'shared/catalog-xlsx-parser.js';
+import { rsToast, rsConfirm } from 'shared/dialog.js';
 import { classifyTxType, selectTransformers } from './calc/tx-select.js';
 
 let cascadeHandle = null;

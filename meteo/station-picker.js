@@ -148,7 +148,7 @@ export function pickStation(opts = {}) {
   // v0.59.966: универсальный drag для модалок (shared/draggable-modal.js).
   // По проектной директиве: «все модальные окна кроме предупреждений
   // должны быть перемещаемые».
-  import('../shared/draggable-modal.js').then(m => {
+  import('shared/draggable-modal.js').then(m => {
     m.autoApply([{ overlay: '.mt-modal-overlay', modal: '.mt-modal', head: '.mt-modal-head' }]);
   }).catch(() => {});
   return new Promise(resolve => {

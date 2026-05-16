@@ -9,10 +9,10 @@
 //      localStorage['raschet.pendingMvSelection.v1']
 // ======================================================================
 
-import { listElements, getElement } from '../shared/element-library.js';
-import { initCatalogBridge } from '../shared/catalog-bridge.js';
-import { pricesForElement } from '../shared/price-records.js';
-import { rsConfirm } from '../shared/dialog.js';
+import { listElements, getElement } from 'shared/element-library.js';
+import { initCatalogBridge } from 'shared/catalog-bridge.js';
+import { pricesForElement } from 'shared/price-records.js';
+import { rsConfirm } from 'shared/dialog.js';
 
 initCatalogBridge();
 

@@ -31,11 +31,11 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
+    import { mountHeader } from 'shared/app-header.js';
     // v0.60.216 (по репорту Пользователя 2026-05-04 «да фикс примени для всех
     // модулей»): app-footer (.rs-footer) удалён — используем только
     // module-footer (.rs-mfoot) ниже, чтобы не было двойного футера.
-    import { mountHelp } from '../shared/help-panel.js';
+    import { mountHelp } from 'shared/help-panel.js';
     mountHeader({ title: 'Библиотека → переезд', home: '../hub.html', moduleId: 'elements', moduleTitle: 'Элементы' });
     mountHelp({
       module: 'elements',
@@ -86,8 +86,8 @@
     });
   </script>
   <script type="module">
-    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'elements', moduleTitle: 'Элементы' });
   </script>
 </body>

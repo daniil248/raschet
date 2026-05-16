@@ -12,7 +12,7 @@
 
 import { calcDgu, DGU_MODES, getDguModePowerKw } from './calc/genset-calc.js';
 import { listDgus, listDguVendors, suggestDgu } from './datasheets/index.js';
-import { ensureDefaultProject, projectKey, listProjects, getProject, setActiveProjectId } from '../shared/project-storage.js';
+import { ensureDefaultProject, projectKey, listProjects, getProject, setActiveProjectId } from 'shared/project-storage.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -194,7 +194,7 @@ async function loadFromProject() {
 
   // 3. Climate (T design + RH) from meteo dataset (IDB or LS)
   try {
-    const { idbGet, idbAvailable } = await import('../shared/idb-store.js');
+    const { idbGet, idbAvailable } = await import('shared/idb-store.js');
     let datasets = null;
     if (idbAvailable()) {
       datasets = await idbGet(`meteo.datasets.${_pid}`, null);

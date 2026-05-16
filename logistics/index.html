@@ -21,14 +21,14 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
+    import { mountHeader } from 'shared/app-header.js';
     // v0.60.216 (по репорту Пользователя 2026-05-04 «да фикс примени для всех
     // модулей»): app-footer (.rs-footer) удалён — используем только
     // module-footer (.rs-mfoot) ниже, чтобы не было двойного футера.
-    import { mountHelp } from '../shared/help-panel.js';
+    import { mountHelp } from 'shared/help-panel.js';
     mountHeader({ title: 'Логистика', home: '../hub.html' });
     // v0.60.137: defence-in-depth для прямого URL. logistics — internalOnly.
-    import('../shared/subscriptions.js').then(m => m.requireModuleAccess('logistics', 'Рабочее место логиста').then(allowed => {
+    import('shared/subscriptions.js').then(m => m.requireModuleAccess('logistics', 'Рабочее место логиста').then(allowed => {
       if (!allowed) document.querySelectorAll('main').forEach(el => el.style.display = 'none');
     }));
     mountHelp({
@@ -136,8 +136,8 @@
 
   <script type="module" src="logistics.js"></script>
   <script type="module">
-    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'logistics', moduleTitle: 'Логистика' });
   </script>
 </body>

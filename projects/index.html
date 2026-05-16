@@ -25,14 +25,14 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
+    import { mountHeader } from 'shared/app-header.js';
     mountHeader({ title: 'Проекты', home: '../hub.html' });
   </script>
   <!-- v0.60.137 (Phase 44.2 final): defence-in-depth для прямого URL.
        /projects/ — internalOnly (см. modules.json). Для внешних клиентов
        показываем «🏢 Корпоративный модуль» вместо самого модуля. -->
   <script type="module">
-    import { requireModuleAccess } from '../shared/subscriptions.js';
+    import { requireModuleAccess } from 'shared/subscriptions.js';
     requireModuleAccess('projects', 'Управление проектами').then(allowed => {
       if (!allowed) {
         // showLockedModal не дал доступ — скрываем основной контент.
@@ -146,8 +146,8 @@
 
   <script type="module" src="projects.js"></script>
   <script type="module">
-    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'projects', moduleTitle: 'Проекты' });
   </script>
 </body>

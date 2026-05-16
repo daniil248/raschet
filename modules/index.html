@@ -51,14 +51,14 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
+    import { mountHeader } from 'shared/app-header.js';
     mountHeader({ title: 'Модули', showHome: true, home: '../hub.html' });
 
     // v0.60.132 (Phase 44.2): subscription locks на карточках модулей.
     // Каждая карточка <a class="mod-card" href="../<id>/"> проверяется
     // на доступ через hasModuleAccess. Если нет — добавляется lock-styling
     // и click intercepted → showLockedModal с upsell.
-    import { hasModuleAccess, showLockedModal, planBadge, getSubscription, PLANS } from '../shared/subscriptions.js';
+    import { hasModuleAccess, showLockedModal, planBadge, getSubscription, PLANS } from 'shared/subscriptions.js';
 
     document.addEventListener('DOMContentLoaded', async () => {
       // Загружаем modules.json для маппинга id → subscriptionPlan / name.
@@ -116,7 +116,7 @@
         badge.textContent = '🎫 ' + planBadge();
         badge.title = 'Текущий план подписки. Click → управление подпиской в ⚙ Глобальные настройки.';
         badge.addEventListener('click', async () => {
-          const { openSettingsModal } = await import('../shared/global-settings.js');
+          const { openSettingsModal } = await import('shared/global-settings.js');
           openSettingsModal();
         });
         main.appendChild(badge);

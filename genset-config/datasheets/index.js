@@ -14,4 +14,4 @@ export {
   listDgus,
   listDguVendors,
   suggestDgu,
-} from '../../shared/catalogs/genset/index.js';
+} from 'shared/catalogs/genset/index.js';

@@ -14,7 +14,7 @@
    Формулы: ASHRAE Fundamentals 2021 / ГОСТ 4401-81 / СП 50.13330.2012.
 */
 
-import { createMultiCalc } from '../shared/calc-widget.js';
+import { createMultiCalc } from 'shared/calc-widget.js';
 import {
   T0, Pws, humidityRatio, enthalpy, specificVolume, density,
   dewPointFromW, wetBulb, RHfromW, pressureAtAltitude,

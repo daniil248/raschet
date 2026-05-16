@@ -6,4 +6,4 @@
 // legacy-код продолжали резолвиться. Новый код импортирует из
 // '../shared/report/templates-seed.js' (или 'shared/report/index.js').
 // ======================================================================
-export * from '../shared/report/templates-seed.js';
+export * from 'shared/report/templates-seed.js';

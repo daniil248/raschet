@@ -39,8 +39,8 @@
 //   • app → drawio:  { action: 'export', format: 'xmlsvg' | 'xmlpng' }
 // =============================================================================
 
-import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
-import { getActiveProjectId } from '../shared/project-storage.js';
+import { rsToast, rsConfirm, rsPrompt } from 'shared/dialog.js';
+import { getActiveProjectId } from 'shared/project-storage.js';
 import * as RefsUI from './sketch-refs-ui.js';
 
 const _pid = (() => { try { return getActiveProjectId() || 'default'; } catch { return 'default'; } })();

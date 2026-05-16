@@ -15,11 +15,11 @@ import {
 import { ORDER_TYPES, POSITION_CATEGORIES, UNITS } from '../calc/order-model.js';
 import { escAttr, escHtml, modalOpen, toast } from '../../meteo/util.js';
 // v0.60.105: каскадный резолвер валюты (project → company → org → user → fallback).
-import { CURRENCIES, resolveDefaultCurrency, resolveDefaultCurrencyWithSource } from '../../shared/currency-defaults.js';
-import { getActiveProjectId } from '../../shared/project-storage.js';
+import { CURRENCIES, resolveDefaultCurrency, resolveDefaultCurrencyWithSource } from 'shared/currency-defaults.js';
+import { getActiveProjectId } from 'shared/project-storage.js';
 // v0.60.136 (Phase 44.3 follow-up): RBAC guard на promote/demote
 // (canPromoteOrgItems). По правилу feedback_role_based_access.md.
-import { hasPermission, currentRole, ROLES } from '../../shared/subscriptions.js';
+import { hasPermission, currentRole, ROLES } from 'shared/subscriptions.js';
 
 /**
  * Открыть модалку каталога. Возвращает Promise<void> — каталог обновляется

@@ -15,11 +15,11 @@
 //      печать / экспорт markdown / ссылка на каталог.
 // ======================================================================
 
-import { listElements } from '../shared/element-library.js';
-import { initCatalogBridge, syncLegacyToLibrary } from '../shared/catalog-bridge.js';
-import { rsPrompt, rsToast } from '../shared/dialog.js';
-import { wireExportImport } from '../shared/config-io.js';
-import { APP_VERSION } from '../js/engine/constants.js';
+import { listElements } from 'shared/element-library.js';
+import { initCatalogBridge, syncLegacyToLibrary } from 'shared/catalog-bridge.js';
+import { rsPrompt, rsToast } from 'shared/dialog.js';
+import { wireExportImport } from 'shared/config-io.js';
+import { APP_VERSION } from 'engine/constants.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

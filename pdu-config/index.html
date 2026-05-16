@@ -20,8 +20,8 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
-    import { mountHelp } from '../shared/help-panel.js';
+    import { mountHeader } from 'shared/app-header.js';
+    import { mountHelp } from 'shared/help-panel.js';
     mountHeader({ title: 'Конфигуратор PDU', home: '../hub.html' });
     mountHelp({
       module: 'pdu-config',
@@ -226,9 +226,9 @@
     // полосу, чтобы отладить, а не молча терять UI.
     try {
       const [{ mountFooter }, { APP_VERSION }, { CHANGELOGS }] = await Promise.all([
-        import('../shared/module-footer.js'),
-        import('../js/engine/constants.js'),
-        import('../shared/module-changelogs.js'),
+        import('shared/module-footer.js'),
+        import('engine/constants.js'),
+        import('shared/module-changelogs.js'),
       ]);
       const staticFoot = document.getElementById('pc-static-footer');
       if (staticFoot) staticFoot.remove();
@@ -247,9 +247,9 @@
     }
   </script>
   <script type="module">
-    import '../shared/sidebar-resizer.js';
-    import { mountConfigSidebar, mountEmbeddedPicker } from '../shared/config-sidebar.js';
-    import { isEmbeddedMode } from '../shared/configuration-catalog.js';
+    import 'shared/sidebar-resizer.js';
+    import { mountConfigSidebar, mountEmbeddedPicker } from 'shared/config-sidebar.js';
+    import { isEmbeddedMode } from 'shared/configuration-catalog.js';
     if (isEmbeddedMode()) {
       const slot = document.getElementById('pc-pending-banner-slot') || document.querySelector('main');
       const host = document.createElement('div');

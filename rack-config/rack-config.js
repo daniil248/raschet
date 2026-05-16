@@ -31,19 +31,19 @@ import {
   pduBySku, accBySku, kitById,
   accessoryMatchesRackMfg, accessoryMfgList,
   getLiveKitCatalog, getLivePduCatalog, getLiveAccessoryCatalog,
-} from '../shared/rack-catalog-data.js';
-import { initCatalogBridge } from '../shared/catalog-bridge.js';
-import { onLibraryChange } from '../shared/element-library.js';
-import { openPduPickerModal } from '../shared/pdu-picker-modal.js';
-import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
-import { wireExportImport } from '../shared/config-io.js';
-import { APP_VERSION } from '../js/engine/constants.js';
+} from 'shared/rack-catalog-data.js';
+import { initCatalogBridge } from 'shared/catalog-bridge.js';
+import { onLibraryChange } from 'shared/element-library.js';
+import { openPduPickerModal } from 'shared/pdu-picker-modal.js';
+import { rsToast, rsConfirm, rsPrompt } from 'shared/dialog.js';
+import { wireExportImport } from 'shared/config-io.js';
+import { APP_VERSION } from 'engine/constants.js';
 // v0.60.172 (Phase 3.5.1): reverse-link chip «📎 N sketch'ей» возле текущей
 // стойки. Sketch'и могут ссылаться на rack instances (refType='rack'); из
 // rack-config нужно видеть, упоминается ли выбранная стойка в sketch'ах.
 // Чип появляется только если выбрана реальная стойка-инстанс (с tag);
 // для template без tag — скрыт.
-import { mountReverseLinkChip, refreshAllChips } from '../shared/sketch-refs-reverse.js';
+import { mountReverseLinkChip, refreshAllChips } from 'shared/sketch-refs-reverse.js';
 // v0.60.534: чистый расчётный слой (электрика) выделен в calc/ (без DOM).
 import {
   guessRackIs3ph as _rcGuessRackIs3ph,

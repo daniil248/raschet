@@ -20,7 +20,7 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
+    import { mountHeader } from 'shared/app-header.js';
     mountHeader({
       title: 'Расчёт газового пожаротушения (АГПТ)',
       home: '../hub.html',
@@ -443,8 +443,8 @@
   <script type="module" src="../shared/sidebar-resizer.js"></script>
   <script type="module" src="suppression-config.js"></script>
   <script type="module">
-    import { mountConfigSidebar, mountEmbeddedPicker } from '../shared/config-sidebar.js';
-    import { isEmbeddedMode } from '../shared/configuration-catalog.js';
+    import { mountConfigSidebar, mountEmbeddedPicker } from 'shared/config-sidebar.js';
+    import { isEmbeddedMode } from 'shared/configuration-catalog.js';
     if (isEmbeddedMode()) {
       const host = document.createElement('div');
       document.body.prepend(host);
@@ -479,8 +479,8 @@
   </script>
   <script type="module">
     // v0.60.341: standard module-footer.
-    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'suppression-config', moduleTitle: 'АГПТ' });
   </script>
 </body>

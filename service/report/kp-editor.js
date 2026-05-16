@@ -18,7 +18,7 @@ import {
 } from './kp-template.js';
 import { escAttr, escHtml, modalOpen, toast } from '../../meteo/util.js';
 // v0.60.139: rsPrompt/rsConfirm для замены browser dialogs.
-import { rsConfirm, rsPrompt } from '../../shared/dialog.js';
+import { rsConfirm, rsPrompt } from 'shared/dialog.js';
 
 /**
  * Открыть модалку редактора шаблона КП.

@@ -23,8 +23,8 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
-    import { mountHelp } from '../shared/help-panel.js';
+    import { mountHeader } from 'shared/app-header.js';
+    import { mountHelp } from 'shared/help-panel.js';
     mountHeader({ title: 'Конфигуратор ИБП', home: '../hub.html' });
     mountHelp({
       module: 'ups-config',
@@ -304,9 +304,9 @@
   <script type="module" src="ups-config.js"></script>
   <script type="module" src="../shared/reference-panels.js"></script>
   <script type="module">
-    import '../shared/sidebar-resizer.js';
-    import { mountConfigSidebar, mountEmbeddedPicker } from '../shared/config-sidebar.js';
-    import { isEmbeddedMode } from '../shared/configuration-catalog.js';
+    import 'shared/sidebar-resizer.js';
+    import { mountConfigSidebar, mountEmbeddedPicker } from 'shared/config-sidebar.js';
+    import { isEmbeddedMode } from 'shared/configuration-catalog.js';
     if (isEmbeddedMode()) {
       document.body.classList.add('uc-embed');
       const slot = document.createElement('div');
@@ -356,18 +356,18 @@
   </script>
   <!-- v0.60.428: панель ПОДБОРА ИБП (условия + TCO/CAPEX/OPEX/сравнение) -->
   <script type="module">
-    import { mountSelectionPanel } from '../shared/selection-panel.js';
+    import { mountSelectionPanel } from 'shared/selection-panel.js';
     import { getActiveProjectCode, isEmbeddedMode,
-             getSelectionMeta, saveSelectionMeta, ensureSelectionMeta } from '../shared/configuration-catalog.js';
+             getSelectionMeta, saveSelectionMeta, ensureSelectionMeta } from 'shared/configuration-catalog.js';
     // B2.2 i2: выбор конкретной модели ИБП в Spec-вкладке варианта.
-    import { listUpses, getUps } from '../shared/ups-catalog.js';
-    import { detectUpsType } from '../shared/ups-types/index.js';
-    import { mountUpsPicker } from '../shared/ups-picker.js';
-    import '../shared/ups-seed.js';
+    import { listUpses, getUps } from 'shared/ups-catalog.js';
+    import { detectUpsType } from 'shared/ups-types/index.js';
+    import { mountUpsPicker } from 'shared/ups-picker.js';
+    import 'shared/ups-seed.js';
     // B2.2 i4: отчёт по варианту — через модуль reports (правило
     // «отчёты только через reports/», без window.open + хардкод-CSS).
-    import * as Report from '../shared/report/index.js';
-    import * as B from '../shared/report/blocks.js';
+    import * as Report from 'shared/report/index.js';
+    import * as B from 'shared/report/blocks.js';
     if (!isEmbeddedMode()) {
       const mountEl = document.getElementById('uc-selection-panel');
       const pc = getActiveProjectCode();
@@ -1004,8 +1004,8 @@
   </script>
 
   <script type="module">
-    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'ups-config', moduleTitle: 'ИБП' });
   </script>
 </body>

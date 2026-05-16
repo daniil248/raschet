@@ -11,19 +11,19 @@ import {
   listProjectsForModule, createSketchForModule,
   // v0.59.372: подпроекты внутри родительского.
   listSubProjects, createSubProject
-} from '../shared/project-storage.js';
+} from 'shared/project-storage.js';
 // v0.59.278: project-scoped экземпляры стоек (см. shared/rack-storage.js).
 import {
   loadAllRacksForActiveProject, saveAllRacksForActiveProject, migrateLegacyInstances,
   LS_TEMPLATES_GLOBAL
-} from '../shared/rack-storage.js';
+} from 'shared/rack-storage.js';
 // v0.59.348: stickers-baner о виртуальных стойках из схемы.
-import { loadSchemeVirtualRacks, loadPorGroupVirtualRacks } from '../shared/scheme-rack-bridge.js';
+import { loadSchemeVirtualRacks, loadPorGroupVirtualRacks } from 'shared/scheme-rack-bridge.js';
 // v0.59.578: жадно импортируем POR — иначе window.RaschetPOR undefined,
 // rack-storage._loadPorRacks возвращает [], в picker'е НЕ видны POR-стойки
 // родителя (16 шт. SR01-08, MR01, CR01 у тестового проекта).
-import '../shared/por.js';
-import '../shared/por-types/index.js';
+import 'shared/por.js';
+import 'shared/por-types/index.js';
 // v0.60.536: чистый расчётный слой Manhattan-геометрии выделен в calc/
 // (без DOM). routeCells получает PLAN_CELL_PX параметром (мутирует при зуме).
 import {

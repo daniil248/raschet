@@ -320,4 +320,4 @@ export function renderDaysInRangeTable(hourly) {
 // ─── 6. CSV helpers — v0.60.523 (Фаза 2 burndown #3): реализация в
 // SHARED (shared/meteo-util.js). Re-export сохраняет старый путь
 // `./charts.js` для meteo/annual-table.js (zero-build).
-export { tableToCsv, downloadCsv } from '../shared/meteo-util.js';
+export { tableToCsv, downloadCsv } from 'shared/meteo-util.js';

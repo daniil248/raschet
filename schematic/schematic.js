@@ -6,7 +6,7 @@
 
 import { IEC_SYMBOLS, getSymbolGroups, getSymbolById, GRID_MM } from './iec60617-symbols.js';
 import { getSheetSize, getFrameMargins, buildSheetFrame, buildZoneMarkers, buildTitleBlock } from './iso-paper.js';
-import { rsToast, rsPrompt } from '../shared/dialog.js';
+import { rsToast, rsPrompt } from 'shared/dialog.js';
 
 // ---------------------------------------------------------------- state
 const state = {

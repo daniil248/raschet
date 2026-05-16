@@ -11,9 +11,9 @@ import {
   listShipments, getShipment, saveShipment, removeShipment,
   onShipmentsChange, SHIPMENT_STATUSES,
   calcShipmentCost,
-} from '../shared/logistics-schemas.js';
-import { listCounterparties } from '../shared/counterparty-catalog.js';
-import { rsConfirm } from '../shared/dialog.js';
+} from 'shared/logistics-schemas.js';
+import { listCounterparties } from 'shared/counterparty-catalog.js';
+import { rsConfirm } from 'shared/dialog.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

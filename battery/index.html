@@ -26,8 +26,8 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
-    import { mountHelp } from '../shared/help-panel.js';
+    import { mountHeader } from 'shared/app-header.js';
+    import { mountHelp } from 'shared/help-panel.js';
     mountHeader({ title: 'Расчёт АКБ', home: '../hub.html', moduleId: 'battery', moduleTitle: 'АКБ' });
     mountHelp({
       module: 'battery',
@@ -599,8 +599,8 @@
 
   <script type="module" src="battery-calc.js"></script>
   <script type="module">
-    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'battery', moduleTitle: 'АКБ' });
   </script>
   <!-- v0.60.457/463: проброс условий ИЗ подбора ИБП → подбор АКБ при
@@ -609,7 +609,7 @@
        сайдбар сразу сфокусировался на относящемся подборе. -->
   <script type="module">
     import { getActiveProjectCode, ensureSelectionMeta, getSelectionMeta, saveSelectionMeta }
-      from '../shared/configuration-catalog.js';
+      from 'shared/configuration-catalog.js';
     try {
       const raw = localStorage.getItem('raschet.upsHandoff.v1');
       const ho = raw ? JSON.parse(raw) : null;
@@ -652,8 +652,8 @@
   <!-- v0.60.425/463: сайдбар подборов АКБ (kind='battery', groupBySelection).
        В handoff-режиме (?fromUps=1) фокус ТОЛЬКО на относящемся подборе. -->
   <script type="module">
-    import '../shared/sidebar-resizer.js';
-    import { mountConfigSidebar } from '../shared/config-sidebar.js';
+    import 'shared/sidebar-resizer.js';
+    import { mountConfigSidebar } from 'shared/config-sidebar.js';
     // Какой подбор относится к запустившему ИБП (та же формула, что в seed).
     let onlySelection = null;
     try {
@@ -684,10 +684,10 @@
   </script>
   <!-- v0.60.429: панель ПОДБОРА АКБ (условия + TCO/CAPEX/OPEX/сравнение) -->
   <script type="module">
-    import { mountSelectionPanel } from '../shared/selection-panel.js';
-    import { getActiveProjectCode, getSelectionMeta, saveSelectionMeta } from '../shared/configuration-catalog.js';
+    import { mountSelectionPanel } from 'shared/selection-panel.js';
+    import { getActiveProjectCode, getSelectionMeta, saveSelectionMeta } from 'shared/configuration-catalog.js';
     import { forecastBatteryLifeYears } from './battery-discharge.js';
-    import { getBattery } from '../shared/battery-catalog.js';
+    import { getBattery } from 'shared/battery-catalog.js';
     const mountEl = document.getElementById('bt-selection-panel');
     const pc = getActiveProjectCode();
     let activeSel = null;

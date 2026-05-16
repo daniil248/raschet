@@ -6,12 +6,12 @@
 // модули применимы в будущем из инспектора щита главной схемы.
 // ======================================================================
 
-import { listPanels, addPanel, removePanel, clearCatalog, makePanelId } from '../shared/panel-catalog.js';
-import { parsePanelXlsx, downloadCatalogTemplate } from '../shared/catalog-xlsx-parser.js';
-import { mountPanelPicker } from '../shared/panel-picker.js';
-import { rsToast, rsConfirm } from '../shared/dialog.js';
-import { wireExportImport } from '../shared/config-io.js';
-import { APP_VERSION } from '../js/engine/constants.js';
+import { listPanels, addPanel, removePanel, clearCatalog, makePanelId } from 'shared/panel-catalog.js';
+import { parsePanelXlsx, downloadCatalogTemplate } from 'shared/catalog-xlsx-parser.js';
+import { mountPanelPicker } from 'shared/panel-picker.js';
+import { rsToast, rsConfirm } from 'shared/dialog.js';
+import { wireExportImport } from 'shared/config-io.js';
+import { APP_VERSION } from 'engine/constants.js';
 
 let cascadeHandle = null;
 const cascadeState = { supplier: '', series: '', modelId: '' };

@@ -21,8 +21,8 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
-    import { mountHelp } from '../shared/help-panel.js';
+    import { mountHeader } from 'shared/app-header.js';
+    import { mountHelp } from 'shared/help-panel.js';
     mountHeader({ title: 'Конфигуратор трансформатора', home: '../hub.html' });
     mountHelp({
       module: 'transformer-config',
@@ -213,9 +213,9 @@
   <script type="module" src="transformer-config.js"></script>
   <script type="module" src="../shared/reference-panels.js"></script>
   <script type="module">
-    import '../shared/sidebar-resizer.js';
-    import { mountConfigSidebar, mountEmbeddedPicker } from '../shared/config-sidebar.js';
-    import { isEmbeddedMode } from '../shared/configuration-catalog.js';
+    import 'shared/sidebar-resizer.js';
+    import { mountConfigSidebar, mountEmbeddedPicker } from 'shared/config-sidebar.js';
+    import { isEmbeddedMode } from 'shared/configuration-catalog.js';
     if (isEmbeddedMode()) {
       document.body.classList.add('tc-embed');
       const slot = document.createElement('div');
@@ -259,8 +259,8 @@
     }
   </script>
   <script type="module">
-    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'transformer-config', moduleTitle: 'Трансформатор' });
   </script>
 </body>

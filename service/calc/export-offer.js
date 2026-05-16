@@ -15,7 +15,7 @@
 
 import { computeOrderTotals, ORDER_TYPES, POSITION_CATEGORIES } from './order-model.js';
 import { fmtMoney } from '../../cooling/calc/fc-summary.js';
-import { loadEffectiveCompanyProfile } from '../../shared/company-profile.js';
+import { loadEffectiveCompanyProfile } from 'shared/company-profile.js';
 import { getActiveKpTemplate } from '../report/kp-template.js';
 import { SLOT_BUILDERS } from '../report/slots/kp-blocks.js';
 
@@ -90,8 +90,8 @@ export function buildOfferBlocks(order, displayCurrency = '₽', convertFn = nul
 export async function openOfferPreview(order, displayCurrency, convertFn, opts = {}) {
   let Report, blocks;
   try {
-    Report = await import('../../shared/report/index.js');
-    blocks = await import('../../shared/report/blocks.js');
+    Report = await import('shared/report/index.js');
+    blocks = await import('shared/report/blocks.js');
   } catch (e) {
     throw new Error('Не удалось загрузить модуль отчётов: ' + e.message);
   }

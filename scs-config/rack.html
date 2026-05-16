@@ -20,7 +20,7 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
+    import { mountHeader } from 'shared/app-header.js';
     mountHeader({ title: 'Компоновщик шкафа', home: '../hub.html' });
   </script>
 
@@ -120,7 +120,7 @@
       // «📋 Применить к последнему» проставляет эти поля у последнего
       // (наиболее «новой по id») записи в state.contents текущей стойки и
       // перезагружает страницу.
-      import { ensureDefaultProject, getActiveProjectId, projectKey } from '../shared/project-storage.js';
+      import { ensureDefaultProject, getActiveProjectId, projectKey } from 'shared/project-storage.js';
       (() => {
         let q;
         try { q = new URLSearchParams(location.search); } catch { return; }
@@ -443,8 +443,8 @@
   <script type="module" src="../shared/sidebar-resizer.js"></script>
   <script type="module" src="scs-config.js"></script>
   <script type="module">
-    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'scs-config', moduleTitle: 'СКС' });
   </script>
 </body>

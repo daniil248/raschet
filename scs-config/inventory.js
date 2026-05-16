@@ -3,9 +3,9 @@
    Редактируемые поля: sn, status, note, maintMonths, lastMaintAt. Сохраняются
    обратно в тот же источник (mutation по id). */
 
-import { ensureDefaultProject, getActiveProjectId, getProject, projectKey } from '../shared/project-storage.js';
+import { ensureDefaultProject, getActiveProjectId, getProject, projectKey } from 'shared/project-storage.js';
 // v0.59.278: project-scoped экземпляры стоек.
-import { loadAllRacksForActiveProject, migrateLegacyInstances, LS_TEMPLATES_GLOBAL } from '../shared/rack-storage.js';
+import { loadAllRacksForActiveProject, migrateLegacyInstances, LS_TEMPLATES_GLOBAL } from 'shared/rack-storage.js';
 
 function renderProjectBanner() {
   const host = document.getElementById('pr-project-banner'); if (!host) return;

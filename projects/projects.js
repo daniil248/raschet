@@ -7,23 +7,23 @@ import {
   listProjects, createProject, updateProject, deleteProject, copyProject,
   getActiveProjectId, setActiveProjectId, ensureDefaultProject,
   exportProject, importProject,
-} from '../shared/project-storage.js';
-import { buildModuleHref, clearNavStack } from '../shared/project-context.js';
-import { migrateOrphanSchemes } from '../shared/scheme-orphan-migration.js';
-import { downloadBackup, readBackupFile, restoreFromJson, getLastBackupInfo, getAutoBackupSettings } from '../shared/backup.js';
-import { APP_VERSION } from '../js/engine/constants.js';
-import { historyList, historyTrash, historyStats } from '../shared/history-log.js';
+} from 'shared/project-storage.js';
+import { buildModuleHref, clearNavStack } from 'shared/project-context.js';
+import { migrateOrphanSchemes } from 'shared/scheme-orphan-migration.js';
+import { downloadBackup, readBackupFile, restoreFromJson, getLastBackupInfo, getAutoBackupSettings } from 'shared/backup.js';
+import { APP_VERSION } from 'engine/constants.js';
+import { historyList, historyTrash, historyStats } from 'shared/history-log.js';
 // v0.60.135 (по требованию Пользователя 2026-05-04 «В модуле Проекты только
 // менеджер проектов или ГИП могут создавать проекты»): role-based access.
 // hasPermission проверяет ROLES[currentRole].permissions[perm]. Если
 // Пользователь не internal — currentRole === null → false для всех permissions.
 // canCreateProjects/canDeleteProjects = true только для manager / gip.
-import { hasPermission, isInternalUser, currentRole, ROLES } from '../shared/subscriptions.js';
+import { hasPermission, isInternalUser, currentRole, ROLES } from 'shared/subscriptions.js';
 // v0.60.169 (Phase 3.5 — reverse-link chips): на каждой карточке проекта
 // показываем чип «📎 N sketch'ей», если в этом проекте есть sketch'и со
 // ссылкой на сам проект (refType='project', refId=p.id). Click → popover
 // со списком sketch'ей и переходом в модуль Скетч.
-import { mountReverseLinkChip } from '../shared/sketch-refs-reverse.js';
+import { mountReverseLinkChip } from 'shared/sketch-refs-reverse.js';
 
 // v0.59.507: автоматическая миграция orphan-схем при первом заходе на
 // /projects/. Schemes без projectId → привязываем к контейнеру с тем же
@@ -288,7 +288,7 @@ function _renderBackupNudge() {
   document.getElementById('pr-nudge-setup')?.addEventListener('click', () => {
     // Открыть глобальные настройки (там есть секция «💾 Резервное копирование»)
     try {
-      import('../shared/global-settings.js').then(m => m.openSettingsModal());
+      import('shared/global-settings.js').then(m => m.openSettingsModal());
     } catch (e) { console.warn('open settings failed', e); }
   });
   document.getElementById('pr-nudge-backup-now')?.addEventListener('click', () => {
@@ -340,7 +340,7 @@ function _renderRoleBanner() {
   `;
   document.getElementById('pr-role-change')?.addEventListener('click', () => {
     try {
-      import('../shared/global-settings.js').then(m => m.openSettingsModal());
+      import('shared/global-settings.js').then(m => m.openSettingsModal());
     } catch (e) { console.warn('open settings failed', e); }
   });
 }

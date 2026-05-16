@@ -12,16 +12,16 @@ import { MODULE_SERIES, SERIES_LIST, listVariants, findVariant }
 import * as Annex from '../suppression-methods/sp-485-annex-d.js';
 import { buildReport, buildCombinedBom } from '../suppression-methods/report-text.js';
 import { computeHydraulic, recommendDN } from '../suppression-methods/hydraulics.js';
-import { mountHelp } from '../shared/help-panel.js';
-import { mountFooter } from '../shared/module-footer.js';
-import { APP_VERSION } from '../js/engine/constants.js';
+import { mountHelp } from 'shared/help-panel.js';
+import { mountFooter } from 'shared/module-footer.js';
+import { APP_VERSION } from 'engine/constants.js';
 import { MODULE_CHANGELOG } from './changelog.js';
-import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
+import { rsToast, rsConfirm, rsPrompt } from 'shared/dialog.js';
 // v0.60.121: универсальный helper auto-pick нормативного документа.
 // Заменяет локальный detectNormByCountry — теперь используется shared
 // matrix country×domain → norm-id (см. memory feedback_auto_norm_by_location).
-import { resolveAutoNorm, countryLabel, detectCountryCode } from '../shared/auto-norm.js';
-import { wireExportImport } from '../shared/config-io.js';
+import { resolveAutoNorm, countryLabel, detectCountryCode } from 'shared/auto-norm.js';
+import { wireExportImport } from 'shared/config-io.js';
 
 const $ = id => document.getElementById(id);
 const LS_KEY = 'raschet.sup.installations.v1';

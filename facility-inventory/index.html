@@ -35,8 +35,8 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
-    import { ensureDefaultProject, getActiveProjectId, getProject } from '../shared/project-storage.js';
+    import { mountHeader } from 'shared/app-header.js';
+    import { ensureDefaultProject, getActiveProjectId, getProject } from 'shared/project-storage.js';
     mountHeader({ title: 'Реестр оборудования объекта', home: '../hub.html' });
     ensureDefaultProject();
     const pid = getActiveProjectId();
@@ -93,8 +93,8 @@
   </main>
 
   <script type="module">
-    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'facility-inventory', moduleTitle: 'Реестр оборудования объекта' });
   </script>
 </body>

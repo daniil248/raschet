@@ -20,7 +20,7 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
+    import { mountHeader } from 'shared/app-header.js';
     // v0.59.352: режим embed=1 — модуль открыт внутри iframe в Конструкторе схем.
     // Скрываем собственный хедер (он дублирует обвязку родителя) и сжимаем отступы.
     let _embed = false;
@@ -261,8 +261,8 @@
 
   <script type="module" src="scs-design.js"></script>
   <script type="module">
-    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'scs-design', moduleTitle: 'Проектирование СКС' });
   </script>
 </body>

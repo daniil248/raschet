@@ -28,10 +28,10 @@
 import {
   MODULE_TEMPLATES, pickItTemplate, POWER_PAIR, POWER_PAIR_KW,
   countRole, ROLE_COLORS, COMPONENT_SVG, COMPONENT_SPECS,
-} from '../shared/gdm600-templates.js';
-import { rsToast } from '../shared/dialog.js';
-import { download, importConfig } from '../shared/config-io.js';
-import { APP_VERSION } from '../js/engine/constants.js';
+} from 'shared/gdm600-templates.js';
+import { rsToast } from 'shared/dialog.js';
+import { download, importConfig } from 'shared/config-io.js';
+import { APP_VERSION } from 'engine/constants.js';
 
 const $ = (id) => document.getElementById(id);
 

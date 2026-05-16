@@ -16,9 +16,9 @@ import {
   ELEMENT_KINDS, isPricableKind,
   getCurrentRole, canEditBuiltin, listBuiltinOverrides, resetBuiltinOverride,
   exportLocalEdits,
-} from '../shared/element-library.js';
-import { createCableSkuElement } from '../shared/element-schemas.js';
-import { tccBreakerTime, tccSamplePoints } from '../shared/tcc-curves.js';
+} from 'shared/element-library.js';
+import { createCableSkuElement } from 'shared/element-schemas.js';
+import { tccBreakerTime, tccSamplePoints } from 'shared/tcc-curves.js';
 // mountTccChart используется в cable/ и инспекторе линии — не здесь.
 import {
   listPrices, getPrice, savePrice, removePrice, pricesForElement,
@@ -27,16 +27,16 @@ import {
   bulkAddPrices, exportPricesJSON, importPricesJSON, onPricesChange,
   listImportBatches, rollbackImportBatch,
   PRICE_TYPES, CURRENCIES,
-} from '../shared/price-records.js';
+} from 'shared/price-records.js';
 import {
   listCounterparties, getCounterparty, saveCounterparty, removeCounterparty,
   onCounterpartiesChange, COUNTERPARTY_TYPES, validateInn, makeCounterpartyId,
-} from '../shared/counterparty-catalog.js';
-import { initCatalogBridge } from '../shared/catalog-bridge.js';
-import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
+} from 'shared/counterparty-catalog.js';
+import { initCatalogBridge } from 'shared/catalog-bridge.js';
+import { rsToast, rsConfirm, rsPrompt } from 'shared/dialog.js';
 // v0.60.136 (Phase 44.3 follow-up): RBAC guard на promote/demote
 // (canPromoteOrgItems). По правилу feedback_role_based_access.md.
-import { hasPermission, currentRole, ROLES } from '../shared/subscriptions.js';
+import { hasPermission, currentRole, ROLES } from 'shared/subscriptions.js';
 
 initCatalogBridge();
 

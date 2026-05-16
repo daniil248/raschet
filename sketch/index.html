@@ -404,7 +404,7 @@ modules.json верните "enabled": true, в hub.html раскомменти�
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
+    import { mountHeader } from 'shared/app-header.js';
     mountHeader({ title: 'Скетч (drawio)', home: '../hub.html' });
   </script>
 
@@ -472,8 +472,8 @@ modules.json верните "enabled": true, в hub.html раскомменти�
 
   <div id="rs-footer-mount"></div>
   <script type="module">
-    import { mountFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
+    import { mountFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
     mountFooter({
       appVersion: APP_VERSION,
       moduleId: 'sketch',

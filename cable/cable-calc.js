@@ -1,13 +1,13 @@
-import { GLOBAL } from '../js/engine/constants.js';
-import { formatVoltageLevelLabel } from '../js/engine/electrical.js';
-import { rsToast } from '../shared/dialog.js';
+import { GLOBAL } from 'engine/constants.js';
+import { formatVoltageLevelLabel } from 'engine/electrical.js';
+import { rsToast } from 'shared/dialog.js';
 import { getMethod, listMethods, calcVoltageDrop, findMinSizeForVdrop, getEcoMethod, listEcoMethods } from '../js/methods/index.js';
 // v0.60.141: auto-pick методики кабельного расчёта по country проекта
 // (правило feedback_auto_norm_by_location.md). KZ→iec, RU/BY→pue, US/CA→nec, EU→iec.
-import { resolveAutoNormForActiveProject, getProjectCountry, detectCountryCode, countryLabel } from '../shared/auto-norm.js';
-import { runModules, listModules } from '../shared/calc-modules/index.js';
-import * as Report from '../shared/report/index.js';
-import * as B      from '../shared/report/blocks.js';
+import { resolveAutoNormForActiveProject, getProjectCountry, detectCountryCode, countryLabel } from 'shared/auto-norm.js';
+import { runModules, listModules } from 'shared/calc-modules/index.js';
+import * as Report from 'shared/report/index.js';
+import * as B      from 'shared/report/blocks.js';
 
 // Load saved global settings from localStorage (shared with constructor)
 try {
@@ -724,7 +724,7 @@ function syncBreakerCurveOptions(In) {
 // Динамический import shared/tcc-chart — грузится только когда нужно
 let _tccChartModule = null;
 async function _loadTccChart() {
-  if (!_tccChartModule) _tccChartModule = await import('../shared/tcc-chart.js');
+  if (!_tccChartModule) _tccChartModule = await import('shared/tcc-chart.js');
   return _tccChartModule;
 }
 

@@ -748,7 +748,7 @@ function renderProcsSidebar() {
 /* v0.59.966: drag для всех модалок проекта вынесен в
    shared/draggable-modal.js. Здесь только инициализация autoApply
    с селекторами psychrometrics-модалок. */
-import { autoApply as autoMakeModalsDraggable } from '../shared/draggable-modal.js';
+import { autoApply as autoMakeModalsDraggable } from 'shared/draggable-modal.js';
 autoMakeModalsDraggable([
   { overlay: '.psy-wiz-overlay',       modal: '.psy-wiz-modal',       head: '.psy-wiz-head' },
   { overlay: '.psy-proc-edit-overlay', modal: '.psy-proc-edit-modal', head: '.psy-proc-edit-head' },
@@ -3686,7 +3686,7 @@ function wire() {
   if (fromMeteoBtn) fromMeteoBtn.addEventListener('click', async () => {
     try {
       const { pickStation } = await import('../meteo/station-picker.js');
-      const { ensureDefaultProject } = await import('../shared/project-storage.js');
+      const { ensureDefaultProject } = await import('shared/project-storage.js');
       const pid = ensureDefaultProject();
 
       // Шаг 1: выбор локации
@@ -4779,7 +4779,7 @@ async function renderMeteoChip() {
   if (!chip) return;
   try {
     const { getActiveDataset } = await import('../meteo/meteo-api.js');
-    const { ensureDefaultProject } = await import('../shared/project-storage.js');
+    const { ensureDefaultProject } = await import('shared/project-storage.js');
     const pid = ensureDefaultProject();
     const ds = getActiveDataset(pid);
     if (!ds) {

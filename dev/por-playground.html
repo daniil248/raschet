@@ -150,14 +150,14 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
 <script type="module">
-import { bootstrapProject, teardownProject } from '../shared/project-bootstrap.js';
+import { bootstrapProject, teardownProject } from 'shared/project-bootstrap.js';
 import {
   getAdapter, registerDefaultAdapterFactory, createMemoryAdapter, onAdapterChange,
   exportAdapter, downloadExport, importIntoAdapter, readExportFile,
-} from '../shared/data-adapter.js';
-import { getPorType } from '../shared/por-types/index.js';
-import { subscribe as porSubscribe, createGroup, getObjects } from '../shared/por.js';
-import { ensureDefaultProject, listProjects } from '../shared/project-storage.js';
+} from 'shared/data-adapter.js';
+import { getPorType } from 'shared/por-types/index.js';
+import { subscribe as porSubscribe, createGroup, getObjects } from 'shared/por.js';
+import { ensureDefaultProject, listProjects } from 'shared/project-storage.js';
 
 // ─── Standalone fallback: in-memory adapter для rack-config moduleId.
 // Если bootstrapProject(pid) не вызван, getAdapter('rack-config') вернёт этот.
@@ -251,7 +251,7 @@ async function renderRacks() {
   if (filterType === 'rack') {
     list = _adapter.list();
   } else if (_currentPid) {
-    const por = await import('../shared/por.js');
+    const por = await import('shared/por.js');
     list = filterType ? por.getObjects(_currentPid, { type: filterType }) : por.getObjects(_currentPid);
   }
   // v0.59.776: фильтр родителей групп (consumer-узлы с linkedAliases).
@@ -338,10 +338,10 @@ async function renderRacks() {
       // следующем bootstrap НЕ восстановил стойку из rack-config.instances.
       if (_currentPid) {
         try {
-          const por = await import('../shared/por.js');
+          const por = await import('shared/por.js');
           const obj = por.getObject ? por.getObject(_currentPid, id) : null;
           const legacyRackId = obj && obj.legacyRackId ? obj.legacyRackId : null;
-          const mig = await import('../shared/legacy-rack-migration.js');
+          const mig = await import('shared/legacy-rack-migration.js');
           if (mig.addRackTombstone) {
             if (legacyRackId) mig.addRackTombstone(_currentPid, legacyRackId);
             mig.addRackTombstone(_currentPid, id);
@@ -380,10 +380,10 @@ async function renderRacks() {
         // восстанавливаться (через engine-por-mirror), пишем tombstone.
         if (_currentPid) {
           try {
-            const mig = await import('../shared/legacy-rack-migration.js');
+            const mig = await import('shared/legacy-rack-migration.js');
             if (mig.addRackTombstone) mig.addRackTombstone(_currentPid, id);
           } catch (err) { console.warn('[por-playground] group-tombstone failed', err); }
-          import('../shared/por.js').then(mod => { mod.removeObject(_currentPid, id); renderRacks(); });
+          import('shared/por.js').then(mod => { mod.removeObject(_currentPid, id); renderRacks(); });
         }
       });
     });
@@ -459,7 +459,7 @@ $('add-anonymous-group').addEventListener('click', async () => {
     name: 'Серверные стойки ×3 (анонимные)',
   });
   if (!partial) return;
-  const mod = await import('../shared/por.js');
+  const mod = await import('shared/por.js');
   const grp = mod.addObject(_currentPid, partial);
   log(`anonymous group created: ${grp.id} count=3`);
   renderRacks();
@@ -481,7 +481,7 @@ if ($('cleanup-dups')) {
       alert('Cleanup работает только в POR mode (project ID применён).');
       return;
     }
-    const mod = await import('../shared/legacy-rack-migration.js');
+    const mod = await import('shared/legacy-rack-migration.js');
     const r = mod.deduplicateProjectRacks(_currentPid);
     log(`cleanup: kept ${r.kept}, removed ${r.removed} (groups ${r.groups})`);
     renderRacks();
@@ -493,7 +493,7 @@ if ($('cleanup-stale')) {
       alert('Cleanup работает только в POR mode (project ID применён).');
       return;
     }
-    const mod = await import('../shared/legacy-rack-migration.js');
+    const mod = await import('shared/legacy-rack-migration.js');
     const r = mod.cleanupStalePorRacks(_currentPid);
     if (r.removed) {
       log(`cleanup-stale: removed ${r.removed} phantom racks: ${r.details.map(d => d.tag || d.id).join(', ')}`);
@@ -649,7 +649,7 @@ $('move-objects').addEventListener('click', async () => {
     alert('Источник и цель совпадают — нечего переносить.');
     return;
   }
-  const por = await import('../shared/por.js');
+  const por = await import('shared/por.js');
   const sourceObjs = por.getObjects(_currentPid);
   if (!sourceObjs.length) {
     alert(`В проекте ${_currentPid} нет POR-объектов.`);

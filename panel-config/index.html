@@ -21,11 +21,11 @@
   { "imports": { "shared/": "../shared/", "engine/": "../js/engine/" } }
   </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
+    import { mountHeader } from 'shared/app-header.js';
     // v0.60.216 (по репорту Пользователя 2026-05-04 «да фикс примени для всех
     // модулей»): app-footer (.rs-footer) удалён — используем только
     // module-footer (.rs-mfoot) ниже, чтобы не было двойного футера.
-    import { mountHelp } from '../shared/help-panel.js';
+    import { mountHelp } from 'shared/help-panel.js';
     mountHeader({ title: 'Конфигуратор НКУ (LV)', home: '../hub.html' });
     mountHelp({
       module: 'panel-config',
@@ -406,9 +406,9 @@
   <script type="module" src="panel-config.js"></script>
   <script type="module" src="../shared/reference-panels.js"></script>
   <script type="module">
-    import '../shared/sidebar-resizer.js';
-    import { mountConfigSidebar, mountEmbeddedPicker } from '../shared/config-sidebar.js';
-    import { isEmbeddedMode } from '../shared/configuration-catalog.js';
+    import 'shared/sidebar-resizer.js';
+    import { mountConfigSidebar, mountEmbeddedPicker } from 'shared/config-sidebar.js';
+    import { isEmbeddedMode } from 'shared/configuration-catalog.js';
     if (isEmbeddedMode()) {
       document.body.classList.add('pc-embed');
       const slot = document.createElement('div');
@@ -465,8 +465,8 @@
     }
   </script>
   <script type="module">
-    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'panel-config', moduleTitle: 'НКУ' });
   </script>
 </body>

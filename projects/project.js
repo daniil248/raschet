@@ -10,22 +10,22 @@ import {
   listSubProjects, createSubProject,
   // v0.59.862: hide-when-empty — для определения «есть ли данные модуля».
   projectKey,
-} from '../shared/project-storage.js';
-import { buildModuleHref, clearNavStack } from '../shared/project-context.js';
+} from 'shared/project-storage.js';
+import { buildModuleHref, clearNavStack } from 'shared/project-context.js';
 import {
   DEFAULT_COMPANY, loadRawProfile, saveProjectCompanyProfile, loadEffectiveCompanyProfile,
   onCompanyProfileChange,
-} from '../shared/company-profile.js';
+} from 'shared/company-profile.js';
 // v0.60.142: «📋 Действующие нормативы» badges под местоположением проекта.
 // Visible reference какие стандарты будут применены в каждом расчётном модуле.
-import { NORM_MATRIX, detectCountryCode, countryLabel } from '../shared/auto-norm.js';
+import { NORM_MATRIX, detectCountryCode, countryLabel } from 'shared/auto-norm.js';
 // v0.60.171 (Phase 3.5): «🔗 Sketch'и проекта и их связи» — обзорный раздел
 // в карточке проекта. Перечисляет все sketch'и + entity, на которые они
 // ссылаются. resolveLabel — actual-label из исходного модуля (если
 // переименовали — обновляется). buildOpenUrl — переход в исходный модуль.
 import {
   loadRefs, getRefType, resolveLabel, buildOpenUrl, buildSketchOpenUrl,
-} from '../shared/sketch-refs.js';
+} from 'shared/sketch-refs.js';
 
 /* ---------- inline modal / toast ---------- */
 function prToast(msg, kind = 'info') {
@@ -459,7 +459,7 @@ function renderProjectProperties(p, host) {
   if (pickMeteoBtn) {
     pickMeteoBtn.addEventListener('click', async () => {
       try {
-        const nav = await import('../shared/module-nav.js');
+        const nav = await import('shared/module-nav.js');
         nav.openEmbed(location.pathname + location.search, '../meteo/', `Свойства проекта «${p.name}»`);
       } catch (e) { prToast('Ошибка: ' + e.message, 'error'); }
     });
@@ -2635,7 +2635,7 @@ function render() {
         const mergeBtn = modulesHost.querySelector('[data-act="merge-legacy-scs"][data-pid="' + p.id + '"]');
         if (mergeBtn) mergeBtn.addEventListener('click', async () => {
           try {
-            const ps = await import('../shared/project-storage.js');
+            const ps = await import('shared/project-storage.js');
             // Найдём или создадим sub.
             const existingSubs = ps.listSubProjects(p.id, 'scs-design');
             let dest = existingSubs[0];
@@ -3885,7 +3885,7 @@ function _initAfterDom() {
   // в project.location.
   (async () => {
     try {
-      const nav = await import('../shared/module-nav.js');
+      const nav = await import('shared/module-nav.js');
       const result = nav.readEmbedResult();
       if (result && pid && Number.isFinite(result.lat) && Number.isFinite(result.lon)) {
         const proj = getProject(pid);

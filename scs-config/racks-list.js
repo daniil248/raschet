@@ -6,17 +6,17 @@
 import {
   ensureDefaultProject, getActiveProjectId, setActiveProjectId, getProject,
   listProjectsForModule, createSketchForModule, projectKey
-} from '../shared/project-storage.js';
-import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
+} from 'shared/project-storage.js';
+import { rsToast, rsConfirm, rsPrompt } from 'shared/dialog.js';
 // v0.59.278: project-scoped экземпляры стоек.
 import {
   loadAllRacksForActiveProject, saveAllRacksForActiveProject, migrateLegacyInstances,
   LS_TEMPLATES_GLOBAL
-} from '../shared/rack-storage.js';
+} from 'shared/rack-storage.js';
 // v0.59.345: «стойки из схемы» — индивидуальные виртуальные экземпляры
 // для consumer/rack узлов с count=N в Конструкторе схем.
 // v0.59.532: + POR consumer-group rack-membership (анонимные слоты ×N).
-import { loadSchemeVirtualRacks, loadPorGroupVirtualRacks, mergeWithSchemeRacks } from '../shared/scheme-rack-bridge.js';
+import { loadSchemeVirtualRacks, loadPorGroupVirtualRacks, mergeWithSchemeRacks } from 'shared/scheme-rack-bridge.js';
 
 const LS_RACK    = LS_TEMPLATES_GLOBAL;
 const LS_CATALOG = 'scs-config.catalog.v1';

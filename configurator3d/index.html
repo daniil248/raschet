@@ -110,7 +110,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { rsToast } from '../shared/dialog.js';
+import { rsToast } from 'shared/dialog.js';
 
 // ---------- Типы модулей (из инфографики «Особенности») ----------
 // Ширина × Длина в метрах (ориентация по умолчанию: длинная сторона — по X)
@@ -560,9 +560,9 @@ loadPreset();
 </script>
 <script type="module">
   // v0.59.85: module-footer
-  import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
-  import { APP_VERSION } from '../js/engine/constants.js';
-  import { CHANGELOGS } from '../shared/module-changelogs.js';
+  import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+  import { APP_VERSION } from 'engine/constants.js';
+  import { CHANGELOGS } from 'shared/module-changelogs.js';
   mountModuleFooter({
     appVersion: APP_VERSION,
     moduleId: 'configurator3d',

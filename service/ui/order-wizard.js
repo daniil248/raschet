@@ -19,8 +19,8 @@
 
 import { listWizards, evalExpr, interpolate } from '../catalog/wizards/index.js';
 import { escAttr, escHtml, toast } from '../../meteo/util.js';
-import { resolveDefaultCurrency } from '../../shared/currency-defaults.js';
-import { getActiveProjectId } from '../../shared/project-storage.js';
+import { resolveDefaultCurrency } from 'shared/currency-defaults.js';
+import { getActiveProjectId } from 'shared/project-storage.js';
 
 /**
  * Открыть мастер. Возвращает Promise<positions[]|null> — массив позиций
