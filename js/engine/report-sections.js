@@ -1880,7 +1880,7 @@ function sectionFull() {
  *
  *   { id, title, description, defaultTemplateId, tags, text, blocks }
  *
- * templateId ссылается на встроенные шаблоны из reports/templates-seed.js;
+ * templateId ссылается на встроенные шаблоны из shared/report/templates-seed.js;
  * tags используются для pickTemplate() как фильтр.
  */
 export function getReportSections() {

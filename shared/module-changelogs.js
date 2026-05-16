@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.526', date: '2026-05-16', items: [
+      '🧩 <b>Модуляризация Фаза 2 (burndown #6, ФИНАЛ): seed-шаблоны отчётов → SHARED</b>. <code>js/main.js</code> импортировал <code>reports/templates-seed.js</code> (CORE→module, R1 — последняя жёсткая запись allowlist). Файл перенесён <code>reports/templates-seed.js → shared/report/templates-seed.js</code> (SHARED-контракт рядом с <code>shared/report/index.js</code>); по старому пути — shim (<code>export *</code>). <code>js/main.js</code> и <code>reports/reports.js</code> переключены на <code>../shared/report/templates-seed.js</code>. <b>allowlist пуст</b> — все санкционированные нарушения границ (R1/R3/R4/R-shared) погашены burndown\\'ами #1–#6. Поведение идентично.',
+    ] },
     { version: '0.60.525', date: '2026-05-16', items: [
       '🧩 <b>Модуляризация Фаза 2 (burndown #5): каталог АКБ → SHARED</b>. <code>shared/battery-seed.js</code> импортировал <code>battery/battery-catalog.js</code> (нарушение SHARED→module). Реализация перенесена <code>battery/battery-catalog.js → shared/battery-catalog.js</code> (зеркало <code>shared/ups-catalog.js</code>); по старому пути — shim (<code>export *</code>), поэтому <code>catalog-bridge</code> и любые legacy-импорты резолвятся. <code>battery-calc.js</code>/<code>battery-data-parser.js</code>/<code>battery/index.html</code> переключены на <code>../shared/battery-catalog.js</code>. Последняя R4-запись убрана из allowlist (осталась 1: js/main→reports-seed). Поведение идентично.',
     ] },

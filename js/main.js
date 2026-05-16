@@ -13,7 +13,7 @@ import { getMethod, listMethods } from './methods/index.js';
 import { formatVoltageLevelLabel, consumerTotalDemandKw, consumerCountEffective } from './engine/electrical.js';
 import * as Report from '../shared/report/index.js';
 import { getTemplate as getReportTemplate, saveTemplate as saveReportTemplate } from '../shared/report-catalog.js';
-import { BUILTIN_TEMPLATES as REPORT_BUILTIN_TEMPLATES } from '../reports/templates-seed.js';
+import { BUILTIN_TEMPLATES as REPORT_BUILTIN_TEMPLATES } from '../shared/report/templates-seed.js';
 import { openSettingsModal as openGlobalSettingsModal } from '../shared/global-settings.js';
 import { listCableTypes as _listCableTypes } from '../shared/cable-types-catalog.js';
 import { BREAKER_SERIES as _BREAKER_SERIES, BREAKER_TYPES as _BREAKER_TYPES, STARTER_TYPES as _STARTER_TYPES, CONSUMER_CATALOG as _CONSUMER_CATALOG, GLOBAL as _GLOBAL, IEC_TABLES as _IEC_TABLES } from './engine/constants.js';

@@ -306,7 +306,7 @@ await Report.exportDOCX(tpl, filename)  // async — грузит docx.js с CDN
 
 ## Как добавить встроенный шаблон
 
-Встроенные шаблоны хранятся в [`../../reports/templates-seed.js`](../../reports/templates-seed.js).
+Встроенные шаблоны хранятся в [`./templates-seed.js`](./templates-seed.js) (SHARED-контракт; старый путь `reports/templates-seed.js` — shim).
 
 1. Добавить запись в `BUILTIN_TEMPLATES` со стабильным `id`
 2. Прописать `getDemoContent(id)` с персональным демо-контентом

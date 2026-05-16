@@ -13,7 +13,7 @@
 import * as Report   from '../shared/report/index.js';
 import * as B        from '../shared/report/blocks.js';
 import * as Catalog  from '../shared/report-catalog.js';
-import { BUILTIN_TEMPLATES, BUILTIN_VERSION, getDemoContent } from './templates-seed.js';
+import { BUILTIN_TEMPLATES, BUILTIN_VERSION, getDemoContent } from '../shared/report/templates-seed.js';
 import { openHelp }  from './help.js';
 import { rsToast, rsConfirm } from '../shared/dialog.js';
 
