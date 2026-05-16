@@ -1633,19 +1633,42 @@ async function _lcEnsureRates(force) {
 // строку цены (входят в стоимость системы у производителя).
 function _lcSyncFromBom(bom) {
   _lcLastBom = Array.isArray(bom) ? bom : [];
-  const groups = _lcLastBom
-    .filter(l => l && (l.role === 'module' || _lcEffIncl(l) === 'separate'))
-    .map(l => ({
-      id: _lcLineKey(l),
-      qty: Number(l.qty) || 1,
-      spec: { name: `${l.model || l.id}${l.role === 'module' ? ' (модуль АКБ)' : ''}` },
-      role: l.role,
-    }));
-  _lcState.costItems = syncCostItemsFromEquipment(
-    { costItems: _lcState.costItems, currency: _lcState.currency },
-    groups, _lcState.currency);
+  // v0.60.478 (по замечанию Пользователя): состав строится СТРОГО из
+  // текущего подбора. Одинаковые позиции агрегируем по (роль+модель) с
+  // суммированием количества (не N строк по 1 шт). Устаревшие позиции
+  // прошлого подбора НЕ сохраняем. Цены переносим по linkedGroupId.
+  const agg = new Map();
+  for (const l of _lcLastBom) {
+    if (!l) continue;
+    if (!(l.role === 'module' || _lcEffIncl(l) === 'separate')) continue;
+    const key = _lcLineKey(l);
+    const ex = agg.get(key);
+    if (ex) { ex.qty += (Number(l.qty) || 1); continue; }
+    agg.set(key, {
+      id: key, role: l.role, qty: Number(l.qty) || 1,
+      name: `${l.model || l.id}${l.role === 'module' ? ' (модуль АКБ)' : ''}`,
+    });
+  }
+  const prev = Array.isArray(_lcState.costItems) ? _lcState.costItems : [];
+  const byLink = new Map();
+  for (const it of prev) if (it && it.linkedGroupId) byLink.set(it.linkedGroupId, it);
+  const cur = _lcState.currency || '₸';
+  const zero = () => ({ value: 0, currency: cur });
+  // ТОЛЬКО позиции текущего состава — устаревшие строки отбрасываем.
+  _lcState.costItems = [...agg.values()].map(g => {
+    const old = byLink.get(g.id);
+    return {
+      id: (old && old.id) || ('lc-' + g.id),
+      linkedGroupId: g.id,
+      label: g.name,
+      qty: g.qty,
+      equipmentPrice:          (old && old.equipmentPrice) || zero(),
+      installPrice:            (old && old.installPrice) || zero(),
+      maintenancePerYearPrice: (old && old.maintenancePerYearPrice) || zero(),
+    };
+  });
   _lcState._roleByGroup = {};
-  for (const g of groups) _lcState._roleByGroup[g.id] = g.role;
+  for (const g of agg.values()) _lcState._roleByGroup[g.id] = g.role;
   _lcSave();
 }
 // Стоимость ОДНОЙ плановой замены = только батарейные модули из состава.

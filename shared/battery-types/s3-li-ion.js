@@ -281,11 +281,17 @@ export const s3LiIonType = {
         kitInclusion: DEFAULT_KIT_INCLUSION.module,
       });
     }
-    // Шкафы (master + slave + combiner)
+    // Шкафы (master + slave + combiner) — v0.60.478: агрегируем
+    // одинаковые (роль+модель+вариант+заполнение) в ОДНУ строку с
+    // количеством, а не N строк по 1 шт (по замечанию Пользователя).
+    const cabAgg = new Map();
     for (const c of systemSpec.cabinets) {
-      out.push({
+      const key = [c.role, c.model, c.variant, c.modulesInCabinet, c.emptySlots].join('|');
+      const ex = cabAgg.get(key);
+      if (ex) { ex.qty += 1; continue; }
+      cabAgg.set(key, {
         category: c.role === 'combiner' ? 'АКБ S³ — комбайнер' : 'АКБ S³ — шкафы',
-        id: `s3-cabinet-${c.role}`,
+        id: `s3-cabinet-${c.role}-${c.model}`,
         supplier,
         model: c.model,
         qty: 1,
@@ -298,6 +304,7 @@ export const s3LiIonType = {
         },
       });
     }
+    for (const row of cabAgg.values()) out.push(row);
     // Аксессуары
     for (const a of (systemSpec.accessories || [])) {
       const cat = accessoryCatalog.find(x => x.id === a.id);
