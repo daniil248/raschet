@@ -2483,12 +2483,19 @@ function doCalc() {
   {
     const designLife = Number(get('calc-design-life')?.value) || 10;
     const battLife   = Number(get('calc-batt-life')?.value)   || _defaultBattLife(chemistry);
-    // Состав для не-S³ АКБ = N блоков выбранной модели (это и есть
-    // батарейные модули). Цена ЖЦ — из состава, замена = эти блоки.
-    const _genBom = battery
-      ? [{ role: 'module', model: battery.type || battery.model || 'АКБ',
-            id: battery.id, qty: (Number(strings) || 1) * (Number(blocksPerString) || 1),
-            kitInclusion: 'separate' }]
+    // Состав для не-S³ АКБ = N блоков (это и есть батарейные модули).
+    // v0.60.480 (по замечанию Пользователя: «конфигуратор определил
+    // количество АКБ, но не передал в состав»): строку модулей создаём
+    // ВСЕГДА, даже без выбранной модели каталога — берём кол-во из
+    // подбора (цепочки × блоков) и обозначение из химии/ёмкости/напр.
+    const _totBlocks = (Number(strings) || 1) * (Number(blocksPerString) || 1);
+    const _genLabel = battery
+      ? (battery.type || battery.model || 'АКБ')
+      : `АКБ ${(typeof chemLabel === 'function' ? chemLabel(chemistry) : (chemistry || 'VRLA'))} · ${capacityAh || 100} А·ч · ${blockV || 12} В`;
+    const _genBom = _totBlocks > 0
+      ? [{ role: 'module', model: _genLabel,
+            id: battery ? battery.id : ('akb-generic-' + (chemistry || 'vrla')),
+            qty: _totBlocks, kitInclusion: 'separate' }]
       : [];
     _lcSyncFromBom(_genBom);
     const _lct = _lcReplacementTotals();
