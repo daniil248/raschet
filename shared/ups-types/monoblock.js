@@ -6,6 +6,7 @@
 // ======================================================================
 
 import { fmt, esc, v } from './_helpers.js';
+import { buildUpsAccessories } from './accessories.js';
 
 export const monoblockType = {
   id: 'monoblock',
@@ -104,7 +105,10 @@ export const monoblockType = {
       qty: fi.installed,
       role: fi.redundant ? 'active+standby' : 'active',
       label: (u.supplier || '') + ' ' + (u.model || u.id),
-    }];
+    },
+      // v0.60.487: авто-принадлежности ИБП.
+      ...buildUpsAccessories(u, fi, { phases: fi.phases }),
+    ];
   },
 
   // Доп. строки в шаге 3 (summary).

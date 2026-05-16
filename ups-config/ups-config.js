@@ -799,7 +799,14 @@ function _openWizard({ standalone }) {
   // v0.59.441: кнопка «Изменить конфигурацию» — возврат к шагу 1 с сохранёнными значениями.
   const editCfgBtn = document.getElementById('wiz-btn-edit-cfg');
   if (editCfgBtn) editCfgBtn.onclick = () => { _fillWizStep1Fields(); _showStep(1); };
-  document.getElementById('wiz-btn-apply').onclick = _applyConfiguration;
+  // v0.60.487: в панель-режиме (не из Конструктора схем ?nodeId)
+  // «Применить» завершает мастер → новый вариант в панели; в режиме
+  // ?nodeId — прежнее применение к узлу схемы.
+  {
+    const _isNode = !!new URLSearchParams(location.search).get('nodeId');
+    const _applyBtn = document.getElementById('wiz-btn-apply');
+    if (_applyBtn) _applyBtn.onclick = _isNode ? _applyConfiguration : _finishWizardToVariant;
+  }
   const saveCfgBtn = document.getElementById('wiz-btn-save-cfg');
   if (saveCfgBtn) saveCfgBtn.onclick = _saveWizardConfiguration;
   // v0.59.420: печатный отчёт о подобранной конфигурации.
@@ -1040,6 +1047,64 @@ async function _saveWizardConfiguration() {
     }
   } catch (e) {
     flash('Не удалось сохранить: ' + (e.message || e), 'error');
+  }
+}
+
+// v0.60.487 (по замечанию Пользователя: «прошёл конфигуратор, но в
+// основное окно ничего не попало»): завершение мастера → автоматически
+// сохранить НОВЫМ вариантом ТЕКУЩЕГО подбора (без prompt'ов), закрыть
+// wizard и сфокусировать панель НА новом варианте (Spec=сводка,
+// вкладка «Итог» = отчёт). Используется в панель-режиме (не ?nodeId).
+async function _finishWizardToVariant() {
+  const comp = wizState.composition;
+  if (!comp) { flash('Сначала выберите конфигурацию (Шаг 4)', 'warn'); return; }
+  const u = comp.ups, fi = comp.fitInfo, rq = wizState.requirements;
+  try {
+    const cat = await import('../shared/configuration-catalog.js');
+    const { saveConfig, getActiveProjectCode, ensureSelectionMeta, getSelectionMeta, saveSelectionMeta } = cat;
+    const basePc = getActiveProjectCode() || null;
+    let ctxSA;
+    try { const s = localStorage.getItem('raschet.cs.ctx.ups'); ctxSA = s ? s === 'standalone' : !basePc; }
+    catch { ctxSA = !basePc; }
+    const pc = ctxSA ? null : basePc;
+    const selectionName = _activeSelName
+      || `${rq.loadKw} кВт · ${rq.unitRedundancy || rq.redundancy} ИБП`;
+    const label = `${u.supplier || ''} ${u.model || u.id} · ${fi.realCapacity || fi.usable} кВт`.trim();
+    const description = [
+      rq.upsType ? (getUpsType(rq.upsType) || {}).label : '',
+      rq.redundancy, `${rq.autonomyMin} мин`,
+    ].filter(Boolean).join(' · ');
+    const payload = {
+      loadKw: rq.loadKw, autonomy: rq.autonomyMin, redundancy: rq.redundancy,
+      upsType: rq.upsType, cosPhi: rq.cosPhi, phases: rq.phases,
+      upsId: u.id, upsSupplier: u.supplier, upsModel: u.model,
+      capacityKw: fi.realCapacity || fi.usable,
+      moduleInstalled: fi.installed, moduleWorking: fi.working, moduleRedundant: fi.redundant,
+      frameKw: u.frameKw, moduleKwRated: u.moduleKwRated, moduleSlots: u.moduleSlots,
+      efficiency: u.efficiency, vdcMin: u.vdcMin, vdcMax: u.vdcMax,
+      batteryChoice: wizState.batteryChoice || null, battery: wizState.battery || null,
+      totalPrice: comp.totalPrice, currency: comp.currency,
+      composition: comp.composition,
+    };
+    const entry = saveConfig('ups', { label, description, selectionName, projectCode: pc, payload });
+    try {
+      ensureSelectionMeta('ups', { projectCode: pc, selectionName }, { requirements: {}, eco: {} });
+      const meta = getSelectionMeta('ups', { projectCode: pc, selectionName });
+      const reqPrev = (meta && meta.requirements) || {};
+      saveSelectionMeta('ups', { projectCode: pc, selectionName, requirements: {
+        ...reqPrev, loadKw: rq.loadKw, autonomyMin: rq.autonomyMin,
+        redundancy: rq.redundancy, cosPhi: rq.cosPhi, phases: rq.phases,
+      } });
+    } catch (e) { console.warn('[ups-config] saveSelectionMeta failed', e); }
+    _activeSelName = selectionName;
+    try { window.dispatchEvent(new CustomEvent('ups-config:configs-changed')); } catch {}
+    flash(`Готово: вариант «${label}» в подборе «${selectionName}»`, 'success');
+    // Закрыть wizard, вернуть панель и открыть НОВЫЙ вариант (Spec/Итог).
+    try { window.dispatchEvent(new CustomEvent('rs-cs-focus', { detail: {
+      kind: 'ups', scope: 'variant', selectionName, entryId: entry.id,
+    } })); } catch {}
+  } catch (e) {
+    flash('Не удалось завершить: ' + (e.message || e), 'error');
   }
 }
 

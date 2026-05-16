@@ -4,6 +4,7 @@
 // ======================================================================
 
 import { fmt, esc, v } from './_helpers.js';
+import { buildUpsAccessories } from './accessories.js';
 
 export const modularType = {
   id: 'modular',
@@ -173,6 +174,9 @@ export const modularType = {
           + (frameQty > 1 ? ` × ${frameQty} в параллель` : '') },
       { elementId: null, inline: true, qty: fi.installed, role: 'module',
         label: `Силовой модуль ${u.moduleKwRated}kW (${fi.working} раб + ${fi.redundant} резерв)` },
+      // v0.60.487: авто-принадлежности (кабели/наконечники/связь/
+      // parallel-kit/ПНР). Пользователь правит состав построчно.
+      ...buildUpsAccessories(u, fi, { phases: fi.phases }),
     ];
   },
 

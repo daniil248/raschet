@@ -6,6 +6,7 @@
 // ======================================================================
 
 import { fmt, esc, v } from './_helpers.js';
+import { buildUpsAccessories } from './accessories.js';
 
 export const integratedType = {
   id: 'integrated',
@@ -172,6 +173,8 @@ export const integratedType = {
           label: `${p.label || p.id} · ${p.source} · ${p.maxBreakers}×${p.polarity}` });
       });
     }
+    // v0.60.487: авто-принадлежности ИБП.
+    out.push(...buildUpsAccessories(u, fi, { phases: fi.phases }));
     return out;
   },
 
