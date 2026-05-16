@@ -39,7 +39,7 @@
 //   Маржа₽     = Σ Клиент − (Σ Себес + Σ Накладные)
 //   Маржа%     = Маржа / (Σ Себес + Σ Накладные) × 100
 
-import { CURRENCIES } from '../../cooling/calc/fc-summary.js';
+import { CURRENCIES } from 'cooling/calc/fc-summary.js';
 
 export const ORDER_TYPES = [
   { id: 'install',     label: 'Монтаж',           desc: 'Монтажные работы (установка, обвязка, ПНР).' },

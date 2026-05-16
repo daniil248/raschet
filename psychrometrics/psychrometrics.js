@@ -3685,7 +3685,7 @@ function wire() {
   const fromMeteoBtn = $('psy-from-meteo');
   if (fromMeteoBtn) fromMeteoBtn.addEventListener('click', async () => {
     try {
-      const { pickStation } = await import('../meteo/station-picker.js');
+      const { pickStation } = await import('meteo/station-picker.js');
       const { ensureDefaultProject } = await import('shared/project-storage.js');
       const pid = ensureDefaultProject();
 
@@ -3712,7 +3712,7 @@ function wire() {
       }
 
       // Шаг 2: проверим, есть ли уже датасет для этой локации в /meteo/
-      const { listDatasets } = await import('../meteo/meteo-api.js');
+      const { listDatasets } = await import('meteo/meteo-api.js');
       const allDs = listDatasets(pid);
       const existingDs = allDs.find(d =>
         Math.abs((d.lat || 0) - picked.lat) < 0.05 &&
@@ -4778,7 +4778,7 @@ async function renderMeteoChip() {
   const chip = document.getElementById('psy-meteo-chip');
   if (!chip) return;
   try {
-    const { getActiveDataset } = await import('../meteo/meteo-api.js');
+    const { getActiveDataset } = await import('meteo/meteo-api.js');
     const { ensureDefaultProject } = await import('shared/project-storage.js');
     const pid = ensureDefaultProject();
     const ds = getActiveDataset(pid);

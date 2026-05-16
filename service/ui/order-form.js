@@ -17,8 +17,8 @@ import {
   loadCoolingSelectionsForContext,
 } from '../calc/order-builder.js';
 import { openOfferPreview } from '../calc/export-offer.js';
-import { fmtMoney } from '../../cooling/calc/fc-summary.js';
-import { escAttr, escHtml, modalOpen, toast } from '../../meteo/util.js';
+import { fmtMoney } from 'cooling/calc/fc-summary.js';
+import { escAttr, escHtml, modalOpen, toast } from 'meteo/util.js';
 // v0.60.136 (Phase 44.3 follow-up): RBAC guard на economics fields.
 // canEditEconomics — только manager/gip. Для engineer/viewer поля
 // клиент-цены и себестоимости становятся read-only.
@@ -380,7 +380,7 @@ async function handlePositionInput(ev, tr, o, onChange, displayCurrency, convert
         if (!cf) {
           try {
             const cr = await import('shared/currency-rates/index.js');
-            const fc = await import('../../cooling/calc/fc-summary.js');
+            const fc = await import('cooling/calc/fc-summary.js');
             const cache = await cr.fetchRates(null, null, false);  // false = use cache
             if (cache) {
               cf = (amount, from, to) => cr.convert(amount, fc.currencyToIso(from), fc.currencyToIso(to), cache);

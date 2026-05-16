@@ -6,7 +6,7 @@
 
 import { findBest } from '../calc/comparison.js';
 import { fmtKwh, fmtMoney } from '../calc/fc-summary.js';
-import { escAttr, escHtml } from '../../meteo/util.js';
+import { escAttr, escHtml } from 'meteo/util.js';
 
 /**
  * @param {Array<OptionMetrics>} metrics — результат compareOptions

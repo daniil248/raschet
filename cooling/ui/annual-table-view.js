@@ -5,7 +5,7 @@
 // Перенесено из meteo/annual-table.js → renderAnnualTable + renderColumnPicker.
 
 import { COLUMNS } from '../calc/chiller-defaults.js';
-import { escAttr, escHtml } from '../../meteo/util.js';
+import { escAttr, escHtml } from 'meteo/util.js';
 
 /**
  * @param {Array<object>} rows         — bin-строки (с применённой spec)

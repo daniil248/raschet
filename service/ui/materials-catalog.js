@@ -9,7 +9,7 @@ import {
   EQUIPMENT_KINDS,
 } from '../catalog/materials.js';
 import { POSITION_CATEGORIES } from '../calc/order-model.js';
-import { escAttr, escHtml, modalOpen, toast } from '../../meteo/util.js';
+import { escAttr, escHtml, modalOpen, toast } from 'meteo/util.js';
 
 /**
  * Открыть модалку каталога материалов с CRUD.

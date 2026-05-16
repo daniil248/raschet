@@ -16,7 +16,7 @@ import {
   listKpTemplates, saveKpTemplates, getActiveKpTemplate, setActiveKpTemplateId,
   cloneKpTemplate, deleteKpTemplate, updateKpTemplate, resetDefaultKpTemplate,
 } from './kp-template.js';
-import { escAttr, escHtml, modalOpen, toast } from '../../meteo/util.js';
+import { escAttr, escHtml, modalOpen, toast } from 'meteo/util.js';
 // v0.60.139: rsPrompt/rsConfirm для замены browser dialogs.
 import { rsConfirm, rsPrompt } from 'shared/dialog.js';
 

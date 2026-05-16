@@ -14,7 +14,7 @@
 //     editor шаблона + preview, далее экспорт PDF/DOCX через reports/.
 
 import { computeOrderTotals, ORDER_TYPES, POSITION_CATEGORIES } from './order-model.js';
-import { fmtMoney } from '../../cooling/calc/fc-summary.js';
+import { fmtMoney } from 'cooling/calc/fc-summary.js';
 import { loadEffectiveCompanyProfile } from 'shared/company-profile.js';
 import { getActiveKpTemplate } from '../report/kp-template.js';
 import { SLOT_BUILDERS } from '../report/slots/kp-blocks.js';

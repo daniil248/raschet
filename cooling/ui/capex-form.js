@@ -28,7 +28,7 @@ import {
   normCostItems, sumCostItemsByCol, computeEcoTotals,
 } from 'shared/calc/capex-tco.js';
 import { fmtMoney, CURRENCIES } from '../calc/fc-summary.js';
-import { escAttr, escHtml, modalOpen, toast } from '../../meteo/util.js';
+import { escAttr, escHtml, modalOpen, toast } from 'meteo/util.js';
 
 /**
  * @param {object} eco              — economics параметры

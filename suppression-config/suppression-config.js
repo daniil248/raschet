@@ -6,12 +6,12 @@
    Персистентность: localStorage 'raschet.sup.installations.v1'
    ========================================================================= */
 
-import { AGENTS } from '../suppression-methods/agents.js';
+import { AGENTS } from 'suppression-methods/agents.js';
 import { MODULE_SERIES, SERIES_LIST, listVariants, findVariant }
-  from '../suppression-methods/modules-catalog.js';
-import * as Annex from '../suppression-methods/sp-485-annex-d.js';
-import { buildReport, buildCombinedBom } from '../suppression-methods/report-text.js';
-import { computeHydraulic, recommendDN } from '../suppression-methods/hydraulics.js';
+  from 'suppression-methods/modules-catalog.js';
+import * as Annex from 'suppression-methods/sp-485-annex-d.js';
+import { buildReport, buildCombinedBom } from 'suppression-methods/report-text.js';
+import { computeHydraulic, recommendDN } from 'suppression-methods/hydraulics.js';
 import { mountHelp } from 'shared/help-panel.js';
 import { mountFooter } from 'shared/module-footer.js';
 import { APP_VERSION } from 'engine/constants.js';
@@ -2258,7 +2258,7 @@ async function openSelfTest() {
   // cache-bust: ES module graph кэшируется агрессивно (max-age=600 на GH Pages),
   // после фиксов в suppression-methods/index.js важно гарантированно получить свежий модуль.
   const cb = '?v=' + Date.now();
-  const { runAll } = await import('../suppression-methods/validation-tests.js' + cb);
+  const { runAll } = await import('suppression-methods/validation-tests.js' + cb);
   const results = await runAll();
   const passCount = results.filter(r => r.ok).length;
   const total = results.length;

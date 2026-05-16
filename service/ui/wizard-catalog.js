@@ -19,7 +19,7 @@ import {
   cloneToUser, validateWizard, getWizard,
 } from '../catalog/wizards/index.js';
 import { ORDER_TYPES } from '../calc/order-model.js';
-import { escAttr, escHtml, modalOpen, toast } from '../../meteo/util.js';
+import { escAttr, escHtml, modalOpen, toast } from 'meteo/util.js';
 // v0.60.136 (Phase 44.3 follow-up): RBAC guard на promote/demote.
 import { hasPermission, currentRole, ROLES } from 'shared/subscriptions.js';
 

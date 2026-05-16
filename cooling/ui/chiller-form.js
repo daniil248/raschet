@@ -15,7 +15,7 @@ import { DEFAULT_CHILLER, SYSTEM_TYPES, FC_MODES } from '../calc/chiller-default
 import { parsePerformanceCurveCsv } from '../calc/chiller-bin-calc.js';
 import { parseDatasheet, applyDatasheetToSpec, getExampleDatasheet, DATASHEET_SCHEMA } from '../calc/datasheet.js';
 import { listDatasheets, listVendors } from '../datasheets/index.js';
-import { escAttr, escHtml, modalOpen, toast } from '../../meteo/util.js';
+import { escAttr, escHtml, modalOpen, toast } from 'meteo/util.js';
 
 /**
  * @param {object} spec — текущая spec (или null → DEFAULT_CHILLER)

@@ -13,7 +13,7 @@ import {
   promoteToOrg, demoteToUser, updateOrgTemplate, deleteOrgTemplate,
 } from '../catalog/work-templates.js';
 import { ORDER_TYPES, POSITION_CATEGORIES, UNITS } from '../calc/order-model.js';
-import { escAttr, escHtml, modalOpen, toast } from '../../meteo/util.js';
+import { escAttr, escHtml, modalOpen, toast } from 'meteo/util.js';
 // v0.60.105: каскадный резолвер валюты (project → company → org → user → fallback).
 import { CURRENCIES, resolveDefaultCurrency, resolveDefaultCurrencyWithSource } from 'shared/currency-defaults.js';
 import { getActiveProjectId } from 'shared/project-storage.js';

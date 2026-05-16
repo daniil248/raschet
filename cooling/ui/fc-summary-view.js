@@ -5,7 +5,7 @@
 // форматирует в KPI-grid HTML.
 
 import { computeFcSummary, fmtKwh, fmtMoney } from '../calc/fc-summary.js';
-import { escHtml } from '../../meteo/util.js';
+import { escHtml } from 'meteo/util.js';
 
 /**
  * @param {Array<object>} rows

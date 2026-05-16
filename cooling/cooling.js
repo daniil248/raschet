@@ -978,7 +978,7 @@ async function pushOptionToService(sel, opt, type) {
   // Динамический импорт order-builder (из service)
   let builder;
   try {
-    builder = await import('../service/calc/order-builder.js');
+    builder = await import('service/calc/order-builder.js');
   } catch (e) {
     util.toast(`Не удалось загрузить service-модуль: ${e.message}`, 'err');
     return;

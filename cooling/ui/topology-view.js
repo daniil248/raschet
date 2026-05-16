@@ -12,7 +12,7 @@
 import { DEFAULT_TOPOLOGY } from '../calc/topology.js';
 import { isCracType, SYSTEM_TYPES } from '../calc/chiller-defaults.js';
 import { fmtKwh, fmtMoney } from '../calc/fc-summary.js';
-import { escAttr, escHtml } from '../../meteo/util.js';
+import { escAttr, escHtml } from 'meteo/util.js';
 
 /**
  * Рендерит панель настройки топологии.

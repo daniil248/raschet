@@ -1349,8 +1349,8 @@ function calcPueFromCoolingModule(c, meteoSummary) {
     // используем dynamic import + cached promise.)
     if (!window._coolingCalcPromise) {
       window._coolingCalcPromise = Promise.all([
-        import('../cooling/calc/chiller-bin-calc.js'),
-        import('../cooling/calc/topology.js'),
+        import('cooling/calc/chiller-bin-calc.js'),
+        import('cooling/calc/topology.js'),
       ]).then(([bin, topo]) => ({ ...bin, ...topo }));
     }
     // Так как calcPue — синхронная, используем результат если уже загружен,
@@ -4018,7 +4018,7 @@ function bindListEvents() {
     const pickLoc = e.target.closest('[data-tw-action="pick-location"]');
     if (pickLoc) {
       try {
-        const { pickStation } = await import('../meteo/station-picker.js');
+        const { pickStation } = await import('meteo/station-picker.js');
         const picked = await pickStation({ title: '🗺 Выбор местоположения проекта' });
         if (!picked || picked.manual) return;
         if (!cur.concept.projectData) cur.concept.projectData = {};
@@ -4044,7 +4044,7 @@ function bindListEvents() {
         if (Number.isFinite(Number(pd.lat)) && Number.isFinite(Number(pd.lon))) {
           picked = { lat: Number(pd.lat), lon: Number(pd.lon), name: pd.city || pd.designation || 'Проект', id: null };
         } else {
-          const { pickStation } = await import('../meteo/station-picker.js');
+          const { pickStation } = await import('meteo/station-picker.js');
           picked = await pickStation({ title: '🌐 Загрузка метеоданных для проекта' });
           if (!picked || picked.manual) {
             if (picked?.manual) twToast('Для авто-загрузки нужна станция из каталога или укажите координаты в блоке «Объект».', 'warn');
@@ -4217,7 +4217,7 @@ function bindListEvents() {
 
         // Динамически импортируем builder и service-bridge
         const [{ buildMaintenancePositionsFromCoolingOption }, { createServiceOrderForProject }] = await Promise.all([
-          import('../service/calc/order-builder.js'),
+          import('service/calc/order-builder.js'),
           import('shared/service-bridge.js'),
         ]);
         const positions = buildMaintenancePositionsFromCoolingOption(main, '₽', sel);
