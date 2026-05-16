@@ -5,7 +5,7 @@
 //   2. Расчёт разряда — выбор АКБ + параметры нагрузки → автономия
 // ======================================================================
 
-import { listBatteries, addBattery, removeBattery, clearCatalog, getBattery, makeBatteryId, setBatteryPrice } from './battery-catalog.js';
+import { listBatteries, addBattery, removeBattery, clearCatalog, getBattery, makeBatteryId, setBatteryPrice } from '../shared/battery-catalog.js';
 import { rsToast, rsConfirm, rsPrompt } from '../shared/dialog.js';
 import { parseBatteryXlsx } from './battery-data-parser.js';
 import { calcAutonomy, calcRequiredBlocks, interpTimeByPower } from './battery-discharge.js';

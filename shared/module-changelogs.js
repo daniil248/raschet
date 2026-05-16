@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.525', date: '2026-05-16', items: [
+      '🧩 <b>Модуляризация Фаза 2 (burndown #5): каталог АКБ → SHARED</b>. <code>shared/battery-seed.js</code> импортировал <code>battery/battery-catalog.js</code> (нарушение SHARED→module). Реализация перенесена <code>battery/battery-catalog.js → shared/battery-catalog.js</code> (зеркало <code>shared/ups-catalog.js</code>); по старому пути — shim (<code>export *</code>), поэтому <code>catalog-bridge</code> и любые legacy-импорты резолвятся. <code>battery-calc.js</code>/<code>battery-data-parser.js</code>/<code>battery/index.html</code> переключены на <code>../shared/battery-catalog.js</code>. Последняя R4-запись убрана из allowlist (осталась 1: js/main→reports-seed). Поведение идентично.',
+    ] },
     { version: '0.60.524', date: '2026-05-16', items: [
       '🧩 <b>Модуляризация Фаза 2 (burndown #4): service → shared/money</b>. <code>service/service.js</code> импортировал <code>CURRENCIES/currencyToIso</code> из <code>cooling/calc/fc-summary.js</code> (кросс-модуль), хотя <code>shared/money.js</code> содержит их байт-в-байт идентично. Импорт перенаправлен на <code>shared/money.js</code> — кросс-модульный импорт service→cooling устранён, запись убрана из allowlist. Без переноса файлов/shim (одиночный деплой, без cache-нюанса). Поведение идентично.',
     ] },

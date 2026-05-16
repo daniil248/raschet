@@ -13,7 +13,7 @@
 //   • js/engine/index.js (главная схема — для инспектора ИБП)
 // ======================================================================
 
-import { listBatteries, addBattery } from '../battery/battery-catalog.js';
+import { listBatteries, addBattery } from './battery-catalog.js';
 import { KEHUA_S3_BATTERIES } from './catalogs/battery/kehua-s3.js';
 
 const KEY = 'raschet.batteryCatalog.kehua.seedVersion';

@@ -38,9 +38,10 @@ legacy-rack-migration).
 
 **Запрещено (жёсткие правила boundary-lint):**
 - `CORE → <module>` (ядро не зависит от подключаемого модуля).
-- `SHARED → <module>` (включая `*-seed.js`/CATALOGS → модуль;
-  известное нарушение `battery-seed → battery/battery-catalog` —
-  в allowlist, гасится переносом данных в `shared/catalogs/battery/`).
+- `SHARED → <module>` (включая `*-seed.js`/CATALOGS → модуль).
+  Бывшее нарушение `battery-seed → battery/battery-catalog` погашено
+  (v0.60.525): каталог АКБ перенесён в `shared/battery-catalog.js`
+  (зеркало `shared/ups-catalog.js`), старый путь — shim.
 - `<module>/** → ../<другой-module>/**` (импорт во внутренности
   соседа). Кросс-модульное общение — ТОЛЬКО через контракты §4.
 - `CATALOGS → <module>`.

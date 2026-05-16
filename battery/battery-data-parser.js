@@ -19,7 +19,7 @@
 // парсер создаёт НЕСКОЛЬКО записей каталога — одну на каждую модель.
 // ======================================================================
 
-import { makeBatteryId } from './battery-catalog.js';
+import { makeBatteryId } from '../shared/battery-catalog.js';
 
 // Нормализует имя колонки для поиска: убирает пробелы, приводит к lower-case
 const norm = s => String(s || '').trim().toLowerCase().replace(/[\s_]+/g, '');
