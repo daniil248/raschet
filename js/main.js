@@ -5636,6 +5636,13 @@ function exportProjectIssuesCsv() {
 function _countProjectIssues() {
   const S = window.Raschet?._state;
   if (!S) return { errors: 0, warns: 0 };
+  // v0.60.513 (Phase 47.4.2 — старт): для не-electrical дисциплин схемы
+  // электротехнические проверки (защита кабелей, селективность, КЗ,
+  // ΔU) НЕ применяются — расчётный движок дисциплины ещё в разработке.
+  // Иначе гидравлическая/ОВК/газовая схема засыпается ложными
+  // IEC-ошибками. Граф/узлы/связи доступны как каркас.
+  const _disc = (S.project && S.project.discipline) || 'electrical';
+  if (_disc !== 'electrical') return { errors: 0, warns: 0 };
   let err = 0, wrn = 0;
   for (const c of S.conns.values()) {
     if (!c._cableSize && !c._busbarNom) continue;
@@ -6118,6 +6125,14 @@ function _persistProjectIssuesSnapshot(errors, warns) {
   if (!pid) return;
   const key = `raschet.project.${pid}.engine.issues.v1`;
   if (!S) return;
+  // v0.60.513: не-electrical дисциплина — электротехнический снапшот
+  // не формируем (движок дисциплины в разработке). Чистим прежний,
+  // чтобы карточка проекта не показывала устаревшие IEC-проблемы.
+  const _disc = (S.project && S.project.discipline) || 'electrical';
+  if (_disc !== 'electrical') {
+    try { localStorage.setItem(key, JSON.stringify({ ts: Date.now(), errors: 0, warns: 0, cats: [], discipline: _disc })); } catch {}
+    return;
+  }
   let nAgainst = 0, nUnder = 0, nOverflow = 0, nMv = 0, nSrc = 0, nSel = 0;
   for (const c of S.conns.values()) {
     if (!c._cableSize && !c._busbarNom) continue;
