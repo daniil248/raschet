@@ -153,6 +153,15 @@ rescopeToActiveProject();
 import { SCS_DEFAULT_CATALOG, KIND_LABEL as _KIND_LABEL } from '../shared/scs-catalog-data.js';
 import { wireExportImport } from '../shared/config-io.js';
 import { APP_VERSION } from '../js/engine/constants.js';
+// v0.60.535: чистый расчётный слой геометрии U-слотов выделен в calc/
+// (без DOM). Тонкие обёртки ниже подставляют state.catalog.
+import {
+  computeOccupiedU as _calcOccupiedU,
+  freeURanges as _calcFreeURanges,
+  findFirstFreeSlot as _calcFirstFreeSlot,
+  canPlace as _calcCanPlace,
+  findNearestFreeSlot as _calcNearestFreeSlot,
+} from './calc/rack-slots.js';
 const DEFAULT_CATALOG = SCS_DEFAULT_CATALOG;
 const KIND_LABEL = _KIND_LABEL;
 
@@ -680,75 +689,11 @@ function addToRack(typeId, forcedU, forcedSide) {
 // сумма высот всех размещённых устройств (по каталогу). Если front и rear
 // не перекрываются, считаем реальное число «съеденных» юнитов (пересечение
 // по сторонам). Используется в top-bar и sidebar-карточках.
-function computeOccupiedU(r, devices) {
-  if (!r) return 0;
-  const occ = new Array(r.u + 1).fill(false);
-  for (let u = r.u; u > r.u - (r.occupied || 0); u--) occ[u] = true;
-  (devices || []).forEach(d => {
-    const type = state.catalog.find(c => c.id === d.typeId);
-    const uh = type ? Math.max(1, Number(type.u) || 1) : 1;
-    const top = Number(d.u) || 0;
-    if (!top) return;
-    for (let i = 0; i < uh; i++) {
-      const uu = top + i;
-      if (uu >= 1 && uu <= r.u) occ[uu] = true;
-    }
-  });
-  let c = 0;
-  for (let u = 1; u <= r.u; u++) if (occ[u]) c++;
-  return c;
-}
-
-function freeURanges(r, devices) {
-  if (!r) return [];
-  const occ = new Array(r.u + 1).fill(false);
-  // занятые стойкой сверху
-  for (let u = r.u; u > r.u - (r.occupied || 0); u--) occ[u] = true;
-  // устройства (front и rear оба «съедают» место с точки зрения доступных U)
-  devices.forEach(d => {
-    const type = state.catalog.find(c => c.id === d.typeId);
-    const h = type ? type.heightU : 1;
-    for (let k = 0; k < h; k++) {
-      const u = d.positionU - k;
-      if (u >= 1 && u <= r.u) occ[u] = true;
-    }
-  });
-  // свободные интервалы сверху вниз
-  const ranges = [];
-  let start = null;
-  for (let u = r.u; u >= 1; u--) {
-    if (!occ[u]) { if (start == null) start = u; }
-    else if (start != null) { ranges.push([start, u + 1]); start = null; }
-  }
-  if (start != null) ranges.push([start, 1]);
-  return ranges.map(([a, b]) => a === b ? `U${a}` : `U${a}–U${b}`);
-}
-
+// Тонкие обёртки над calc/rack-slots.js (подставляют state.catalog).
+function computeOccupiedU(r, devices) { return _calcOccupiedU(state.catalog, r, devices); }
+function freeURanges(r, devices) { return _calcFreeURanges(state.catalog, r, devices); }
 function findFirstFreeSlot(r, devices, heightU, side) {
-  // v0.59.846: regression fix — r.occupied может быть undefined у draft-стоек
-  // или после миграции, тогда r.u - undefined = NaN, цикл не запускался,
-  // функция возвращала 1, и все добавленные устройства накладывались на
-  // U=1. Пользователь: «по кнопке добавить оборудование появляется всегда
-  // только в 1 юните, следующее накладывается, раньше было сверху и
-  // заполняло пустые слоты, верни как было».
-  const occupiedTop = Number(r.occupied) || 0;
-  const heightUSafe = Math.max(1, Number(heightU) || 1);
-  const targetSide = side || 'front';
-  const occ = new Array(r.u + 1).fill(false);
-  for (let u = r.u; u > r.u - occupiedTop; u--) occ[u] = true;
-  devices.forEach(d => {
-    if ((d.mountSide || 'front') !== targetSide) return; // другая сторона — не мешает
-    const type = state.catalog.find(c => c.id === d.typeId);
-    const h = type ? type.heightU : 1;
-    for (let k = 0; k < h; k++) occ[d.positionU - k] = true;
-  });
-  // ищем сверху вниз первый свободный блок heightUSafe (сверху = больший U)
-  for (let top = r.u - occupiedTop; top >= heightUSafe; top--) {
-    let ok = true;
-    for (let k = 0; k < heightUSafe; k++) if (occ[top - k]) { ok = false; break; }
-    if (ok) return top;
-  }
-  return 1; // нет места — на дно, detectConflicts подсветит
+  return _calcFirstFreeSlot(state.catalog, r, devices, heightU, side);
 }
 
 /* ---- render: контент стойки ------------------------------------------- */
@@ -2846,22 +2791,7 @@ function bindUnitMapDrag(svgId) {
 /* 1.24.29 — проверка «влезет ли устройство в позицию wantU, не задев
    других». excludeDevId — игнорируем это устройство (для drag). */
 function canPlace(r, devices, excludeDevId, heightU, wantU, side) {
-  if (wantU < heightU || wantU > r.u) return false;
-  const targetSide = side || 'front';
-  for (const d of devices) {
-    if (d.id === excludeDevId) continue;
-    // v0.59.250: другая сторона монтажа не создаёт U-коллизию.
-    if ((d.mountSide || 'front') !== targetSide) continue;
-    const t = state.catalog.find(c => c.id === d.typeId);
-    const dh = t ? t.heightU : 1;
-    for (let k = 0; k < heightU; k++) {
-      const myU = wantU - k;
-      for (let j = 0; j < dh; j++) {
-        if (myU === d.positionU - j) return false;
-      }
-    }
-  }
-  return true;
+  return _calcCanPlace(state.catalog, r, devices, excludeDevId, heightU, wantU, side);
 }
 
 /* ---- 1.24.10 drop-target: палитра каталога → карта юнитов --------------
@@ -2985,15 +2915,7 @@ function bindUnitMapDrop(svg, rowH) {
 /* 1.24.29 — поиск ближайшего свободного блока heightU к wantU (сначала
    выше, потом ниже). Возвращает top-U или null если нет места. */
 function findNearestFreeSlot(r, devices, heightU, wantU, side) {
-  const okAt = (u) => canPlace(r, devices, null, heightU, u, side);
-  if (okAt(wantU)) return wantU;
-  for (let delta = 1; delta <= r.u; delta++) {
-    const up = wantU + delta;
-    if (up <= r.u && okAt(up)) return up;
-    const dn = wantU - delta;
-    if (dn >= heightU && okAt(dn)) return dn;
-  }
-  return null;
+  return _calcNearestFreeSlot(state.catalog, r, devices, heightU, wantU, side);
 }
 
 /* ---- BOM --------------------------------------------------------------- */

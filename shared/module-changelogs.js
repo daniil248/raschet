@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.535', date: '2026-05-16', items: [
+      '🧱 <b>Дробление монолитов — calc/ui (scs-config)</b>. Выделен чистый расчётный слой <code>scs-config/calc/rack-slots.js</code> (геометрия U-слотов стойки, без DOM): <code>computeOccupiedU()</code>, <code>freeURanges()</code>, <code>findFirstFreeSlot()</code>, <code>canPlace()</code>, <code>findNearestFreeSlot()</code> — каталог передаётся параметром (resolver typeId→type). В <code>scs-config.js</code> (5.2k) одноимённые функции заменены тонкими обёртками, подставляющими <code>state.catalog</code> — все 15+ call-sites не тронуты, поведение байт-в-байт идентично. Shim не нужен (leaf-модуль). 4-й модуль calc-извлечения; крупнейший монолит после tech-workspace.',
+    ] },
     { version: '0.60.534', date: '2026-05-16', items: [
       '🧱 <b>Дробление монолитов — calc/ui (rack-config)</b>. Выделен чистый расчётный слой <code>rack-config/calc/rack-power.js</code> (электрика, без DOM): <code>guessRackIs3ph()</code> (фазность шкафа), <code>kwToA()/aToKw()</code> (P↔I по cosφ/фазности), <code>pduCapacityKw()/computePduCapacityByFeed()</code> (ёмкость PDU и группировка по вводам, cosφ — явный параметр). В <code>rack-config.js</code> локальные <code>_rcGuessRackIs3ph/_rcKwToA/_rcAToKw</code> заменены импортом (call-sites не тронуты), <code>pduCapacityKw/computePduCapacityByFeed</code> — тонкие обёртки, подставляющие <code>current().cosphi</code> (поведение байт-в-байт идентично). Shim не нужен (leaf-модуль). 3-й модуль calc-извлечения.',
     ] },
