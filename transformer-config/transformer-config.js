@@ -12,6 +12,7 @@ import {
 import { mountTransformerPicker, computeTransformerIk } from '../shared/transformer-picker.js';
 import { parseTransformerXlsx, downloadCatalogTemplate } from '../shared/catalog-xlsx-parser.js';
 import { rsToast, rsConfirm } from '../shared/dialog.js';
+import { classifyTxType, selectTransformers } from './calc/tx-select.js';
 
 let cascadeHandle = null;
 const cascadeState = { supplier: '', series: '', modelId: '' };
@@ -350,15 +351,8 @@ function _txWireWizLoadFields() {
 }
 
 // ===== WIZARD подбора трансформатора =====
-function _classifyTxType(t) {
-  const s = String(t.series || t.model || '').toUpperCase();
-  // ТСЛ / ТСЗГЛ / ТС / dry — сухие
-  if (/ТСЛ|ТСЗГЛ|ТС[ЗГ]?\b|DRY|СУХ/.test(s) || t.coolingType === 'AN' || t.coolingType === 'AF') return 'dry';
-  // ТМ / ТМГ / ТМЗ / ТМН — масляные
-  if (/ТМ|OIL|МАСЛ|ONAN|ONAF/.test(s) || t.coolingType === 'ONAN' || t.coolingType === 'ONAF') return 'oil';
-  return '';
-}
-
+// Расчётный слой (классификация + подбор) — в ./calc/tx-select.js;
+// здесь только чтение DOM и рендер.
 function runTxWizard() {
   const loadKva = Number(document.getElementById('tx-wiz-loadKva').value) || 0;
   const reserve = Number(document.getElementById('tx-wiz-reserve').value) || 0;
@@ -372,25 +366,9 @@ function runTxWizard() {
     results.innerHTML = '<div class="empty" style="padding:14px">Укажите нагрузку &gt; 0 кВА.</div>';
     return;
   }
-  const sRequired = loadKva * (1 + reserve / 100);
-
-  const catalog = listTransformers();
-  const matched = [];
-  for (const t of catalog) {
-    const s = Number(t.ratedPowerKva || t.sKva || t.powerKva) || 0;
-    if (s <= 0 || s < sRequired) continue;
-    if (uhv && Number(t.primaryVoltageKv || t.uhvKv) !== Number(uhv)) continue;
-    if (ulv && Number(t.secondaryVoltageV || t.ulvV) !== Number(ulv)) continue;
-    if (type) {
-      const cl = _classifyTxType(t);
-      if (cl && cl !== type) continue;
-    }
-    if (group && (t.connectionGroup || t.vectorGroup || t.group) &&
-        String(t.connectionGroup || t.vectorGroup || t.group).toUpperCase() !== group.toUpperCase()) continue;
-    const util = loadKva / s;
-    matched.push({ t, s, util });
-  }
-  matched.sort((a, b) => b.util - a.util); // наибольшая утилизация сверху
+  const { sRequired, matched } = selectTransformers(listTransformers(), {
+    loadKva, reservePct: reserve, uhv, ulv, type, group,
+  });
 
   if (!matched.length) {
     results.innerHTML = `
@@ -408,7 +386,7 @@ function runTxWizard() {
     const grp = t.connectionGroup || t.vectorGroup || t.group || '—';
     const uk = t.impedanceUk ?? t.uk;
     const ukStr = uk != null ? Number(uk).toFixed(1) + '%' : '—';
-    const cl = _classifyTxType(t);
+    const cl = classifyTxType(t);
     const typeStr = cl === 'oil' ? 'масл.' : (cl === 'dry' ? 'сух.' : '—');
     return `
       <tr data-id="${esc(t.id)}" style="${idx === 0 ? 'background:#f0fff4' : ''}">

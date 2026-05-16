@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.532', date: '2026-05-16', items: [
+      '🧱 <b>Дробление монолитов — пилот calc/ui (transformer-config)</b>. Выделен чистый расчётный слой <code>transformer-config/calc/tx-select.js</code>: <code>classifyTxType()</code> (сухой/масляный) + <code>selectTransformers(catalog, criteria)</code> (фильтр+ранжирование по загрузке) — без DOM, переиспользуемо. <code>transformer-config.js</code> теперь только читает DOM и рендерит, алгоритм вызывается из calc-слоя. Поведение идентично (алгоритм перенесён байт-в-байт). Shim не нужен (leaf-модуль, внешних импортёров внутренностей нет). Доказан безопасный паттерн calc-извлечения на наименьшем модуле перед крупными монолитами (tech-workspace/scs-*).',
+    ] },
     { version: '0.60.531', date: '2026-05-16', items: [
       '📋 <b>Синхронизация <code>requires</code> манифестов с реальными импортами</b>. 14 модулей: в <code>&lt;module&gt;/manifest.json</code> добавлены ранее не объявленные доменные shared-зависимости (battery→battery-catalog/ups-types, ups-config→catalog-xlsx-parser/price-records, panel/transformer→picker, projects→sketch-refs и т.д.) и реальные cross-module зависимости (cooling→service, service→catalog/cooling/meteo, tech-workspace→cooling/meteo/service, psychrometrics→meteo). <code>modules.json</code> v1.3.2 перегенерирован (паритет OK). <code>scripts/audit-manifest.py</code> теперь зелёный: <b>UNDECLARED 0 / PARITY 0 / UNREGISTERED 0 / DEAD 0</b> — манифест стал честным контрактом зависимостей, а не комментарием. Нулевой риск: <code>requires</code> — метаданные графа зависимостей, не участвуют в subscription-гейтинге; код не тронут. boundary-lint остаётся отдельным арбитром допустимости cross-module связей.',
     ] },
