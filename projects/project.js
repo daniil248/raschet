@@ -1122,12 +1122,159 @@ function _wireImplStagesBlock(p, host) {
   });
 }
 
+// v0.60.498 (Roadmap 47.2.7-followup): расчёт критического пути (CPM).
+// Длительность = (endDate − startDate) в днях (мин. 1; default 7 если
+// дат нет). deps[] — id задач-предшественников (finish→start). Прямой
+// проход (ES/EF) + обратный (LS/LF) → slack; slack≈0 → critical.
+// Циклы безопасны: топосорт через Kahn, узлы в цикле помечаются
+// non-critical (и возвращается флаг hasCycle).
+function _computeCriticalPath(tasks) {
+  const byId = new Map(tasks.map(t => [t.id, t]));
+  const dur = (t) => {
+    if (t.startDate && t.endDate) {
+      const d = (new Date(t.endDate).getTime() - new Date(t.startDate).getTime()) / 86400e3;
+      return Math.max(1, Math.round(d));
+    }
+    return 7;
+  };
+  // Граф зависимостей (только валидные id).
+  const preds = new Map();
+  const succs = new Map();
+  for (const t of tasks) { preds.set(t.id, []); succs.set(t.id, []); }
+  for (const t of tasks) {
+    for (const d of (Array.isArray(t.deps) ? t.deps : [])) {
+      if (d === t.id || !byId.has(d)) continue;
+      preds.get(t.id).push(d);
+      succs.get(d).push(t.id);
+    }
+  }
+  // Kahn topo-sort.
+  const indeg = new Map(tasks.map(t => [t.id, preds.get(t.id).length]));
+  const q = tasks.filter(t => indeg.get(t.id) === 0).map(t => t.id);
+  const order = [];
+  while (q.length) {
+    const id = q.shift();
+    order.push(id);
+    for (const s of succs.get(id)) {
+      indeg.set(s, indeg.get(s) - 1);
+      if (indeg.get(s) === 0) q.push(s);
+    }
+  }
+  const hasCycle = order.length !== tasks.length;
+  // Forward pass: ES/EF (в днях от 0).
+  const ES = new Map(), EF = new Map();
+  for (const id of order) {
+    const t = byId.get(id);
+    const es = preds.get(id).reduce((m, p) => Math.max(m, EF.get(p) ?? 0), 0);
+    ES.set(id, es);
+    EF.set(id, es + dur(t));
+  }
+  const projEnd = order.reduce((m, id) => Math.max(m, EF.get(id) ?? 0), 0);
+  // Backward pass: LF/LS.
+  const LF = new Map(), LS = new Map();
+  for (let i = order.length - 1; i >= 0; i--) {
+    const id = order[i];
+    const t = byId.get(id);
+    const lf = succs.get(id).length
+      ? succs.get(id).reduce((m, s) => Math.min(m, LS.get(s) ?? projEnd), Infinity)
+      : projEnd;
+    LF.set(id, lf);
+    LS.set(id, lf - dur(t));
+  }
+  const res = new Map();
+  for (const t of tasks) {
+    const inOrder = order.includes(t.id);
+    const slack = inOrder ? Math.round((LS.get(t.id) ?? 0) - (ES.get(t.id) ?? 0)) : null;
+    res.set(t.id, {
+      critical: inOrder && slack !== null && slack <= 0,
+      slackDays: slack,
+      durDays: dur(t),
+      es: ES.get(t.id) ?? null,
+    });
+  }
+  return { map: res, hasCycle, projEnd };
+}
+
+// v0.60.498 (Roadmap 47.2.7-followup): полноценный in-page редактор
+// задачи (раньше .pr-task-edit только переименовывал через prPrompt).
+// Поля: название, дисциплина, статус, старт, срок, зависимости
+// (чекбоксы остальных задач — predecessors для CPM).
+function _openTaskEditModal(p, task, onSaved) {
+  const arr = _loadPlanTasks(p.id);
+  const others = arr.filter(x => x.id !== task.id);
+  const deps = new Set(Array.isArray(task.deps) ? task.deps : []);
+  const overlay = document.createElement('div');
+  overlay.className = 'pr-overlay';
+  overlay.innerHTML = `
+    <div class="pr-modal" style="max-width:520px;width:100%">
+      <h3>✎ Задача плана</h3>
+      <label class="pr-modal-label">Название</label>
+      <input type="text" id="te-title" class="pr-modal-input" value="${esc(task.title || '')}">
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <label style="flex:1;min-width:140px;font-size:11px;color:#64748b">Дисциплина
+          <select id="te-disc" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:12px">
+            ${PLAN_DISCIPLINES.map(d => `<option value="${d.id}"${d.id === (task.discipline || 'other') ? ' selected' : ''}>${esc(d.label)}</option>`).join('')}
+          </select>
+        </label>
+        <label style="flex:1;min-width:140px;font-size:11px;color:#64748b">Статус
+          <select id="te-status" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:12px">
+            ${PLAN_STATUSES.map(s => `<option value="${s.id}"${s.id === (task.status || 'todo') ? ' selected' : ''}>${esc(s.label)}</option>`).join('')}
+          </select>
+        </label>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <label style="flex:1;font-size:11px;color:#64748b">Старт
+          <input type="date" id="te-start" value="${esc(task.startDate || '')}" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:12px">
+        </label>
+        <label style="flex:1;font-size:11px;color:#64748b">Срок
+          <input type="date" id="te-end" value="${esc(task.endDate || '')}" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:3px;font-size:12px">
+        </label>
+      </div>
+      <label class="pr-modal-label" style="margin-top:10px">Зависит от (предшественники для критического пути)</label>
+      <div style="max-height:160px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:4px;padding:6px">
+        ${others.length ? others.map(o => `<label style="display:flex;align-items:center;gap:7px;padding:3px 4px;font-size:12px;cursor:pointer">
+          <input type="checkbox" class="te-dep" value="${esc(o.id)}"${deps.has(o.id) ? ' checked' : ''}>
+          <span>${esc(o.title || '—')}</span>
+        </label>`).join('') : '<span class="muted" style="font-size:12px">Других задач нет.</span>'}
+      </div>
+      <div class="pr-modal-actions">
+        <button type="button" class="pr-btn-sel" data-act="no">Отмена</button>
+        <button type="button" class="pr-btn-primary" data-act="yes">Сохранить</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) { close(); return; }
+    const act = e.target.dataset?.act;
+    if (act === 'no') { close(); return; }
+    if (act === 'yes') {
+      const fresh = _loadPlanTasks(p.id);
+      const tt = fresh.find(x => x.id === task.id);
+      if (!tt) { close(); return; }
+      tt.title = (overlay.querySelector('#te-title').value || '').trim() || tt.title;
+      tt.discipline = overlay.querySelector('#te-disc').value || 'other';
+      tt.status = overlay.querySelector('#te-status').value || 'todo';
+      if (tt.status === 'done') tt.progressPct = 100;
+      tt.startDate = overlay.querySelector('#te-start').value || null;
+      tt.endDate = overlay.querySelector('#te-end').value || null;
+      tt.deps = [...overlay.querySelectorAll('.te-dep:checked')].map(i => i.value);
+      _savePlanTasks(p.id, fresh);
+      close();
+      if (typeof onSaved === 'function') onSaved();
+    }
+  });
+}
+
 // v0.60.295 (Этап 1.4-followup по запросу Пользователя 2026-05-06: «для
 // плана нужно организовать диаграмму Ганта»):
 // Простая SVG Gantt-диаграмма с временной осью (auto-scale по диапазону
 // задач), горизонтальными bar'ами по дисциплинам, цвет = discipline,
 // прозрачность = status. Этапы реализации (impl-stages) показаны как
 // vertical milestone lines на оси.
+// v0.60.498 (47.2.7-followup): + критический путь (CPM, красная подсветка),
+// стрелки зависимостей, day-сетка для коротких диапазонов, drag-move /
+// resize правого края bar'ов мышью.
 function _renderGanttChart(tasks, p) {
   // Собираем диапазон дат: от min startDate (или createdAt) до max endDate.
   const dates = [];
@@ -1221,7 +1368,20 @@ function _renderGanttChart(tasks, p) {
     svg += `<line x1="${tx}" y1="${padT}" x2="${tx}" y2="${totalH - padB}" stroke="#dc2626" stroke-width="1.5" opacity="0.7"/>`;
     svg += `<text x="${tx + 3}" y="${totalH - padB + 12}" font-size="10" fill="#dc2626" font-weight="600">сегодня</text>`;
   }
-  // Task bars
+  // v0.60.498: day sub-grid для коротких диапазонов (multi-day overlay).
+  if (totalDays <= 21) {
+    const d0 = new Date(minMs); d0.setUTCHours(0, 0, 0, 0);
+    for (let dt = d0.getTime(); dt < maxMs; dt += 86400e3) {
+      if (dt < minMs) continue;
+      const dx = x(dt);
+      svg += `<line x1="${dx}" y1="${padT}" x2="${dx}" y2="${totalH - padB}" stroke="#f8fafc" stroke-width="1"/>`;
+    }
+  }
+  // v0.60.498: критический путь (CPM).
+  const cpm = _computeCriticalPath(tasks);
+  const cMap = cpm.map;
+  // Task bars (+ запоминаем геометрию для стрелок зависимостей).
+  const barGeom = {}; // id → { x1, x2, yMid, y, h }
   let y = padT;
   for (const disc of disciplinesUsed) {
     const arr = grouped[disc.id];
@@ -1235,28 +1395,122 @@ function _renderGanttChart(tasks, p) {
       const w = Math.max(2, x2 - x1);
       const stMeta = PLAN_STATUSES.find(s => s.id === t.status) || PLAN_STATUSES[0];
       const opacity = t.status === 'done' ? 0.85 : (t.status === 'blocked' ? 0.7 : (t.status === 'todo' ? 0.5 : 0.95));
-      const stroke = t.status === 'done' ? '#15803d' : (t.status === 'blocked' ? '#991b1b' : disc.color);
-      svg += `<g class="tw-gantt-bar" data-task-id="${esc(t.id)}">
-        <rect x="${x1}" y="${y + 4}" width="${w}" height="${rowH - 8}" rx="3" fill="${disc.color}" opacity="${opacity}" stroke="${stroke}" stroke-width="1"/>
-        <text x="${x1 + 5}" y="${y + 17}" font-size="11" fill="#fff" font-weight="500" style="pointer-events:none">${esc(t.title.slice(0, 40))}${t.title.length > 40 ? '…' : ''}</text>
-        <title>${esc(t.title)} · ${esc(stMeta.label)}${t.startDate ? ` · ${esc(t.startDate)} → ${esc(t.endDate || '?')}` : ''}</title>
+      const crit = cMap.get(t.id)?.critical;
+      const stroke = crit ? '#dc2626' : (t.status === 'done' ? '#15803d' : (t.status === 'blocked' ? '#991b1b' : disc.color));
+      const barY = y + 4, barH = rowH - 8;
+      barGeom[t.id] = { x1, x2: x1 + w, yMid: barY + barH / 2, y: barY, h: barH, critical: !!crit };
+      const slack = cMap.get(t.id)?.slackDays;
+      svg += `<g class="tw-gantt-bar" data-task-id="${esc(t.id)}" data-x1="${x1.toFixed(2)}" data-w="${w.toFixed(2)}" data-y="${barY}" data-h="${barH}" style="cursor:grab">
+        <rect class="tw-gantt-bar-rect" x="${x1}" y="${barY}" width="${w}" height="${barH}" rx="3" fill="${disc.color}" opacity="${opacity}" stroke="${stroke}" stroke-width="${crit ? 2 : 1}"/>
+        <text x="${x1 + 5}" y="${y + 17}" font-size="11" fill="#fff" font-weight="500" style="pointer-events:none">${crit ? '★ ' : ''}${esc(t.title.slice(0, 38))}${t.title.length > 38 ? '…' : ''}</text>
+        <rect class="tw-gantt-resize" data-task-id="${esc(t.id)}" x="${(x1 + w - 5).toFixed(2)}" y="${barY}" width="6" height="${barH}" fill="transparent" style="cursor:ew-resize"/>
+        <title>${esc(t.title)} · ${esc(stMeta.label)}${t.startDate ? ` · ${esc(t.startDate)} → ${esc(t.endDate || '?')}` : ''}${crit ? ' · 🔴 критический путь' : (slack != null ? ` · резерв ${slack} дн` : '')}</title>
       </g>`;
       y += rowH + rowGap;
     }
   }
+  // v0.60.498: стрелки зависимостей (finish→start). Красные если обе
+  // задачи на критическом пути, иначе серые.
+  svg += `<defs>
+    <marker id="tw-arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8"/></marker>
+    <marker id="tw-arr-c" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#dc2626"/></marker>
+  </defs>`;
+  for (const t of tasks) {
+    const g2 = barGeom[t.id];
+    if (!g2) continue;
+    for (const dId of (Array.isArray(t.deps) ? t.deps : [])) {
+      const g1 = barGeom[dId];
+      if (!g1) continue;
+      const isC = g1.critical && g2.critical;
+      const col = isC ? '#dc2626' : '#94a3b8';
+      const sx = g1.x2, sy = g1.yMid, ex = g2.x1 - 6, ey = g2.yMid;
+      const midX = Math.max(sx + 12, (sx + ex) / 2);
+      svg += `<path d="M ${sx} ${sy} C ${midX} ${sy}, ${midX} ${ey}, ${ex} ${ey}" fill="none" stroke="${col}" stroke-width="${isC ? 1.6 : 1.1}" opacity="0.75" marker-end="url(#${isC ? 'tw-arr-c' : 'tw-arr'})"/>`;
+    }
+  }
   svg += `</svg>`;
-  return `<div style="margin:14px 0;padding:6px 0">
+  const critCount = [...cMap.values()].filter(v => v.critical).length;
+  return `<div class="tw-gantt-wrap" style="margin:14px 0;padding:6px 0"
+      data-pid="${esc(p.id)}" data-min-ms="${Math.round(minMs)}" data-total-ms="${Math.round(totalMs)}"
+      data-inner-w="${innerW}" data-pad-l="${padL}" data-svg-w="${W}">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
       <h4 style="margin:0;font-size:13px;color:#0f172a">📊 Диаграмма Ганта</h4>
-      <span class="muted" style="font-size:11px">диапазон: ${fmtTick(minMs)} — ${fmtTick(maxMs)} · ${disciplinesUsed.length} дисциплин · ${tasks.length} задач${showToday ? ' · 🔴 сегодня' : ''}${stages.some(s => s.finishedAt) ? ' · 🟢 milestones этапов' : ''}</span>
+      <span class="muted" style="font-size:11px">диапазон: ${fmtTick(minMs)} — ${fmtTick(maxMs)} · ${disciplinesUsed.length} дисциплин · ${tasks.length} задач${showToday ? ' · 🔴 сегодня' : ''}${critCount ? ` · ★ ${critCount} на крит. пути` : ''}${cpm.hasCycle ? ' · ⚠ цикл зависимостей' : ''}</span>
     </div>
     <div style="overflow-x:auto;background:#f8fafc;padding:4px;border-radius:6px">${svg}</div>
     <p class="muted" style="font-size:11px;margin:6px 0 0">
-      Bars — задачи (цвет дисциплины, прозрачность = статус: 50% не начата / 95% в работе / 85% ✓ / 70% 🛑).
-      Зелёные пунктирные линии — завершённые этапы реализации (impl-stages).
-      Красная вертикальная — сегодня. Hover на bar — детали (title с status и датами).
+      Bars — задачи (цвет дисциплины, прозрачность = статус). <b>★ красная обводка</b> — критический путь
+      (slack = 0; CPM по deps + длительностям). Стрелки — зависимости (красные на крит. пути).
+      Перетаскивание bar мышью сдвигает задачу; правый край — меняет срок (snap по дням).
+      Зелёные пунктир — завершённые этапы, красная вертикаль — сегодня.
     </p>
   </div>`;
+}
+
+// v0.60.498 (Roadmap 47.2.7-followup): drag-move / resize-end для bar'ов
+// Ганта мышью (pointer events). Координаты SVG масштабируются (viewBox
+// W=1100 → клиентская ширина), поэтому переводим Δpx клиента в дни через
+// scale = clientW / svgW. Snap по дням; на drop — пишем start/endDate и
+// перерисовываем (renderProjectPlan через onChange).
+function _wireGanttInteractions(host, p, onChange) {
+  // Снять предыдущий window-listener (host.innerHTML пересоздаётся —
+  // старый wrap отвязан, но window-listener иначе копится).
+  try { if (host._twGanttCleanup) host._twGanttCleanup(); } catch {}
+  const wrap = host.querySelector('.tw-gantt-wrap');
+  if (!wrap) return;
+  const svg = wrap.querySelector('svg');
+  if (!svg) return;
+  const minMs = Number(wrap.dataset.minMs) || 0;
+  const totalMs = Number(wrap.dataset.totalMs) || 1;
+  const innerW = Number(wrap.dataset.innerW) || 1;
+  const svgW = Number(wrap.dataset.svgW) || 1100;
+  const DAY = 86400e3;
+  let drag = null; // { id, mode, startX, sMs0, eMs0 }
+  const pxPerDay = () => {
+    const scale = (svg.getBoundingClientRect().width || svgW) / svgW;
+    return (innerW / (totalMs / DAY)) * scale;
+  };
+  const onDown = (e) => {
+    const resize = e.target.closest('.tw-gantt-resize');
+    const g = e.target.closest('.tw-gantt-bar');
+    if (!g) return;
+    const id = g.dataset.taskId;
+    const arr = _loadPlanTasks(p.id);
+    const t = arr.find(x => x.id === id);
+    if (!t) return;
+    const sMs0 = t.startDate ? new Date(t.startDate).getTime() : Date.now();
+    const eMs0 = t.endDate ? new Date(t.endDate).getTime() : sMs0 + 7 * DAY;
+    drag = { id, mode: resize ? 'resize' : 'move', startX: e.clientX, sMs0, eMs0 };
+    g.style.cursor = resize ? 'ew-resize' : 'grabbing';
+    e.preventDefault();
+  };
+  const onUp = (e) => {
+    if (!drag) return;
+    const dDays = Math.round((e.clientX - drag.startX) / (pxPerDay() || 1));
+    drag._dDays = dDays;
+    const arr = _loadPlanTasks(p.id);
+    const t = arr.find(x => x.id === drag.id);
+    if (t && dDays !== 0) {
+      const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
+      if (drag.mode === 'move') {
+        t.startDate = iso(drag.sMs0 + dDays * DAY);
+        t.endDate = iso(drag.eMs0 + dDays * DAY);
+      } else {
+        const ne = Math.max(drag.sMs0 + DAY, drag.eMs0 + dDays * DAY);
+        if (!t.startDate) t.startDate = iso(drag.sMs0);
+        t.endDate = iso(ne);
+      }
+      _savePlanTasks(p.id, arr);
+      drag = null;
+      if (typeof onChange === 'function') onChange();
+      return;
+    }
+    drag = null;
+  };
+  svg.addEventListener('pointerdown', onDown);
+  window.addEventListener('pointerup', onUp);
+  // Снимаем window-listener при следующем ре-рендере (host очищается).
+  host._twGanttCleanup = () => window.removeEventListener('pointerup', onUp);
 }
 
 function renderProjectPlan(p, host) {
@@ -1404,20 +1658,19 @@ function renderProjectPlan(p, host) {
     });
   });
 
-  // Edit (rename)
+  // v0.60.498: Edit → полноценный редактор (название/дисциплина/статус/
+  // даты/зависимости для критического пути), вместо rename-only prompt.
   host.querySelectorAll('.pr-task-edit').forEach(btn => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', () => {
       const id = btn.dataset.taskId;
-      const arr = _loadPlanTasks(p.id);
-      const t = arr.find(x => x.id === id);
+      const t = _loadPlanTasks(p.id).find(x => x.id === id);
       if (!t) return;
-      const newTitle = await prPrompt('Изменить задачу', 'Название', t.title || '');
-      if (newTitle == null) return;
-      t.title = String(newTitle).trim() || t.title;
-      _savePlanTasks(p.id, arr);
-      renderProjectPlan(p, host);
+      _openTaskEditModal(p, t, () => renderProjectPlan(p, host));
     });
   });
+
+  // v0.60.498: drag-move / resize bar'ов Ганта мышью.
+  _wireGanttInteractions(host, p, () => renderProjectPlan(p, host));
 
   // v0.60.290 (Этап 1.4): wire-up для блока «🎯 Этапы реализации».
   _wireImplStagesBlock(p, host);
