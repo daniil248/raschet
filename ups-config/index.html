@@ -434,6 +434,10 @@
       // B2.2 i2: Spec-вкладка варианта — каскад поставщик→серия→модель
       // (shared/ups-picker), список фильтруется по «Допустимые типы ИБП»
       // условий подбора; тип варианта = тип выбранной модели; +резерв.
+      // v0.60.468 (по замечанию Пользователя 2026-05-16): когда вариант
+      // УЖЕ сконфигурирован, при открытии показываем ТОЛЬКО подобранную
+      // конфигурацию, а НЕ выбор ИБП по требованиям. Мастер подбора
+      // (каскад поставщик→серия→модель) вызывается ОТДЕЛЬНО — кнопкой.
       function variantSpec(ctx) {
         const { host, entry, req, save } = ctx;
         const p = (entry && entry.payload) || {};
@@ -443,42 +447,73 @@
           const t = detectUpsType(u); const tid = t && t.id;
           return !allowed.length || (tid && allowed.includes(tid));
         });
-        const redOpts = ['N', 'N+1', 'N+2', '2N'].map(r =>
-          `<option value="${r}"${(p.redundancy || req.redundancy || 'N+1') === r ? ' selected' : ''}>${r}</option>`).join('');
-        host.innerHTML = `
-          <div class="rsp-sec-title" style="margin-top:4px" title="Конкретная модель ИБП этого варианта. Список ограничен допустимыми типами подбора.">Конкретная модель ИБП</div>
-          <div data-ups-pick-host></div>
-          <div class="rsp-grid" style="margin-top:8px">
-            <label class="rsp-field" title="Резервирование этого варианта (по умолчанию — из условий подбора).">Резервирование (вариант)
-              <select data-vspec="redundancy">${redOpts}</select></label>
-          </div>
-          <div class="rsp-note" data-ups-pick-info></div>`;
-        const pickHost = host.querySelector('[data-ups-pick-host]');
-        const info = host.querySelector('[data-ups-pick-info]');
-        const setInfo = (u) => {
+        const curUps = () => p.upsId ? (list.find(u => u.id === p.upsId) || all.find(u => u.id === p.upsId)) : null;
+        let editMode = !p.upsId;          // нет модели → сразу мастер
+
+        function drawSummary() {
+          const u = curUps();
           const tt = u ? detectUpsType(u) : null;
-          info.innerHTML = u
-            ? `Выбрано: <b>${(u.supplier || '')} ${(u.model || '')}</b>${u.capacityKw ? ' · ' + u.capacityKw + ' кВт' : ''} · тип: <b>${tt ? (tt.label || tt.id) : '—'}</b>. Тип варианта = тип модели.`
-            : (allowed.length
-                ? `Список моделей отфильтрован по допустимым типам подбора. Моделей: ${list.length}.`
-                : `Выберите модель ИБП. Моделей в каталоге: ${list.length}.`);
-        };
-        mountUpsPicker(pickHost, {
-          list, selectedId: p.upsId || '',
-          currentSupplier: p.upsSupplier || '', currentSeries: p.upsSeries || '',
-          onChange({ supplier, series, modelId, ups }) {
-            const tt = ups ? detectUpsType(ups) : null;
-            save({ payload: {
-              upsId: modelId || '', upsSupplier: supplier || '', upsSeries: series || '',
-              upsModel: ups ? ups.model : '', capacityKw: ups ? (ups.capacityKw || 0) : 0,
-              upsType: tt ? tt.id : '', efficiency: ups ? (ups.efficiency || 0) : 0,
-            } });
-            setInfo(ups || null);
-          },
-        });
-        setInfo(p.upsId ? list.find(u => u.id === p.upsId) : null);
-        const redEl = host.querySelector('[data-vspec="redundancy"]');
-        if (redEl) redEl.addEventListener('change', () => save({ payload: { redundancy: redEl.value } }));
+          host.innerHTML = `
+            <div class="rsp-sec-title" style="margin-top:4px">✅ Подобранная конфигурация</div>
+            <table class="rsp-table"><tbody>
+              <tr><td class="rsp-lft">Модель ИБП</td><td><b>${escHtmlSafe(u ? ((u.supplier || '') + ' ' + (u.model || u.id)) : '— не выбрана —')}</b></td></tr>
+              <tr><td class="rsp-lft">Тип конструктива</td><td>${escHtmlSafe(p.upsType || (tt && (tt.label || tt.id)) || '—')}</td></tr>
+              <tr><td class="rsp-lft">Номинал</td><td>${u && u.capacityKw ? escHtmlSafe(u.capacityKw) + ' кВт' : '—'}</td></tr>
+              <tr><td class="rsp-lft">КПД</td><td>${u && u.efficiency ? escHtmlSafe(u.efficiency) + ' %' : '—'}</td></tr>
+              <tr><td class="rsp-lft">Окно V<sub>DC</sub></td><td>${u && u.vdcMin && u.vdcMax ? escHtmlSafe(u.vdcMin) + '…' + escHtmlSafe(u.vdcMax) + ' В' : '—'}</td></tr>
+              <tr><td class="rsp-lft">Резервирование</td><td>${escHtmlSafe(p.redundancy || req.redundancy || 'N')}</td></tr>
+            </tbody></table>
+            <div style="margin-top:10px"><button type="button" class="rs-cs-btn" data-vspec="edit">🧙 Сменить модель (мастер подбора)</button></div>
+            <div class="rsp-note">ℹ Вариант уже сконфигурирован — показана подобранная конфигурация. Мастер подбора по требованиям открывается отдельно кнопкой выше.</div>`;
+          const eb = host.querySelector('[data-vspec="edit"]');
+          if (eb) eb.addEventListener('click', () => { editMode = true; drawPicker(); });
+        }
+
+        function drawPicker() {
+          const redOpts = ['N', 'N+1', 'N+2', '2N'].map(r =>
+            `<option value="${r}"${(p.redundancy || req.redundancy || 'N+1') === r ? ' selected' : ''}>${r}</option>`).join('');
+          host.innerHTML = `
+            <div class="rsp-sec-title" style="margin-top:4px" title="Мастер подбора: каскад поставщик→серия→модель. Список ограничен допустимыми типами подбора.">🧙 Мастер подбора — выбор модели ИБП</div>
+            <div data-ups-pick-host></div>
+            <div class="rsp-grid" style="margin-top:8px">
+              <label class="rsp-field" title="Резервирование этого варианта (по умолчанию — из условий подбора).">Резервирование (вариант)
+                <select data-vspec="redundancy">${redOpts}</select></label>
+            </div>
+            <div class="rsp-note" data-ups-pick-info></div>
+            ${p.upsId ? `<div style="margin-top:8px"><button type="button" class="rs-cs-btn" data-vspec="done">↩ К подобранной конфигурации</button></div>` : ''}`;
+          const pickHost = host.querySelector('[data-ups-pick-host]');
+          const info = host.querySelector('[data-ups-pick-info]');
+          const setInfo = (u) => {
+            const tt = u ? detectUpsType(u) : null;
+            info.innerHTML = u
+              ? `Выбрано: <b>${(u.supplier || '')} ${(u.model || '')}</b>${u.capacityKw ? ' · ' + u.capacityKw + ' кВт' : ''} · тип: <b>${tt ? (tt.label || tt.id) : '—'}</b>. Тип варианта = тип модели.`
+              : (allowed.length
+                  ? `Список моделей отфильтрован по допустимым типам подбора. Моделей: ${list.length}.`
+                  : `Выберите модель ИБП. Моделей в каталоге: ${list.length}.`);
+          };
+          mountUpsPicker(pickHost, {
+            list, selectedId: p.upsId || '',
+            currentSupplier: p.upsSupplier || '', currentSeries: p.upsSeries || '',
+            onChange({ supplier, series, modelId, ups }) {
+              const tt = ups ? detectUpsType(ups) : null;
+              p.upsId = modelId || ''; p.upsSupplier = supplier || ''; p.upsSeries = series || '';
+              p.upsModel = ups ? ups.model : ''; p.capacityKw = ups ? (ups.capacityKw || 0) : 0;
+              p.upsType = tt ? tt.id : ''; p.efficiency = ups ? (ups.efficiency || 0) : 0;
+              save({ payload: {
+                upsId: p.upsId, upsSupplier: p.upsSupplier, upsSeries: p.upsSeries,
+                upsModel: p.upsModel, capacityKw: p.capacityKw, upsType: p.upsType, efficiency: p.efficiency,
+              } });
+              setInfo(ups || null);
+            },
+          });
+          setInfo(p.upsId ? list.find(u => u.id === p.upsId) : null);
+          const redEl = host.querySelector('[data-vspec="redundancy"]');
+          if (redEl) redEl.addEventListener('change', () => { p.redundancy = redEl.value; save({ payload: { redundancy: redEl.value } }); });
+          const doneEl = host.querySelector('[data-vspec="done"]');
+          if (doneEl) doneEl.addEventListener('click', () => { editMode = false; drawSummary(); });
+        }
+
+        if (editMode) drawPicker(); else drawSummary();
       }
 
       // B2.2 i3: АКБ-вкладка варианта — решение «подобрать/пропустить»
