@@ -33,7 +33,7 @@ import { isS3Module, getS3Limits, computeS3Configuration, findMinimalS3Config } 
 import { s3LiIonType } from '../shared/battery-types/s3-li-ion.js';
 import { renderS3IsoSvg } from '../shared/battery-types/s3-iso-view.js';
 import { mountS3ThreeDView } from '../shared/battery-types/s3-3d-view.js';
-import { saveConfig as _saveConfig, nextConfigId as _nextConfigId, getActiveProjectCode as _getActiveProjectCode } from '../shared/configuration-catalog.js';
+import { saveConfig as _saveConfig, nextConfigId as _nextConfigId, getActiveProjectCode as _getActiveProjectCode, listConfigs as _listConfigs } from '../shared/configuration-catalog.js';
 // v0.60.459: ТЭО АКБ — стоимость комплекта построчно (общий редактор) +
 // централизованный курс валют на дату (как «Подбор холода»).
 import { openCostItemsModal } from '../shared/ui/cost-items-modal.js';
@@ -1613,14 +1613,32 @@ function _lcEffIncl(l) {
   return _lcState.kitIncl[k]
     || l.kitInclusion || DEFAULT_KIT_INCLUSION[l.role] || 'separate';
 }
+// v0.60.482 (по замечанию Пользователя: «правка ёмкости в одном
+// варианте меняет все»): состояние ЖЦ/состава/стоимости — ПЕР-ВАРИАНТНОЕ.
+// Ключ LS скопирован по контексту активного варианта (его id). Раньше
+// был один глобальный ключ → состав/цены текли между вариантами.
+let _lcCtx = '';
+function _lcKey() { return LC_KEY + (_lcCtx ? '::' + _lcCtx : ''); }
 function _lcLoad() {
   try {
-    const r = JSON.parse(localStorage.getItem(LC_KEY) || 'null');
+    const r = JSON.parse(localStorage.getItem(_lcKey()) || 'null');
     if (r && typeof r === 'object') _lcState = { ..._lcState, ...r };
   } catch {}
   if (!_lcState.kitIncl || typeof _lcState.kitIncl !== 'object') _lcState.kitIncl = {};
 }
-function _lcSave() { try { localStorage.setItem(LC_KEY, JSON.stringify(_lcState)); } catch {} }
+function _lcSave() { try { localStorage.setItem(_lcKey(), JSON.stringify(_lcState)); } catch {} }
+// Сменить активный вариант-контекст: сбросить состояние к дефолту и
+// перечитать состав/цены ИМЕННО этого варианта.
+function _lcSetCtx(id) {
+  const next = String(id || '');
+  if (next === _lcCtx) return;
+  _lcCtx = next;
+  _lcState = { costItems: [], currency: _lcState.currency || '₸',
+    rateDate: _lcState.rateDate, sourceId: _lcState.sourceId, kitIncl: {} };
+  _lcLastBom = [];
+  _lcLoad();
+  try { _lcRefreshLabel(); } catch {}
+}
 async function _lcEnsureRates(force) {
   try {
     const r = await makeConvertFn({ date: _lcState.rateDate, sourceId: _lcState.sourceId, force: !!force });
@@ -4016,6 +4034,32 @@ window.addEventListener('DOMContentLoaded', () => {
   initSchemaContext();
   // v0.59.400: handoff из ups-config (?fromUps=1) — предзаполнение и возврат.
   initUpsHandoff();
+  // v0.60.482: открытие сохранённого ВАРИАНТА из сайдбара — загрузить его
+  // параметры в редактор и переключить пер-вариантный контекст ЖЦ/состава,
+  // чтобы варианты были независимы (правка одного не влияет на другие).
+  window.addEventListener('battery:load-config', (ev) => {
+    const e = ev && ev.detail; if (!e || !e.id) return;
+    _lcSetCtx(e.id);
+    const p = e.payload || {};
+    const setV = (id, v) => { const el = document.getElementById(id);
+      if (el && v != null && v !== '') { el.value = v; try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch {} } };
+    try {
+      if (p.battery && p.battery.id) {
+        const bs = document.getElementById('calc-battery');
+        if (bs && [...bs.options].some(o => o.value === p.battery.id)) setV('calc-battery', p.battery.id);
+      }
+      if (p.battery && p.battery.chemistry) setV('calc-chem', p.battery.chemistry);
+      if (p.mode) setV('calc-mode', p.mode);
+      if (p.targetMin != null) { setV('calc-target', p.targetMin); setV('calc-target-auto', p.targetMin); }
+      if (p.battery && p.battery.blockVoltage) setV('calc-blockv', p.battery.blockVoltage);
+      if (p.battery && p.battery.capacityAh) setV('calc-capAh', p.battery.capacityAh);
+      if (p.endV != null) setV('calc-endv', p.endV);
+      if (p.invEff != null) setV('calc-inveff', Math.round(Number(p.invEff) * (p.invEff <= 1 ? 100 : 1)) || p.invEff);
+      try { _applyBatteryLock(); _renderCapacityRecommend(); } catch {}
+      const form = document.getElementById('calc-form');
+      if (form) { form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })); }
+    } catch (err) { console.warn('[battery] load-config apply failed', err); }
+  });
   // v0.60.459: ТЭО АКБ — построчная стоимость комплекта + курс на дату.
   _lcLoad();
   const _lcBtn = document.getElementById('calc-lc-cost-edit');
@@ -4227,58 +4271,60 @@ function initUpsHandoff() {
     try { _renderCapacityRecommend(); } catch {}
     try { _applyBatteryLock(); } catch {}
   }, 150);
+  // v0.60.482 (по замечанию Пользователя): в подбор ИБП передаётся ТОЛЬКО
+  // ★ основной вариант подбора АКБ — автоматически, без кнопки «Применить
+  // → ИБП». Имя подбора АКБ — та же формула, что в seed (index.html).
+  const _akbSel = (h.selectionName ? ('АКБ для ' + h.selectionName)
+    : ('АКБ для ИБП ' + (h.upsLabel || ''))).trim() || 'АКБ из ИБП';
+  function _pushMainAkbReturn() {
+    let cfgs = [];
+    try {
+      const pc = _getActiveProjectCode() || undefined;
+      cfgs = _listConfigs('battery', { projectCode: pc, selectionName: _akbSel }) || [];
+    } catch {}
+    if (!cfgs.length) return false;
+    const main = cfgs.find(c => c.isMainVariant)
+      || cfgs.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+    const p = (main && main.payload) || {};
+    if (!p.battery && !(p.totalBlocks > 0)) return false;
+    const payload = {
+      source: 'battery-calc', selectedAt: Date.now(),
+      variantId: main.id, variantLabel: main.label || main.id,
+      isMain: !!main.isMainVariant,
+      battery: p.battery || null,
+      mode: p.mode, targetMin: p.targetMin, endV: p.endV, invEff: p.invEff,
+      derate: p.derate || null,
+      strings: p.strings, blocksPerString: p.blocksPerString,
+      autonomyMin: p.autonomyMin,
+      totalBlocks: p.totalBlocks, totalKwh: p.totalKwh, dcVoltage: p.dcVoltage,
+    };
+    try { localStorage.setItem('raschet.upsBatteryReturn.v1', JSON.stringify(payload)); return true; }
+    catch { return false; }
+  }
+  const _refreshBannerStatus = () => {
+    const st = document.getElementById('ups-akb-status');
+    if (!st) return;
+    let cfgs = [];
+    try { cfgs = _listConfigs('battery', { projectCode: _getActiveProjectCode() || undefined, selectionName: _akbSel }) || []; } catch {}
+    const main = cfgs.find(c => c.isMainVariant);
+    st.innerHTML = main
+      ? `✓ В подбор ИБП автоматически передаётся ★ основной вариант: <b>${escHtml(main.label || main.id)}</b>.`
+      : (cfgs.length
+          ? `⚠ Отметьте ★ основной вариант в списке слева — он передастся в подбор ИБП (сейчас будет последний сохранённый).`
+          : `Сохраните вариант(ы) АКБ. ★ основной автоматически уйдёт в подбор ИБП.`);
+  };
   const banner = document.createElement('div');
   banner.style.cssText = 'position:sticky;top:0;z-index:100;padding:10px 16px;background:#6366f1;color:#fff;display:flex;align-items:center;gap:12px;font-size:13px;box-shadow:0 2px 4px rgba(0,0,0,.15)';
   banner.innerHTML = `
-    <span style="flex:1">⚡ Подбор АКБ для ИБП <b>${escHtml(h.upsLabel || '')}</b>${vdcMin && vdcMax ? ` · V<sub>DC</sub> ${vdcMin}…${vdcMax} В` : ''}. Параметры предзаполнены — выберите модель и рассчитайте, затем нажмите «Применить → ИБП».</span>
-    <button type="button" id="ups-apply-battery" style="background:#fff;color:#4338ca;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600">Применить → ИБП</button>
-    <button type="button" id="ups-cancel-battery" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);padding:5px 10px;border-radius:4px;cursor:pointer">Отмена</button>
+    <span style="flex:1">⚡ Подбор АКБ для ИБП <b>${escHtml(h.upsLabel || '')}</b>${vdcMin && vdcMax ? ` · V<sub>DC</sub> ${vdcMin}…${vdcMax} В` : ''}. <span id="ups-akb-status"></span></span>
+    <button type="button" id="ups-cancel-battery" style="background:#fff;color:#4338ca;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600">Закрыть</button>
   `;
   document.body.insertBefore(banner, document.body.firstChild);
-  document.getElementById('ups-apply-battery')?.addEventListener('click', () => {
-    if (!lastBatteryCalc || !lastBatteryCalc.calcResult) {
-      flash('Сначала выполните расчёт — выберите АКБ и нажмите «Рассчитать»', 'warn');
-      return;
-    }
-    const { params, calcResult } = lastBatteryCalc;
-    let strings = 1, blocksPerString = calcResult.blocksPerString || 1, autonomy = null;
-    if (calcResult.kind === 'autonomy') {
-      strings = params.strings || 1;
-      autonomy = calcResult.r?.autonomyMin || null;
-    } else if (calcResult.kind === 'required' && calcResult.found) {
-      strings = calcResult.found.strings || 1;
-      blocksPerString = calcResult.found.blocksPerString || blocksPerString;
-      autonomy = calcResult.found.result?.autonomyMin || null;
-    }
-    const battery = params.battery;
-    const totalKwh = battery
-      ? strings * blocksPerString * (battery.capacityAh || 0) * (battery.blockVoltage || 0) / 1000
-      : null;
-    const dcVoltage = battery && battery.blockVoltage ? battery.blockVoltage * blocksPerString : null;
-    const payload = {
-      source: 'battery-calc',
-      selectedAt: Date.now(),
-      battery: battery ? {
-        id: battery.id, supplier: battery.supplier, model: battery.model,
-        type: battery.type,
-        chemistry: battery.chemistry, capacityAh: battery.capacityAh,
-        blockVoltage: battery.blockVoltage,
-      } : null,
-      // v0.59.440: extra-поля для расширенного «Расчёт АКБ» в отчёте ИБП.
-      mode: params.mode, targetMin: params.targetMin,
-      endV: params.endV, invEff: params.invEff,
-      derate: calcResult.derate || null,
-      strings, blocksPerString, autonomyMin: autonomy,
-      totalBlocks: strings * blocksPerString,
-      totalKwh, dcVoltage,
-    };
-    try {
-      localStorage.setItem('raschet.upsBatteryReturn.v1', JSON.stringify(payload));
-      flash('Готово. Вернитесь на вкладку конфигуратора ИБП и нажмите «Далее → Итог».', 'success');
-      setTimeout(() => { try { window.close(); } catch {} }, 2000);
-    } catch (e) {
-      flash('Не удалось передать результат: ' + (e.message || e), 'error');
-    }
+  _pushMainAkbReturn(); _refreshBannerStatus();
+  // Авто-обновление: при сохранении/смене ★ основного варианта подбора АКБ
+  // — пересобираем то, что уйдёт в подбор ИБП (без ручного действия).
+  window.addEventListener('battery:configs-changed', () => {
+    try { _pushMainAkbReturn(); _refreshBannerStatus(); } catch {}
   });
   document.getElementById('ups-cancel-battery')?.addEventListener('click', () => {
     try { window.close(); } catch {}
