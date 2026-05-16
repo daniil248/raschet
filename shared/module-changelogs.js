@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.522', date: '2026-05-16', items: [
+      '🧩 <b>Модуляризация Фаза 2 (burndown #2): meteo/util → SHARED</b>. Generic-утилиты (newId/computeStats/escHtml/escAttr/modalOpen/toast/readFileAsText) перенесены из модуля <code>meteo/util.js</code> в <code>shared/meteo-util.js</code> (используются meteo, cooling, service). На старом пути — shim (<code>export *</code>, только named-экспорты — прозрачно для <code>import * as util</code>); внутримодульные <code>./util.js</code> не тронуты (zero-build). <code>cooling/cooling.js</code> и <code>service/service.js</code> импортируют из shared — устранены 2 кросс-модульных импорта (cooling→meteo, service→meteo), записи убраны из boundary-lint allowlist. Поведение идентично.',
+    ] },
     { version: '0.60.521', date: '2026-05-16', items: [
       '🧩 <b>Модуляризация Фаза 2 (burndown #1): psychrometrics-core → SHARED</b>. Чистые психрометрические формулы ASHRAE перенесены из модуля <code>psychrometrics/psychrometrics-core.js</code> в переиспользуемую calc-библиотеку <code>shared/calc/psychrometrics-core.js</code>. На старом пути — совместимостный shim (<code>export *</code>), внутримодульные импорты <code>./psychrometrics-core.js</code> не тронуты (zero-build). <code>meteo/ashrae-datasheet.js</code> импортирует из shared (кросс-модульный импорт meteo→psychrometrics устранён, запись убрана из boundary-lint allowlist). Поведение идентично — только границы модулей.',
     ] },

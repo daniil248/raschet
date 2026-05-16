@@ -20,7 +20,7 @@ import { ensureDefaultProject, projectKey, listProjects, getProject, setActivePr
 import { fetchRates, convert as convertRate } from '../shared/currency-rates/index.js';
 import { open as openRatesDialog } from '../shared/currency-rates/rates-dialog.js';
 import '../shared/currency-rates/sources/index.js';
-import * as util from '../meteo/util.js';
+import * as util from '../shared/meteo-util.js'; // v0.60.522: SHARED (burndown service→meteo)
 import { CURRENCIES, currencyToIso } from '../cooling/calc/fc-summary.js';
 import { openKpTemplateEditor } from './report/kp-editor.js';
 import { DEFAULT_ORDER, ORDER_TYPES, defaultPosition, formatOrderNumber, DEFAULT_NUMBER_PATTERNS } from './calc/order-model.js';

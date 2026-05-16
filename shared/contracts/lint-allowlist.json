@@ -7,20 +7,8 @@
     {
       "rule": "R1-cross-module-import",
       "file": "cooling/cooling.js",
-      "target": "meteo/util.js",
-      "note": "cooling использует meteo-утилиты напрямую. Burndown X.1.3: вынести общую часть в shared/ или через meteo-bridge."
-    },
-    {
-      "rule": "R1-cross-module-import",
-      "file": "cooling/cooling.js",
       "target": "meteo/charts.js",
       "note": "cooling использует meteo-графики (CSV-экспорт). Burndown X.1.3: shared/ или bridge."
-    },
-    {
-      "rule": "R1-cross-module-import",
-      "file": "service/service.js",
-      "target": "meteo/util.js",
-      "note": "service использует meteo-утилиты. Burndown X.1.3: shared/ или bridge."
     },
     {
       "rule": "R1-cross-module-import",

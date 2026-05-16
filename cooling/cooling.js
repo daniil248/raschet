@@ -23,7 +23,7 @@
 //   raschet.project.<pid>.cooling.tariff.v1
 
 import { ensureDefaultProject, projectKey, listProjects, getProject, setActiveProjectId, getActiveProjectId } from '../shared/project-storage.js';
-import * as util from '../meteo/util.js';
+import * as util from '../shared/meteo-util.js'; // v0.60.522: SHARED (burndown cooling→meteo)
 
 import { DEFAULT_CHILLER, COLUMNS, DEFAULT_COLS, CHILLER_COLS, isCracType as isCracTypeLocal } from './calc/chiller-defaults.js';
 import { buildBinData } from './calc/chiller-bin-calc.js';
