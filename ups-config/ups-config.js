@@ -637,17 +637,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // авто-открывался → панель подбора и wizard были на одной странице.
   initWizard();
 
-  // v0.60.446: Шаг 1 «Требования» = УСЛОВИЯ ПОДБОРА (общие, задаются в
-  // зоне ПОДБОРА «Свойства подбора»), а НЕ в варианте. При входе в зону
-  // ВАРИАНТА (rs-cs-focus scope=variant из сайдбара) — берём условия из
-  // подбора, скрываем Шаг 1 и сразу открываем подбор модели (Шаг 2).
+  // v0.60.475 (по замечанию Пользователя 2026-05-16: «зачем два раза про
+  // АКБ/ИБП»): редактор ВАРИАНТА — это вкладки [Spec/АКБ/CAPEX/Итог] в
+  // ПАНЕЛИ (B2.2 i1–i4). Старый 4-шаговый wizard БОЛЬШЕ НЕ открывается
+  // автоматически при выборе варианта (это и давало дублирующий блок
+  // «Конфигуратор ИБП для проекта» под панелью). Wizard остаётся ТОЛЬКО
+  // мостом: ?nodeId (Конструктор схем) / ?capacityKw (PUSH технолог) —
+  // см. initWizard(); подбор/смена модели — кнопками внутри панели.
   window.addEventListener('rs-cs-focus', (ev) => {
     const d = ev.detail || {};
     if (d.kind && d.kind !== 'ups') return;
     if (d.selectionName) _activeSelName = d.selectionName;
-    if (d.scope === 'variant') {
-      try { _enterVariantEditor(_activeSelName); } catch (e) { console.warn('[ups-config] variant editor', e); }
-    }
   });
   window.addEventListener('rs-selection-change', (ev) => {
     const d = ev.detail || {};
