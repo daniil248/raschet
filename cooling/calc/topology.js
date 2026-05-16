@@ -215,29 +215,6 @@ export function simulateOptionTopology(option, hourly, requiredCoolingKw = 0) {
 }
 
 /**
- * @deprecated v0.60.15 — используйте simulateOptionTopology(option, hourly).
- * Обёртка для backward-compat: создаёт виртуальный option из массива options.
- */
-export function buildTopologyFromOption(option) {
-  if (!option || !Array.isArray(option.equipment)) {
-    return { chillers: [], cracs: [], loopMode: 'common-loop', redundancyN: 1, redundancyM: 0, standbyMode: 'cold' };
-  }
-  const flat = [];
-  for (const eq of option.equipment) {
-    const q = Math.max(1, Math.round(Number(eq.qty) || 1));
-    for (let i = 0; i < q; i++) {
-      flat.push({
-        id: eq.id + (q > 1 ? `_${i + 1}` : ''),
-        name: eq.spec?.name || `${eq.role || 'Eq'} ${i + 1}`,
-        spec: eq.spec,
-      });
-    }
-  }
-  const t = option.topology || { loopMode: 'common-loop' };
-  return buildTopologyFromOptions(flat, t.loopMode, 1, 0, 'cold');
-}
-
-/**
  * Симуляция топологии по часовому ряду meteo.
  *
  * @param {TopologyDef} topo

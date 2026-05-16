@@ -47,7 +47,6 @@ battery/, ups-config/, panel-config/, transformer-config/ и т.д.
 | [`picker.js`](picker.js) | Модальное окно выбора шаблона из каталога (для подпрограмм) |
 | [`export-pdf.js`](export-pdf.js) | Экспорт в PDF |
 | [`export-docx.js`](export-docx.js) | Экспорт в DOCX |
-| [`demo.html`](demo.html) | Самодостаточная демо-страница модуля |
 
 ## Клавиатурные сокращения в canvas-редакторе
 
@@ -314,9 +313,3 @@ await Report.exportDOCX(tpl, filename)  // async — грузит docx.js с CDN
 3. Увеличить `BUILTIN_VERSION` — пересеивание произойдёт при следующей
    загрузке страницы reports/ у всех пользователей (их пользовательские
    шаблоны при этом не затрагиваются)
-
-## Отладка
-
-- [`demo.html`](demo.html) — самодостаточная страница для проверки API
-  без запуска полноценной подпрограммы
-- Открывается через dev-сервер как `/shared/report/demo.html`

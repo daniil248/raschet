@@ -100,12 +100,6 @@ export function fmtMoney(v, cur = '₽') {
 }
 
 /**
- * @deprecated — используйте fmtMoney(v, currency).
- * Оставлено для backward-compat.
- */
-export function fmtRub(v) { return fmtMoney(v, '₽'); }
-
-/**
  * Каталог поддерживаемых валют для UI-селектора.
  * code — символ для отображения; iso — ISO 4217 код для конвертации;
  * label — полное название.

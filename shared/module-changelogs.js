@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.520', date: '2026-05-16', items: [
+      '🧹 <b>Чистка структуры: удалён мёртвый код и мусор</b>. Удалены неиспользуемые файлы: <code>shared/mv-short-circuit.js</code> (модуль ТКЗ IEC 60909 — 0 импортёров с v0.54.3), <code>js/auth.js</code> (no-op DEPRECATED-shim, логика давно в <code>shared/auth.js</code>), <code>dgu-config/datasheets/drups.js</code> (re-export shim v0.60.92 — 0 импортёров), <code>shared/report/demo.html</code> (демо-артефакт). Удалены мёртвые экспорты: <code>buildTopologyFromOption</code> (<code>cooling/calc/topology.js</code>, @deprecated v0.60.15, без вызывающих) и <code>fmtRub</code> (<code>cooling/calc/fc-summary.js</code>, @deprecated, без вызывающих). Удалён мусор из корня: <code>Текстовый документ.txt</code> (черновые заметки), <code>Roadmap.docx</code> (устаревший бинарный дубль ROADMAP.md), <code>scripts/audit-design.mjs</code> (дубль — канонична Python-версия audit-design.py). Обновлён <code>shared/report/README.md</code> (убраны ссылки на demo.html). Без регрессий: все удалённые сущности проверены на отсутствие статических и динамических (<code>import()</code>) ссылок.',
+    ] },
     { version: '0.60.519', date: '2026-05-16', items: [
       '📤 <b>Handoff Технолог→Конструктор: переносятся паспортные данные концепции</b>. Узлы ИБП теперь получают <code>capacityKw</code> (=кВА×cos φ — расчётное ядро читает именно его), КПД, тип ИБП, схему резервирования, cos φ, фазность, габариты, производитель/модель + <code>canParallel</code> (раньше шли только kva/autonomy → схема стартовала с пустыми электр. параметрами ИБП, что мешало и расчёту параллельных ИБП). Аналогично переносятся паспорт/габариты ТП, ДГУ и кондиционеров. Узлы помечены <code>_conceptUsId/_conceptCuId</code> для будущей обратной синхронизации.',
     ] },
