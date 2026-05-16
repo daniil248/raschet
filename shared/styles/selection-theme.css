@@ -101,8 +101,12 @@
 .rsp-body{padding:14px}
 .rsp-sec-title{font-weight:600;color:var(--sel-ink);margin:4px 0 8px;font-size:13px}
 .rsp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
-.rsp-field{display:flex;flex-direction:column;gap:3px;font-size:12px;color:#475569}
-.rsp-field input,.rsp-field select{padding:6px 8px;border:1px solid var(--sel-btn-bd);border-radius:4px;font:inherit}
+/* v0.60.451: фикс «прыгающих» полей — единая высота ячейки, инпут
+   прижат к низу. Бейдж «🔒 из проекта» не меняет высоту строки. */
+.rsp-field{display:flex;flex-direction:column;gap:3px;font-size:12px;color:#475569;min-height:58px;justify-content:flex-start;align-items:stretch}
+.rsp-field > input,.rsp-field > select{margin-top:auto}
+.rsp-field input,.rsp-field select{padding:6px 8px;border:1px solid var(--sel-btn-bd);border-radius:4px;font:inherit;box-sizing:border-box;width:100%}
+.rsp-field-lock{display:block;color:#16a34a;font-size:10.5px;font-weight:600;line-height:1.2}
 .rsp-note{font-size:11.5px;color:var(--sel-note-ink);background:var(--sel-note-bg);border:1px solid var(--sel-note-bd);border-radius:4px;padding:7px 10px;margin:10px 0 0}
 .rsp-empty{color:var(--sel-muted);text-align:center;padding:26px 10px;font-size:13px}
 .rsp-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}

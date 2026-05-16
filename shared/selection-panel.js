@@ -149,8 +149,23 @@ export function mountSelectionPanel(o) {
       const fromProj = (f.key in pr);
       const v = fromProj ? pr[f.key] : req[f.key];
       const lk = (roAttr || (fromProj ? ' disabled' : ''));
-      const projTag = fromProj ? ' <span style="color:#16a34a">🔒 из проекта</span>' : '';
+      const projTag = fromProj ? '<span class="rsp-field-lock">🔒 из проекта</span>' : '';
       const projTitle = fromProj ? ' title="🔒 Значение из проекта (свойства проекта → 🏔 Параметры площадки). Для ручного ввода переключите на «Разовый подбор»."' : '';
+      if (f.type === 'multiselect') {
+        // v0.60.451: выбор НЕСКОЛЬКИХ допустимых значений (чекбоксы).
+        // Пусто = «любой» (ограничения нет). Хранится массивом.
+        const sel = Array.isArray(v) ? v.map(String) : [];
+        const dis = lk ? ' disabled' : '';
+        const boxes = (f.options || []).map(op => {
+          const val = typeof op === 'string' ? op : op.value;
+          const lab = typeof op === 'string' ? op : op.label;
+          const on = sel.includes(String(val));
+          return `<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#334155;margin-right:10px;white-space:nowrap">
+            <input type="checkbox" data-reqmulti="${escH(f.key)}" value="${escH(val)}"${on ? ' checked' : ''}${dis}> ${escH(lab)}</label>`;
+        }).join('');
+        return `<div class="rsp-field" title="${escH(f.tip || '')}" style="grid-column:1/-1">${escH(f.label)}${f.unit ? ', ' + escH(f.unit) : ''}${projTag}
+          <div style="display:flex;flex-wrap:wrap;gap:2px 0;margin-top:auto;padding:5px 0">${boxes}<span style="font-size:11px;color:#94a3b8;align-self:center">${sel.length ? '' : '(пусто = любой)'}</span></div></div>`;
+      }
       if (f.type === 'select') {
         const opts = (f.options || []).map(op => {
           const val = typeof op === 'string' ? op : op.value;
@@ -168,7 +183,7 @@ export function mountSelectionPanel(o) {
     const curOpts = CURRENCIES.map(c =>
       `<option value="${c.code}"${c.code === (eco.currency || '₸') ? ' selected' : ''} title="${escH(c.label)}">${c.code}</option>`).join('');
     const finHtml = FIN_FIELDS.map(f =>
-      `<label class="rsp-field" title="${escH(f.tip)}">${escH(f.label)}${(f.key in pe) ? ' <span style="color:#16a34a">🔒 из проекта</span>' : ''}
+      `<label class="rsp-field" title="${escH(f.tip)}">${escH(f.label)}${(f.key in pe) ? '<span class="rsp-field-lock">🔒 из проекта</span>' : ''}
         <input type="number" data-eco="${f.key}" step="${f.step}" value="${escH(eco[f.key] == null ? '' : eco[f.key])}"${lockAttr(f.key)}${lockedNote(f.key)}></label>`).join('');
     const curLocked = ('currency' in pe);
 
@@ -179,7 +194,7 @@ export function mountSelectionPanel(o) {
       <div class="rsp-divider"></div>
       <div class="rsp-sec-title" title="Финансовые параметры — общие для всех вариантов, чтобы сравнение TCO было на одинаковых условиях (как в «Подбор холода»).">💰 Финансовые параметры (общие для всех вариантов)</div>
       <div class="rsp-grid">
-        <label class="rsp-field" title="Валюта подбора — все CAPEX/OPEX/TCO приводятся к ней по курсу.">Валюта подбора${curLocked ? ' <span style="color:#16a34a">🔒 из проекта</span>' : ''}
+        <label class="rsp-field" title="Валюта подбора — все CAPEX/OPEX/TCO приводятся к ней по курсу.">Валюта подбора${curLocked ? '<span class="rsp-field-lock">🔒 из проекта</span>' : ''}
           <select data-eco="currency"${curLocked ? ' disabled title="🔒 Валюта из проекта (свойства проекта → 💰 Экономика)."' : ''}>${curOpts}</select></label>
         ${finHtml}
       </div>
@@ -431,6 +446,19 @@ export function mountSelectionPanel(o) {
         const k = inp.dataset.req;
         req[k] = inp.type === 'number' ? (inp.value === '' ? '' : Number(inp.value)) : inp.value;
         persist({ requirements: req });
+      });
+    });
+    // v0.60.451: мультивыбор допустимых типов (чекбоксы) → массив.
+    const _multiKeys = new Set([...mountEl.querySelectorAll('[data-reqmulti]')].map(i => i.dataset.reqmulti));
+    _multiKeys.forEach(key => {
+      mountEl.querySelectorAll(`[data-reqmulti="${key}"]`).forEach(cb => {
+        cb.addEventListener('change', () => {
+          const m = getSelectionMeta(kind, { projectCode: pc, selectionName: selName });
+          const req = { ...((m && m.requirements) || {}) };
+          req[key] = [...mountEl.querySelectorAll(`[data-reqmulti="${key}"]:checked`)].map(x => x.value);
+          persist({ requirements: req });
+          render();
+        });
       });
     });
     mountEl.querySelectorAll('[data-eco]').forEach(inp => {

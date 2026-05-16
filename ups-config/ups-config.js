@@ -804,7 +804,16 @@ function _loadReqFromSelection(selName) {
   if (r.redundancy) { rq.redundancy = r.redundancy; rq.moduleRedundancy = r.redundancy; }
   if (r.cosPhi != null && r.cosPhi !== '') rq.cosPhi = Number(r.cosPhi) || rq.cosPhi;
   if (r.phases != null && r.phases !== '') rq.phases = Number(r.phases) || rq.phases;
-  if (r.upsType != null) rq.upsType = r.upsType;  // v0.60.449: тип из подбора
+  // v0.60.451: «Допустимые типы ИБП» — массив. Тип варианта = тип
+  // выбранной модели; список моделей фильтруется по допустимым типам.
+  // Backward-compat: старое одиночное r.upsType.
+  if (Array.isArray(r.upsTypes)) {
+    rq.upsTypes = r.upsTypes.slice();
+    rq.upsType = r.upsTypes.length === 1 ? r.upsTypes[0] : '';
+  } else if (r.upsType != null) {
+    rq.upsType = r.upsType;
+    rq.upsTypes = r.upsType ? [r.upsType] : [];
+  }
   // v0.60.448: высота установки + макс. темп. среды — условия подбора
   // (дерейтинг). Из проекта/технолога или вручную в «Свойства подбора».
   if (r.altitudeM != null && r.altitudeM !== '') rq.altitudeM = Number(r.altitudeM) || 0;
