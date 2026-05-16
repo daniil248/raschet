@@ -599,7 +599,10 @@
         // резерва и топологии АКБ. Считаем число рабочих/установленных
         // единиц по номиналу модели и схеме резерва.
         const critKw = Number(req.loadKw) || 0;
-        const unitCapKw = Number(p.capacityKw) || (u && Number(u.capacityKw)) || 0;
+        // Номинал ОДНОГО ИБП = паспортная мощность выбранной модели
+        // (u.capacityKw). p.capacityKw НЕ использовать как номинал — у
+        // вариантов из старого wizard там мощность всей системы.
+        const unitCapKw = (u && Number(u.capacityKw)) || Number(p.capacityKw) || 0;
         const scheme = String(p.redundancy || req.redundancy || 'N');
         const Nwork = unitCapKw > 0 ? Math.max(1, Math.ceil(critKw / unitCapKw)) : 1;
         const installed = scheme === '2N' ? 2 * Nwork
