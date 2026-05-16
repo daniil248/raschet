@@ -2506,7 +2506,16 @@ function doCalc() {
     // количество АКБ, но не передал в состав»): строку модулей создаём
     // ВСЕГДА, даже без выбранной модели каталога — берём кол-во из
     // подбора (цепочки × блоков) и обозначение из химии/ёмкости/напр.
-    const _totBlocks = (Number(strings) || 1) * (Number(blocksPerString) || 1);
+    // v0.60.485 (по замечанию: «подобрали 396 (12×33), а в составе 33»):
+    // берём ПОЛНОЕ число блоков из результата (как в save-флоу), а не
+    // loose strings (в required-режиме он = 1).
+    const _isReq = calcResult && calcResult.kind === 'required' && calcResult.found;
+    const _st  = _isReq ? (Number(calcResult.found.strings) || 1) : (Number(strings) || 1);
+    const _bps = _isReq ? (Number(calcResult.found.blocksPerString) || Number(blocksPerString) || 1)
+                        : (Number(blocksPerString) || 1);
+    const _totBlocks = (_isReq && Number(calcResult.found.totalBlocks) > 0)
+      ? Number(calcResult.found.totalBlocks)
+      : (_st * _bps);
     const _genLabel = battery
       ? (battery.type || battery.model || 'АКБ')
       : `АКБ ${(typeof chemLabel === 'function' ? chemLabel(chemistry) : (chemistry || 'VRLA'))} · ${capacityAh || 100} А·ч · ${blockV || 12} В`;

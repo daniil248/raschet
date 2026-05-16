@@ -778,9 +778,15 @@ function _openWizard({ standalone }) {
   };
   document.getElementById('wiz-btn-next-1').onclick = _goStep2;
   document.getElementById('wiz-btn-back-2').onclick = () => _showStep(1);
-  document.getElementById('wiz-btn-next-2').onclick = _goStep3;
+  // v0.60.485 (по замечанию Пользователя): шаг «Подбор АКБ» в мастере
+  // ИБП больше НЕ нужен — подбор АКБ вынесен в отдельный раздел сверху
+  // (вкладка/кнопка «🔋 АКБ»). Шаг 2 (модель) → сразу Итог; АКБ в
+  // мастере помечаем как внешний (подбирается отдельно).
+  document.getElementById('wiz-btn-next-2').onclick = () => {
+    wizState.batteryChoice = wizState.batteryChoice || 'external';
+    _goStep4();
+  };
   document.getElementById('wiz-btn-back-3').onclick = () => _showStep(2);
-  // v0.59.400: шаг 3 — выбор АКБ или пропустить, шаг 4 — итог.
   const skipBtn = document.getElementById('wiz-btn-skip-batt');
   const pickBtn = document.getElementById('wiz-btn-pick-batt');
   const next3Btn = document.getElementById('wiz-btn-next-3');
@@ -788,7 +794,8 @@ function _openWizard({ standalone }) {
   if (skipBtn) skipBtn.onclick = () => { wizState.batteryChoice = 'skip'; if (next3Btn) next3Btn.disabled = false; _renderBatteryInfo(); _goStep4(); };
   if (pickBtn) pickBtn.onclick = _openBatteryPicker;
   if (next3Btn) next3Btn.onclick = _goStep4;
-  if (back4Btn) back4Btn.onclick = () => _showStep(3);
+  // Шаг 2 — без промежуточного АКБ-шага: «Назад» из Итога ведёт к модели.
+  if (back4Btn) back4Btn.onclick = () => _showStep(2);
   // v0.59.441: кнопка «Изменить конфигурацию» — возврат к шагу 1 с сохранёнными значениями.
   const editCfgBtn = document.getElementById('wiz-btn-edit-cfg');
   if (editCfgBtn) editCfgBtn.onclick = () => { _fillWizStep1Fields(); _showStep(1); };
