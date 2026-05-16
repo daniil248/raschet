@@ -1503,17 +1503,23 @@ function renderListRail(c, ro) {
           };
           const lbl = KIND_LABEL[ok] || ok;
           const editUrl = _pid ? `../projects/project.html?id=${encodeURIComponent(_pid)}` : '../projects/';
-          return `<div class="tw-rail-item" style="background:#f0f9ff;border-color:#0ea5e9;cursor:default" title="Тип объекта определяет какие разделы активны. Полноценно работает «🏢 ЦОД». Для остальных типов разделы появятся в Phase 47.1.4. Редактируется в карточке проекта.">
+          const _KIND_SECNOTE = {
+            'factory': 'Активны: Помещения · Ввод · Площади · Сводки. Производственные линии / силовые трансформаторы / мех-оборудование — в разработке.',
+            'pump-station': 'Активны: Помещения · Ввод · Площади · Сводки. Насосные группы / ёмкости / КИПиА — в разработке.',
+            'office': 'Активны: Помещения · Ввод · Площади · Сводки. Освещение / розетки / СКС / кондиционирование — в разработке.',
+            'custom': 'Свой шаблон: состав разделов настраивается в карточке проекта (objectModules).',
+          };
+          return `<div class="tw-rail-item" style="background:#f0f9ff;border-color:#0ea5e9;cursor:default" title="Тип объекта определяет, какие разделы sidebar активны. Редактируется в карточке проекта.">
             <span class="tw-rail-name" style="display:flex;align-items:center;gap:6px">Тип: <b>${escHtml(lbl)}</b>
               <a href="${editUrl}" target="_blank" style="margin-left:auto;padding:2px 6px;font-size:10px;border:1px solid #0ea5e9;background:#fff;color:#0369a1;border-radius:3px;cursor:pointer;text-decoration:none">↪ карточка</a>
             </span>
-            ${ok !== 'datacenter' ? '<span class="tw-rail-sub" style="color:#b45309">⚠ Для этого типа разделы пока в разработке (Phase 47). Сейчас отображаются разделы ЦОД.</span>' : ''}
+            ${ok !== 'datacenter' ? `<span class="tw-rail-sub" style="color:#b45309">${escHtml(_KIND_SECNOTE[ok] || 'Состав разделов адаптирован под тип объекта.')}</span>` : ''}
           </div>`;
         })()}
       </div>
     </div>
 
-    <div class="tw-rail-section">
+    <div class="tw-rail-section" data-objsec="rooms">
       <div class="tw-rail-head">
         <span class="tw-rail-title" title="Помещения объекта (IT-залы, электрощитовые, насосные и т.п.). К каждому помещению привязываются группы стоек, ИБП и кондиционеры. ИБП могут стоять в одном зале со стойками или в отдельной щитовой; климат может быть общим (chiller-plant обслуживает несколько залов) или независимым per-room (CRAC/DX в каждом зале).">🏠 Помещения <span class="muted">·${_rooms.length}</span></span>
         <button type="button" class="tw-rail-add" data-add-card="room" title="Добавить помещение (IT-зал / UPS-room / щитовая)" ${ro ? 'disabled' : ''}>➕</button>
@@ -1521,7 +1527,7 @@ function renderListRail(c, ro) {
       <div class="tw-rail-list">${roomRows || '<div class="tw-rail-empty muted">Нет помещений</div>'}</div>
     </div>
 
-    <div class="tw-rail-section">
+    <div class="tw-rail-section" data-objsec="racks">
       <div class="tw-rail-head">
         <span class="tw-rail-title">🗄 Стойки <span class="muted">·${(c.rackGroups || []).length}</span></span>
         <a class="tw-rail-cfg" href="${escAttr(_buildConfigLink('rack-config'))}" target="_blank"
@@ -1534,7 +1540,7 @@ function renderListRail(c, ro) {
       <div class="tw-rail-foot">Σ ${itKw.toFixed(1)} кВт IT</div>
     </div>
 
-    <div class="tw-rail-section">
+    <div class="tw-rail-section" data-objsec="ups">
       <div class="tw-rail-head">
         <span class="tw-rail-title">⚡ ИБП <span class="muted">·${(c.upsSystems || []).length}</span></span>
         <a class="tw-rail-cfg" href="${escAttr(_buildConfigLink('ups-config'))}" target="_blank"
@@ -1545,7 +1551,7 @@ function renderListRail(c, ro) {
       <div class="tw-rail-foot">Σ ${upsByPurpose.total.toFixed(1)} кВт ${upsItMissing}</div>
     </div>
 
-    <div class="tw-rail-section">
+    <div class="tw-rail-section" data-objsec="cool">
       <div class="tw-rail-head">
         <span class="tw-rail-title">❄ Климат <span class="muted">·${(c.coolingUnits || []).length}</span></span>
         <a class="tw-rail-cfg" href="${escAttr(_buildConfigLink('cooling'))}" target="_blank"
@@ -1574,7 +1580,7 @@ function renderListRail(c, ro) {
       <div class="tw-rail-foot">Σ ${coolKw.toFixed(1)} кВт холода ${coolMissing}</div>
     </div>
 
-    ${(c.projectData?.dcType || 'stationary') === 'modular' ? `<div class="tw-rail-section">
+    ${(c.projectData?.dcType || 'stationary') === 'modular' ? `<div class="tw-rail-section" data-objsec="mdc">
       <div class="tw-rail-head">
         <span class="tw-rail-title">🏢 МЦОД <span class="muted">·${(c.mdcBuildings || []).length}</span></span>
         <a class="tw-rail-cfg" href="${escAttr(_buildConfigLink('mdc-config'))}" target="_blank"
@@ -1599,7 +1605,7 @@ function renderListRail(c, ro) {
       })()}</div>
     </div>` : ''}
 
-    <div class="tw-rail-section">
+    <div class="tw-rail-section" data-objsec="feed">
       <div class="tw-rail-head">
         <span class="tw-rail-title">🔌 Ввод</span>
         <a class="tw-rail-cfg" href="${escAttr(_buildConfigLink('transformer-config'))}" target="_blank"
@@ -1619,7 +1625,7 @@ function renderListRail(c, ro) {
       </div>
     </div>
 
-    <div class="tw-rail-section">
+    <div class="tw-rail-section" data-objsec="areas">
       <div class="tw-rail-head">
         <span class="tw-rail-title">📐 Площади</span>
       </div>
@@ -1632,7 +1638,7 @@ function renderListRail(c, ro) {
       </div>
     </div>
 
-    <div class="tw-rail-section">
+    <div class="tw-rail-section" data-objsec="pue">
       <div class="tw-rail-head">
         <span class="tw-rail-title">📊 PUE</span>
       </div>
@@ -2836,6 +2842,25 @@ function renderActiveVariant() {
     }
 
     listPane.innerHTML = `${layoutPicker}${summaryBar}${bodyHtml}`;
+    // v0.60.495 (Phase 47.1.4): состав разделов sidebar по типу объекта.
+    // Datacenter — все; factory/pump-station/office — generic набор
+    // (помещения/ввод/площади/сводки); custom — proj.objectModules.
+    try {
+      const _proj = _pid ? getProject(_pid) : null;
+      const _ok = _proj?.objectKind || 'datacenter';
+      const _DC = ['rooms', 'racks', 'ups', 'cool', 'mdc', 'feed', 'areas', 'pue'];
+      const _GEN = ['rooms', 'feed', 'areas'];
+      const _SETS = {
+        datacenter: _DC,
+        factory: _GEN, 'pump-station': _GEN, office: _GEN,
+        custom: (Array.isArray(_proj?.objectModules) && _proj.objectModules.length)
+          ? _proj.objectModules : _DC,
+      };
+      const _set = new Set(_SETS[_ok] || _DC);
+      listPane.querySelectorAll('[data-objsec]').forEach(el => {
+        if (!_set.has(el.dataset.objsec)) el.remove();
+      });
+    } catch (e) { console.warn('[tw] objectKind section filter', e); }
     $('tw-content-summary').textContent = `${totalRacks} стоек · ${itKw.toFixed(1)} кВт IT · Σ ${sumM2} м²`;
   }
 }

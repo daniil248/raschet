@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.495', date: '2026-05-16', items: [
+      '🏗 <b>Phase 47.1.4: «Технолог объекта» — состав разделов sidebar по типу объекта</b>. Секции помечены <code>data-objsec</code>; после рендера фильтруются по <code>project.objectKind</code>: datacenter — все (стойки/ИБП/климат/МЦОД/PUE/…); factory/pump-station/office — generic набор (Помещения · Ввод · Площади · Сводки); custom — по <code>project.objectModules</code>. Баннер типа объекта показывает точный состав/что в разработке (без вводящего «показываются разделы ЦОД»). «📦 Сводки» (Перечень/BOM) и «🏷 Объект» — всегда.',
+    ] },
     { version: '0.60.494', date: '2026-05-16', items: [
       '🧾 <b>Roadmap 23.5: разбивка стоимости строки BOM в Tech-workspace</b>. У каждой позиции BOM — кнопка «📦» → in-page модал (База+Доставка−Скидка% → авто-цена за ед.). Хранится в <code>concept.bomOverrides[key].breakdown</code> + вычисленный <code>unitPrice</code>; при активной разбивке ручной ввод цены строки заблокирован; «Убрать разбивку» → ручной режим. Σ/итоги/валюта проекта без изменений (backward-compat). Фаза 23 закрыта.',
     ] },
