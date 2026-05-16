@@ -600,27 +600,10 @@
     import { APP_VERSION } from '../js/engine/constants.js';
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'battery', moduleTitle: 'АКБ' });
   </script>
-  <!-- v0.60.425: сайдбар подборов АКБ (kind='battery', groupBySelection). -->
-  <script type="module">
-    import '../shared/sidebar-resizer.js';
-    import { mountConfigSidebar } from '../shared/config-sidebar.js';
-    const api = mountConfigSidebar({
-      kind: 'battery',
-      title: 'Подборы АКБ',
-      groupBySelection: true,
-      sections: ['list'],
-      onSelect: (entry) => {
-        // Применение сохранённого расчёта — событие для battery-calc.js.
-        try { window.dispatchEvent(new CustomEvent('battery:load-config', { detail: entry })); } catch {}
-      },
-    });
-    if (api && api.enabled) {
-      window.addEventListener('battery:configs-changed', () => { try { api.refresh(); } catch {} });
-    }
-  </script>
-  <!-- v0.60.457: проброс условий ИЗ подбора ИБП → подбор АКБ при запуске
-       «⚡ Подобрать АКБ» (raschet.upsHandoff.v1). Выполняется ДО mount
-       панели, чтобы подбор уже существовал с переданными условиями. -->
+  <!-- v0.60.457/463: проброс условий ИЗ подбора ИБП → подбор АКБ при
+       запуске «⚡ Подобрать АКБ» (raschet.upsHandoff.v1). Выполняется
+       ПЕРЕД mount сайдбара/панели, чтобы подбор уже существовал и
+       сайдбар сразу сфокусировался на относящемся подборе. -->
   <script type="module">
     import { getActiveProjectCode, ensureSelectionMeta, getSelectionMeta, saveSelectionMeta }
       from '../shared/configuration-catalog.js';
@@ -648,6 +631,39 @@
         }
       }
     } catch (e) { console.warn('[battery] ups→battery handoff seed failed', e); }
+  </script>
+  <!-- v0.60.425/463: сайдбар подборов АКБ (kind='battery', groupBySelection).
+       В handoff-режиме (?fromUps=1) фокус ТОЛЬКО на относящемся подборе. -->
+  <script type="module">
+    import '../shared/sidebar-resizer.js';
+    import { mountConfigSidebar } from '../shared/config-sidebar.js';
+    // Какой подбор относится к запустившему ИБП (та же формула, что в seed).
+    let onlySelection = null;
+    try {
+      const qp = new URLSearchParams(location.search);
+      if (qp.get('fromUps') === '1') {
+        const ho = JSON.parse(localStorage.getItem('raschet.upsHandoff.v1') || 'null');
+        if (ho && ho.source === 'ups-config') {
+          onlySelection = (ho.selectionName ? ('АКБ для ' + ho.selectionName)
+            : ('АКБ для ИБП ' + (ho.upsLabel || ''))).trim()
+            || (sessionStorage.getItem('raschet.battActiveSel') || null);
+        }
+      }
+    } catch {}
+    const api = mountConfigSidebar({
+      kind: 'battery',
+      title: 'Подборы АКБ',
+      groupBySelection: true,
+      sections: ['list'],
+      onlySelection,
+      onSelect: (entry) => {
+        // Применение сохранённого расчёта — событие для battery-calc.js.
+        try { window.dispatchEvent(new CustomEvent('battery:load-config', { detail: entry })); } catch {}
+      },
+    });
+    if (api && api.enabled) {
+      window.addEventListener('battery:configs-changed', () => { try { api.refresh(); } catch {} });
+    }
   </script>
   <!-- v0.60.429: панель ПОДБОРА АКБ (условия + TCO/CAPEX/OPEX/сравнение) -->
   <script type="module">

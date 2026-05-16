@@ -175,6 +175,14 @@ export function mountConfigSidebar(opts) {
   let activeId = null;
   let activeSelName = null; // v0.60.432: активный подбор (для «+ Вариант»)
   let filter = '';
+  // v0.60.463 (по замечанию Пользователя 2026-05-16: «если запускаю подбор
+  // АКБ из подбора ИБП — зачем показывать посторонние подборы другой
+  // мощности/типа; неясно какой относится к моему ИБП»). В handoff-режиме
+  // сайдбар фокусируется на ОДНОМ относящемся подборе; «Показать все» —
+  // временно снять фокус.
+  let onlySel = (o.onlySelection || '').trim() || null;
+  let showAllSel = false;
+  let _onlySelFired = false;
   // v0.60.422: коллапс-состояние подборов (Map<selectionName, collapsed:bool>).
   const collapsedSelections = new Map();
 
@@ -192,8 +200,23 @@ export function mountConfigSidebar(opts) {
         if (nm && !groups.has(nm)) groups.set(nm, []);
       }
     }
+    // v0.60.463: handoff-фокус — оставить только относящийся подбор.
+    let bannerHtml = '';
+    if (onlySel && o.groupBySelection && !filter) {
+      if (!showAllSel) {
+        for (const k of [...groups.keys()]) if (k !== onlySel) groups.delete(k);
+        if (!groups.has(onlySel)) groups.set(onlySel, []);
+        if (!_onlySelFired) {
+          activeSelName = onlySel; _onlySelFired = true;
+          try { fireSel(onlySel); } catch {}
+        }
+        bannerHtml = `<li class="rs-cs-handoff-banner" style="padding:8px 10px;background:#eef2ff;border-bottom:1px solid #c7d2fe;color:#3730a3;font-size:11px;line-height:1.5">🔌 Подбор АКБ для запустившего ИБП: <b>${esc(onlySel)}</b>. Прочие подборы скрыты, чтобы не путать с подборами другой мощности/типа. <button type="button" data-act="show-all-sel" class="rs-cs-btn" style="margin-top:4px">Показать все подборы</button></li>`;
+      } else {
+        bannerHtml = `<li class="rs-cs-handoff-banner" style="padding:8px 10px;background:#fff7ed;border-bottom:1px solid #fed7aa;color:#9a3412;font-size:11px;line-height:1.5">Показаны ВСЕ подборы АКБ. Относящийся к запустившему ИБП: <b>${esc(onlySel)}</b>. <button type="button" data-act="only-mine-sel" class="rs-cs-btn" style="margin-top:4px">Только мой подбор</button></li>`;
+      }
+    }
     if (!groups.size) {
-      slotList.innerHTML = `<li class="rs-cs-empty">${filter ? 'Ничего не найдено'
+      slotList.innerHTML = bannerHtml + `<li class="rs-cs-empty">${filter ? 'Ничего не найдено'
         : (o.groupBySelection
             ? 'Подборов пока нет. Кнопка «+ Подбор» создаст первый. В одном подборе держите альтернативные варианты (моноблок vs модульный vs гибрид) для сравнения.'
             : 'Нет записей')}</li>`;
@@ -243,7 +266,7 @@ export function mountConfigSidebar(opts) {
         ${collapsed ? '' : `<ul style="list-style:none;padding:0;margin:0">${entries.map(e => renderEntryItem(e)).join('')}</ul>`}
       </li>`);
     }
-    slotList.innerHTML = html.join('');
+    slotList.innerHTML = bannerHtml + html.join('');
   }
 
   function renderEntryItem(e) {
@@ -337,6 +360,14 @@ export function mountConfigSidebar(opts) {
 
   // Делегирование кликов по списку
   if (slotList) slotList.addEventListener('click', async (ev) => {
+    // v0.60.463: переключатель handoff-фокуса (показать все / только мой).
+    const focusBtn = ev.target.closest('[data-act="show-all-sel"],[data-act="only-mine-sel"]');
+    if (focusBtn) {
+      ev.stopPropagation();
+      showAllSel = focusBtn.dataset.act === 'show-all-sel';
+      render();
+      return;
+    }
     // v0.60.437: действия над ПОДБОРОМ (переименовать / удалить) — на
     // заголовке подбора. Перехватываем ДО toggle, чтобы клик не сворачивал.
     const selOp = ev.target.closest('[data-act-selop]');
