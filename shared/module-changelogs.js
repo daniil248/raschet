@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.523', date: '2026-05-16', items: [
+      '🧩 <b>Модуляризация Фаза 2 (burndown #3): CSV-хелперы → SHARED</b>. <code>tableToCsv</code>/<code>downloadCsv</code> перенесены из <code>meteo/charts.js</code> в <code>shared/meteo-util.js</code> (generic, используются meteo annual-table и cooling-экспорт). <code>meteo/charts.js</code> re-export\\'ит их (старый путь <code>./charts.js</code> для <code>meteo/annual-table.js</code> цел, zero-build). <code>cooling/cooling.js</code> импортирует из shared — последний кросс-модульный импорт cooling→meteo устранён; запись убрана из allowlist. Поведение идентично.',
+    ] },
     { version: '0.60.522', date: '2026-05-16', items: [
       '🧩 <b>Модуляризация Фаза 2 (burndown #2): meteo/util → SHARED</b>. Generic-утилиты (newId/computeStats/escHtml/escAttr/modalOpen/toast/readFileAsText) перенесены из модуля <code>meteo/util.js</code> в <code>shared/meteo-util.js</code> (используются meteo, cooling, service). На старом пути — shim (<code>export *</code>, только named-экспорты — прозрачно для <code>import * as util</code>); внутримодульные <code>./util.js</code> не тронуты (zero-build). <code>cooling/cooling.js</code> и <code>service/service.js</code> импортируют из shared — устранены 2 кросс-модульных импорта (cooling→meteo, service→meteo), записи убраны из boundary-lint allowlist. Поведение идентично.',
     ] },

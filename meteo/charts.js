@@ -317,20 +317,7 @@ export function renderDaysInRangeTable(hourly) {
 // v0.59.991: drawChillerEnergyChart перенесён в /cooling/ui/energy-chart.js
 // (расчёт чиллеров теперь в отдельном модуле).
 
-// ─── 6. CSV helpers
-export function tableToCsv(rows) {
-  return rows.map(r => r.map(c => {
-    const s = String(c == null ? '' : c);
-    if (s.includes(';') || s.includes('"') || s.includes('\n')) return '"' + s.replace(/"/g, '""') + '"';
-    return s;
-  }).join(';')).join('\r\n');
-}
-
-export function downloadCsv(csv, filename) {
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename || 'meteo-export.csv';
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+// ─── 6. CSV helpers — v0.60.523 (Фаза 2 burndown #3): реализация в
+// SHARED (shared/meteo-util.js). Re-export сохраняет старый путь
+// `./charts.js` для meteo/annual-table.js (zero-build).
+export { tableToCsv, downloadCsv } from '../shared/meteo-util.js';

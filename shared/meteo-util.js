@@ -73,3 +73,23 @@ export function readFileAsText(file, encoding = 'utf-8') {
     r.readAsText(file, encoding);
   });
 }
+
+// CSV-хелперы (v0.60.523, Фаза 2 burndown #3): перенесены из
+// meteo/charts.js — generic, используются meteo (annual-table) и
+// cooling (экспорт подбора). meteo/charts.js их re-export'ит.
+export function tableToCsv(rows) {
+  return rows.map(r => r.map(c => {
+    const s = String(c == null ? '' : c);
+    if (s.includes(';') || s.includes('"') || s.includes('\n')) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }).join(';')).join('\r\n');
+}
+
+export function downloadCsv(csv, filename) {
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename || 'meteo-export.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

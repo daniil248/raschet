@@ -47,7 +47,7 @@ import { simulateOptionTopology } from './calc/topology.js';
 // inlined в renderActiveTab). Оставлен только renderTopologyResults.
 import { renderTopologyResults } from './ui/topology-view.js';
 
-import { tableToCsv, downloadCsv } from '../meteo/charts.js';
+import { tableToCsv, downloadCsv } from '../shared/meteo-util.js'; // v0.60.523: SHARED (burndown cooling→meteo/charts)
 import { getActiveMeteoDataset, getMeteoFilter, applyFilter, preloadMeteoForPid } from './meteo-bridge.js';
 import { CURRENCIES, currencyToIso } from './calc/fc-summary.js';
 import { open as openRatesDialog } from '../shared/currency-rates/rates-dialog.js';
