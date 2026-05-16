@@ -752,10 +752,37 @@
       };
     }
 
+    // v0.60.474 (B2.2 i5 — паритет с ИБП): корректность сравнения
+    // вариантов АКБ. Сравнивать можно только сопоставимые: у всех
+    // вариантов должна быть подобрана батарея и одинаковая автономия
+    // (общее условие подбора). Иначе — предупреждение.
+    function compareCheck(entries, req) {
+      const w = [];
+      const st = (entries || []).map(e => {
+        const p = (e && e.payload) || {};
+        const hasBatt = !!(p.battery && (p.battery.id || p.battery.model))
+          || Number(p.totalKwh) > 0 || Number(p.totalPrice) > 0;
+        return { label: e.label || e.id, hasBatt, aut: Number(p.autonomyMin) || Number(p.autonomy) || 0 };
+      });
+      if (!st.length) return w;
+      const miss = st.filter(s => !s.hasBatt);
+      if (miss.length) {
+        w.push('Сравнение некорректно: в варианте(ах) '
+          + miss.map(s => '«' + s.label + '»').join(', ')
+          + ' не подобрана АКБ (нет модели/ёмкости). Выполните расчёт и сохраните вариант.');
+      }
+      const auts = [...new Set(st.map(s => s.aut).filter(a => a > 0))];
+      if (auts.length > 1) {
+        w.push('Варианты несопоставимы: разная автономия (' + auts.join(' / ')
+          + ' мин). Сравнение TCO корректно при одинаковой автономии (общее условие подбора).');
+      }
+      return w;
+    }
+
     const sp = mountSelectionPanel({
       kind: 'battery', mountEl, projectCode: pc,
       getActiveSelectionName: () => activeSel,
-      requirementsSchema, variantEconomics,
+      requirementsSchema, variantEconomics, compareCheck,
       variantLabel: (e) => e.label || e.id,
       convertFn: null,
     });
