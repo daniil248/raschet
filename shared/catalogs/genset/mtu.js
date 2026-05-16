@@ -1,5 +1,5 @@
 // =============================================================================
-// shared/catalogs/dgu-mtu.js
+// shared/catalogs/genset/mtu.js
 // MTU (Rolls-Royce Power Systems) DGUs — Series 4000 G94S. 2 модели.
 // Источник: MTU/Rolls-Royce Power Systems datasheets 2023-2024.
 //

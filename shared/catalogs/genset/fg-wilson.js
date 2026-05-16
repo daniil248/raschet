@@ -1,5 +1,5 @@
 // =============================================================================
-// shared/catalogs/dgu-fg-wilson.js
+// shared/catalogs/genset/fg-wilson.js
 // FG Wilson DGUs — Perkins-engined серии P200H / P400P3 / P800P3. 3 модели.
 // Источник: FG Wilson datasheets 2023-2024.
 //

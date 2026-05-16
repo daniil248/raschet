@@ -1,17 +1,17 @@
 // =============================================================================
-// dgu-config/datasheets/index.js — re-export shim
+// genset-config/datasheets/index.js — re-export shim
 // =============================================================================
 // v0.60.92 (по правилу feedback_use_catalogs.md и запросу Пользователя
 // 2026-05-03 «может все таки даташиты будут в каталоге соответствующем»):
-// каталог ДГУ перенесён в shared/catalogs/dgu.js — единое место для
+// каталог ДГУ перенесён в shared/catalogs/genset.js — единое место для
 // всех справочных данных платформы.
 //
 // Этот файл — лишь re-export для обратной совместимости с существующими
-// импортами из dgu-config/dgu-config.js и других модулей.
+// импортами из genset-config/genset-config.js и других модулей.
 
 export {
   DGU_DATASHEETS,
   listDgus,
   listDguVendors,
   suggestDgu,
-} from '../../shared/catalogs/dgu/index.js';
+} from '../../shared/catalogs/genset/index.js';

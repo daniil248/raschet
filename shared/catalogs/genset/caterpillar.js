@@ -1,5 +1,5 @@
 // =============================================================================
-// shared/catalogs/dgu-caterpillar.js
+// shared/catalogs/genset/caterpillar.js
 // Caterpillar (CAT) DGUs — серия C9.3 / C18 / C32 / 3516 / 3520 / C175. 7 моделей.
 // Источник: Cat Power Systems datasheets 2023-2024 (cat.com).
 //

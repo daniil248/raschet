@@ -112,8 +112,8 @@ async function _loadCoolingDatasheets() {
 // v0.60.71 (Phase 30.3 cont.): DGU datasheets как builtin (ДГУ — kind='dgu').
 async function _loadDguDatasheets() {
   try {
-    // v0.60.92: каталог переехал в shared/catalogs/dgu.js
-    const m = await import('./catalogs/dgu.js');
+    // v0.60.92: каталог переехал в shared/catalogs/genset.js (ранее dgu.js)
+    const m = await import('./catalogs/genset.js');
     if (!m.DGU_DATASHEETS) return [];
     return m.DGU_DATASHEETS.map(d => {
       // v0.60.72: series = product-line (C18/C32/3516/QSL9/TAD941GE/P200H).

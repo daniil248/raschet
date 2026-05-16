@@ -40,9 +40,9 @@
 
 | Параметр | Где потребляется |
 |---|---|
-| `capacityKw`, `loadKw` | ups-config, dgu-config, panel-config, battery (требуемая мощность/нагрузка) |
+| `capacityKw`, `loadKw` | ups-config, genset-config, panel-config, battery (требуемая мощность/нагрузка) |
 | `autonomyMin`, `targetAutonomyMin` | ups-config, battery (автономия) |
-| `cosPhi`, `phases`, `redundancy`, `upsType`, `mode` | ups-config, dgu-config (cos φ / фазность / резерв / тип / режим ДГУ) |
+| `cosPhi`, `phases`, `redundancy`, `upsType`, `mode` | ups-config, genset-config (cos φ / фазность / резерв / тип / режим ДГУ) |
 | `requiredCoolingKw` | cooling (через `raschet.cooling.prefill.v1` + URL) |
 | `selected`, `fromUps`, `fromCtx` | battery (предвыбор модели / признак прихода из ИБП-мастера) |
 

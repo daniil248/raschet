@@ -1,5 +1,5 @@
 // =============================================================================
-// dgu-config/dgu-config.js — UI orchestrator модуля ДГУ
+// genset-config/genset-config.js — UI orchestrator модуля ДГУ (genset)
 // =============================================================================
 // Phase 30.3 (v0.60.70): standalone-режим. URL params для PUSH из tech-workspace:
 //   ?capacityKw=N    — нагрузка
@@ -10,7 +10,7 @@
 //   ?autonomy=N      — часы автономии
 //   ?vendor=...      — фильтр вендора
 
-import { calcDgu, DGU_MODES, getDguModePowerKw } from './calc/dgu-calc.js';
+import { calcDgu, DGU_MODES, getDguModePowerKw } from './calc/genset-calc.js';
 import { listDgus, listDguVendors, suggestDgu } from './datasheets/index.js';
 import { ensureDefaultProject, projectKey, listProjects, getProject, setActiveProjectId } from '../shared/project-storage.js';
 
@@ -18,7 +18,11 @@ const $ = (id) => document.getElementById(id);
 
 // v0.60.81: per-project persistence. Сохраняем последнее состояние input-ов
 // и выбранную модель в LS под projectKey. Восстанавливается при следующем
-// открытии dgu-config с тем же ?project= в URL.
+// открытии genset-config с тем же ?project= в URL.
+// ВНИМАНИЕ: LS-namespace намеренно оставлен 'dgu-config' (не переименован
+// в 'genset-config') — это storage-ключ, переименование осиротит уже
+// сохранённые пользователями данные. Совместимость данных важнее
+// косметики имени. То же — в tech-workspace PULL-хелпере.
 const KEY_STATE = ['dgu-config', 'state.v1'];
 const KEY_SELECTED = ['dgu-config', 'selected.v1'];
 
@@ -67,7 +71,7 @@ function resolvePid() {
       setActiveProjectId(urlPid);
       return urlPid;
     }
-    console.warn('[dgu-config] ?project=' + urlPid + ' not found, fallback to default');
+    console.warn('[genset-config] ?project=' + urlPid + ' not found, fallback to default');
   }
   const dp = ensureDefaultProject();
   return typeof dp === 'string' ? dp : (dp?.id || null);
@@ -82,14 +86,14 @@ function loadProjectState() {
     if (saved && typeof saved === 'object') {
       _state = { ..._state, ...saved };
     }
-  } catch (e) { console.warn('[dgu-config] loadState failed:', e); }
+  } catch (e) { console.warn('[genset-config] loadState failed:', e); }
 }
 
 function saveProjectState() {
   if (!_pid) return;
   try {
     localStorage.setItem(projectKey(_pid, ...KEY_STATE), JSON.stringify(_state));
-  } catch (e) { console.warn('[dgu-config] saveState failed:', e); }
+  } catch (e) { console.warn('[genset-config] saveState failed:', e); }
 }
 
 function saveSelectedDgu(dguEntry) {
@@ -105,7 +109,7 @@ function saveSelectedDgu(dguEntry) {
       ts: Date.now(),
     };
     localStorage.setItem(projectKey(_pid, ...KEY_SELECTED), JSON.stringify(payload));
-  } catch (e) { console.warn('[dgu-config] saveSelected failed:', e); }
+  } catch (e) { console.warn('[genset-config] saveSelected failed:', e); }
 }
 
 // v0.60.216: атрибуция источника каждого значения. Заполняется в
@@ -162,7 +166,7 @@ async function loadFromProject() {
         }
       }
     }
-  } catch (e) { console.warn('[dgu-config] TW load failed:', e); }
+  } catch (e) { console.warn('[genset-config] TW load failed:', e); }
 
   // 2. Location (altitude + meta) from project.location
   try {
@@ -186,7 +190,7 @@ async function loadFromProject() {
       _stateMeta.altitudeM = 'project';
       appliedHints.push(`высота ${_state.altitudeM} м (из локации проекта)`);
     }
-  } catch (e) { console.warn('[dgu-config] location read failed:', e); }
+  } catch (e) { console.warn('[genset-config] location read failed:', e); }
 
   // 3. Climate (T design + RH) from meteo dataset (IDB or LS)
   try {
@@ -267,7 +271,7 @@ async function loadFromProject() {
         appliedHints.push(`высота ${_state.altitudeM} м (${elevSource})`);
       }
     }
-  } catch (e) { console.warn('[dgu-config] meteo read failed:', e); }
+  } catch (e) { console.warn('[genset-config] meteo read failed:', e); }
 
   if (appliedHints.length) {
     console.info(`[dgu-config v0.60.216] auto-fill из проекта (${_force ? 'force' : 'soft'}):`, appliedHints.join(' · '));
@@ -799,7 +803,7 @@ function sendApplyToHost(spec) {
   // в другой вкладке: при следующем фокусе она прочитает этот ключ.
   try {
     localStorage.setItem(BRIDGE_KEY_PREFIX + _nodeId, JSON.stringify({ applied: true, ...payload }));
-  } catch (e) { console.warn('[dgu-config] LS bridge failed:', e); }
+  } catch (e) { console.warn('[genset-config] LS bridge failed:', e); }
   // 2) postMessage — мгновенно если schema-tab ещё открыт.
   try {
     if (window.opener && !window.opener.closed) {

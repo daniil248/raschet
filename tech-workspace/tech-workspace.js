@@ -1151,7 +1151,7 @@ function renderFeedSection(feed, isReadOnly, concept) {
     <button type="button" class="tw-bind-btn ${feed.dgu.modelRef ? 'tw-bind-btn-bound' : ''}" data-bind-domain="dgu" data-ref-id="feed-dgu">📦 ${feed.dgu.modelRef ? escHtml((feed.dgu.modelRef.manufacturer || '') + ' ' + (feed.dgu.modelRef.model || '')) + ' ✏' : 'Привязать модель ДГУ'}</button>
     ${feed.dgu.needed ? `
       <a class="tw-bind-btn" style="text-decoration:none"
-         href="../dgu-config/?project=${escAttr(_pid || '')}&capacityKw=${Math.round(Number(feed.dgu.kw) || 0)}&mode=${escAttr((feed.dgu.mode || 'prp').toUpperCase())}&redundancy=${escAttr(feed.dgu.redundancy === 'none' ? 'N' : feed.dgu.redundancy)}&autonomy=${feed.dgu.autonomyHours || 24}"
+         href="../genset-config/?project=${escAttr(_pid || '')}&capacityKw=${Math.round(Number(feed.dgu.kw) || 0)}&mode=${escAttr((feed.dgu.mode || 'prp').toUpperCase())}&redundancy=${escAttr(feed.dgu.redundancy === 'none' ? 'N' : feed.dgu.redundancy)}&autonomy=${feed.dgu.autonomyHours || 24}"
          target="_blank"
          title="Открыть ДГУ-конфигуратор с pre-filled параметрами концепции (мощность ${Math.round(Number(feed.dgu.kw) || 0)} кВт, режим ${(feed.dgu.mode || 'prp').toUpperCase()}, ${feed.dgu.redundancy}). Расчёт по ISO 8528-1 + climate derate + подбор из каталога Caterpillar/Cummins/Volvo/FG Wilson.">
         ⚙ Подобрать ДГУ →
@@ -1757,7 +1757,7 @@ function renderListRail(c, ro) {
         <span class="tw-rail-title">🔌 Ввод</span>
         <a class="tw-rail-cfg" href="${escAttr(_buildConfigLink('transformer-config'))}" target="_blank"
            title="Открыть «Конфигуратор трансформатора» с контекстом проекта. Силовой ТП: S, U₁/U₂, группа, u_k.">🛠</a>
-        <a class="tw-rail-cfg" href="${escAttr(_buildConfigLink('dgu-config'))}" target="_blank"
+        <a class="tw-rail-cfg" href="${escAttr(_buildConfigLink('genset-config'))}" target="_blank"
            title="Открыть «Конфигуратор ДГУ». Расчёт по ISO 8528-1 + climate derate + подбор Caterpillar/Cummins/Volvo/FG Wilson.">⚡</a>
         <a class="tw-rail-cfg" href="${escAttr(_buildConfigLink('mv-config'))}" target="_blank"
            title="Открыть «Конфигуратор РУ СН» (mv-config). Wizard-подбор ячеек 6-35 кВ.">⚙</a>
@@ -5487,7 +5487,7 @@ const _MODULE_HREF = {
   'cooling':            '../cooling/',
   'meteo':              '../meteo/',
   'mdc-config':         '../mdc-config/',
-  'dgu-config':         '../dgu-config/',
+  'genset-config':      '../genset-config/',
   'transformer-config': '../transformer-config/',
   'mv-config':          '../mv-config/',
   'service':            '../service/',
@@ -5635,9 +5635,9 @@ const TW_MODULES = [
   { id: 'ups-config',       icon: '🔋', label: 'Конфигуратор ИБП',
     lsSuffix: 'upsConfig.draft.v1', countInArr: false,
     href: '../ups-config/', hint: 'Wizard-подбор ИБП и АКБ. Pre-fill через capacityKw.' },
-  { id: 'dgu-config',       icon: '⚡', label: 'Конфигуратор ДГУ',
+  { id: 'genset-config',    icon: '⚡', label: 'Конфигуратор ДГУ',
     lsSuffix: 'dguConfig.last.v1', countInArr: false,
-    href: '../dgu-config/', hint: 'Расчёт ДГУ по ISO 8528-1 + climate derate + подбор Caterpillar/Cummins/Volvo/FG Wilson.' },
+    href: '../genset-config/', hint: 'Расчёт ДГУ по ISO 8528-1 + climate derate + подбор Caterpillar/Cummins/Volvo/FG Wilson.' },
 ];
 
 // v0.60.86 (Phase 36.4): cross-module panel читает данные из ACTIVE variant's

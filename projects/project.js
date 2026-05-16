@@ -835,7 +835,7 @@ function renderProjectEconomics(p, host) {
   const vat = e.vat || { pct: 16, enabled: true, label: 'НДС' };
   const vatPreset = _detectVatPreset(vat);
   host.innerHTML = `
-    <p class="muted" style="font-size:11.5px;margin:0 0 10px">Эти параметры применяются ко всем calc-модулям проекта (cooling, service, tech-workspace, dgu-config). Изменение здесь — единая точка обновления.</p>
+    <p class="muted" style="font-size:11.5px;margin:0 0 10px">Эти параметры применяются ко всем calc-модулям проекта (cooling, service, tech-workspace, genset-config). Изменение здесь — единая точка обновления.</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 14px">
       <label title="Валюта проекта — в ней отображаются и считаются все CAPEX/OPEX/TCO. Если оборудование закуплено в другой валюте — будет конвертация по курсу на «Дата курса».">
         <span style="font-size:11.5px;color:#475569;display:block;margin-bottom:3px">Валюта проекта:</span>

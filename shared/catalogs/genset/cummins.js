@@ -1,5 +1,5 @@
 // =============================================================================
-// shared/catalogs/dgu-cummins.js
+// shared/catalogs/genset/cummins.js
 // Cummins DGUs — серии QSL9 / QSX15 / QSK23 / QSK60 / QSK78. 7 моделей.
 // Источник: Cummins Power Generation datasheets 2023-2024.
 //

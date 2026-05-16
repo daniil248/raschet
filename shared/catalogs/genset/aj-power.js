@@ -1,5 +1,5 @@
 // =============================================================================
-// shared/catalogs/dgu-aj-power.js
+// shared/catalogs/genset/aj-power.js
 // AJ Power (Северная Ирландия / Великобритания) DGUs — DA серия.
 // Двигатели — Volvo Penta, Perkins.
 //
@@ -14,7 +14,7 @@
 
 export const AJ_POWER_DGUS = [
   // v0.60.322: derateProfile — id профиля derate (см.
-  // dgu-config/calc/dgu-calc.js ENGINE_DERATE_PROFILES). Прописывается
+  // genset-config/calc/genset-calc.js ENGINE_DERATE_PROFILES). Прописывается
   // прямо в datasheet — каталог = source of truth для подбора и derate.
   {
     vendor: 'AJ Power', model: 'DA3-AJ110-P1 (110 kVA)',

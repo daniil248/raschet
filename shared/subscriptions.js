@@ -32,7 +32,7 @@
 //                       в /modules/index.html, subscription-check, иконка
 //                       в hub). Продаётся отдельным SKU.
 //      - 'calc-lib'  — pure-calc библиотека без UI (cooling/calc/*,
-//                       dgu-config/calc/*, shared/calc-modules/*,
+//                       genset-config/calc/*, shared/calc-modules/*,
 //                       psychro-formulas, и т.д.). НЕ требует подписки —
 //                       подключается через ES-import в любом UI-модуле,
 //                       которому она нужна. Не показывается в реестре
@@ -42,7 +42,7 @@
 //    открытии их index.html (через requireModuleAccess). Calc-libs
 //    свободно импортируются через ES module — нет проверок на доступ.
 //
-//    Пример: пользователь подписан на dgu-config (UI). dgu-config
+//    Пример: пользователь подписан на genset-config (UI). genset-config
 //    использует shared/auto-norm.js (calc-lib) и cooling/calc/psychro-
 //    formulas.js (calc-lib). Обе автоматически работают без доп.
 //    подписки на cooling.

@@ -3114,7 +3114,7 @@ const _CONFIGURATORS = {
   // v0.60.202 (по репорту Пользователя 2026-05-04 «у нас вроде уже появился
   // конфигуратор ДГУ, почему бы не привязать его к схеме»): добавлен
   // конфигуратор ДГУ для type='generator'.
-  generator:   { href: 'dgu-config/',         label: 'Конфигуратор ДГУ' },
+  generator:   { href: 'genset-config/',      label: 'Конфигуратор ДГУ' },
 };
 function _configuratorForNode(n) {
   if (!n) return null;
@@ -3511,7 +3511,7 @@ export function renderGeneralPanel(n) {
         ? `<div style="margin-top:6px;padding:6px 8px;background:#fee2e2;border-radius:3px;font-size:11.5px;font-weight:600"
              title="Запрашиваемая мощность узла превышает паспортный номинал применённой модели. Откройте конфигуратор и выберите более крупную модель — либо распределите нагрузку.">
              ⛔ Запрашиваемая мощность <b>${_reqKw.toFixed(1)} кВт</b> превышает номинал ДГУ <b>${_capKw.toFixed(0)} кВт</b> на <b>+${_exceedPct.toFixed(1)}%</b>.<br>
-             Откройте <a href="../dgu-config/?nodeId=${escAttr(n.id)}" target="_blank" style="color:#7f1d1d;text-decoration:underline">конфигуратор ДГУ</a> и выберите более мощную модель.
+             Откройте <a href="../genset-config/?nodeId=${escAttr(n.id)}" target="_blank" style="color:#7f1d1d;text-decoration:underline">конфигуратор ДГУ</a> и выберите более мощную модель.
            </div>`
         : (_close
           ? `<div style="margin-top:6px;padding:6px 8px;background:#ffedd5;border-radius:3px;font-size:11.5px"

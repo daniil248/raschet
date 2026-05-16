@@ -1,5 +1,5 @@
 // =============================================================================
-// shared/catalogs/dgu-aksa.js
+// shared/catalogs/genset/aksa.js
 // AKSA Power Generation (Турция) DGUs — APD серия. 7 моделей.
 // Источник: www.aksa.com.tr datasheets 2023-2024.
 //

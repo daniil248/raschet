@@ -1,5 +1,5 @@
 // =============================================================================
-// shared/catalogs/dgu-volvo-penta.js
+// shared/catalogs/genset/volvo-penta.js
 // Volvo Penta DGUs — TAD/TWD серии. 3 модели.
 // Источник: Volvo Penta Power Generation datasheets 2023-2024.
 //

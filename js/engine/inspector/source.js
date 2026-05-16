@@ -485,7 +485,7 @@ function _renderGenIsoBlock(n) {
   if (isAppliedFromCfg) {
     h.push(`<div style="padding:8px 10px;background:#f0fdf4;border-left:3px solid #16a34a;border-radius:3px;color:#14532d;margin-bottom:8px;font-size:11.5px">
       🔒 <b>Таблица заполнена из ДГУ-конфигуратора</b>${sel.vendor || sel.model ? ' (' + escHtml((sel.vendor || '') + ' ' + (sel.model || '')).trim() + ')' : ''}.
-      Значения — паспортные данные модели по ISO 8528. Для изменения <a href="../dgu-config/?nodeId=${escAttr(n.id)}" target="_blank" style="color:#1d4ed8">переоткройте конфигуратор</a> и выберите другую модель.
+      Значения — паспортные данные модели по ISO 8528. Для изменения <a href="../genset-config/?nodeId=${escAttr(n.id)}" target="_blank" style="color:#1d4ed8">переоткройте конфигуратор</a> и выберите другую модель.
     </div>`);
   }
   h.push('Стандарт <b>ISO 8528-1:2018</b> определяет 5 режимов работы ДГУ. ');

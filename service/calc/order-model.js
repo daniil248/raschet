@@ -142,7 +142,7 @@ export function defaultPosition(displayCurrency = '₸', category = 'labor') {
     clientPrice: { value: 0, currency: cur },
     // v0.60.45 (feedback_service_imports.md): источник позиции для дедупа
     // повторных импортов и визуального маркера. null/undefined = пользовательская.
-    sourceModule: null,    // 'cooling' | 'ups-config' | 'mdc-config' | 'dgu-config' | ...
+    sourceModule: null,    // 'cooling' | 'ups-config' | 'mdc-config' | 'genset-config' | ...
     sourceRef: null,       // {selectionId, optionId, equipmentGroupId, ...} — module-specific
   };
 }
@@ -152,6 +152,7 @@ export const SOURCE_MODULE_ICONS = {
   'cooling':            '❄',
   'ups-config':         '🔋',
   'mdc-config':         '🏗',
+  'genset-config':      '⚡',
   'dgu-config':         '⚡',
   'panel-config':       '⚙',
   'transformer-config': '🔌',
@@ -163,6 +164,7 @@ export const SOURCE_MODULE_LABELS = {
   'cooling':            'Подбор холодильных систем',
   'ups-config':         'Конфигурация ИБП',
   'mdc-config':         'Модульный ЦОД',
+  'genset-config':      'Дизель-генератор',
   'dgu-config':         'Дизель-генератор',
   'panel-config':       'Конфигурация щита',
   'transformer-config': 'Конфигурация трансформатора',

@@ -47,7 +47,7 @@
 | `…tech-workspace.variants.v1` · `…activeVariantId.v1` | tech-workspace | Варианты концепции |
 | `…cooling.selections.v1` · `…activeSelectionId.v1` · `…options.v1` · `…tariff.v1` · `…cols.v1` | cooling | Подборы холода |
 | `…ups-config.selected.v1` | ups-config | Выбранная модель ИБП (PULL в TW) |
-| `…dgu-config.selected.v1` | dgu-config | Выбранная ДГУ |
+| `…dgu-config.selected.v1` | genset-config | Выбранная ДГУ (LS-namespace `dgu-config` оставлен для совместимости данных) |
 | `…meteo.datasets.v1` | meteo | Климатические датасеты проекта |
 | `…scs-design.links.v1` · `…scs-design.plan.v1` | scs-design | Меж-стоечные связи / план |
 | `…scs-config.inventory.v1` | scs-config | IT-инвентарь |
@@ -70,7 +70,7 @@
 | `raschet.cooling.prefill.v1` | tech-workspace → cooling | requiredCoolingKw (60с свежесть) |
 | `raschet.mdcToSuppression.v1` | mdc-config → suppression-config | данные для АГПТ |
 | `raschet.logistics.handoff` | * → logistics | импорт позиций |
-| `raschet.rack.bridge.<nodeId>` · `raschet.dgu.bridge.<nodeId>` | rack-config/dgu-config → Конструктор | postMessage-фолбэк (`raschet.rack.apply`/`raschet.dgu.apply`) |
+| `raschet.rack.bridge.<nodeId>` · `raschet.dgu.bridge.<nodeId>` | rack-config/genset-config → Конструктор | postMessage-фолбэк (`raschet.rack.apply`/`raschet.dgu.apply`; protocol-ключ `raschet.dgu.*` оставлен) |
 | `raschet.nav.return.<S>.payload` | module-nav | embed/return payload |
 | `raschet.cs.ctx.<kind>` | configuration-catalog | контекст подбора (standalone/project) |
 | `raschet.savePending.<pid>` | main | бэкап несохранённого перед восстановлением |

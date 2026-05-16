@@ -1,12 +1,12 @@
 {
-  "id": "dgu-config",
+  "id": "genset-config",
   "name": "ДГУ-конфигуратор",
   "description": "Подбор дизель-генераторной установки по нагрузке с учётом режима (ESP/PRP/COP), резервирования, высоты над уровнем моря, температуры наружного воздуха и автономии.",
   "version": "1.0.0",
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "dgu-config/",
+  "path": "genset-config/",
   "icon": "blue",
   "badge": "active",
   "enabled": true,
@@ -14,7 +14,7 @@
   "subscriptionPlan": "free",
   "requires": ["shared/idb-store"],
   "dbCollections": [],
-  "permissions": ["dgu-config.use"],
+  "permissions": ["genset-config.use"],
   "lsNamespacesOwned": ["dgu-config"],
   "dependsOnContracts": {
     "storageKeys": [],

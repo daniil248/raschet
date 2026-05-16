@@ -32,7 +32,7 @@ const REGISTRY_ORDER = [
   // Фаза 1 — регистрация ранее не учтённых UI-модулей (subscriptionPlan
   // 'free' → без UI-лока, поведение идентично «не в реестре»).
   'cooling', 'meteo', 'service', 'scs-config', 'scs-design', 'rack-config',
-  'mdc-config', 'dgu-config', 'pdu-config', 'suppression-config',
+  'mdc-config', 'genset-config', 'pdu-config', 'suppression-config',
   'psychrometrics', 'facility-inventory', 'configurator3d',
   // calc-lib (kind:'calc-lib') — без UI/subscription-check, auto-included.
   'suppression-methods',
