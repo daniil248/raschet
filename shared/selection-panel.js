@@ -254,6 +254,17 @@ export function mountSelectionPanel(o) {
         return `<div class="rsp-field" title="${escH(f.tip || '')}" style="grid-column:1/-1">${escH(f.label)}${f.unit ? ', ' + escH(f.unit) : ''}${projTag}
           <div style="display:flex;flex-wrap:wrap;gap:2px 0;margin-top:auto;padding:5px 0">${boxes}<span style="font-size:11px;color:#94a3b8;align-self:center">${sel.length ? '' : '(пусто = любой)'}</span></div></div>`;
       }
+      if (f.type === 'wizard') {
+        // v0.60.477: поле-мастер — кнопка открывает модал хост-модуля
+        // (через CustomEvent 'rs-cs-reqwizard'). Текущее значение
+        // связанного ключа (f.valueKey) показываем как подсказку.
+        const vk = f.valueKey || f.key;
+        const cur = req[vk];
+        const shown = (cur == null || cur === '') ? '—' : (cur + (f.valueUnit ? ' ' + f.valueUnit : ''));
+        return `<div class="rsp-field" title="${escH(f.tip || '')}" style="grid-column:1/-1;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span>${escH(f.label)}: <b>${escH(shown)}</b></span>
+          <button type="button" class="rs-cs-btn" data-reqwizard="${escH(f.key)}"${roAttr}>${escH(f.buttonLabel || '🔮 Открыть мастер')}</button></div>`;
+      }
       if (f.type === 'select') {
         const opts = (f.options || []).map(op => {
           const val = typeof op === 'string' ? op : op.value;
@@ -748,6 +759,14 @@ export function mountSelectionPanel(o) {
         const k = inp.dataset.req;
         req[k] = inp.type === 'number' ? (inp.value === '' ? '' : Number(inp.value)) : inp.value;
         persist({ requirements: req });
+      });
+    });
+    // v0.60.477: кнопки-мастера условий → событие хосту (он открывает модал).
+    mountEl.querySelectorAll('[data-reqwizard]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        try { window.dispatchEvent(new CustomEvent('rs-cs-reqwizard', {
+          detail: { kind, key: btn.dataset.reqwizard, selectionName: selName, projectCode: pc },
+        })); } catch {}
       });
     });
     // v0.60.451: мультивыбор допустимых типов (чекбоксы) → массив.

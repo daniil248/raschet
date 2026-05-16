@@ -618,13 +618,27 @@
           ensureSelectionMeta('battery', { projectCode: pc, selectionName: selName }, { requirements: {}, eco: {} });
           const m = getSelectionMeta('battery', { projectCode: pc, selectionName: selName });
           const req = { ...((m && m.requirements) || {}) };
-          // Передаём ТОЛЬКО если ещё не задано (не затираем правки Пользователя).
-          if (Array.isArray(ho.batteryTypes) && ho.batteryTypes.length && !(req.batteryTypes && req.batteryTypes.length)) req.batteryTypes = ho.batteryTypes.slice();
-          if (ho.loadKw != null && (req.loadKw == null || req.loadKw === '')) req.loadKw = Number(ho.loadKw) || 0;
-          if (ho.autonomyMin != null && (req.autonomyMin == null || req.autonomyMin === '')) req.autonomyMin = Number(ho.autonomyMin) || 0;
+          // v0.60.477 (по замечанию Пользователя: «если нужно 500, зачем
+          // передаётся другая мощность»): значения, переданные из ИБП,
+          // — авторитетны для ЭТОГО handoff. На КАЖДЫЙ новый «Подобрать
+          // АКБ» (новый selectedAt) перезаписываем переданные поля
+          // актуальными (раньше preserve-on-miss оставлял старые 400).
+          // Идентифицируем свежесть по req._fromUpsAt vs ho.selectedAt
+          // (надёжно и между сессиями, не только по sessionStorage-guard).
+          const fresh = String(req._fromUpsAt || '') !== String(ho.selectedAt || '');
+          const setT = (k, val, cond = true) => {
+            if (!cond) return;
+            if (fresh || req[k] == null || req[k] === '') req[k] = val;
+          };
+          if (Array.isArray(ho.batteryTypes) && ho.batteryTypes.length) {
+            if (fresh || !(req.batteryTypes && req.batteryTypes.length)) req.batteryTypes = ho.batteryTypes.slice();
+          }
+          setT('loadKw', Number(ho.loadKw) || 0, ho.loadKw != null);
+          setT('autonomyMin', Number(ho.autonomyMin) || 0, ho.autonomyMin != null);
           const vdc = Number(ho.vdcMin) || Number(ho.vdcMax) || 0;
-          if (vdc && (req.dcVoltage == null || req.dcVoltage === '')) req.dcVoltage = vdc;
-          if (ho.invEff != null && (req.invEffPct == null || req.invEffPct === '')) req.invEffPct = Math.round((Number(ho.invEff) || 0) * 100) || '';
+          setT('dcVoltage', vdc, !!vdc);
+          setT('invEffPct', Math.round((Number(ho.invEff) || 0) * 100) || '', ho.invEff != null);
+          req._fromUpsAt = ho.selectedAt || Date.now();
           saveSelectionMeta('battery', { projectCode: pc, selectionName: selName, requirements: req });
           sessionStorage.setItem(guard, '1');
           try { sessionStorage.setItem('raschet.battActiveSel', selName); } catch {}
@@ -668,7 +682,7 @@
   <!-- v0.60.429: панель ПОДБОРА АКБ (условия + TCO/CAPEX/OPEX/сравнение) -->
   <script type="module">
     import { mountSelectionPanel } from '../shared/selection-panel.js';
-    import { getActiveProjectCode } from '../shared/configuration-catalog.js';
+    import { getActiveProjectCode, getSelectionMeta, saveSelectionMeta } from '../shared/configuration-catalog.js';
     import { forecastBatteryLifeYears } from './battery-discharge.js';
     const mountEl = document.getElementById('bt-selection-panel');
     const pc = getActiveProjectCode();
@@ -686,19 +700,14 @@
         tip: 'Номинальное напряжение батарейной шины.' },
       { key: 'invEffPct',       label: 'КПД инвертора',   unit: '%',   type: 'number', step: 1,
         tip: 'КПД преобразования ИБП при разряде (для пересчёта мощности в DC).' },
-      // 🔮 Мастер прогноза старения АКБ — шаг условий подбора. Из частоты
-      // отключений сети, глубины разряда и температуры прогнозируется срок
-      // службы конкретной батареи (см. forecastBatteryLifeYears).
-      { key: 'outagesPerMonth', label: 'Отключений сети', unit: '/мес', type: 'number', step: 0.5,
-        tip: '🔮 Прогноз старения: среднее число отключений электросети в месяц. Каждое отключение ≈ 1 цикл разряд/заряд АКБ. 0 = только календарное старение.' },
-      { key: 'avgOutageMin',    label: 'Длит. отключения', unit: 'мин', type: 'number', step: 1,
-        tip: '🔮 Прогноз старения: средняя длительность одного отключения сети (справочно; глубину разряда задайте отдельно).' },
-      { key: 'dodPct',          label: 'Глубина разряда (DoD)', unit: '%', type: 'number', step: 5,
-        tip: '🔮 Прогноз старения: средняя глубина разряда за отключение, % ёмкости. Чем глубже разряд — тем меньше ресурс циклов (для VRLA сильнее, чем для Li-ion). Типично 30–80%.' },
-      { key: 'operTempC',       label: 'Темп. эксплуатации', unit: '°C', type: 'number', step: 1,
-        tip: '🔮 Прогноз старения: средняя температура в АКБ-помещении. Каждые +10°C над 25°C ≈ вдвое сокращают срок VRLA (Аррениус, IEEE 1188); Li-ion менее чувствителен.' },
-      { key: 'serviceLifeYears',label: 'Срок службы АКБ', unit: 'лет', type: 'number', step: 1,
-        tip: '🔮 Прогноз старения: расчётный срок службы батарей. Оставьте пустым/0 — будет авто-прогноз из отключений/DoD/температуры и химии конкретной модели варианта (min календарного и циклического ресурса). Если меньше срока проекта — замена учитывается как CAPEX-событие в TCO.' },
+      // v0.60.477 (по замечанию Пользователя): условия старения (отключения
+      // сети/длительность/DoD/температура) убраны из плоских полей — они
+      // приходят из требований ИБП/проекта, а вручную задаются ТОЛЬКО при
+      // standalone-подборе. Сделано отдельным МАСТЕРОМ «Срок службы АКБ».
+      { key: 'lifeWizard', type: 'wizard', label: 'Срок службы АКБ',
+        valueKey: 'serviceLifeYears', valueUnit: 'лет',
+        buttonLabel: '🔮 Мастер: срок службы АКБ',
+        tip: 'Мастер прогноза срока службы АКБ: периодичность отключений сети, длительность, глубина разряда (DoD), температура эксплуатации, химия → прогноз срока (min календарного × Аррениус и циклического ресурса). При запуске из подбора ИБП параметры площадки берутся из проекта/требований; ручной ввод актуален для standalone-подбора АКБ.' },
       { key: 'maintPctPerYear', label: 'ТО, %/год от CAPEX', unit: '%', type: 'number', step: 0.5,
         tip: 'Годовая стоимость обслуживания как % от стоимости АКБ. Типично 1–2%.' },
       { key: 'pricePerKwh',     label: 'Цена, /кВт·ч ёмкости', type: 'number', step: 1,
@@ -785,6 +794,75 @@
       requirementsSchema, variantEconomics, compareCheck,
       variantLabel: (e) => e.label || e.id,
       convertFn: null,
+    });
+    // v0.60.477: МАСТЕР «Срок службы АКБ» — собирает условия старения
+    // (отключения сети, длительность, DoD, температура, химия) и пишет
+    // прогноз serviceLifeYears + сами входы в условия подбора. Открывается
+    // кнопкой из поля type:'wizard' (событие 'rs-cs-reqwizard'). Никаких
+    // браузерных диалогов — собственный in-page модал.
+    window.addEventListener('rs-cs-reqwizard', (ev) => {
+      const d = ev.detail || {};
+      if (d.kind !== 'battery' || d.key !== 'lifeWizard') return;
+      const sel = d.selectionName || activeSel;
+      if (!sel) return;
+      const m = getSelectionMeta('battery', { projectCode: pc, selectionName: sel });
+      const req = { ...((m && m.requirements) || {}) };
+      const types = Array.isArray(req.batteryTypes) ? req.batteryTypes : [];
+      const defChem = types.includes('li-ion') ? 'li-ion' : types.includes('nicd') ? 'nicd' : 'vrla';
+      const ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+      const val = (k, dv) => (req[k] == null || req[k] === '') ? dv : req[k];
+      ov.innerHTML = `<div style="background:#fff;border-radius:10px;max-width:560px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3);font:13px system-ui,sans-serif">
+        <div style="padding:12px 16px;border-bottom:1px solid #e2e8f0;font-weight:700">🔮 Мастер: срок службы АКБ</div>
+        <div style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:10px 14px">
+          <label>Химия АКБ
+            <select id="lw-chem" style="width:100%;padding:6px;margin-top:3px">
+              <option value="vrla"${defChem==='vrla'?' selected':''}>VRLA / AGM / Gel</option>
+              <option value="li-ion"${defChem==='li-ion'?' selected':''}>Li-ion (LFP/NMC)</option>
+              <option value="nicd"${defChem==='nicd'?' selected':''}>NiCd</option>
+            </select></label>
+          <label>Отключений сети, /мес<input id="lw-out" type="number" min="0" step="0.5" value="${val('outagesPerMonth','')}" style="width:100%;padding:6px;margin-top:3px"></label>
+          <label>Длит. отключения, мин<input id="lw-dur" type="number" min="0" step="1" value="${val('avgOutageMin','')}" style="width:100%;padding:6px;margin-top:3px"></label>
+          <label>Глубина разряда DoD, %<input id="lw-dod" type="number" min="5" max="100" step="5" value="${val('dodPct','')}" style="width:100%;padding:6px;margin-top:3px"></label>
+          <label>Темп. эксплуатации, °C<input id="lw-temp" type="number" min="-20" max="60" step="1" value="${val('operTempC','')}" style="width:100%;padding:6px;margin-top:3px"></label>
+          <label>Ручной срок, лет (опц.)<input id="lw-manual" type="number" min="0" max="30" step="1" value="${(req.serviceLifeYears!=null&&req.serviceLifeYears!=='')?req.serviceLifeYears:''}" placeholder="пусто = прогноз" style="width:100%;padding:6px;margin-top:3px"></label>
+        </div>
+        <div id="lw-res" style="margin:0 16px 8px;padding:8px 10px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:6px;color:#3730a3"></div>
+        <div style="padding:12px 16px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end">
+          <button id="lw-cancel" type="button" style="padding:7px 14px">Отмена</button>
+          <button id="lw-ok" type="button" style="padding:7px 14px;background:#2563eb;color:#fff;border:0;border-radius:5px">Применить</button>
+        </div></div>`;
+      document.body.appendChild(ov);
+      const q = id => ov.querySelector('#' + id);
+      const calc = () => {
+        const manual = Number(q('lw-manual').value) || 0;
+        if (manual > 0) { q('lw-res').textContent = `Ручной срок службы: ${manual} лет (прогноз не применяется).`; return { years: manual, manual: true }; }
+        const fc = forecastBatteryLifeYears({
+          chemistry: q('lw-chem').value,
+          tempC: Number(q('lw-temp').value),
+          dodPct: Number(q('lw-dod').value),
+          outagesPerMonth: Number(q('lw-out').value),
+          avgOutageMin: Number(q('lw-dur').value),
+        });
+        q('lw-res').innerHTML = `Прогноз: <b>${fc.years} лет</b> · календарный ${fc.calendarYears} лет (k_темп ${fc.kTemp})`
+          + (fc.cycleYears != null ? ` · циклический ${fc.cycleYears} лет (${fc.ratedCycles} циклов / ${fc.cyclesPerYear} в год)` : ' · без циклов (нет отключений)');
+        return { years: fc.years, manual: false };
+      };
+      ['lw-chem','lw-out','lw-dur','lw-dod','lw-temp','lw-manual'].forEach(id => q(id).addEventListener('input', calc));
+      calc();
+      q('lw-cancel').addEventListener('click', () => ov.remove());
+      ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+      q('lw-ok').addEventListener('click', () => {
+        const r = calc();
+        const nreq = { ...req };
+        const setNum = (k, el) => { const x = q(el).value; nreq[k] = (x === '' ? '' : Number(x)); };
+        setNum('outagesPerMonth','lw-out'); setNum('avgOutageMin','lw-dur');
+        setNum('dodPct','lw-dod'); setNum('operTempC','lw-temp');
+        nreq.serviceLifeYears = r.years;
+        saveSelectionMeta('battery', { projectCode: pc, selectionName: sel, requirements: nreq });
+        ov.remove();
+        try { sp.refresh(); } catch {}
+      });
     });
     window.addEventListener('rs-selection-change', (ev) => {
       const d = ev.detail || {};
