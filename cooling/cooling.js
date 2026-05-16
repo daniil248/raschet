@@ -22,13 +22,13 @@
 //   raschet.project.<pid>.cooling.cols.v1
 //   raschet.project.<pid>.cooling.tariff.v1
 
-import { ensureDefaultProject, projectKey, listProjects, getProject, setActiveProjectId, getActiveProjectId } from '../shared/project-storage.js';
-import * as util from '../shared/meteo-util.js'; // v0.60.522: SHARED (burndown cooling→meteo)
+import { ensureDefaultProject, projectKey, listProjects, getProject, setActiveProjectId, getActiveProjectId } from 'shared/project-storage.js';
+import * as util from 'shared/meteo-util.js'; // v0.60.522: SHARED (burndown cooling→meteo)
 
 import { DEFAULT_CHILLER, COLUMNS, DEFAULT_COLS, CHILLER_COLS, isCracType as isCracTypeLocal } from './calc/chiller-defaults.js';
 import { buildBinData } from './calc/chiller-bin-calc.js';
 import { computeFcSummary } from './calc/fc-summary.js';
-import { computeTco, DEFAULT_ECONOMICS, discountedPaybackYears, convertEcoToCurrency } from '../shared/calc/capex-tco.js';
+import { computeTco, DEFAULT_ECONOMICS, discountedPaybackYears, convertEcoToCurrency } from 'shared/calc/capex-tco.js';
 import { compareOptions } from './calc/comparison.js';
 
 import { renderChillerSpecForm } from './ui/chiller-form.js';
@@ -36,9 +36,9 @@ import { renderAnnualTable, renderColumnPicker } from './ui/annual-table-view.js
 import { renderFreeCoolingSummary } from './ui/fc-summary-view.js';
 import { drawChillerEnergyChart, drawTcoChart } from './ui/energy-chart.js';
 import { renderCapexForm, renderTcoKpi } from './ui/capex-form.js';
-import { syncCostItemsFromEquipment } from '../shared/calc/capex-tco.js';
-import { fetchAndSaveMeteoForProject } from '../shared/meteo-fetch.js';
-import { createServiceOrderForProject } from '../shared/service-bridge.js';
+import { syncCostItemsFromEquipment } from 'shared/calc/capex-tco.js';
+import { fetchAndSaveMeteoForProject } from 'shared/meteo-fetch.js';
+import { createServiceOrderForProject } from 'shared/service-bridge.js';
 import { renderComparisonTable } from './ui/comparison-view.js';
 // v0.60.17: stale-imports убраны (buildTopologyFromOptions / simulateTopology
 // — legacy путь, не используется в новой модели per-equipment N+R).
@@ -47,14 +47,14 @@ import { simulateOptionTopology } from './calc/topology.js';
 // inlined в renderActiveTab). Оставлен только renderTopologyResults.
 import { renderTopologyResults } from './ui/topology-view.js';
 
-import { tableToCsv, downloadCsv } from '../shared/meteo-util.js'; // v0.60.523: SHARED (burndown cooling→meteo/charts)
+import { tableToCsv, downloadCsv } from 'shared/meteo-util.js'; // v0.60.523: SHARED (burndown cooling→meteo/charts)
 import { getActiveMeteoDataset, getMeteoFilter, applyFilter, preloadMeteoForPid } from './meteo-bridge.js';
 import { CURRENCIES, currencyToIso } from './calc/fc-summary.js';
-import { open as openRatesDialog } from '../shared/currency-rates/rates-dialog.js';
-import { fetchRates, convert as convertRate } from '../shared/currency-rates/index.js';
-import '../shared/currency-rates/sources/index.js';
-import { detectNavMode, renderModuleActions, openEmbed, readEmbedResult } from '../shared/module-nav.js';
-import { historyAppend, historyList, historyTrash, historyRestore, historyPurge } from '../shared/history-log.js';
+import { open as openRatesDialog } from 'shared/currency-rates/rates-dialog.js';
+import { fetchRates, convert as convertRate } from 'shared/currency-rates/index.js';
+import 'shared/currency-rates/sources/index.js';
+import { detectNavMode, renderModuleActions, openEmbed, readEmbedResult } from 'shared/module-nav.js';
+import { historyAppend, historyList, historyTrash, historyRestore, historyPurge } from 'shared/history-log.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -1874,7 +1874,7 @@ async function init() {
     // старое местоположение проекта.
     try {
       if (!_standalone && _pid?.id && (embedResult.lat != null || embedResult.locationName)) {
-        const projModule = await import('../shared/project-storage.js');
+        const projModule = await import('shared/project-storage.js');
         const proj = projModule.getProject(_pid.id);
         if (proj) {
           const newLoc = {
@@ -2239,7 +2239,7 @@ async function openCoolingTrashModal() {
         // Для других типов пока просим открыть исходный модуль.
         if (r.itemKind === 'meteo-dataset' && r.payload?.dataset) {
           try {
-            const { idbGet, idbSet, idbAvailable } = await import('../shared/idb-store.js');
+            const { idbGet, idbSet, idbAvailable } = await import('shared/idb-store.js');
             const idbKey = `meteo.datasets.${_pid.id}`;
             let datasets = idbAvailable() ? (await idbGet(idbKey, [])) : [];
             if (!Array.isArray(datasets)) datasets = [];

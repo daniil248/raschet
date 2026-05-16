@@ -19,9 +19,22 @@
 </head>
 <body>
   <div id="rs-header-mount"></div>
+  <!-- v0.60.539 PROTOTYPE (X.5 enabler): import map развязывает спецификатор
+       импорта от глубины файла. Адреса document-relative → работает и на
+       GitHub Pages (/raschet/cooling/ → /raschet/shared/), и через file://.
+       При будущем переезде папки меняется ТОЛЬКО этот блок (1 правка на
+       HTML вместо N импортов на файл). Должен идти ДО первого module-script. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "shared/": "../shared/",
+      "engine/": "../js/engine/"
+    }
+  }
+  </script>
   <script type="module">
-    import { mountHeader } from '../shared/app-header.js';
-    import { mountHelp } from '../shared/help-panel.js';
+    import { mountHeader } from 'shared/app-header.js';
+    import { mountHelp } from 'shared/help-panel.js';
     import { getDatasheetFormatDocsHtml } from './calc/datasheet.js';
     mountHeader({ title: 'Подбор холодильных систем', home: '../hub.html', moduleId: 'cooling', moduleTitle: 'Подбор холодильных систем' });
     mountHelp({
@@ -333,8 +346,8 @@
   </script>
   <script type="module" src="cooling.js"></script>
   <script type="module">
-    import { mountFooter as mountModuleFooter } from '../shared/module-footer.js';
-    import { APP_VERSION } from '../js/engine/constants.js';
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
     mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'cooling', moduleTitle: 'Подбор холодильных систем' });
   </script>
 </body>

@@ -184,7 +184,7 @@ export function renderChillerSpecForm(spec, onChange, onClear) {
     // v0.60.20: catalog-сохранение через in-page модалку (вместо prompt/alert)
     if (e.target.closest('[data-save-to-catalog]')) {
       try {
-        const lib = await import('../../shared/element-library.js');
+        const lib = await import('shared/element-library.js');
         const defaultName = `Чиллер ${s.systemType} ${Math.round(s.ratedCapKw || 0)}кВт`;
         const name = await clPromptInline('Название изделия для каталога', defaultName);
         if (!name) return;
@@ -211,7 +211,7 @@ export function renderChillerSpecForm(spec, onChange, onClear) {
 
     if (e.target.closest('[data-load-from-catalog]')) {
       try {
-        const lib = await import('../../shared/element-library.js');
+        const lib = await import('shared/element-library.js');
         const items = lib.listElements({ kind: 'climate' }).filter(el => el.specs?.coolingSpec);
         if (!items.length) {
           toast('В каталоге нет cooling-spec изделий. Сохраните spec через «📚 Сохранить в каталог».', 'info');

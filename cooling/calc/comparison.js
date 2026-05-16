@@ -15,7 +15,7 @@
 
 import { simulateOptionTopology } from './topology.js';
 import { buildBinData } from './chiller-bin-calc.js';
-import { computeTco, discountedPaybackYears, convertEcoToCurrency } from '../../shared/calc/capex-tco.js';
+import { computeTco, discountedPaybackYears, convertEcoToCurrency } from 'shared/calc/capex-tco.js';
 
 /**
  * Метрики для одной опции (системные, не per-unit).

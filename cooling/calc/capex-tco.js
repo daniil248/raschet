@@ -5,5 +5,5 @@
 // Этот файл оставлен как реэкспорт, чтобы закэшированные браузером старые
 // cooling.js / comparison.js / ui/capex-form.js (которые импортируют этот
 // путь) не получали 404 в окно действия кэша GitHub Pages. Новый код должен
-// импортировать напрямую из '../../shared/calc/capex-tco.js'.
-export * from '../../shared/calc/capex-tco.js';
+// импортировать напрямую из 'shared/calc/capex-tco.js'.
+export * from 'shared/calc/capex-tco.js';

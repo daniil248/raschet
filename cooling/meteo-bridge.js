@@ -10,8 +10,8 @@
 // Если в Meteo нет ⭐-датасета — Cooling показывает пустое состояние
 // со ссылкой «📅 Открыть Meteo →».
 
-import { ensureDefaultProject, projectKey, getActiveProjectId } from '../shared/project-storage.js';
-import { idbGet, idbAvailable } from '../shared/idb-store.js';
+import { ensureDefaultProject, projectKey, getActiveProjectId } from 'shared/project-storage.js';
+import { idbGet, idbAvailable } from 'shared/idb-store.js';
 
 const KEY_DATA = ['meteo', 'datasets.v1'];
 const KEY_ACTIVE = ['meteo', 'activeId.v1'];
