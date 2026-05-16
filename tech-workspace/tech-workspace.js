@@ -1454,7 +1454,9 @@ function renderListRail(c, ro) {
   const _rooms = Array.isArray(c.rooms) ? c.rooms : [];
   // v0.60.119: kind убран из UI — единая иконка 🏠 для всех помещений.
   // Legacy kind остаётся в данных (для отчётов / фильтров в будущем).
-  const ROOM_KIND_ICON = { it: '🗄', ups: '⚡', mech: '🛠', office: '🏢', other: '📦' };
+  // v0.60.496 (Phase 47.1.6): kind-варианты помещений (под типы объекта).
+  const ROOM_KIND_ICON = { it: '🗄', ups: '⚡', mech: '🛠', office: '🏢',
+    workshop: '🏭', pump: '💧', storage: '📦', other: '📦' };
   const _countInRoom = (rid) => {
     const rg = (c.rackGroups || []).filter(x => x.roomId === rid).reduce((s, x) => s + (Number(x.count) || 0), 0);
     const us = (c.upsSystems || []).filter(x => x.roomId === rid).length;
@@ -1514,6 +1516,7 @@ function renderListRail(c, ro) {
               <a href="${editUrl}" target="_blank" style="margin-left:auto;padding:2px 6px;font-size:10px;border:1px solid #0ea5e9;background:#fff;color:#0369a1;border-radius:3px;cursor:pointer;text-decoration:none">↪ карточка</a>
             </span>
             ${ok !== 'datacenter' ? `<span class="tw-rail-sub" style="color:#b45309">${escHtml(_KIND_SECNOTE[ok] || 'Состав разделов адаптирован под тип объекта.')}</span>` : ''}
+            ${ok === 'custom' ? `<button type="button" class="tw-rail-add" data-act-objmod="1" title="Выбрать, какие разделы sidebar активны для своего шаблона объекта" style="margin-top:6px;cursor:pointer">⚙ Разделы…</button>` : ''}
           </div>`;
         })()}
       </div>
@@ -1897,6 +1900,20 @@ function renderDetails(c, ro) {
             <input type="text" class="tw-card-name" data-field="name" value="${escAttr(rm.name)}" placeholder="Имя помещения (свободная форма)" ${ro ? 'disabled' : ''}>
           </div>
           <p class="muted" style="font-size:11.5px;margin:4px 0 8px">💡 Имя задаёт технолог в свободной форме (например, «Главный зал», «UPS-room», «Машзал ИБП», «Зал GPU», «Щитовая 0.4 кВ»).</p>
+          <label style="display:block;margin:0 0 10px;font-size:12.5px" title="Тип помещения — семантика клиренсов/норм и иконка в списке. Подбирается под тип объекта (ЦОД/завод/насосная/офис).">🏷 Тип помещения:
+            <select data-field="kind" ${ro ? 'disabled' : ''} style="margin-left:6px">
+              ${[
+                ['it', '🗄 Зал ИТ / серверная'],
+                ['ups', '⚡ ИБП / щитовая'],
+                ['mech', '🛠 Инженерное / машзал'],
+                ['workshop', '🏭 Производственный цех'],
+                ['pump', '💧 Насосная'],
+                ['office', '🏢 Офис'],
+                ['storage', '📦 Склад'],
+                ['other', '📦 Другое'],
+              ].map(([v, l]) => `<option value="${v}"${(rm.kind || 'it') === v ? ' selected' : ''}>${l}</option>`).join('')}
+            </select>
+          </label>
 
           <h5 style="margin:10px 0 6px;font-size:12.5px;color:#075985">📐 Площадь</h5>
           <div class="tw-grid" style="grid-template-columns:1fr 1fr">
@@ -3165,6 +3182,54 @@ function bindListEvents() {
           twToast(`Тип объекта: ${KIND_OPTS.find(o => o.id === sel.value).lbl}`, 'ok');
           renderActiveVariant();
         }
+        close();
+      });
+      return;
+    }
+    // v0.60.496 (Roadmap 47.1.5): редактор состава разделов sidebar
+    // для objectKind='custom' (пользовательский шаблон).
+    const objmodBtn = e.target.closest('[data-act-objmod]');
+    if (objmodBtn) {
+      if (!_pid) { twToast('Нет активного проекта.', 'warn'); return; }
+      const proj = getProject(_pid);
+      const SEC_OPTS = [
+        { id: 'rooms', lbl: '🏠 Помещения' },
+        { id: 'racks', lbl: '🗄 Стойки' },
+        { id: 'ups', lbl: '⚡ ИБП' },
+        { id: 'cool', lbl: '❄ Климат' },
+        { id: 'mdc', lbl: '📦 МЦОД' },
+        { id: 'feed', lbl: '🔌 Ввод (ТП/ДГУ)' },
+        { id: 'areas', lbl: '📐 Площади' },
+        { id: 'pue', lbl: '📊 PUE' },
+      ];
+      const _DC = ['rooms', 'racks', 'ups', 'cool', 'mdc', 'feed', 'areas', 'pue'];
+      const cursel = new Set(Array.isArray(proj?.objectModules) && proj.objectModules.length ? proj.objectModules : _DC);
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center';
+      overlay.innerHTML = `<div style="background:#fff;border-radius:8px;padding:18px 22px;min-width:380px;max-width:480px;box-shadow:0 10px 40px rgba(0,0,0,0.3);font:13px/1.5 system-ui,sans-serif">
+        <h3 style="margin:0 0 8px;font-size:16px;color:#0f172a">⚙ Состав разделов</h3>
+        <p class="muted" style="margin:0 0 14px;font-size:12px;color:#64748b">Выберите разделы, активные в Технологе объекта для этого проекта (шаблон «Свой»).</p>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          ${SEC_OPTS.map(o => `<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid #e2e8f0;border-radius:5px;cursor:pointer">
+            <input type="checkbox" value="${o.id}"${cursel.has(o.id) ? ' checked' : ''}>
+            <span>${o.lbl}</span>
+          </label>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+          <button type="button" id="tw-objmod-cancel" style="padding:6px 14px;border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer">Отмена</button>
+          <button type="button" id="tw-objmod-ok" style="padding:6px 14px;border:1px solid #2563eb;background:#2563eb;color:#fff;border-radius:4px;cursor:pointer;font-weight:500">Применить</button>
+        </div>
+      </div>`;
+      const close = () => overlay.remove();
+      overlay.addEventListener('click', ev => { if (ev.target === overlay) close(); });
+      document.body.appendChild(overlay);
+      overlay.querySelector('#tw-objmod-cancel').addEventListener('click', close);
+      overlay.querySelector('#tw-objmod-ok').addEventListener('click', () => {
+        const picked = [...overlay.querySelectorAll('input[type="checkbox"]:checked')].map(i => i.value);
+        if (!picked.length) { twToast('Выберите хотя бы один раздел.', 'warn'); return; }
+        updateProject(_pid, { objectModules: picked });
+        twToast(`Состав разделов обновлён (${picked.length}).`, 'ok');
+        renderActiveVariant();
         close();
       });
       return;
