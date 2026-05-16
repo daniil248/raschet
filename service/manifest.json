@@ -12,14 +12,31 @@
   "enabled": true,
   "internalOnly": false,
   "subscriptionPlan": "free",
-  "requires": ["shared/currency-defaults", "shared/meteo-util"],
+  "requires": [
+    "catalog",
+    "cooling",
+    "meteo",
+    "shared/currency-defaults",
+    "shared/meteo-util"
+  ],
   "dbCollections": [],
-  "permissions": ["service.use"],
-  "lsNamespacesOwned": ["service"],
+  "permissions": [
+    "service.use"
+  ],
+  "lsNamespacesOwned": [
+    "service"
+  ],
   "dependsOnContracts": {
     "storageKeys": [],
-    "events": { "emits": [], "consumes": [] },
-    "urlParams": ["project"],
-    "bridges": ["shared/service-bridge.js"]
+    "events": {
+      "emits": [],
+      "consumes": []
+    },
+    "urlParams": [
+      "project"
+    ],
+    "bridges": [
+      "shared/service-bridge.js"
+    ]
   }
 }

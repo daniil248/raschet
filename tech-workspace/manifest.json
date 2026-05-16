@@ -12,14 +12,39 @@
   "enabled": true,
   "internalOnly": false,
   "subscriptionPlan": "pro",
-  "requires": ["shared/auth", "shared/project-storage"],
+  "requires": [
+    "cooling",
+    "meteo",
+    "service",
+    "shared/auth",
+    "shared/idb-store",
+    "shared/price-records",
+    "shared/project-storage",
+    "shared/service-bridge"
+  ],
   "dbCollections": [],
-  "permissions": ["tech-workspace.use"],
-  "lsNamespacesOwned": ["tech-workspace"],
+  "permissions": [
+    "tech-workspace.use"
+  ],
+  "lsNamespacesOwned": [
+    "tech-workspace"
+  ],
   "dependsOnContracts": {
-    "storageKeys": ["raschet.project.<pid>.tech-workspace.variants.v1", "raschet.project.<pid>.tech-workspace.activeVariantId.v1", "raschet.cooling.prefill.v1"],
-    "events": { "emits": [], "consumes": [] },
-    "urlParams": ["project", "pid"],
-    "bridges": ["scheme-rack-bridge"]
+    "storageKeys": [
+      "raschet.project.<pid>.tech-workspace.variants.v1",
+      "raschet.project.<pid>.tech-workspace.activeVariantId.v1",
+      "raschet.cooling.prefill.v1"
+    ],
+    "events": {
+      "emits": [],
+      "consumes": []
+    },
+    "urlParams": [
+      "project",
+      "pid"
+    ],
+    "bridges": [
+      "scheme-rack-bridge"
+    ]
   }
 }

@@ -12,14 +12,35 @@
   "enabled": true,
   "internalOnly": false,
   "subscriptionPlan": "free",
-  "requires": ["shared/idb-store", "shared/meteo-fetch", "shared/meteo-util", "shared/service-bridge"],
+  "requires": [
+    "meteo",
+    "service",
+    "shared/idb-store",
+    "shared/meteo-fetch",
+    "shared/meteo-util",
+    "shared/service-bridge"
+  ],
   "dbCollections": [],
-  "permissions": ["cooling.use"],
-  "lsNamespacesOwned": ["cooling"],
+  "permissions": [
+    "cooling.use"
+  ],
+  "lsNamespacesOwned": [
+    "cooling"
+  ],
   "dependsOnContracts": {
     "storageKeys": [],
-    "events": { "emits": [], "consumes": [] },
-    "urlParams": ["project", "nodeId", "capacityKw"],
-    "bridges": ["cooling/meteo-bridge.js", "shared/service-bridge.js"]
+    "events": {
+      "emits": [],
+      "consumes": []
+    },
+    "urlParams": [
+      "project",
+      "nodeId",
+      "capacityKw"
+    ],
+    "bridges": [
+      "cooling/meteo-bridge.js",
+      "shared/service-bridge.js"
+    ]
   }
 }

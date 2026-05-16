@@ -12,14 +12,27 @@
   "enabled": false,
   "internalOnly": false,
   "subscriptionPlan": "starter",
-  "requires": ["shared/auth", "shared/app-header"],
+  "requires": [
+    "shared/app-header",
+    "shared/auth",
+    "shared/sketch-refs"
+  ],
   "dbCollections": [],
-  "permissions": ["sketch.use"],
-  "lsNamespacesOwned": ["sketch"],
+  "permissions": [
+    "sketch.use"
+  ],
+  "lsNamespacesOwned": [
+    "sketch"
+  ],
   "dependsOnContracts": {
     "storageKeys": [],
-    "events": { "emits": [], "consumes": [] },
-    "urlParams": ["project"],
+    "events": {
+      "emits": [],
+      "consumes": []
+    },
+    "urlParams": [
+      "project"
+    ],
     "bridges": []
   }
 }

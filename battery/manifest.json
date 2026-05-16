@@ -12,14 +12,46 @@
   "enabled": true,
   "internalOnly": false,
   "subscriptionPlan": "free",
-  "requires": ["shared/auth", "shared/battery-picker"],
+  "requires": [
+    "shared/auth",
+    "shared/battery-catalog",
+    "shared/battery-picker",
+    "shared/battery-s3-logic",
+    "shared/battery-types",
+    "shared/ups-catalog",
+    "shared/ups-types",
+    "shared/ups-verified"
+  ],
   "dbCollections": [],
-  "permissions": ["battery.use"],
-  "lsNamespacesOwned": ["battery"],
+  "permissions": [
+    "battery.use"
+  ],
+  "lsNamespacesOwned": [
+    "battery"
+  ],
   "dependsOnContracts": {
-    "storageKeys": ["raschet.project.<pid>.battery.lifecycleCostItems.v1", "raschet.batteryCatalog.v1", "raschet.upsHandoff.v1", "raschet.upsBatteryReturn.v1", "raschet.pendingBatterySelection.v1"],
-    "events": { "emits": ["battery:configs-changed"], "consumes": [] },
-    "urlParams": ["project", "nodeId", "loadKw", "autonomyMin", "selected", "fromUps", "fromCtx"],
+    "storageKeys": [
+      "raschet.project.<pid>.battery.lifecycleCostItems.v1",
+      "raschet.batteryCatalog.v1",
+      "raschet.upsHandoff.v1",
+      "raschet.upsBatteryReturn.v1",
+      "raschet.pendingBatterySelection.v1"
+    ],
+    "events": {
+      "emits": [
+        "battery:configs-changed"
+      ],
+      "consumes": []
+    },
+    "urlParams": [
+      "project",
+      "nodeId",
+      "loadKw",
+      "autonomyMin",
+      "selected",
+      "fromUps",
+      "fromCtx"
+    ],
     "bridges": []
   }
 }

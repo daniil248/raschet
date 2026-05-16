@@ -12,14 +12,44 @@
   "enabled": true,
   "internalOnly": false,
   "subscriptionPlan": "pro",
-  "requires": ["shared/element-library", "shared/element-schemas", "shared/catalog-bridge", "shared/price-records", "shared/counterparty-catalog"],
-  "dbCollections": ["prices", "counterparties"],
-  "permissions": ["catalog.use", "catalog.manage-prices"],
-  "lsNamespacesOwned": ["catalog"],
+  "requires": [
+    "shared/catalog-bridge",
+    "shared/counterparty-catalog",
+    "shared/element-library",
+    "shared/element-schemas",
+    "shared/price-records",
+    "shared/tcc-curves"
+  ],
+  "dbCollections": [
+    "prices",
+    "counterparties"
+  ],
+  "permissions": [
+    "catalog.use",
+    "catalog.manage-prices"
+  ],
+  "lsNamespacesOwned": [
+    "catalog"
+  ],
   "dependsOnContracts": {
-    "storageKeys": ["raschet.catalog.colVisibility.v1", "raschet.upsCatalog.v1", "raschet.batteryCatalog.v1", "raschet.transformerCatalog.v1", "raschet.panelCatalog.v1"],
-    "events": { "emits": ["raschet:work-templates-change", "raschet:materials-change", "raschet:wizards-change"], "consumes": [] },
-    "urlParams": ["project"],
+    "storageKeys": [
+      "raschet.catalog.colVisibility.v1",
+      "raschet.upsCatalog.v1",
+      "raschet.batteryCatalog.v1",
+      "raschet.transformerCatalog.v1",
+      "raschet.panelCatalog.v1"
+    ],
+    "events": {
+      "emits": [
+        "raschet:work-templates-change",
+        "raschet:materials-change",
+        "raschet:wizards-change"
+      ],
+      "consumes": []
+    },
+    "urlParams": [
+      "project"
+    ],
     "bridges": []
   }
 }

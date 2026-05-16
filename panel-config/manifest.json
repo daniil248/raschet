@@ -12,14 +12,39 @@
   "enabled": true,
   "internalOnly": false,
   "subscriptionPlan": "starter",
-  "requires": ["shared/auth", "shared/panel-catalog"],
+  "requires": [
+    "shared/auth",
+    "shared/catalog-xlsx-parser",
+    "shared/panel-catalog",
+    "shared/panel-picker"
+  ],
   "dbCollections": [],
-  "permissions": ["panel-config.use"],
-  "lsNamespacesOwned": ["panel-config"],
+  "permissions": [
+    "panel-config.use"
+  ],
+  "lsNamespacesOwned": [
+    "panel-config"
+  ],
   "dependsOnContracts": {
-    "storageKeys": ["raschet.configurations.panel.v1", "raschet.panelCatalog.v1"],
-    "events": { "emits": ["rs-selection-change", "rs-cs-focus"], "consumes": ["rs-selection-change", "rs-cs-focus"] },
-    "urlParams": ["project", "nodeId", "loadKw"],
+    "storageKeys": [
+      "raschet.configurations.panel.v1",
+      "raschet.panelCatalog.v1"
+    ],
+    "events": {
+      "emits": [
+        "rs-selection-change",
+        "rs-cs-focus"
+      ],
+      "consumes": [
+        "rs-selection-change",
+        "rs-cs-focus"
+      ]
+    },
+    "urlParams": [
+      "project",
+      "nodeId",
+      "loadKw"
+    ],
     "bridges": []
   }
 }

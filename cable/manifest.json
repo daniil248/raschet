@@ -12,14 +12,31 @@
   "enabled": true,
   "internalOnly": false,
   "subscriptionPlan": "free",
-  "requires": ["shared/auth", "shared/global-settings", "shared/calc-modules", "shared/report"],
+  "requires": [
+    "shared/auth",
+    "shared/calc-modules",
+    "shared/global-settings",
+    "shared/report",
+    "shared/tcc-chart"
+  ],
   "dbCollections": [],
-  "permissions": ["cable.use"],
-  "lsNamespacesOwned": ["cable"],
+  "permissions": [
+    "cable.use"
+  ],
+  "lsNamespacesOwned": [
+    "cable"
+  ],
   "dependsOnContracts": {
-    "storageKeys": ["raschet.global.v1"],
-    "events": { "emits": [], "consumes": [] },
-    "urlParams": ["project"],
+    "storageKeys": [
+      "raschet.global.v1"
+    ],
+    "events": {
+      "emits": [],
+      "consumes": []
+    },
+    "urlParams": [
+      "project"
+    ],
     "bridges": []
   }
 }

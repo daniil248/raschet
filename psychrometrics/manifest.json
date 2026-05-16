@@ -12,14 +12,26 @@
   "enabled": true,
   "internalOnly": false,
   "subscriptionPlan": "free",
-  "requires": ["shared/draggable-modal"],
+  "requires": [
+    "meteo",
+    "shared/draggable-modal"
+  ],
   "dbCollections": [],
-  "permissions": ["psychrometrics.use"],
-  "lsNamespacesOwned": ["psychrometrics"],
+  "permissions": [
+    "psychrometrics.use"
+  ],
+  "lsNamespacesOwned": [
+    "psychrometrics"
+  ],
   "dependsOnContracts": {
     "storageKeys": [],
-    "events": { "emits": [], "consumes": [] },
-    "urlParams": ["project"],
+    "events": {
+      "emits": [],
+      "consumes": []
+    },
+    "urlParams": [
+      "project"
+    ],
     "bridges": []
   }
 }

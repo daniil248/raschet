@@ -12,14 +12,55 @@
   "enabled": true,
   "internalOnly": false,
   "subscriptionPlan": "starter",
-  "requires": ["shared/auth", "shared/ups-catalog", "shared/ups-picker"],
+  "requires": [
+    "shared/auth",
+    "shared/catalog-xlsx-parser",
+    "shared/price-records",
+    "shared/ups-catalog",
+    "shared/ups-picker",
+    "shared/ups-types"
+  ],
   "dbCollections": [],
-  "permissions": ["ups-config.use"],
-  "lsNamespacesOwned": ["ups-config"],
+  "permissions": [
+    "ups-config.use"
+  ],
+  "lsNamespacesOwned": [
+    "ups-config"
+  ],
   "dependsOnContracts": {
-    "storageKeys": ["raschet.project.<pid>.ups-config.selected.v1", "raschet.configurations.ups.v1", "raschet.lastUpsConfig.v1", "raschet.pendingUpsSelection.v1", "raschet.upsHandoff.v1", "raschet.upsBatteryReturn.v1", "raschet.cs.ctx.ups"],
-    "events": { "emits": ["rs-selection-change", "rs-cs-focus", "ups-config:configs-changed"], "consumes": ["rs-selection-change", "rs-cs-focus", "ups:open-master"] },
-    "urlParams": ["project", "nodeId", "capacityKw", "loadKw", "autonomyMin", "targetAutonomyMin", "cosPhi", "phases", "redundancy", "upsType"],
+    "storageKeys": [
+      "raschet.project.<pid>.ups-config.selected.v1",
+      "raschet.configurations.ups.v1",
+      "raschet.lastUpsConfig.v1",
+      "raschet.pendingUpsSelection.v1",
+      "raschet.upsHandoff.v1",
+      "raschet.upsBatteryReturn.v1",
+      "raschet.cs.ctx.ups"
+    ],
+    "events": {
+      "emits": [
+        "rs-selection-change",
+        "rs-cs-focus",
+        "ups-config:configs-changed"
+      ],
+      "consumes": [
+        "rs-selection-change",
+        "rs-cs-focus",
+        "ups:open-master"
+      ]
+    },
+    "urlParams": [
+      "project",
+      "nodeId",
+      "capacityKw",
+      "loadKw",
+      "autonomyMin",
+      "targetAutonomyMin",
+      "cosPhi",
+      "phases",
+      "redundancy",
+      "upsType"
+    ],
     "bridges": []
   }
 }

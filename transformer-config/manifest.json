@@ -12,14 +12,38 @@
   "enabled": true,
   "internalOnly": false,
   "subscriptionPlan": "starter",
-  "requires": ["shared/auth", "shared/transformer-catalog"],
+  "requires": [
+    "shared/auth",
+    "shared/catalog-xlsx-parser",
+    "shared/transformer-catalog",
+    "shared/transformer-picker"
+  ],
   "dbCollections": [],
-  "permissions": ["transformer-config.use"],
-  "lsNamespacesOwned": ["transformer-config"],
+  "permissions": [
+    "transformer-config.use"
+  ],
+  "lsNamespacesOwned": [
+    "transformer-config"
+  ],
   "dependsOnContracts": {
-    "storageKeys": ["raschet.configurations.transformer.v1", "raschet.transformerCatalog.v1"],
-    "events": { "emits": ["rs-selection-change", "rs-cs-focus"], "consumes": ["rs-selection-change", "rs-cs-focus"] },
-    "urlParams": ["project", "nodeId"],
+    "storageKeys": [
+      "raschet.configurations.transformer.v1",
+      "raschet.transformerCatalog.v1"
+    ],
+    "events": {
+      "emits": [
+        "rs-selection-change",
+        "rs-cs-focus"
+      ],
+      "consumes": [
+        "rs-selection-change",
+        "rs-cs-focus"
+      ]
+    },
+    "urlParams": [
+      "project",
+      "nodeId"
+    ],
     "bridges": []
   }
 }

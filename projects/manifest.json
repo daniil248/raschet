@@ -12,14 +12,43 @@
   "enabled": true,
   "internalOnly": true,
   "subscriptionPlan": "enterprise",
-  "requires": ["shared/auth", "shared/project-storage"],
-  "dbCollections": ["projects"],
-  "permissions": ["projects.use"],
-  "lsNamespacesOwned": ["projects"],
+  "requires": [
+    "shared/auth",
+    "shared/project-storage",
+    "shared/scheme-orphan-migration",
+    "shared/sketch-refs",
+    "shared/sketch-refs-reverse"
+  ],
+  "dbCollections": [
+    "projects"
+  ],
+  "permissions": [
+    "projects.use"
+  ],
+  "lsNamespacesOwned": [
+    "projects"
+  ],
   "dependsOnContracts": {
-    "storageKeys": ["raschet.projects.v1", "raschet.activeProjectId.v1", "raschet.storageMode.v1", "raschet.project.<pid>.*"],
-    "events": { "emits": ["raschet:storage-mode-changed"], "consumes": [] },
-    "urlParams": ["project", "tab"],
-    "bridges": ["service-bridge", "scheme-rack-bridge", "inventory-bridge"]
+    "storageKeys": [
+      "raschet.projects.v1",
+      "raschet.activeProjectId.v1",
+      "raschet.storageMode.v1",
+      "raschet.project.<pid>.*"
+    ],
+    "events": {
+      "emits": [
+        "raschet:storage-mode-changed"
+      ],
+      "consumes": []
+    },
+    "urlParams": [
+      "project",
+      "tab"
+    ],
+    "bridges": [
+      "service-bridge",
+      "scheme-rack-bridge",
+      "inventory-bridge"
+    ]
   }
 }

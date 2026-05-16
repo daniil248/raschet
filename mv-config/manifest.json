@@ -12,14 +12,37 @@
   "enabled": true,
   "internalOnly": false,
   "subscriptionPlan": "pro",
-  "requires": ["shared/element-library", "shared/catalog-bridge"],
+  "requires": [
+    "shared/catalog-bridge",
+    "shared/element-library",
+    "shared/price-records"
+  ],
   "dbCollections": [],
-  "permissions": ["mv-config.use"],
-  "lsNamespacesOwned": ["mv-config"],
+  "permissions": [
+    "mv-config.use"
+  ],
+  "lsNamespacesOwned": [
+    "mv-config"
+  ],
   "dependsOnContracts": {
-    "storageKeys": ["raschet.configurations.mv.v1", "raschet.pendingMvSelection.v1"],
-    "events": { "emits": ["rs-selection-change", "rs-cs-focus"], "consumes": ["rs-selection-change", "rs-cs-focus"] },
-    "urlParams": ["project", "nodeId"],
+    "storageKeys": [
+      "raschet.configurations.mv.v1",
+      "raschet.pendingMvSelection.v1"
+    ],
+    "events": {
+      "emits": [
+        "rs-selection-change",
+        "rs-cs-focus"
+      ],
+      "consumes": [
+        "rs-selection-change",
+        "rs-cs-focus"
+      ]
+    },
+    "urlParams": [
+      "project",
+      "nodeId"
+    ],
     "bridges": []
   }
 }
