@@ -593,18 +593,42 @@
           <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
             <button type="button" class="rs-cs-btn rs-cs-btn-primary" data-vakb="pick"${(!u || choice === 'skip') ? ' disabled' : ''}>⚡ Подобрать АКБ →</button>
           </div>`;
+        // v0.60.472 (по замечанию Пользователя): в подбор АКБ нельзя
+        // передавать критическую нагрузку подбора «как есть». Реальная
+        // нагрузка на батарею зависит от номинала выбранного ИБП, схемы
+        // резерва и топологии АКБ. Считаем число рабочих/установленных
+        // единиц по номиналу модели и схеме резерва.
+        const critKw = Number(req.loadKw) || 0;
+        const unitCapKw = Number(p.capacityKw) || (u && Number(u.capacityKw)) || 0;
+        const scheme = String(p.redundancy || req.redundancy || 'N');
+        const Nwork = unitCapKw > 0 ? Math.max(1, Math.ceil(critKw / unitCapKw)) : 1;
+        const installed = scheme === '2N' ? 2 * Nwork
+          : scheme === 'N+2' ? Nwork + 2
+          : scheme === 'N+1' ? Nwork + 1
+          : Nwork;                                  // 'N'
+        const isPerUnit = topo === 'per-unit';
+        const akbLoadKw = isPerUnit ? (critKw / Nwork) : critKw;
+        const setsQty = isPerUnit ? installed : 1;
         const info = host.querySelector('[data-vakb-info]');
         info.innerHTML = u
-          ? `Модель ИБП: <b>${(u.supplier || '')} ${(u.model || u.id)}</b> · V<sub>DC</sub> ${u.vdcMin || '?'}…${u.vdcMax || '?'} В · КПД ${u.efficiency || '?'}% · нагрузка подбора <b>${Number(req.loadKw) || 0}</b> кВт · автономия <b>${Number(req.autonomyMin) || 0}</b> мин · типы АКБ <b>${(Array.isArray(req.batteryTypes) && req.batteryTypes.length) ? req.batteryTypes.join(' / ') : 'любые'}</b>. Откроется модуль «Расчёт АКБ» с подбором «АКБ для ${escHtmlSafe(selectionName || '')}».`
-          : 'Сначала выберите модель ИБП во вкладке «⚙ Spec» — из неё берутся V<sub>DC</sub> и КПД для подбора АКБ.';
+          ? `Модель ИБП: <b>${(u.supplier || '')} ${(u.model || u.id)}</b> · номинал <b>${unitCapKw || '?'}</b> кВт · V<sub>DC</sub> ${u.vdcMin || '?'}…${u.vdcMax || '?'} В · КПД ${u.efficiency || '?'}%.<br>`
+            + `Критическая нагрузка <b>${critKw}</b> кВт · резерв <b>${escHtmlSafe(scheme)}</b> → <b>${Nwork}</b> раб. ИБП${installed > Nwork ? ' (+' + (installed - Nwork) + ' резерв = ' + installed + ' уст.)' : ''}.<br>`
+            + (isPerUnit
+                ? `Топология «на каждый ИБП»: в подбор АКБ передаётся <b>${akbLoadKw.toFixed(0)}</b> кВт (=${critKw}/${Nwork}), заказ <b>${setsQty}</b> компл.`
+                : `Топология «общая шина»: в подбор АКБ передаётся вся нагрузка <b>${akbLoadKw.toFixed(0)}</b> кВт, заказ <b>1</b> компл.`)
+            + ` Автономия <b>${Number(req.autonomyMin) || 0}</b> мин · типы АКБ <b>${(Array.isArray(req.batteryTypes) && req.batteryTypes.length) ? req.batteryTypes.join(' / ') : 'любые'}</b>. Подбор «АКБ для ${escHtmlSafe(selectionName || '')}».`
+          : 'Сначала выберите модель ИБП во вкладке «⚙ Spec» — из неё берутся номинал, V<sub>DC</sub> и КПД для подбора АКБ.';
         host.querySelector('[data-vakb="choice"]').addEventListener('change', (e) => save({ payload: { batteryChoice: e.target.value } }));
-        host.querySelector('[data-vakb="topology"]').addEventListener('change', (e) => save({ payload: { batteryTopology: e.target.value } }));
+        host.querySelector('[data-vakb="topology"]').addEventListener('change', (e) => {
+          save({ payload: { batteryTopology: e.target.value } });
+          if (typeof ctx.refresh === 'function') ctx.refresh();   // пересчитать инфо (per-unit/shared)
+        });
         const pickBtn = host.querySelector('[data-vakb="pick"]');
         if (pickBtn) pickBtn.addEventListener('click', () => {
           if (!u) return;
           const handoff = {
             source: 'ups-config', selectedAt: Date.now(),
-            loadKw: Number(req.loadKw) || 0,
+            loadKw: akbLoadKw,
             autonomyMin: Number(req.autonomyMin) || 0,
             cosPhi: Number(req.cosPhi) || 0,
             invEff: (u.efficiency || 94) / 100,
@@ -613,19 +637,31 @@
             upsId: u.id,
             batteryTypes: Array.isArray(req.batteryTypes) ? req.batteryTypes.slice() : [],
             selectionName: selectionName || null,
-            parallelContext: { topology: topo, redundancyScheme: req.redundancy || p.redundancy || 'N' },
+            parallelContext: {
+              topology: topo,
+              redundancyScheme: scheme,
+              workingCount: Nwork,
+              installedCount: installed,
+              batterySetsQty: setsQty,
+              totalLoadKw: critKw,
+              perUnitLoadKw: critKw / Nwork,
+              unitCapacityKw: unitCapKw,
+            },
           };
           try { localStorage.setItem('raschet.upsHandoff.v1', JSON.stringify(handoff)); } catch {}
           const url = new URL('../battery/', location.href);
           url.searchParams.set('fromUps', '1');
-          url.searchParams.set('loadKw', (Number(req.loadKw) || 0).toFixed(2));
+          url.searchParams.set('loadKw', akbLoadKw.toFixed(2));
           url.searchParams.set('autonomyMin', String(Number(req.autonomyMin) || 0));
           if (handoff.batteryTypes.length) url.searchParams.set('battTypes', handoff.batteryTypes.join(','));
           if (u.vdcMin) url.searchParams.set('vdcMin', u.vdcMin);
           if (u.vdcMax) url.searchParams.set('vdcMax', u.vdcMax);
           if (u.efficiency) url.searchParams.set('invEff', u.efficiency);
           url.searchParams.set('battTopology', topo);
-          save({ payload: { batteryChoice: 'pick' } });
+          url.searchParams.set('battSetsQty', String(setsQty));
+          url.searchParams.set('parallelN', String(Nwork));
+          url.searchParams.set('parallelInstalled', String(installed));
+          save({ payload: { batteryChoice: 'pick', batterySetsQty: setsQty } });
           window.open(url.toString(), '_blank');
         });
       }
