@@ -3,6 +3,7 @@
 import { DEFAULTS, BREAKER_SERIES, GLOBAL } from '../constants.js';
 import { state, uid } from '../state.js';
 import { escHtml, escAttr, fmt, field, flash, helpIcon } from '../utils.js';
+import { moduleHref } from '../module-paths.js';
 import { effectiveTag } from '../zones.js';
 import { snapshot, notifyChange } from '../history.js';
 import { render } from '../render.js';
@@ -104,7 +105,7 @@ export function openPanelParamsModal(n) {
       } catch (e) { console.warn('[panel-inspector] mv lib', e); }
     })();
     h.push(`<div id="pp-mv-select-mount" style="margin-bottom:6px">Загрузка справочника…</div>`);
-    h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 8px">РУ среднего напряжения (6-35 кВ): моноблоки SF6 (RM6/SafeRing) или сборные (ЩО-70). Конфигуратор с wizard — в <a href="mv-config/" target="_blank" style="color:#1976d2">«Конфигураторе MV»</a> (в разработке, Фаза 1.19.1).</div>`);
+    h.push(`<div class="muted" style="font-size:11px;margin:-2px 0 8px">РУ среднего напряжения (6-35 кВ): моноблоки SF6 (RM6/SafeRing) или сборные (ЩО-70). Конфигуратор с wizard — в <a href="${moduleHref('mv-config')}" target="_blank" style="color:#1976d2">«Конфигураторе MV»</a> (в разработке, Фаза 1.19.1).</div>`);
 
     // Кнопка MV-конфигуратора
     {

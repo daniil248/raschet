@@ -1,6 +1,7 @@
 import { state, svg, ensureDefaultPage, getCurrentPage, nextPageId, PAGE_KINDS_META, PAGE_KINDS, getPageKind, saveCurrentPagePositions, loadPagePositions } from './state.js';
 import { NODE_H, SVG_NS, GLOBAL } from './constants.js';
 import { nodeWidth, nodeHeight } from './geometry.js';
+import { moduleHref } from './module-paths.js';
 import { updateViewBox, render } from './render.js';
 import { snapshot, undo, redo, updateUndoButtons, notifyChange } from './history.js';
 import { serialize, deserialize } from './serialization.js';
@@ -118,16 +119,16 @@ export function initToolbar() {
         ? ` <span style="display:inline-block;margin-left:6px;padding:1px 6px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:3px;font-size:10px" title="Cloud-схема и локальный активный проект — разные. Cloud влияет на схему/коллаб, локальный — на каталоги/scoping. Если хотите свести — открой ${cloudSchemeName.replace(/[<>&"]/g,'')} через /projects/ или поменяй локальный активный.">⚠ ≠ cloud</span>`
         : '';
       if (key === 'raschet.scheme') {
-        badge.innerHTML = '<span style="color:#b91c1c">⚠ Вне проекта</span> · <a href="projects/" style="color:#1565c0">выбрать проект →</a> <span title="' + hint.replace(/"/g,'&quot;') + '" style="cursor:help;color:#94a3b8">ⓘ</span>';
+        badge.innerHTML = '<span style="color:#b91c1c">⚠ Вне проекта</span> · <a href="' + moduleHref('projects') + '" style="color:#1565c0">выбрать проект →</a> <span title="' + hint.replace(/"/g,'&quot;') + '" style="cursor:help;color:#94a3b8">ⓘ</span>';
       } else if (pkind === 'sketch') {
         // Активный проект — мини-проект конкретного модуля. В главном Конструкторе
         // такой «проект» использовать нельзя как полноценный: он привязан к
         // своему мастеру (ownerModule) и засоряется его данными.
         const ownerHint = powner ? ' (модуль: ' + powner.replace(/[<>&"]/g,'') + ')' : '';
         const warn = 'Сейчас активен мини-проект' + ownerHint + '. Главный Конструктор рассчитан на полноценный проект. Перейдите в /projects/ и активируйте настоящий проект (или создайте новый).';
-        badge.innerHTML = '<span style="color:#b45309">🧪 Мини-проект: <b>' + (pname ? pname.replace(/[<>&"]/g,'') : pid) + '</b></span>' + mismatchNote + ' · <a href="projects/" style="color:#1565c0">выбрать полноценный →</a> <span title="' + warn.replace(/"/g,'&quot;') + '" style="cursor:help;color:#94a3b8">ⓘ</span>';
+        badge.innerHTML = '<span style="color:#b45309">🧪 Мини-проект: <b>' + (pname ? pname.replace(/[<>&"]/g,'') : pid) + '</b></span>' + mismatchNote + ' · <a href="' + moduleHref('projects') + '" style="color:#1565c0">выбрать полноценный →</a> <span title="' + warn.replace(/"/g,'&quot;') + '" style="cursor:help;color:#94a3b8">ⓘ</span>';
       } else {
-        badge.innerHTML = '📁 Проект: <b>' + (pname ? pname.replace(/[<>&"]/g,'') : pid) + '</b>' + mismatchNote + ' · <a href="projects/" style="color:#1565c0">сменить →</a> <span title="' + hint.replace(/"/g,'&quot;') + '" style="cursor:help;color:#94a3b8">ⓘ</span>';
+        badge.innerHTML = '📁 Проект: <b>' + (pname ? pname.replace(/[<>&"]/g,'') : pid) + '</b>' + mismatchNote + ' · <a href="' + moduleHref('projects') + '" style="color:#1565c0">сменить →</a> <span title="' + hint.replace(/"/g,'&quot;') + '" style="cursor:help;color:#94a3b8">ⓘ</span>';
       }
       badge.title = hint;
     }
@@ -535,7 +536,7 @@ export function initToolbar() {
       localStorage.setItem('raschet.logistics.handoff', JSON.stringify(handoff));
       flash(`BOM (${items.length} поз.) передан в «Логистика»`, 'success');
       // Открываем модуль в новой вкладке
-      const url = new URL('logistics/', window.location.href);
+      const url = new URL(moduleHref('logistics'), window.location.href);
       url.searchParams.set('import', '1');
       window.open(url.href, '_blank');
     } catch (e) {

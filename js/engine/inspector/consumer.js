@@ -3,6 +3,7 @@
 import { GLOBAL, DEFAULTS, CONSUMER_CATALOG, CONSUMER_CATEGORIES, NODE_H, STARTER_TYPES } from '../constants.js';
 import { state, uid } from '../state.js';
 import { escHtml, escAttr, fmt, field, flash, helpIcon } from '../utils.js';
+import { moduleHref } from '../module-paths.js';
 import { effectiveTag } from '../zones.js';
 import { nextFreeTag, hideAliasSourceFromCanvas } from '../graph.js';
 import { snapshot, notifyChange } from '../history.js';
@@ -189,8 +190,8 @@ export function openConsumerParamsModal(n) {
     const _cSub = n.consumerSubtype || '';
     const _sub = n.subtype || '';
     const _cfg = (() => {
-      if (_sub === 'rack' || _cSub === 'rack') return { href: 'rack-config/', label: '🗄 Конфигуратор стойки' };
-      if (_cSub === 'conditioner' || _sub === 'hvac') return { href: 'psychrometrics/', label: '❄ Расчёт параметров HVAC' };
+      if (_sub === 'rack' || _cSub === 'rack') return { href: moduleHref('rack-config'), label: '🗄 Конфигуратор стойки' };
+      if (_cSub === 'conditioner' || _sub === 'hvac') return { href: moduleHref('psychrometrics'), label: '❄ Расчёт параметров HVAC' };
       // Универсальный fallback — «каталог в режиме требований»
       return { href: null, label: '⚙ Конфигуратор (задать требования)' };
     })();

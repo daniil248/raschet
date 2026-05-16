@@ -31,6 +31,7 @@
 
 import { ensureDefaultProject, projectKey, listSubProjects, createSubProject, listProjects, getProject, setActiveProjectId, createProject, updateProject } from 'shared/project-storage.js';
 import { buildModuleHref } from 'shared/project-context.js';
+import { MODULE_PATHS } from 'engine/module-paths.js';
 import { idbGet, idbAvailable } from 'shared/idb-store.js';
 import { pricesForElement } from 'shared/price-records.js';
 // v0.60.136 (Phase 44.3 follow-up): RBAC guards на approve-actions.
@@ -5380,19 +5381,11 @@ function _syncProjectDataFromProject(concept) {
 // v0.60.87 (Phase 36.4 follow-up): helpers для прямых ссылок в headers секций.
 // Каждая секция в active-variant view имеет «🛠» иконку, открывающую соотв.
 // модуль с правильным pid (sketch-project варианта если есть, иначе parent).
-const _MODULE_HREF = {
-  'rack-config':        '../rack-config/',
-  'scs-config':         '../scs-config/',
-  'ups-config':         '../ups-config/',
-  'cooling':            '../cooling/',
-  'meteo':              '../meteo/',
-  'mdc-config':         '../mdc-config/',
-  'genset-config':      '../genset-config/',
-  'transformer-config': '../transformer-config/',
-  'mv-config':          '../mv-config/',
-  'service':            '../service/',
-  'scs-design':         '../scs-design/',
-};
+// v0.60.545 (Шаг 3b): пути берём из единой CORE-карты module-paths.
+// tech-workspace на глубине 1, соседи тоже → префикс '../'.
+const _MODULE_HREF = new Proxy({}, {
+  get: (_t, id) => '../' + (MODULE_PATHS[id] || (typeof id === 'string' ? id + '/' : '')),
+});
 function _activePidForModule() {
   // Если у активного варианта есть linked sketch-project — используем его.
   // Иначе — parent.

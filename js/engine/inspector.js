@@ -1,6 +1,7 @@
 import { state, svg, inspectorBody, uid, pagesForNode } from './state.js';
 import { GLOBAL, DEFAULTS, CHANNEL_TYPES, CABLE_TYPES, NODE_H, LINE_COLORS, CONSUMER_CATALOG, TRANSFORMER_CATALOG, INSTALL_METHODS, BREAKER_SERIES, BREAKER_TYPES, ZONE_PASTEL_PALETTE, SYSTEMS_CATALOG, getSystemMeta, getAllSystems } from './constants.js';
 import { escHtml, escAttr, fmt, field, checkField, flash, helpIcon } from './utils.js';
+import { moduleHref } from './module-paths.js';
 import { nodeVoltage, isThreePhase, computeCurrentA, nodeWireCount, cableVoltageClass, formatVoltageLevelLabel, consumerTotalDemandKw, consumerCountEffective, containerHomogeneity } from './electrical.js';
 import { nodeInputCount, nodeOutputCount, nodeWidth, getNodeGeometryMm } from './geometry.js';
 import { getCurrentPage, getPageKind, PAGE_KINDS, PAGE_KINDS_META } from './state.js';
@@ -724,10 +725,10 @@ export function renderInspectorNode(n) {
         if (txCat.length) {
           h.push('<h4 style="margin:10px 0 4px">Модель из справочника</h4>');
           h.push('<div id="tx-cat-picker-mount" style="margin-bottom:4px"></div>');
-          h.push(`<div class="muted" style="font-size:11px;margin-bottom:6px">Паспортные данные (S, U, u<sub>k</sub>, потери, группа) применяются к источнику. Справочник — в <a href="transformer-config/" target="_blank" style="color:#1976d2">«Конфигураторе трансформатора»</a>.</div>`);
+          h.push(`<div class="muted" style="font-size:11px;margin-bottom:6px">Паспортные данные (S, U, u<sub>k</sub>, потери, группа) применяются к источнику. Справочник — в <a href="${moduleHref('transformer-config')}" target="_blank" style="color:#1976d2">«Конфигураторе трансформатора»</a>.</div>`);
         } else {
           h.push(`<div class="muted" style="font-size:11px;margin:6px 0;padding:8px 10px;background:#f6f8fa;border-radius:4px">
-            Справочник трансформаторов пуст. Добавьте модели в <a href="transformer-config/" target="_blank" style="color:#1976d2">«Конфигураторе трансформатора»</a>.
+            Справочник трансформаторов пуст. Добавьте модели в <a href="${moduleHref('transformer-config')}" target="_blank" style="color:#1976d2">«Конфигураторе трансформатора»</a>.
           </div>`);
         }
       } catch (e) { /* опционально */ }
@@ -3105,16 +3106,16 @@ export function renderSystemParamsPanel(n, sysId) {
 // вкладке Общее открывает соответствующий модуль в новой вкладке.
 const _CONFIGURATORS = {
   // {href, label} — какой модуль открывать для данного n
-  transformer: { href: 'transformer-config/', label: 'Конфигуратор трансформатора' },
-  panel:       { href: 'panel-config/',       label: 'Конфигуратор НКУ' },
-  panelMv:     { href: 'mv-config/',          label: 'Конфигуратор РУ СН' },
-  ups:         { href: 'ups-config/',         label: 'Конфигуратор ИБП' },
-  rack:        { href: 'rack-config/',        label: 'Конфигуратор стойки' },
-  scs:         { href: 'scs-config/',         label: 'Конфигуратор СКС/телеком (в разработке)' },
+  transformer: { href: moduleHref('transformer-config'), label: 'Конфигуратор трансформатора' },
+  panel:       { href: moduleHref('panel-config'),       label: 'Конфигуратор НКУ' },
+  panelMv:     { href: moduleHref('mv-config'),          label: 'Конфигуратор РУ СН' },
+  ups:         { href: moduleHref('ups-config'),         label: 'Конфигуратор ИБП' },
+  rack:        { href: moduleHref('rack-config'),        label: 'Конфигуратор стойки' },
+  scs:         { href: moduleHref('scs-config'),         label: 'Конфигуратор СКС/телеком (в разработке)' },
   // v0.60.202 (по репорту Пользователя 2026-05-04 «у нас вроде уже появился
   // конфигуратор ДГУ, почему бы не привязать его к схеме»): добавлен
   // конфигуратор ДГУ для type='generator'.
-  generator:   { href: 'genset-config/',      label: 'Конфигуратор ДГУ' },
+  generator:   { href: moduleHref('genset-config'),      label: 'Конфигуратор ДГУ' },
 };
 function _configuratorForNode(n) {
   if (!n) return null;
