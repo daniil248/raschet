@@ -2237,7 +2237,7 @@ function _renderBomDetails(c, ro) {
         <tbody>${rows.map(r => `<tr data-bom-key="${escAttr(r.key)}">
           <td>${escHtml(r.label)}<br><span class="muted">${escHtml(r.subLabel || '')}</span></td>
           <td class="num">${r.qty}</td>
-          <td class="num"><input type="number" step="0.01" min="0" class="tw-bom-price" data-bom-key="${escAttr(r.key)}" value="${r.unitPrice != null ? r.unitPrice : ''}" placeholder="—" ${ro ? 'disabled' : ''}> ${r.currency || (projCurrency || '<span class="muted" title="Валюта не выбрана">—</span>')}</td>
+          <td class="num"><input type="number" step="0.01" min="0" class="tw-bom-price" data-bom-key="${escAttr(r.key)}" value="${r.unitPrice != null ? r.unitPrice : ''}" placeholder="—" ${(ro || (ov[r.key] && ov[r.key].breakdown)) ? 'disabled' : ''}> ${r.currency || (projCurrency || '<span class="muted" title="Валюта не выбрана">—</span>')}${ro ? '' : ` <button type="button" class="tw-bom-bd" data-bom-bd="${escAttr(r.key)}" title="Разбивка цены: база + доставка − скидка%">📦${ov[r.key] && ov[r.key].breakdown ? '✓' : ''}</button>`}</td>
           <td><span class="tw-bom-src">${escHtml(r.source || '<i>нет</i>')}</span></td>
           <td class="num">${r.total != null ? `<b>${r.total.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</b> ${r.currency || projCurrency || ''}` : '—'}</td>
         </tr>`).join('')}</tbody>
@@ -3038,6 +3038,65 @@ function bindListEvents() {
   root.addEventListener('click', async (e) => {
     const cur = _variants.find(x => x.id === _activeId);
     if (!cur) return;
+
+    // v0.60.494 (Roadmap 23.5): разбивка цены строки BOM (база+доставка
+    // −скидка% → unitPrice). Аддитивно: bomOverrides[key].breakdown.
+    const bdBtn = e.target.closest('[data-bom-bd]');
+    if (bdBtn) {
+      const key = bdBtn.dataset.bomBd;
+      if (!key) return;
+      if (!cur.concept.bomOverrides) cur.concept.bomOverrides = {};
+      const proj = _pid ? getProject(_pid) : null;
+      const projCurrency = proj?.currency || '';
+      const ex = (cur.concept.bomOverrides[key] && cur.concept.bomOverrides[key].breakdown) || {};
+      const ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+      ov.innerHTML = `<div style="background:#fff;border-radius:10px;max-width:480px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3);font:13px system-ui,sans-serif">
+        <div style="padding:12px 16px;border-bottom:1px solid #e2e8f0;font-weight:700">📦 Разбивка цены позиции</div>
+        <div style="padding:14px 16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+          <label>База<input id="bd-base" type="number" min="0" step="0.01" value="${ex.base ?? ''}" style="width:100%"></label>
+          <label>Доставка<input id="bd-dlv" type="number" min="0" step="0.01" value="${ex.delivery ?? 0}" style="width:100%"></label>
+          <label>Скидка, %<input id="bd-disc" type="number" min="0" max="100" step="0.5" value="${ex.discountPct ?? 0}" style="width:100%"></label>
+        </div>
+        <div id="bd-res" style="margin:0 16px 8px;padding:8px 10px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:6px;color:#3730a3"></div>
+        <div style="padding:12px 16px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end">
+          ${ex.base != null ? '<button id="bd-clear" type="button" style="padding:7px 12px;margin-right:auto">Убрать разбивку</button>' : ''}
+          <button id="bd-cancel" type="button" style="padding:7px 14px">Отмена</button>
+          <button id="bd-ok" type="button" style="padding:7px 14px;background:#2563eb;color:#fff;border:0;border-radius:5px">Применить</button>
+        </div></div>`;
+      document.body.appendChild(ov);
+      const calc = () => {
+        const b = Number(ov.querySelector('#bd-base').value) || 0;
+        const d = Number(ov.querySelector('#bd-dlv').value) || 0;
+        const dc = Number(ov.querySelector('#bd-disc').value) || 0;
+        const net = +(((b + d) * (1 - dc / 100))).toFixed(2);
+        ov.querySelector('#bd-res').innerHTML = `Цена за ед.: <b>${net.toLocaleString('ru-RU')} ${projCurrency || ''}</b>`;
+        return net;
+      };
+      ov.querySelectorAll('input').forEach(i => i.addEventListener('input', calc));
+      calc();
+      const close = () => ov.remove();
+      ov.addEventListener('click', ev => { if (ev.target === ov) close(); });
+      ov.querySelector('#bd-cancel').addEventListener('click', close);
+      const clr = ov.querySelector('#bd-clear');
+      if (clr) clr.addEventListener('click', () => {
+        delete cur.concept.bomOverrides[key];
+        persistVariants(); renderActiveVariant(); close();
+      });
+      ov.querySelector('#bd-ok').addEventListener('click', () => {
+        const net = calc();
+        cur.concept.bomOverrides[key] = {
+          unitPrice: net, currency: projCurrency,
+          breakdown: {
+            base: Number(ov.querySelector('#bd-base').value) || 0,
+            delivery: Number(ov.querySelector('#bd-dlv').value) || 0,
+            discountPct: Number(ov.querySelector('#bd-disc').value) || 0,
+          },
+        };
+        persistVariants(); renderActiveVariant(); close();
+      });
+      return;
+    }
 
     // v0.60.283: смена «Тип объекта» через mini-modal.
     if (e.target.id === 'tw-objectkind-edit') {

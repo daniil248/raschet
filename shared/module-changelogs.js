@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.494', date: '2026-05-16', items: [
+      '🧾 <b>Roadmap 23.5: разбивка стоимости строки BOM в Tech-workspace</b>. У каждой позиции BOM — кнопка «📦» → in-page модал (База+Доставка−Скидка% → авто-цена за ед.). Хранится в <code>concept.bomOverrides[key].breakdown</code> + вычисленный <code>unitPrice</code>; при активной разбивке ручной ввод цены строки заблокирован; «Убрать разбивку» → ручной режим. Σ/итоги/валюта проекта без изменений (backward-compat). Фаза 23 закрыта.',
+    ] },
     { version: '0.60.493', date: '2026-05-16', items: [
       '🧾 <b>Roadmap 23.4 (центральный «Каталог и цены»): разбивка цены</b>. В модал цены добавлен тумблер «📦 Разбивка цены»: База + Доставка − Скидка% → авто-итог в «Цена» (readonly при активной разбивке), НДС/«с НДС» как раньше. <code>priceBreakdown{base,delivery,discountPct}</code> сохраняется в price-record (savePrice спредит — без правки price-records.js); <code>.price</code> остаётся скаляром (sparkline/min-max/latest не затронуты). Покрывает автоматы/щиты/климат/АКБ через единый каталог. Backward-compat: нет разбивки → поведение неизменно.',
     ] },
