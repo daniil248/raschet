@@ -2892,7 +2892,7 @@ function renderPlanEditor(c, ro) {
       ${ro ? '<span class="tw-readonly-badge">🔒 read-only</span>' : `
         <button type="button" class="tw-plan-btn" id="tw-plan-arrange" title="Авто-разместить все объекты сеткой по группам">▦ Разместить всё</button>
         <button type="button" class="tw-plan-btn" id="tw-plan-clear" title="Снять все объекты с плана (вернуть в набор)">↺ Снять всё</button>`}
-      <span class="muted tw-plan-hint">Безразмерный холст: <b>Ctrl+колесо</b> — зум, <b>перетаскивание фона</b> (или средняя кнопка) — панорамирование. Объект = конструктив (размер по габаритам), цвет = группа, подпись = тег (двойной клик — правка).</span>
+      <span class="muted tw-plan-hint">Безразмерный холст: <b>Ctrl+колесо</b> — зум, <b>перетаскивание фона</b> (или средняя кнопка) — панорамирование. Привязка к сетке и к кромкам соседних объектов (встык в ряд). Объект = конструктив (размер по габаритам), цвет = группа, подпись = тег (двойной клик — правка).</span>
     </div>
     <div class="tw-plan-body">
       <aside class="tw-plan-palette" data-plan-dropzone-ignore="1">
@@ -2908,6 +2908,47 @@ function renderPlanEditor(c, ro) {
         ${placed.length ? '' : '<div class="tw-plan-placeholder">Перетащите объекты из набора слева<br><small>или «▦ Разместить всё»</small></div>'}
       </div>
     </div>`;
+}
+
+// v0.60.508 (правка Пользователя 2026-05-16): привязка не только к сетке,
+// но и к узловым точкам уже размещённых объектов — кромки/углы (чтобы
+// конструктивы вставали встык в ряд, как в реальной компоновке).
+// Для предлагаемой позиции (x,y) перетаскиваемого объекта подбираем
+// ближайшую X- и Y-привязку к кромкам соседей в пределах порога;
+// иначе — обычная сетка 10. Кандидаты по X (аналогично Y):
+//   ox       — лево↔лево (выравнивание),
+//   ox2      — лево к правой кромке соседа (встык справа от него),
+//   ox-dw    — правая кромка к левой кромке соседа (встык слева),
+//   ox2-dw   — право↔право (выравнивание).
+function _planSnap(c, draggedId, x, y) {
+  const pxPerM = (c.plan && c.plan.pxPerM) || 45;
+  const mm2 = (mm) => Math.max(6, Math.round((Number(mm) || 0) / 1000 * pxPerM));
+  const defs = _planUnitDefs(c);
+  const dd = defs.find(d => d.id === draggedId);
+  const gx = Math.round(x / 10) * 10;
+  const gy = Math.round(y / 10) * 10;
+  if (!dd) return { x: Math.max(0, gx), y: Math.max(0, gy) };
+  const dw = mm2(dd.wMm), dh = mm2(dd.hMm);
+  const TH = 14; // порог притяжения (мировые px)
+  let bx = gx, by = gy, bestDX = TH + 1, bestDY = TH + 1;
+  for (const d of defs) {
+    if (d.id === draggedId) continue;
+    const u = c.plan.units[d.id];
+    if (!u || !u.placed) continue;
+    const ox = u.x, oy = u.y, ow = mm2(d.wMm), oh = mm2(d.hMm);
+    const ox2 = ox + ow, oy2 = oy + oh;
+    for (const cand of [ox, ox2, ox - dw, ox2 - dw]) {
+      const dx = Math.abs(x - cand);
+      if (dx < bestDX) { bestDX = dx; bx = cand; }
+    }
+    for (const cand of [oy, oy2, oy - dh, oy2 - dh]) {
+      const dy = Math.abs(y - cand);
+      if (dy < bestDY) { bestDY = dy; by = cand; }
+    }
+  }
+  if (bestDX > TH) bx = gx;
+  if (bestDY > TH) by = gy;
+  return { x: Math.max(0, Math.round(bx)), y: Math.max(0, Math.round(by)) };
 }
 
 // Авто-раскладка: размещает указанные defs сеткой, не накладываясь.
@@ -3081,11 +3122,10 @@ function bindPlanEvents() {
     if (!drag) return;
     const area = $('tw-plan-area'); if (!area) return;
     const wpt = _world(e.clientX, e.clientY, area, c.plan.view);
-    const nx = Math.max(0, Math.round((wpt.x - drag.ox) / 10) * 10);
-    const ny = Math.max(0, Math.round((wpt.y - drag.oy) / 10) * 10);
-    drag.obj.style.left = nx + 'px';
-    drag.obj.style.top = ny + 'px';
-    drag._nx = nx; drag._ny = ny;
+    const sn = _planSnap(c, drag.id, wpt.x - drag.ox, wpt.y - drag.oy);
+    drag.obj.style.left = sn.x + 'px';
+    drag.obj.style.top = sn.y + 'px';
+    drag._nx = sn.x; drag._ny = sn.y;
   });
   pane.addEventListener('pointerup', () => {
     const c = curConcept();
@@ -3142,9 +3182,9 @@ function bindPlanEvents() {
     _ensurePlan(c);
     const u = c.plan.units[id]; if (!u) return;
     const wpt = _world(e.clientX, e.clientY, area, c.plan.view);
-    u.x = Math.max(0, Math.round(wpt.x / 10) * 10);
-    u.y = Math.max(0, Math.round(wpt.y / 10) * 10);
-    u.placed = true;
+    u.placed = true; // чтобы _planSnap корректно исключил себя
+    const sn = _planSnap(c, id, wpt.x, wpt.y);
+    u.x = sn.x; u.y = sn.y;
     persistVariants(); renderActiveVariant();
   });
 }
