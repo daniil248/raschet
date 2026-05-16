@@ -573,31 +573,18 @@ function _checkOrphanProjects() {
     }
     if (!orphanPids.size) return;
     sessionStorage.setItem('raschet.healthCheck.orphan.shown', '1');
-    // Toast с кнопкой
-    const toast = document.createElement('div');
-    toast.style.cssText = 'position:fixed;bottom:16px;right:16px;max-width:380px;padding:14px 16px;background:#fef3c7;border:2px solid #f59e0b;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.15);z-index:10000;font-size:13px;line-height:1.4';
-    const onProjectsPage = location.pathname.includes('/projects/');
-    toast.innerHTML = `
-      <div style="display:flex;gap:10px;align-items:flex-start">
-        <span style="font-size:20px">⚠</span>
-        <div style="flex:1">
-          <div style="font-weight:600;color:#78350f;margin-bottom:4px">Обнаружены orphan-данные</div>
-          <div style="color:#92400e;font-size:12px;margin-bottom:8px">В LocalStorage есть ${orphanPids.size} проект-ключей без metadata-записи. Это значит часть проектов невидима в реестре, но данные на месте.</div>
-          ${onProjectsPage
-            ? '<button type="button" class="rs-orphan-fix" style="padding:6px 12px;background:#16a34a;color:#fff;border:0;border-radius:4px;cursor:pointer;font-weight:600;font-size:12px">🔧 Восстановить связи</button>'
-            : '<a href="../projects/" style="display:inline-block;padding:6px 12px;background:#16a34a;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;font-size:12px">→ Открыть Проекты</a>'}
-          <button type="button" class="rs-orphan-dismiss" style="margin-left:6px;padding:6px 10px;background:transparent;border:1px solid #d97706;color:#92400e;border-radius:4px;cursor:pointer;font-size:12px">Скрыть</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(toast);
-    toast.querySelector('.rs-orphan-dismiss')?.addEventListener('click', () => toast.remove());
-    toast.querySelector('.rs-orphan-fix')?.addEventListener('click', () => {
-      const btn = document.getElementById('pr-restore-links');
-      if (btn) { btn.click(); toast.remove(); }
-    });
-    // Auto-hide через 30 сек
-    setTimeout(() => toast.remove(), 30000);
+    // v0.60.501 (правка Пользователя 2026-05-16): orphan-данные — это
+    // внутренний технический диагностический признак (ключи LS без
+    // metadata-записи), не имеющий смысла для конечного пользователя и
+    // не требующий его действий. Раньше показывался назойливый жёлтый
+    // toast «Обнаружены orphan-данные», всплывавший на каждой странице.
+    // Убрано из UI: оставлена только тихая диагностика в консоль (для
+    // разработки). Восстановление связей по-прежнему доступно вручную
+    // в /projects/ → кнопка «Восстановить связи».
+    try {
+      console.info('[health-check] orphan project keys (no metadata):',
+        orphanPids.size, [...orphanPids]);
+    } catch {}
   } catch (e) { console.warn('[health-check] orphan scan failed:', e); }
 }
 
