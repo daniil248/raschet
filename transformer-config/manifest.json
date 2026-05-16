@@ -1,0 +1,25 @@
+{
+  "id": "transformer-config",
+  "name": "Конфигуратор трансформатора",
+  "description": "Подбор силового трансформатора: мощность, первичное / вторичное напряжение, группа соединений, потери ХХ / КЗ, uk, тип охлаждения",
+  "version": "1.0.0",
+  "owner": "unassigned",
+  "kind": "ui",
+  "standalone": true,
+  "path": "transformer-config/",
+  "icon": "blue",
+  "badge": "wip",
+  "enabled": true,
+  "internalOnly": false,
+  "subscriptionPlan": "starter",
+  "requires": ["shared/auth", "shared/transformer-catalog"],
+  "dbCollections": [],
+  "permissions": ["transformer-config.use"],
+  "lsNamespacesOwned": ["transformer-config"],
+  "dependsOnContracts": {
+    "storageKeys": ["raschet.configurations.transformer.v1", "raschet.transformerCatalog.v1"],
+    "events": { "emits": ["rs-selection-change", "rs-cs-focus"], "consumes": ["rs-selection-change", "rs-cs-focus"] },
+    "urlParams": ["project", "nodeId"],
+    "bridges": []
+  }
+}

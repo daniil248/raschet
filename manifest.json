@@ -1,0 +1,25 @@
+{
+  "id": "constructor",
+  "name": "Конструктор схем",
+  "description": "Проектирование принципиальных схем электроснабжения с автоматическим расчётом нагрузок, подбором кабелей и защиты",
+  "version": "1.0.0",
+  "owner": "unassigned",
+  "kind": "ui",
+  "standalone": true,
+  "path": "index.html",
+  "icon": "blue",
+  "badge": "active",
+  "enabled": true,
+  "internalOnly": false,
+  "subscriptionPlan": "starter",
+  "requires": ["shared/auth", "shared/global-settings", "shared/calc-modules"],
+  "dbCollections": ["projects"],
+  "permissions": ["constructor.use"],
+  "lsNamespacesOwned": ["engine"],
+  "dependsOnContracts": {
+    "storageKeys": ["raschet.project.<pid>.engine.scheme.v1", "raschet.project.<pid>.engine.issues.v1", "raschet.projects.v1", "raschet.activeProjectId.v1", "raschet.global.v1"],
+    "events": { "emits": [], "consumes": ["rs-selection-change", "rs-cs-focus", "raschet:card-preset-changed"] },
+    "urlParams": ["project", "openFile", "focusNode", "nodeId"],
+    "bridges": ["scheme-rack-bridge", "service-bridge", "legacy-rack-migration", "scheme-orphan-migration"]
+  }
+}

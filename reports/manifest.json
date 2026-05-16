@@ -1,0 +1,25 @@
+{
+  "id": "reports",
+  "name": "Шаблоны отчётов",
+  "description": "Подготовка и хранение шаблонов оформления отчётов: страница, поля, логотип, колонтитулы, стили заголовков. Используются подпрограммами для экспорта в PDF и DOCX",
+  "version": "1.0.0",
+  "owner": "unassigned",
+  "kind": "ui",
+  "standalone": true,
+  "path": "reports/",
+  "icon": "green",
+  "badge": "new",
+  "enabled": true,
+  "internalOnly": true,
+  "subscriptionPlan": "pro",
+  "requires": ["shared/auth", "shared/report", "shared/report-catalog"],
+  "dbCollections": [],
+  "permissions": ["reports.use"],
+  "lsNamespacesOwned": ["reports"],
+  "dependsOnContracts": {
+    "storageKeys": ["raschet.reportCatalog.builtinVersion"],
+    "events": { "emits": [], "consumes": [] },
+    "urlParams": ["project"],
+    "bridges": []
+  }
+}

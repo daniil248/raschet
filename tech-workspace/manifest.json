@@ -1,0 +1,25 @@
+{
+  "id": "tech-workspace",
+  "name": "Технолог ЦОД",
+  "description": "Предпроектная стадия ЦОД: концепция объекта (стойки, IT-нагрузка, ИБП, климат, ввод ТП/ДГУ, PDU, площади), multi-variant compare, handoff в детальное проектирование. Два режима входа — список параметров или план зала.",
+  "version": "1.0.0",
+  "owner": "unassigned",
+  "kind": "ui",
+  "standalone": true,
+  "path": "tech-workspace/",
+  "icon": "purple",
+  "badge": "wip",
+  "enabled": true,
+  "internalOnly": false,
+  "subscriptionPlan": "pro",
+  "requires": ["shared/auth", "shared/project-storage"],
+  "dbCollections": [],
+  "permissions": ["tech-workspace.use"],
+  "lsNamespacesOwned": ["tech-workspace"],
+  "dependsOnContracts": {
+    "storageKeys": ["raschet.project.<pid>.tech-workspace.variants.v1", "raschet.project.<pid>.tech-workspace.activeVariantId.v1", "raschet.cooling.prefill.v1"],
+    "events": { "emits": [], "consumes": [] },
+    "urlParams": ["project", "pid"],
+    "bridges": ["scheme-rack-bridge"]
+  }
+}

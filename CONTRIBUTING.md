@@ -21,6 +21,12 @@
 ## 2. Branch-per-module
 - Ветка `mod/<module-id>` на изменение модуля; затрагиваешь несколько
   — обоснуй в PR.
+- У каждого зарегистрированного модуля ОБЯЗАТЕЛЕН `<module>/
+  manifest.json` (схема `shared/contracts/README.md` §6; для
+  constructor — корневой `manifest.json`). Корневой `modules.json` —
+  проекция манифестов; сверяется `node tools/gen-modules-json.mjs
+  --check` (CI). Менять реестр — через manifest, не правкой
+  modules.json вручную.
 - Изменение модуля = bump `version` в `<module>/manifest.json` +
   запись в `shared/module-changelogs.js` (массив `engine`, новое
   сверху, `{version,date,items}`).

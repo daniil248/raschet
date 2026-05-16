@@ -1,0 +1,25 @@
+{
+  "id": "logistics",
+  "name": "Рабочее место логиста",
+  "description": "Отправления, склады, тарифы перевозчиков, калькулятор доставки. Интеграция с контрагентами и BOM проекта",
+  "version": "1.0.0",
+  "owner": "unassigned",
+  "kind": "ui",
+  "standalone": true,
+  "path": "logistics/",
+  "icon": "green",
+  "badge": "new",
+  "enabled": true,
+  "internalOnly": true,
+  "subscriptionPlan": "pro",
+  "requires": ["shared/logistics-schemas", "shared/counterparty-catalog"],
+  "dbCollections": ["shipments", "warehouses", "carrier-rates"],
+  "permissions": ["logistics.use"],
+  "lsNamespacesOwned": ["logistics"],
+  "dependsOnContracts": {
+    "storageKeys": ["raschet.logistics.handoff"],
+    "events": { "emits": [], "consumes": [] },
+    "urlParams": ["project"],
+    "bridges": []
+  }
+}

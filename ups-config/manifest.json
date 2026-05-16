@@ -1,0 +1,25 @@
+{
+  "id": "ups-config",
+  "name": "Конфигуратор ИБП",
+  "description": "Подбор конфигурации ИБП по нагрузке: тип (моноблок / модульный), резервирование N+X, параметры входа и батарейной цепи",
+  "version": "1.0.0",
+  "owner": "unassigned",
+  "kind": "ui",
+  "standalone": true,
+  "path": "ups-config/",
+  "icon": "purple",
+  "badge": "wip",
+  "enabled": true,
+  "internalOnly": false,
+  "subscriptionPlan": "starter",
+  "requires": ["shared/auth", "shared/ups-catalog", "shared/ups-picker"],
+  "dbCollections": [],
+  "permissions": ["ups-config.use"],
+  "lsNamespacesOwned": ["ups-config"],
+  "dependsOnContracts": {
+    "storageKeys": ["raschet.project.<pid>.ups-config.selected.v1", "raschet.configurations.ups.v1", "raschet.lastUpsConfig.v1", "raschet.pendingUpsSelection.v1", "raschet.upsHandoff.v1", "raschet.upsBatteryReturn.v1", "raschet.cs.ctx.ups"],
+    "events": { "emits": ["rs-selection-change", "rs-cs-focus", "ups-config:configs-changed"], "consumes": ["rs-selection-change", "rs-cs-focus", "ups:open-master"] },
+    "urlParams": ["project", "nodeId", "capacityKw", "loadKw", "autonomyMin", "targetAutonomyMin", "cosPhi", "phases", "redundancy", "upsType"],
+    "bridges": []
+  }
+}

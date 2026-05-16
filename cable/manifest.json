@@ -1,0 +1,25 @@
+{
+  "id": "cable",
+  "name": "Расчёт кабельной линии",
+  "description": "Подбор сечения кабеля по IEC / ПУЭ с учётом температуры, группирования, способа прокладки, экономической плотности тока и падения напряжения",
+  "version": "1.0.0",
+  "owner": "unassigned",
+  "kind": "ui",
+  "standalone": true,
+  "path": "cable/",
+  "icon": "orange",
+  "badge": "new",
+  "enabled": true,
+  "internalOnly": false,
+  "subscriptionPlan": "free",
+  "requires": ["shared/auth", "shared/global-settings", "shared/calc-modules", "shared/report"],
+  "dbCollections": [],
+  "permissions": ["cable.use"],
+  "lsNamespacesOwned": ["cable"],
+  "dependsOnContracts": {
+    "storageKeys": ["raschet.global.v1"],
+    "events": { "emits": [], "consumes": [] },
+    "urlParams": ["project"],
+    "bridges": []
+  }
+}

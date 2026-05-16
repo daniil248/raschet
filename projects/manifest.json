@@ -1,0 +1,25 @@
+{
+  "id": "projects",
+  "name": "Управление проектами",
+  "description": "Реестр проектов компании. Создание / редактирование / удаление проектов. Только для project-manager / ГИП.",
+  "version": "1.0.0",
+  "owner": "unassigned",
+  "kind": "ui",
+  "standalone": true,
+  "path": "projects/",
+  "icon": "blue",
+  "badge": "internal",
+  "enabled": true,
+  "internalOnly": true,
+  "subscriptionPlan": "enterprise",
+  "requires": ["shared/auth", "shared/project-storage"],
+  "dbCollections": ["projects"],
+  "permissions": ["projects.use"],
+  "lsNamespacesOwned": ["projects"],
+  "dependsOnContracts": {
+    "storageKeys": ["raschet.projects.v1", "raschet.activeProjectId.v1", "raschet.storageMode.v1", "raschet.project.<pid>.*"],
+    "events": { "emits": ["raschet:storage-mode-changed"], "consumes": [] },
+    "urlParams": ["project", "tab"],
+    "bridges": ["service-bridge", "scheme-rack-bridge", "inventory-bridge"]
+  }
+}

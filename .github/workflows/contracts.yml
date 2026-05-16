@@ -28,3 +28,6 @@ jobs:
       - name: boundary-lint (Фаза 0 — advisory, не блокирует)
         continue-on-error: true
         run: node tools/boundary-lint.mjs
+      - name: gen-modules-json --check (Фаза 1 — advisory до подтверждения паритета)
+        continue-on-error: true
+        run: node tools/gen-modules-json.mjs --check

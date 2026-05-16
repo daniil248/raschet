@@ -1,0 +1,25 @@
+{
+  "id": "panel-config",
+  "name": "Конфигуратор НКУ (LV щит)",
+  "description": "Низковольтное комплектное устройство до 1 кВ по IEC 61439 (TTA/PTTA): ВРУ, АВР, ЩС, ЩО, ЩК. Подбор оболочки, вводные/отходящие автоматы, секционирование, формы разделения 1-4",
+  "version": "1.0.0",
+  "owner": "unassigned",
+  "kind": "ui",
+  "standalone": true,
+  "path": "panel-config/",
+  "icon": "orange",
+  "badge": "new",
+  "enabled": true,
+  "internalOnly": false,
+  "subscriptionPlan": "starter",
+  "requires": ["shared/auth", "shared/panel-catalog"],
+  "dbCollections": [],
+  "permissions": ["panel-config.use"],
+  "lsNamespacesOwned": ["panel-config"],
+  "dependsOnContracts": {
+    "storageKeys": ["raschet.configurations.panel.v1", "raschet.panelCatalog.v1"],
+    "events": { "emits": ["rs-selection-change", "rs-cs-focus"], "consumes": ["rs-selection-change", "rs-cs-focus"] },
+    "urlParams": ["project", "nodeId", "loadKw"],
+    "bridges": []
+  }
+}

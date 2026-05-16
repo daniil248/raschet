@@ -1,0 +1,25 @@
+{
+  "id": "help",
+  "name": "Центр помощи",
+  "description": "Справочник по платформе: модули, возможности, архитектура. Статьи с поиском, cross-references и SVG-диаграммами. Доступ зависит от подключённых модулей.",
+  "version": "1.0.0",
+  "owner": "unassigned",
+  "kind": "ui",
+  "standalone": true,
+  "path": "help/",
+  "icon": "blue",
+  "badge": "new",
+  "enabled": true,
+  "internalOnly": false,
+  "subscriptionPlan": "free",
+  "requires": [],
+  "dbCollections": [],
+  "permissions": ["help.use"],
+  "lsNamespacesOwned": ["help"],
+  "dependsOnContracts": {
+    "storageKeys": [],
+    "events": { "emits": [], "consumes": [] },
+    "urlParams": [],
+    "bridges": []
+  }
+}

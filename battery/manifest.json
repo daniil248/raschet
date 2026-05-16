@@ -1,0 +1,25 @@
+{
+  "id": "battery",
+  "name": "Расчёт АКБ",
+  "description": "Подбор ёмкости и конфигурации АКБ для ИБП. Загрузка таблиц разряда производителей (Kehua, Panasonic, SVC, Sonnenschein) в XLSX и точный расчёт по ним",
+  "version": "1.0.0",
+  "owner": "unassigned",
+  "kind": "ui",
+  "standalone": true,
+  "path": "battery/",
+  "icon": "green",
+  "badge": "new",
+  "enabled": true,
+  "internalOnly": false,
+  "subscriptionPlan": "free",
+  "requires": ["shared/auth", "shared/battery-picker"],
+  "dbCollections": [],
+  "permissions": ["battery.use"],
+  "lsNamespacesOwned": ["battery"],
+  "dependsOnContracts": {
+    "storageKeys": ["raschet.project.<pid>.battery.lifecycleCostItems.v1", "raschet.batteryCatalog.v1", "raschet.upsHandoff.v1", "raschet.upsBatteryReturn.v1", "raschet.pendingBatterySelection.v1"],
+    "events": { "emits": ["battery:configs-changed"], "consumes": [] },
+    "urlParams": ["project", "nodeId", "loadKw", "autonomyMin", "selected", "fromUps", "fromCtx"],
+    "bridges": []
+  }
+}

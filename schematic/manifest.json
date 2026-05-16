@@ -1,0 +1,25 @@
+{
+  "id": "schematic",
+  "name": "Схема принципиальная",
+  "description": "Редактор принципиальных электрических схем и рабочей документации. Библиотека IEC 60617-DB-12M, листы ISO 216 (A4…A0), основная надпись по ISO 7200",
+  "version": "1.0.0",
+  "owner": "unassigned",
+  "kind": "ui",
+  "standalone": true,
+  "path": "schematic/",
+  "icon": "purple",
+  "badge": "new",
+  "enabled": true,
+  "internalOnly": false,
+  "subscriptionPlan": "starter",
+  "requires": ["shared/auth", "shared/app-header"],
+  "dbCollections": [],
+  "permissions": ["schematic.use"],
+  "lsNamespacesOwned": ["schematic"],
+  "dependsOnContracts": {
+    "storageKeys": [],
+    "events": { "emits": [], "consumes": [] },
+    "urlParams": ["project"],
+    "bridges": []
+  }
+}
