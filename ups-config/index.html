@@ -356,7 +356,7 @@
     import { mountSelectionPanel } from '../shared/selection-panel.js';
     import { getActiveProjectCode, isEmbeddedMode } from '../shared/configuration-catalog.js';
     // B2.2 i2: выбор конкретной модели ИБП в Spec-вкладке варианта.
-    import { listUpses } from '../shared/ups-catalog.js';
+    import { listUpses, getUps } from '../shared/ups-catalog.js';
     import { detectUpsType } from '../shared/ups-types/index.js';
     import { mountUpsPicker } from '../shared/ups-picker.js';
     import '../shared/ups-seed.js';
@@ -477,10 +477,75 @@
         if (redEl) redEl.addEventListener('change', () => save({ payload: { redundancy: redEl.value } }));
       }
 
+      // B2.2 i3: АКБ-вкладка варианта — решение «подобрать/пропустить»
+      // и мост к модулю «Расчёт АКБ» (raschet.upsHandoff.v1 + ?fromUps=1).
+      // Условия (нагрузка/автономия/типы АКБ) — из подбора; V_DC/КПД —
+      // из модели ИБП, выбранной во вкладке Spec.
+      function variantAkb(ctx) {
+        const { host, entry, req, save, selectionName } = ctx;
+        const p = (entry && entry.payload) || {};
+        const u = p.upsId ? getUps(p.upsId) : null;
+        const choice = p.batteryChoice === 'skip' ? 'skip' : 'pick';
+        const topo = p.batteryTopology || 'shared';
+        host.innerHTML = `
+          <div class="rsp-grid">
+            <label class="rsp-field" title="Подобрать АКБ в модуле «Расчёт АКБ» или сконфигурировать ИБП без батарей.">Решение по АКБ
+              <select data-vakb="choice">
+                <option value="pick"${choice !== 'skip' ? ' selected' : ''}>Подобрать АКБ</option>
+                <option value="skip"${choice === 'skip' ? ' selected' : ''}>Без АКБ (пропустить)</option>
+              </select></label>
+            <label class="rsp-field" title="Общая шина — 1 комплект АКБ повышенной ёмкости; на каждый ИБП — отдельный комплект (N+R), независимые отказы.">Топология АКБ
+              <select data-vakb="topology">
+                <option value="shared"${topo === 'shared' ? ' selected' : ''}>Общая шина (1 комплект)</option>
+                <option value="per-unit"${topo === 'per-unit' ? ' selected' : ''}>На каждый ИБП (N+R)</option>
+              </select></label>
+          </div>
+          <div class="rsp-note" data-vakb-info></div>
+          <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+            <button type="button" class="rs-cs-btn rs-cs-btn-primary" data-vakb="pick"${(!u || choice === 'skip') ? ' disabled' : ''}>⚡ Подобрать АКБ →</button>
+          </div>`;
+        const info = host.querySelector('[data-vakb-info]');
+        info.innerHTML = u
+          ? `Модель ИБП: <b>${(u.supplier || '')} ${(u.model || u.id)}</b> · V<sub>DC</sub> ${u.vdcMin || '?'}…${u.vdcMax || '?'} В · КПД ${u.efficiency || '?'}% · нагрузка подбора <b>${Number(req.loadKw) || 0}</b> кВт · автономия <b>${Number(req.autonomyMin) || 0}</b> мин · типы АКБ <b>${(Array.isArray(req.batteryTypes) && req.batteryTypes.length) ? req.batteryTypes.join(' / ') : 'любые'}</b>. Откроется модуль «Расчёт АКБ» с подбором «АКБ для ${escHtmlSafe(selectionName || '')}».`
+          : 'Сначала выберите модель ИБП во вкладке «⚙ Spec» — из неё берутся V<sub>DC</sub> и КПД для подбора АКБ.';
+        host.querySelector('[data-vakb="choice"]').addEventListener('change', (e) => save({ payload: { batteryChoice: e.target.value } }));
+        host.querySelector('[data-vakb="topology"]').addEventListener('change', (e) => save({ payload: { batteryTopology: e.target.value } }));
+        const pickBtn = host.querySelector('[data-vakb="pick"]');
+        if (pickBtn) pickBtn.addEventListener('click', () => {
+          if (!u) return;
+          const handoff = {
+            source: 'ups-config', selectedAt: Date.now(),
+            loadKw: Number(req.loadKw) || 0,
+            autonomyMin: Number(req.autonomyMin) || 0,
+            cosPhi: Number(req.cosPhi) || 0,
+            invEff: (u.efficiency || 94) / 100,
+            vdcMin: u.vdcMin || null, vdcMax: u.vdcMax || null,
+            upsLabel: [u.supplier, u.model || u.id].filter(Boolean).join(' '),
+            upsId: u.id,
+            batteryTypes: Array.isArray(req.batteryTypes) ? req.batteryTypes.slice() : [],
+            selectionName: selectionName || null,
+            parallelContext: { topology: topo, redundancyScheme: req.redundancy || p.redundancy || 'N' },
+          };
+          try { localStorage.setItem('raschet.upsHandoff.v1', JSON.stringify(handoff)); } catch {}
+          const url = new URL('../battery/', location.href);
+          url.searchParams.set('fromUps', '1');
+          url.searchParams.set('loadKw', (Number(req.loadKw) || 0).toFixed(2));
+          url.searchParams.set('autonomyMin', String(Number(req.autonomyMin) || 0));
+          if (handoff.batteryTypes.length) url.searchParams.set('battTypes', handoff.batteryTypes.join(','));
+          if (u.vdcMin) url.searchParams.set('vdcMin', u.vdcMin);
+          if (u.vdcMax) url.searchParams.set('vdcMax', u.vdcMax);
+          if (u.efficiency) url.searchParams.set('invEff', u.efficiency);
+          url.searchParams.set('battTopology', topo);
+          save({ payload: { batteryChoice: 'pick' } });
+          window.open(url.toString(), '_blank');
+        });
+      }
+      const escHtmlSafe = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
       const api = mountSelectionPanel({
         kind: 'ups', mountEl, projectCode: pc,
         getActiveSelectionName: () => activeSel,
-        requirementsSchema, variantEconomics, variantSpec,
+        requirementsSchema, variantEconomics, variantSpec, variantAkb,
         variantLabel: (e) => e.label || e.id,
         convertFn: null,
         // v0.60.446: УСЛОВИЯ подбора задаются ЗДЕСЬ (зона подбора —

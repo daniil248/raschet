@@ -72,11 +72,14 @@ const FIN_FIELDS = [
  *  @param {Array} o.requirementsSchema     — [{key,label,unit?,type?,options?,step?,tip?}]
  *  @param {function(entry,selEco):object} o.variantEconomics
  *  @param {function(entry):string} [o.variantLabel]
- *  @param {function({host,entry,req,kind,save,refresh}):void} [o.variantSpec]
+ *  @param {function({host,entry,req,kind,selectionName,save,refresh}):void} [o.variantSpec]
  *      — B2.2 i2: хост рисует выбор конкретной модели во вкладке Spec
  *        варианта (каскад поставщик→серия→модель + резерв), фильтруя по
  *        допустимым типам подбора. save({payload?,label?}) — тихое
  *        сохранение без перерисовки панели.
+ *  @param {function({host,entry,req,kind,selectionName,save,refresh}):void} [o.variantAkb]
+ *      — B2.2 i3: хост рисует решение по АКБ (подобрать/пропуск) и мост
+ *        к модулю «Расчёт АКБ» во вкладке АКБ варианта.
  *  @param {function|null} [o.convertFn]
  */
 export function mountSelectionPanel(o) {
@@ -528,8 +531,13 @@ export function mountSelectionPanel(o) {
           ? `<div data-vspec-host style="margin-top:10px"></div>`
           : `<div class="rsp-note">ℹ Текущее: <b>${escH(p.upsSupplier || '')} ${escH(p.upsModel || p.upsId || entry.label || '—')}</b>${p.capacityKw ? ' · ' + escH(p.capacityKw) + ' кВт' : ''}.</div>`}`;
     } else if (variantTab === 'akb') {
+      // v0.60.466 (B2.2 i3): хост рисует решение по АКБ (подобрать/пропуск)
+      // и мост к модулю «Расчёт АКБ» в [data-vakb-host].
+      const hasAkb = typeof o.variantAkb === 'function';
       body = `<div class="rsp-sec-title">🔋 АКБ варианта</div>
-        <div class="rsp-note">ℹ Выбор/пропуск АКБ и мост к модулю «Расчёт АКБ» — инкремент i3. Текущее: <b>${escH(p.batteryChoice === 'skip' ? 'без АКБ' : (p.battery ? ((p.battery.supplier || '') + ' ' + (p.battery.model || '')) : '— не задано'))}</b>.</div>`;
+        ${hasAkb
+          ? `<div data-vakb-host></div>`
+          : `<div class="rsp-note">ℹ Текущее: <b>${escH(p.batteryChoice === 'skip' ? 'без АКБ' : (p.battery ? ((p.battery.supplier || '') + ' ' + (p.battery.model || '')) : '— не задано'))}</b>.</div>`}`;
     } else if (variantTab === 'capex') {
       body = `${ratesBarHtml()}<div class="rsp-sec-title" title="Построчный состав статей затрат варианта — цена+валюта на пункт, как в «Подбор холода».">💰 CAPEX варианта · валюта ${escH(cur0)}</div>
         <table class="rsp-table"><tbody>
@@ -604,30 +612,34 @@ export function mountSelectionPanel(o) {
         }));
         _bindCapEdit();
         bindRateBar();
-        // v0.60.464 (B2.2 i2): хост рисует Spec-выбор модели в [data-vspec-host].
+        // v0.60.464/466 (B2.2 i2/i3): хост рисует Spec-выбор модели и
+        // решение по АКБ в своих контейнерах. selection-panel остаётся
+        // generic; save() — тихое сохранение payload без перерисовки.
+        const _vctx = (host) => ({
+          host,
+          entry: getConfig(kind, activeVariantId) || {},
+          req: (meta && meta.requirements) || {},
+          kind,
+          selectionName: selName,
+          save(patch) {
+            const e = getConfig(kind, activeVariantId);
+            if (!e) return;
+            const ne = { ...e };
+            if (patch && patch.payload) ne.payload = { ...(e.payload || {}), ...patch.payload };
+            if (patch && patch.label != null) ne.label = patch.label;
+            saveConfig(kind, ne);
+          },
+          refresh: render,
+        });
         if (variantTab === 'spec' && typeof o.variantSpec === 'function') {
           const host = mountEl.querySelector('[data-vspec-host]');
-          if (host) {
-            try {
-              o.variantSpec({
-                host,
-                entry: getConfig(kind, activeVariantId) || {},
-                req: (meta && meta.requirements) || {},
-                kind,
-                // Тихое сохранение payload/label варианта БЕЗ перерисовки
-                // панели (иначе теряется состояние каскада-пикера).
-                save(patch) {
-                  const e = getConfig(kind, activeVariantId);
-                  if (!e) return;
-                  const ne = { ...e };
-                  if (patch && patch.payload) ne.payload = { ...(e.payload || {}), ...patch.payload };
-                  if (patch && patch.label != null) ne.label = patch.label;
-                  saveConfig(kind, ne);
-                },
-                refresh: render,
-              });
-            } catch (e) { console.warn('[selection-panel] variantSpec failed', e); }
-          }
+          if (host) { try { o.variantSpec(_vctx(host)); }
+            catch (e) { console.warn('[selection-panel] variantSpec failed', e); } }
+        }
+        if (variantTab === 'akb' && typeof o.variantAkb === 'function') {
+          const host = mountEl.querySelector('[data-vakb-host]');
+          if (host) { try { o.variantAkb(_vctx(host)); }
+            catch (e) { console.warn('[selection-panel] variantAkb failed', e); } }
         }
         return;
       }

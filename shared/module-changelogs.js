@@ -4,6 +4,10 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.466', date: '2026-05-16', items: [
+      '🔋 <b>B2.2 i3: АКБ-вкладка варианта ИБП</b> — решение «Подобрать АКБ / Без АКБ», топология (общая шина / на каждый ИБП), мост к модулю «Расчёт АКБ».',
+      'selection-panel: generic-хук <code>variantAkb({host,entry,req,kind,selectionName,save})</code> (тот же паттерн, что variantSpec). ups-config: кнопка «⚡ Подобрать АКБ» пишет <code>raschet.upsHandoff.v1</code> (нагрузка/автономия/cosφ из условий подбора; V_DC/КПД из выбранной в Spec модели; типы АКБ; selectionName) и открывает battery/?fromUps=1 — сайдбар АКБ сфокусируется на «АКБ для &lt;подбор&gt;» (v0.60.463).',
+    ] },
     { version: '0.60.465', date: '2026-05-16', items: [
       '🐞 <b>Фикс: бесконечная рекурсия <code>cvFn</code> в selection-panel</b> (RangeError: Maximum call stack), проявлялась в зоне варианта/сравнения когда курс валют не загружен (<code>_convertFn</code> = null). Регрессия v0.60.458 (replace_all задел определение <code>cvFn</code>). Стало: <code>_convertFn || o.convertFn || null</code>.',
     ] },
