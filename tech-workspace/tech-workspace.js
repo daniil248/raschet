@@ -2735,6 +2735,337 @@ function _bulkRackToolbar(c, ro) {
   </div>`;
 }
 
+// ════════════════════════════════════════════════════════════════════
+// ─── План зала (Roadmap 20.7) — v0.60.505
+// Правка Пользователя 2026-05-16: «если есть группа стоек 10 по 7 кВт —
+// в наборе должно появиться 10 ОТДЕЛЬНЫХ конструктивов соответствующего
+// размера, так для всего. В конфигураторе это N штук, а в палитре — N
+// отдельных объектов готовых к размещению. Объекты отличаются по цвету
+// + подписи. Здесь же задаются обозначения и теги объектов.»
+// ════════════════════════════════════════════════════════════════════
+const _PLAN_PALETTE = [
+  '#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed',
+  '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4f46e5',
+  '#0d9488', '#b45309', '#9333ea', '#0284c7', '#16a34a',
+];
+function _planColor(idx) { return _PLAN_PALETTE[idx % _PLAN_PALETTE.length]; }
+// Контрастный цвет текста для подписи на цветном объекте.
+function _planTextOn(hex) {
+  try {
+    const h = hex.replace('#', '');
+    const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#1f2937' : '#ffffff';
+  } catch { return '#ffffff'; }
+}
+
+// Канонический список «конструктивов»: каждая группа разворачивается в
+// count отдельных объектов. id стабилен (`${kind}:${groupId}#${i}`),
+// чтобы позиции/теги переживали ре-рендер и правку count.
+function _planUnitDefs(c) {
+  const defs = [];
+  let gi = 0;
+  const push = (kind, g, count, wMm, hMm, baseTag, gname, icon) => {
+    const color = _planColor(gi++);
+    const n = Math.max(0, Math.floor(Number(count) || 0));
+    for (let i = 0; i < n; i++) {
+      defs.push({
+        id: `${kind}:${g.id}#${i}`,
+        kind, groupId: g.id, idx: i,
+        wMm: Math.max(200, Number(wMm) || 600),
+        hMm: Math.max(200, Number(hMm) || 1200),
+        color, icon,
+        groupName: gname,
+        defTag: `${baseTag}-${String(i + 1).padStart(2, '0')}`,
+      });
+    }
+  };
+  for (const rg of (c.rackGroups || [])) {
+    const base = (rg.tagPrefix && String(rg.tagPrefix).trim()) || _tagBase(rg.name, 'R');
+    push('rack', rg, rg.count, rg.widthMm, rg.depthMm, base, rg.name || 'Стойки', '🗄');
+  }
+  for (const us of (c.upsSystems || [])) {
+    const base = _tagBase(us.name, 'UPS');
+    // У ИБП нет габаритов в модели — берём типовой шкаф ИБП.
+    push('ups', us, us.count, 600, 850, base, us.name || 'ИБП', '⚡');
+  }
+  for (const cu of (c.coolingUnits || [])) {
+    const base = _tagBase(cu.name, 'AC');
+    push('cool', cu, cu.count, 700, 900, base, cu.name || 'Климат', '❄');
+  }
+  return defs;
+}
+function _tagBase(name, fallback) {
+  const s = String(name || '').trim();
+  if (!s) return fallback;
+  // Аббревиатура из первых букв слов / цифр (для авто-тега).
+  const m = s.match(/[A-Za-zА-Яа-я0-9]+/g) || [];
+  const abbr = m.slice(0, 2).map(w => w[0]).join('').toUpperCase();
+  return abbr || fallback;
+}
+function _ensurePlan(c) {
+  if (!c.plan || typeof c.plan !== 'object') c.plan = {};
+  if (typeof c.plan.pxPerM !== 'number' || !(c.plan.pxPerM > 0)) c.plan.pxPerM = 45;
+  if (!c.plan.units || typeof c.plan.units !== 'object') c.plan.units = {};
+  const defs = _planUnitDefs(c);
+  const valid = new Set(defs.map(d => d.id));
+  // Прунинг устаревших (группа удалена / count уменьшен).
+  for (const id of Object.keys(c.plan.units)) {
+    if (!valid.has(id)) delete c.plan.units[id];
+  }
+  for (const d of defs) {
+    const u = c.plan.units[d.id];
+    if (!u) c.plan.units[d.id] = { tag: d.defTag, x: 0, y: 0, placed: false };
+    else if (u.tag == null || u.tag === '') u.tag = d.defTag;
+  }
+  return defs;
+}
+
+function renderPlanEditor(c, ro) {
+  const pane = $('tw-mode-plan');
+  if (!pane) return;
+  const defs = _ensurePlan(c);
+  const pxPerM = c.plan.pxPerM;
+  const mm2px = (mm) => Math.max(6, Math.round((Number(mm) || 0) / 1000 * pxPerM));
+  const units = c.plan.units;
+  const placed = defs.filter(d => units[d.id] && units[d.id].placed);
+  const unplaced = defs.filter(d => !(units[d.id] && units[d.id].placed));
+
+  // Палитра: группируем неразмещённые по группе (цвет = группа).
+  const byGroup = new Map();
+  for (const d of unplaced) {
+    const key = `${d.kind}:${d.groupId}`;
+    if (!byGroup.has(key)) byGroup.set(key, { d0: d, items: [] });
+    byGroup.get(key).items.push(d);
+  }
+  let paletteHtml = '';
+  if (!defs.length) {
+    paletteHtml = `<div class="tw-plan-empty muted">Нет оборудования. Добавьте группы стоек / ИБП / климата в режиме «📋 Список».</div>`;
+  } else if (!byGroup.size) {
+    paletteHtml = `<div class="tw-plan-empty muted">Все объекты размещены ✓</div>`;
+  } else {
+    for (const { d0, items } of byGroup.values()) {
+      paletteHtml += `<div class="tw-plan-pgroup">
+        <div class="tw-plan-pgroup-head">
+          <span class="tw-plan-sw" style="background:${d0.color}"></span>
+          <b>${d0.icon} ${escHtml(d0.groupName)}</b>
+          <span class="muted">· ${items.length} шт</span>
+          ${ro ? '' : `<button type="button" class="tw-plan-btn" data-plan-place-group="${escAttr(d0.kind + ':' + d0.groupId)}" title="Разместить все объекты этой группы на плане">▦ Разместить все</button>`}
+        </div>
+        <div class="tw-plan-chiprow">
+          ${items.map(d => `<button type="button" class="tw-plan-chip" draggable="${ro ? 'false' : 'true'}" data-plan-place="${escAttr(d.id)}" style="border-color:${d0.color};color:${d0.color}" title="${escAttr(d.groupName)} · ${d.wMm}×${d.hMm} мм — кликните или перетащите на план">${escHtml(units[d.id].tag)}</button>`).join('')}
+        </div>
+      </div>`;
+    }
+  }
+
+  const objsHtml = placed.map(d => {
+    const u = units[d.id];
+    const w = mm2px(d.wMm), h = mm2px(d.hMm);
+    const txt = _planTextOn(d.color);
+    return `<div class="tw-plan-obj" data-plan-obj="${escAttr(d.id)}"
+      style="left:${Math.round(u.x)}px;top:${Math.round(u.y)}px;width:${w}px;height:${h}px;background:${d.color};color:${txt}"
+      title="${escAttr(d.groupName)} · ${d.wMm}×${d.hMm} мм">
+      <span class="tw-plan-obj-tag">${escHtml(u.tag)}</span>
+      ${ro ? '' : `<button type="button" class="tw-plan-obj-x" data-plan-remove="${escAttr(d.id)}" title="Снять с плана (вернуть в набор)">✕</button>`}
+    </div>`;
+  }).join('');
+
+  pane.innerHTML = `
+    <div class="tw-plan-toolbar">
+      <span><b>🗺 План зала</b> — набор: <b>${defs.length}</b> объект(ов) · размещено <b>${placed.length}</b> / в наборе <b>${unplaced.length}</b></span>
+      <label class="tw-plan-scale" title="Масштаб плана (пикселей на метр)">Масштаб
+        <input type="range" id="tw-plan-scale" min="20" max="90" step="5" value="${pxPerM}" ${ro ? 'disabled' : ''}>
+        <span class="muted">${pxPerM} px/м</span>
+      </label>
+      ${ro ? '<span class="tw-readonly-badge">🔒 read-only</span>' : `
+        <button type="button" class="tw-plan-btn" id="tw-plan-arrange" title="Авто-разместить все объекты сеткой по группам">▦ Разместить всё</button>
+        <button type="button" class="tw-plan-btn" id="tw-plan-clear" title="Снять все объекты с плана (вернуть в набор)">↺ Снять всё</button>`}
+      <span class="muted tw-plan-hint">Объект = реальный конструктив (размер по габаритам). Цвет = группа. Подпись = тег (двойной клик — изменить). Перетаскивайте мышью.</span>
+    </div>
+    <div class="tw-plan-body">
+      <aside class="tw-plan-palette" data-plan-dropzone-ignore="1">
+        <div class="tw-plan-palette-h">📦 Набор (готовы к размещению)</div>
+        ${paletteHtml}
+      </aside>
+      <div class="tw-plan-canvas" id="tw-plan-area">
+        ${objsHtml || '<div class="tw-plan-placeholder">Перетащите объекты из набора слева<br><small>или «▦ Разместить всё»</small></div>'}
+      </div>
+    </div>`;
+}
+
+// Авто-раскладка: размещает указанные defs сеткой, не накладываясь.
+function _planAutoArrange(c, defs) {
+  _ensurePlan(c);
+  const pxPerM = c.plan.pxPerM;
+  const mm2px = (mm) => Math.max(6, Math.round((Number(mm) || 0) / 1000 * pxPerM));
+  let x = 16, y = 16, rowH = 0;
+  const maxW = 1100;
+  // Группируем по группе — каждая группа со своей «полосы».
+  const order = [...defs];
+  for (const d of order) {
+    const u = c.plan.units[d.id];
+    if (!u) continue;
+    const w = mm2px(d.wMm), h = mm2px(d.hMm);
+    if (x + w + 16 > maxW) { x = 16; y += rowH + 14; rowH = 0; }
+    u.x = x; u.y = y; u.placed = true;
+    x += w + 12;
+    rowH = Math.max(rowH, h);
+  }
+}
+
+let _planEventsBound = false;
+function bindPlanEvents() {
+  if (_planEventsBound) return;
+  const pane = $('tw-mode-plan');
+  if (!pane) return;
+  _planEventsBound = true;
+  const curConcept = () => {
+    const v = _variants.find(x => x.id === _activeId);
+    return v && !v.readOnly ? v.concept : null;
+  };
+  // Клик: разместить из набора / снять / авто-разместить / снять всё.
+  pane.addEventListener('click', (e) => {
+    const c = curConcept(); if (!c) return;
+    const placeBtn = e.target.closest('[data-plan-place]');
+    if (placeBtn) {
+      const id = placeBtn.dataset.planPlace;
+      _ensurePlan(c);
+      const u = c.plan.units[id];
+      if (u && !u.placed) {
+        // Не трогаем уже размещённые — новый объект каскадом.
+        const nPlaced = Object.values(c.plan.units).filter(z => z.placed).length;
+        u.x = 16 + (nPlaced % 12) * 22;
+        u.y = 16 + (nPlaced % 12) * 22;
+        u.placed = true;
+      }
+      persistVariants(); renderActiveVariant();
+      return;
+    }
+    const grpBtn = e.target.closest('[data-plan-place-group]');
+    if (grpBtn) {
+      const key = grpBtn.dataset.planPlaceGroup;
+      const defs = _ensurePlan(c);
+      for (const d of defs) if (`${d.kind}:${d.groupId}` === key) c.plan.units[d.id].placed = true;
+      _planAutoArrange(c, defs.filter(x => c.plan.units[x.id]?.placed));
+      persistVariants(); renderActiveVariant();
+      return;
+    }
+    const rmBtn = e.target.closest('[data-plan-remove]');
+    if (rmBtn) {
+      const id = rmBtn.dataset.planRemove;
+      if (c.plan?.units?.[id]) { c.plan.units[id].placed = false; }
+      persistVariants(); renderActiveVariant();
+      return;
+    }
+    if (e.target.id === 'tw-plan-arrange') {
+      const defs = _ensurePlan(c);
+      for (const d of defs) c.plan.units[d.id].placed = true;
+      _planAutoArrange(c, defs);
+      persistVariants(); renderActiveVariant();
+      return;
+    }
+    if (e.target.id === 'tw-plan-clear') {
+      _ensurePlan(c);
+      for (const id of Object.keys(c.plan.units)) c.plan.units[id].placed = false;
+      persistVariants(); renderActiveVariant();
+      return;
+    }
+  });
+  // Масштаб.
+  pane.addEventListener('input', (e) => {
+    if (e.target.id !== 'tw-plan-scale') return;
+    const c = curConcept(); if (!c) return;
+    _ensurePlan(c);
+    c.plan.pxPerM = Number(e.target.value) || 45;
+    persistVariants(); renderActiveVariant();
+  });
+  // Двойной клик по объекту → редактирование тега (in-page, без prompt).
+  pane.addEventListener('dblclick', (e) => {
+    const c = curConcept(); if (!c) return;
+    const obj = e.target.closest('[data-plan-obj]');
+    if (!obj) return;
+    const id = obj.dataset.planObj;
+    const u = c.plan?.units?.[id]; if (!u) return;
+    const tagEl = obj.querySelector('.tw-plan-obj-tag');
+    if (!tagEl) return;
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.value = u.tag || ''; inp.className = 'tw-plan-tagedit';
+    inp.style.cssText = 'width:90%;font-size:11px;padding:1px 3px;border:1px solid #1f2937;border-radius:3px';
+    tagEl.replaceWith(inp); inp.focus(); inp.select();
+    const commit = () => {
+      u.tag = (inp.value || '').trim() || u.tag;
+      persistVariants(); renderActiveVariant();
+    };
+    inp.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+      else if (ev.key === 'Escape') renderActiveVariant();
+    });
+    inp.addEventListener('blur', commit);
+  });
+  // Drag-move объектов мышью (pointer events).
+  let drag = null;
+  pane.addEventListener('pointerdown', (e) => {
+    const c = curConcept(); if (!c) return;
+    if (e.target.closest('.tw-plan-obj-x') || e.target.closest('.tw-plan-tagedit')) return;
+    const obj = e.target.closest('[data-plan-obj]');
+    const area = $('tw-plan-area');
+    if (!obj || !area) return;
+    const id = obj.dataset.planObj;
+    const u = c.plan?.units?.[id]; if (!u) return;
+    const ar = area.getBoundingClientRect();
+    drag = { id, dx: e.clientX - ar.left - u.x, dy: e.clientY - ar.top - u.y, obj, area };
+    obj.setPointerCapture?.(e.pointerId);
+    obj.style.zIndex = '50'; obj.style.opacity = '0.85';
+    e.preventDefault();
+  });
+  pane.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const ar = drag.area.getBoundingClientRect();
+    let nx = e.clientX - ar.left - drag.dx;
+    let ny = e.clientY - ar.top - drag.dy;
+    nx = Math.max(0, Math.round(nx / 10) * 10);
+    ny = Math.max(0, Math.round(ny / 10) * 10);
+    drag.obj.style.left = nx + 'px';
+    drag.obj.style.top = ny + 'px';
+    drag._nx = nx; drag._ny = ny;
+  });
+  pane.addEventListener('pointerup', () => {
+    if (!drag) return;
+    const c = curConcept();
+    if (c && c.plan?.units?.[drag.id] && drag._nx != null) {
+      c.plan.units[drag.id].x = drag._nx;
+      c.plan.units[drag.id].y = drag._ny;
+      persistVariants();
+    }
+    if (drag.obj) { drag.obj.style.zIndex = ''; drag.obj.style.opacity = ''; }
+    drag = null;
+  });
+  // HTML5 drag из палитры на холст.
+  pane.addEventListener('dragstart', (e) => {
+    const chip = e.target.closest('[data-plan-place]');
+    if (!chip) return;
+    e.dataTransfer.setData('text/plain', chip.dataset.planPlace);
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  pane.addEventListener('dragover', (e) => {
+    if (e.target.closest('#tw-plan-area')) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+  });
+  pane.addEventListener('drop', (e) => {
+    const area = e.target.closest('#tw-plan-area');
+    if (!area) return;
+    e.preventDefault();
+    const c = curConcept(); if (!c) return;
+    const id = e.dataTransfer.getData('text/plain');
+    _ensurePlan(c);
+    const u = c.plan.units[id]; if (!u) return;
+    const ar = area.getBoundingClientRect();
+    u.x = Math.max(0, Math.round((e.clientX - ar.left) / 10) * 10);
+    u.y = Math.max(0, Math.round((e.clientY - ar.top) / 10) * 10);
+    u.placed = true;
+    persistVariants(); renderActiveVariant();
+  });
+}
+
 // ─── Render: active variant (right pane)
 function renderActiveVariant() {
   const v = _variants.find(x => x.id === _activeId);
@@ -2757,6 +3088,10 @@ function renderActiveVariant() {
   if (planPane) planPane.hidden = (_mode !== 'plan');
   if (comparePane) comparePane.hidden = (_mode !== 'compare');
   if (_mode === 'compare') renderCompareMode();
+  if (_mode === 'plan' && planPane) {
+    try { renderPlanEditor(v.concept, !!v.readOnly); }
+    catch (e) { console.warn('[tw plan] render failed', e); }
+  }
   $('tw-variant-name').textContent = v.name + (v.primary ? ' ⭐' : '');
   $('tw-readonly-badge').hidden = !v.readOnly;
   // v0.60.134 (репорт Пользователя 2026-05-04 «основные данные проекта
@@ -3955,7 +4290,7 @@ function makePrimary(id) {
 
 // ─── Mode toggle
 function setMode(mode) {
-  _mode = (mode === 'plan') ? 'plan' : 'list';
+  _mode = (mode === 'plan' || mode === 'compare') ? mode : 'list';
   document.querySelectorAll('.tw-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === _mode));
   renderActiveVariant();
 }
@@ -4686,6 +5021,7 @@ function init() {
   renderVariantsList();
   renderActiveVariant();
   bindListEvents();
+  bindPlanEvents();
   bindReport();
   bindHandoff();
   // Sidebar variants list events

@@ -595,6 +595,131 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
   font-weight: 400;
 }
 
+/* ─── План зала — редактор (v0.60.505) */
+.tw-plan-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.tw-plan-scale { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.tw-plan-scale input[type=range] { width: 110px; }
+.tw-plan-hint { font-size: 11px; flex: 1; min-width: 180px; text-align: right; }
+.tw-plan-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid #c7d2fe;
+  background: #fff;
+  color: #3730a3;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.tw-plan-btn:hover { background: #eef2ff; }
+.tw-plan-body {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 10px;
+  flex: 1;
+  min-height: 460px;
+  margin-top: 8px;
+}
+.tw-plan-palette {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fafbfc;
+  padding: 8px;
+  overflow-y: auto;
+  max-height: calc(100vh - 220px);
+}
+.tw-plan-palette-h {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+}
+.tw-plan-pgroup { margin-bottom: 12px; }
+.tw-plan-pgroup-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  margin-bottom: 5px;
+  flex-wrap: wrap;
+}
+.tw-plan-sw {
+  width: 12px; height: 12px;
+  border-radius: 3px;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+.tw-plan-chiprow { display: flex; flex-wrap: wrap; gap: 4px; }
+.tw-plan-chip {
+  font-size: 11px;
+  padding: 3px 7px;
+  border: 1.5px solid;
+  background: #fff;
+  border-radius: 4px;
+  cursor: grab;
+  font-weight: 600;
+}
+.tw-plan-chip:hover { filter: brightness(0.95); }
+.tw-plan-empty { padding: 14px; text-align: center; font-size: 12px; }
+/* Холст плана — позиционированный контейнер (объекты absolute). */
+#tw-plan-area {
+  position: relative;
+  overflow: auto;
+  display: block;
+  align-items: initial;
+  justify-content: initial;
+  min-height: 460px;
+  flex: 1;
+}
+#tw-plan-area .tw-plan-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.tw-plan-obj {
+  position: absolute;
+  border-radius: 3px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  user-select: none;
+  touch-action: none;
+}
+.tw-plan-obj:active { cursor: grabbing; }
+.tw-plan-obj-tag {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 0 2px;
+  text-align: center;
+  line-height: 1.05;
+  word-break: break-word;
+}
+.tw-plan-obj-x {
+  position: absolute;
+  top: 1px; right: 1px;
+  width: 14px; height: 14px;
+  line-height: 12px;
+  font-size: 10px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.85);
+  color: #b91c1c;
+  cursor: pointer;
+  display: none;
+}
+.tw-plan-obj:hover .tw-plan-obj-x { display: block; }
+
 /* ─── Empty state */
 .tw-empty-state {
   display: flex;
