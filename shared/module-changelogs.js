@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.527', date: '2026-05-16', items: [
+      '📐 <b>Структура-канон (Фаза 0, код не тронут)</b>. Добавлен <code>ARCHITECTURE.md</code> — закон раскладки файлов модуля (скелет calc/ + ui/ + data/, привязка к <code>manifest.json</code> kind/requires, целевая реорганизация <code>shared/</code> по доменам, чек-лист создания модуля, явный долг реестра). В 29 модуль-папках создан <code>README.md</code> (12–20 строк: назначение, главные файлы, точки расширения — навигация для Пользователя). Новый <code>scripts/audit-manifest.py</code> сверяет реальные импорты с <code>requires</code> и полнотой реестра (UNDECLARED 23 / UNREGISTERED ui 13 / PARITY 0) — подключён в CI non-blocking. Нулевой риск: только документация + аудит-скрипт, ни одного .js модуля не изменено.',
+    ] },
     { version: '0.60.526', date: '2026-05-16', items: [
       '🧩 <b>Модуляризация Фаза 2 (burndown #6, ФИНАЛ): seed-шаблоны отчётов → SHARED</b>. <code>js/main.js</code> импортировал <code>reports/templates-seed.js</code> (CORE→module, R1 — последняя жёсткая запись allowlist). Файл перенесён <code>reports/templates-seed.js → shared/report/templates-seed.js</code> (SHARED-контракт рядом с <code>shared/report/index.js</code>); по старому пути — shim (<code>export *</code>). <code>js/main.js</code> и <code>reports/reports.js</code> переключены на <code>../shared/report/templates-seed.js</code>. <b>allowlist пуст</b> — все санкционированные нарушения границ (R1/R3/R4/R-shared) погашены burndown\\'ами #1–#6. Поведение идентично.',
     ] },

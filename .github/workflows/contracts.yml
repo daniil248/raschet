@@ -31,3 +31,9 @@ jobs:
       - name: gen-modules-json --check (Фаза 1 — advisory до подтверждения паритета)
         continue-on-error: true
         run: node tools/gen-modules-json.mjs --check
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: audit-manifest (Фаза 0 — advisory; ужесточить в Фазе 1)
+        continue-on-error: true
+        run: python scripts/audit-manifest.py
