@@ -70,6 +70,18 @@ export function openUpsParamsModal(n) {
     qp.set('nodeId', n.id);
     if (n.upsCatalogId) qp.set('selected', n.upsCatalogId);
     if (n.capacityKw) qp.set('capacityKw', String(n.capacityKw));
+    // v0.60.504 (правка Пользователя 2026-05-16: «конфигуратор ИБП из
+    // схемы не перенимает необходимую мощность из схемы, вообще»):
+    // подбору нужна ТРЕБУЕМАЯ мощность (нагрузка, которую держит ИБП),
+    // а не паспортный номинал узла (часто 0 у несконфигурированного
+    // ИБП — поэтому условия подбора были пустыми). Передаём реальную
+    // расчётную нагрузку явным параметром loadKw.
+    {
+      const _reqKw = Number(n._maxLoadKw) || Number(n._loadKwWeighted)
+        || ((Number(n._loadKwIT) || 0) + (Number(n._loadKwHVAC) || 0))
+        || Number(n._loadKw) || Number(n.capacityKw) || 0;
+      if (_reqKw > 0) qp.set('loadKw', String(Math.round(_reqKw * 10) / 10));
+    }
     if (n.upsType) qp.set('upsType', n.upsType);
     if (n.batteryAutonomyMin) qp.set('targetAutonomyMin', String(n.batteryAutonomyMin));
     if (n.redundancyScheme) qp.set('redundancy', n.redundancyScheme);

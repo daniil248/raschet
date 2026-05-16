@@ -354,7 +354,8 @@
   <!-- v0.60.428: панель ПОДБОРА ИБП (условия + TCO/CAPEX/OPEX/сравнение) -->
   <script type="module">
     import { mountSelectionPanel } from '../shared/selection-panel.js';
-    import { getActiveProjectCode, isEmbeddedMode } from '../shared/configuration-catalog.js';
+    import { getActiveProjectCode, isEmbeddedMode,
+             getSelectionMeta, saveSelectionMeta, ensureSelectionMeta } from '../shared/configuration-catalog.js';
     // B2.2 i2: выбор конкретной модели ИБП в Spec-вкладке варианта.
     import { listUpses, getUps } from '../shared/ups-catalog.js';
     import { detectUpsType } from '../shared/ups-types/index.js';
@@ -895,10 +896,53 @@
         // v0.60.446: УСЛОВИЯ подбора задаются ЗДЕСЬ (зона подбора —
         // «Свойства подбора»), Шаг 1 убран из редактора варианта.
       });
+      // v0.60.504 (правка Пользователя 2026-05-16: «конфигуратор ИБП из
+      // схемы не перенимает необходимую мощность из схемы, вообще»):
+      // при входе из Конструктора схем (?nodeId) / PUSH технолога
+      // (?capacityKw|?loadKw) сеем УСЛОВИЯ активного подбора из URL —
+      // чтобы «Критическая нагрузка / автономия / резерв / cos φ / фазы»
+      // не были пустыми. Заполняем ТОЛЬКО пустые поля (ручной ввод
+      // Пользователя не затираем). «Это и есть подбор» — данные уже в нём.
+      const _bridgeReq = (() => {
+        try {
+          const q = new URLSearchParams(location.search);
+          if (!(q.get('nodeId') || q.get('capacityKw') || q.get('loadKw'))) return null;
+          const out = {};
+          const lk = Number(q.get('loadKw')) || Number(q.get('capacityKw'));
+          if (Number.isFinite(lk) && lk > 0) out.loadKw = Math.round(lk * 10) / 10;
+          const au = Number(q.get('autonomyMin')) || Number(q.get('targetAutonomyMin'));
+          if (Number.isFinite(au) && au > 0) out.autonomyMin = au;
+          if (q.get('redundancy')) out.redundancy = q.get('redundancy');
+          const cp = Number(q.get('cosPhi'));
+          if (Number.isFinite(cp) && cp > 0 && cp <= 1) out.cosPhi = cp;
+          const ph = Number(q.get('phases'));
+          if (ph === 1 || ph === 3) out.phases = ph;
+          return Object.keys(out).length ? out : null;
+        } catch { return null; }
+      })();
+      function _seedSelectionFromBridge(selName) {
+        if (!_bridgeReq || !selName) return;
+        try {
+          ensureSelectionMeta('ups', { projectCode: pc, selectionName: selName },
+            { requirements: {}, eco: {} });
+          const m = getSelectionMeta('ups', { projectCode: pc, selectionName: selName });
+          const cur = (m && m.requirements) || {};
+          const patch = {};
+          for (const [k, val] of Object.entries(_bridgeReq)) {
+            const has = cur[k] != null && cur[k] !== '' && !(typeof cur[k] === 'number' && cur[k] === 0);
+            if (!has) patch[k] = val;
+          }
+          if (Object.keys(patch).length) {
+            saveSelectionMeta('ups', { projectCode: pc, selectionName: selName,
+              requirements: { ...cur, ...patch } });
+          }
+        } catch (e) { console.warn('[ups-config] seed from bridge failed', e); }
+      }
       window.addEventListener('rs-selection-change', (ev) => {
         const d = ev.detail || {};
         if (d.kind && d.kind !== 'ups') return;
         activeSel = d.selectionName || null;
+        _seedSelectionFromBridge(activeSel);
         api.setSelection(activeSel);
       });
       // v0.60.434: смена «Контекст подбора» (проект ↔ разовый) — перепривязка.
@@ -940,6 +984,7 @@
         if (d.scope === 'selection') {
           activeSel = d.selectionName || activeSel;
           _wizardMode = false;
+          _seedSelectionFromBridge(activeSel);
           api.setSelection(activeSel);
         } else if (d.scope === 'variant') {
           _wizardMode = false;

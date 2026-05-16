@@ -88,6 +88,20 @@ function render() {
 // видел, что выбор произведён даже после reload страницы.
 function renderPendingBanner() {
   if (new URLSearchParams(location.search).get('nodeId')) return; // в wizard-режиме не нужно
+  // v0.60.504 (правка Пользователя 2026-05-16: «предлагает/напоминает что
+  // сейчас выбран какой-то ИБП, о котором думать вообще не охота»):
+  // в проект-привязанном режиме (есть подбор/проект) глобальное
+  // напоминание lastUpsConfig — лишний шум. Показываем баннер ТОЛЬКО в
+  // чистом standalone (без проекта) — там он действительно полезен как
+  // мост обратно в Конструктор схем.
+  try {
+    const pc = getActiveProjectCode && getActiveProjectCode();
+    if (pc) {
+      const _el = document.getElementById('pending-standalone-banner');
+      if (_el) _el.remove();
+      return;
+    }
+  } catch {}
   let el = document.getElementById('pending-standalone-banner');
   let last = null;
   try {
@@ -705,6 +719,9 @@ function initWizard() {
   // Предзаполнение из query
   const rq = wizState.requirements;
   if (qp.get('capacityKw')) rq.loadKw = Number(qp.get('capacityKw')) || rq.loadKw;
+  // v0.60.504: явная ТРЕБУЕМАЯ нагрузка из Конструктора схем (приоритет
+  // над паспортным capacityKw — это критическая нагрузка для подбора).
+  if (qp.get('loadKw')) rq.loadKw = Number(qp.get('loadKw')) || rq.loadKw;
   // Поддержка старого targetAutonomyMin и нового autonomyMin (PUSH из tech-workspace).
   if (qp.get('targetAutonomyMin')) rq.autonomyMin = Number(qp.get('targetAutonomyMin')) || rq.autonomyMin;
   if (qp.get('autonomyMin')) rq.autonomyMin = Number(qp.get('autonomyMin')) || rq.autonomyMin;
