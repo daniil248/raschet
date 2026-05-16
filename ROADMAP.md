@@ -1,6 +1,6 @@
 # Raschet — Roadmap архитектурного развития платформы
 
-> **Статус:** v0.60.496 (2026-05-16). **Phase 23 ✅** (line-items/разбивка цены rollout: logistics/battery-catalog/каталог/tech-workspace BOM/тариф cooling). **Phase 47.1 ✅** (Технолог объекта: objectKind-фильтр sidebar, custom-шаблон разделов, типы помещений). Phase 23.1 (line-items для CAPEX) ✅. **Phase 23.2/23.2a/B2.2 ✅** — подбор ИБП/АКБ полностью как «Подбор холода»: единый `shared/selection-panel.js` (вариант-вкладки Spec/АКБ/CAPEX/Итог), `shared/ui/cost-items-modal.js`, централизованный курс валют на дату (`shared/currency-rates/provider.js`), ЖЦ/ТЭО из состава, мастер старения АКБ, авто-принадлежности ИБП (`shared/ups-types/accessories.js` + `shared/catalogs/ups-accessories.js`), мост мастер→вариант. Далее по 23: 23.3 (logistics), 23.4 (scs/breaker/battery-catalog), 23.5 (tech-workspace BOM), 23.6 (тариф э/э cooling). Запланированы фазы 23.2–23.6 (rollout pattern на весь проект), 24 (модуль Сервис: монтаж/ТО), 25 (Импорт даташитов климат-оборудования), 26 (SharePoint integration), 27 (MS365 auth — deferred). Фаза 1.27 — «Проекты» полностью закрыта. Фаза 1.28 — POR-registry, cross-discipline reconciliation, 1.28.20 (consumer-container) — Phase 1+2+3 ✅ (включая kit-container для cond+outdoor v0.60.250-259). **Фаза 45 (File-storage drawio-style)** ✅ v0.60.258-273 — File System Access API + IndexedDB persistent handle + external-change detection + ↻ Перечитать + ✕ Закрыть + Ctrl+O/Ctrl+Shift+S + discoverability с /projects/. **Фаза 46 (Firestore quota optimization)** ✅ v0.60.260-263 — solo-skip коллаборации (-95% writes), heartbeat 60с/45с, lock debounce 800мс, autosave 3с, persistence + TTL cache (-90% reads). Фаза 19 (пресеты карточек) полностью закрыта. 1.24.18 закрыто. **Фаза 20 (Технолог ЦОД)**: 20.1 ✅ (двухпанельный layout v0.59.892), 20.2–20.6 ✅ (rackGroups/upsSystems/coolingUnits/feed/PDU per-group), 20.8 ✅ (блок МЦОД через sub-проект v0.59.893), 20.9 ✅ (HTML-ПЗ — будет переработана через модуль отчётов), 20.10 ✅ (compare), 20.11 ✅ (handoff MVP), 20.12 ✅ (PUE авто/ручной v0.59.895), 20.13 ✅ (BOM с ценами по дате v0.59.896). Открыто 20.7 (план зала). **Фаза 21 (Метеоданные)**: stand-alone модуль `meteo/` с plugin-архитектурой источников (Open-Meteo REST + rp5 CSV) — 21.1 ✅ v0.59.894. Local/Online switcher. Центр помощи с 23 статьями + кнопка ❓ в общей шапке.
+> **Статус:** v0.60.497 (2026-05-16). **Phase 23 ✅** (line-items/разбивка цены rollout: logistics/battery-catalog/каталог/tech-workspace BOM/тариф cooling). **Phase 47.1 ✅** (Технолог объекта: objectKind-фильтр sidebar, custom-шаблон разделов, типы помещений). Phase 23.1 (line-items для CAPEX) ✅. **Phase 23.2/23.2a/B2.2 ✅** — подбор ИБП/АКБ полностью как «Подбор холода»: единый `shared/selection-panel.js` (вариант-вкладки Spec/АКБ/CAPEX/Итог), `shared/ui/cost-items-modal.js`, централизованный курс валют на дату (`shared/currency-rates/provider.js`), ЖЦ/ТЭО из состава, мастер старения АКБ, авто-принадлежности ИБП (`shared/ups-types/accessories.js` + `shared/catalogs/ups-accessories.js`), мост мастер→вариант. Далее по 23: 23.3 (logistics), 23.4 (scs/breaker/battery-catalog), 23.5 (tech-workspace BOM), 23.6 (тариф э/э cooling). Запланированы фазы 23.2–23.6 (rollout pattern на весь проект), 24 (модуль Сервис: монтаж/ТО), 25 (Импорт даташитов климат-оборудования), 26 (SharePoint integration), 27 (MS365 auth — deferred). Фаза 1.27 — «Проекты» полностью закрыта. Фаза 1.28 — POR-registry, cross-discipline reconciliation, 1.28.20 (consumer-container) — Phase 1+2+3 ✅ (включая kit-container для cond+outdoor v0.60.250-259). **Фаза 45 (File-storage drawio-style)** ✅ v0.60.258-273 — File System Access API + IndexedDB persistent handle + external-change detection + ↻ Перечитать + ✕ Закрыть + Ctrl+O/Ctrl+Shift+S + discoverability с /projects/. **Фаза 46 (Firestore quota optimization)** ✅ v0.60.260-263 — solo-skip коллаборации (-95% writes), heartbeat 60с/45с, lock debounce 800мс, autosave 3с, persistence + TTL cache (-90% reads). Фаза 19 (пресеты карточек) полностью закрыта. 1.24.18 закрыто. **Фаза 20 (Технолог ЦОД)**: 20.1 ✅ (двухпанельный layout v0.59.892), 20.2–20.6 ✅ (rackGroups/upsSystems/coolingUnits/feed/PDU per-group), 20.8 ✅ (блок МЦОД через sub-проект v0.59.893), 20.9 ✅ (HTML-ПЗ — будет переработана через модуль отчётов), 20.10 ✅ (compare), 20.11 ✅ (handoff MVP), 20.12 ✅ (PUE авто/ручной v0.59.895), 20.13 ✅ (BOM с ценами по дате v0.59.896). Открыто 20.7 (план зала). **Фаза 21 (Метеоданные)**: stand-alone модуль `meteo/` с plugin-архитектурой источников (Open-Meteo REST + rp5 CSV) — 21.1 ✅ v0.59.894. Local/Online switcher. Центр помощи с 23 статьями + кнопка ❓ в общей шапке.
 
 > **Правило ведения:** roadmap обновляется ПОСТОЯННО — при появлении новой фичи / задачи и при закрытии любого этапа. Hotfix'ы (regressions, мелкие правки UX) НЕ попадают в roadmap, только содержательная функциональность. Это правило зафиксировано пользователем 2026-04-29.
 
@@ -76,9 +76,12 @@
 - ⏳ **47.2.7-followup** Gantt enhancements (Phase 38.3 follow-up): drag-resize
   bar'ов мышью, зависимости (predecessors), critical path computation +
   highlighting, Multi-week / Multi-day overlay.
-- ⏳ **47.2.8** Валидация схем — errors/warnings из всех дисциплин в одном
-  табе. Читает existing project-issues + расширяется на cross-discipline
-  проверки (counts of orphans, breakerstates, недостаточные мощности).
+- [x] **47.2.8** ✅ v0.60.497 — Валидация схем: снапшот проблем расчёта
+  Конструктора (`_persistProjectIssuesSnapshot` → `engine.issues.v1`:
+  защита кабелей, селективность, N-1, перегруз шин СН/источника) в
+  табе «🛡 Проверки» карточки проекта, с давностью расчёта. Дубли/
+  orphan карточка считает статически сама (47.2.9). Авто-фикс — в
+  Конструкторе (Ctrl+Shift+I).
 - ✅ **47.2.9 (v0.60.301)** Проверка расчётов — cross-discipline балансы:
   IT-нагрузка TW vs Конструктор, тепло (cooling ≥ IT + UPS-losses + aux),
   PUE-consistency, источник vs нагрузка (warn > 85%, error > 100%), ИБП TW
@@ -88,17 +91,6 @@
   Холодоснабжение / Экономика / План / Проверки). 4 статуса (pending /
   approved / rejected / needs-revision). RBAC: только owner / gip / admin
   могут менять. Append-only history с раскрываемой timeline.
-- ⏳ **47.2.2** Сводка по проекту: тип объекта, активные дисциплины, стадия,
-  команда (роли).
-- ⏳ **47.2.3** Cross-discipline перечень оборудования (агрегация из
-  Технолога объекта + Конструктора электрических схем + СКС-design + ...).
-  Все возможные порты по системам (электрика / трубы / ОВК / данные / ...).
-- ⏳ **47.2.4** Проверка корректности схем: висячие связи, отсутствие
-  источника, перегруз, дубли портов, орфаны.
-- ⏳ **47.2.5** Проверка расчётов: ΔU, токи, селективность, cooling vs IT,
-  UPS vs IT, ТП/ДГУ vs потребление. Cross-discipline баланс.
-- ⏳ **47.2.6** Согласование разделов: «✓ Согласовано» с timestamp +
-  подписью + историей ревизий + замечаниями.
 
 ### 47.3 Project-scoped hub (UX-flow «всё в одном проекте»)
 По запросу Пользователя 2026-05-06: «было бы не плохо, если выбрав проект

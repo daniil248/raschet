@@ -3308,6 +3308,33 @@ function render() {
       issues.push({ level: 'info', area: '🏷 Проект', msg: 'Шифр проекта не задан', hint: 'Закладка «Общее» → реквизиты → «Обозначение / шифр». Печатается в шапке всех чертежей.' });
     }
 
+    // ── 5. Снапшот проблем Конструктора (Roadmap 47.2.8) ──
+    // Категории, требующие живого recalc (защита кабелей, селективность,
+    // N-1, перегрузы) — карточка проекта пересчитать их статически не может
+    // (underscore-флаги stripRuntime убирает из сохранённой схемы). Берём
+    // компактный снапшот, который Конструктор пишет при каждом изменении.
+    const issuesSnap = _readJSON(`raschet.project.${pid}.engine.issues.v1`, null);
+    if (issuesSnap && Array.isArray(issuesSnap.cats) && issuesSnap.cats.length) {
+      let ago = '';
+      try {
+        const ms = Date.now() - (Number(issuesSnap.ts) || 0);
+        const min = Math.floor(ms / 60000);
+        ago = min < 1 ? 'только что' : min < 60 ? `${min} мин назад`
+          : min < 1440 ? `${Math.floor(min / 60)} ч назад`
+          : `${Math.floor(min / 1440)} дн назад`;
+      } catch {}
+      for (const cat of issuesSnap.cats) {
+        issues.push({
+          level: cat.level === 'error' ? 'error' : 'warn',
+          area: '⚡ Конструктор (расчёт)',
+          msg: `${cat.label} × ${cat.count}`,
+          hint: `По последнему расчёту в Конструкторе (${ago || 'дата неизв.'}). Откройте Конструктор схем → Ctrl+Shift+I для деталей и авто-фикса.`,
+        });
+      }
+    } else if (scheme?.nodes && (Array.isArray(scheme.nodes) ? scheme.nodes.length : Object.keys(scheme.nodes).length)) {
+      issues.push({ level: 'info', area: '⚡ Конструктор (расчёт)', msg: 'Снапшот расчёта отсутствует', hint: 'Откройте Конструктор схем (любое изменение пересчитает) — после этого здесь появятся проблемы защиты кабелей / селективности / N-1.' });
+    }
+
     // Визуализация
     const errors = issues.filter(i => i.level === 'error');
     const warns = issues.filter(i => i.level === 'warn');
@@ -3331,8 +3358,9 @@ function render() {
     validationHost.innerHTML = `
       <p class="muted" style="font-size:12.5px;margin:0 0 14px;line-height:1.6">
         Статические проверки проекта: дубли тегов, orphan-узлы, недостаточные мощности (ИБП vs IT,
-        холод vs IT), пустые поля метаданных. Это <b>быстрая</b> валидация без полного recalc.
-        Для глубокой проверки (ΔU, селективность защит, breaker-vs-cable) — откройте Конструктор схем
+        холод vs IT), пустые поля метаданных. Плюс <b>снапшот расчёта Конструктора</b> (защита
+        кабелей, селективность защит, N-1, перегрузы) — по последнему пересчёту схемы.
+        Для деталей и авто-фикса этих пунктов — откройте Конструктор схем
         → <b>Ctrl+Shift+I</b> (полная Project Issues modal).
       </p>
 

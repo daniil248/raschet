@@ -6074,6 +6074,59 @@ function _updateProjectIssuesBadge() {
   btn.title = errors || warns
     ? `Обнаружено: ${errors} ошибок, ${warns} предупреждений (Ctrl+Shift+I)`
     : 'Проверки проекта (проблем не найдено) (Ctrl+Shift+I)';
+  // v0.60.497 (Roadmap 47.2.8): персистим компактный снапшот проблем
+  // расчёта (категории, которые карточка проекта НЕ может пересчитать
+  // статически — защита кабелей, селективность, N-1, перегрузы), чтобы
+  // таб «🛡 Проверки» в карточке проекта мог их показать кросс-дисциплинарно.
+  try { _persistProjectIssuesSnapshot(errors, warns); } catch {}
+}
+
+// v0.60.497 (Roadmap 47.2.8): снапшот проблем Конструктора по последнему
+// расчёту → LS `raschet.project.<pid>.engine.issues.v1`. Категории здесь —
+// только те, что требуют живого recalc (underscore-флаги stripRuntime
+// убирает из сохранённой схемы): защита кабелей, селективность, N-1,
+// MV-перегруз, перегруз источника. Дубли/orphan карточка считает сама.
+function _persistProjectIssuesSnapshot(errors, warns) {
+  const S = window.Raschet?._state;
+  let pid = null;
+  try { pid = localStorage.getItem('raschet.activeProjectId.v1') || null; } catch {}
+  if (!pid) return;
+  const key = `raschet.project.${pid}.engine.issues.v1`;
+  if (!S) return;
+  let nAgainst = 0, nUnder = 0, nOverflow = 0, nMv = 0, nSrc = 0, nSel = 0;
+  for (const c of S.conns.values()) {
+    if (!c._cableSize && !c._busbarNom) continue;
+    if (c._utilityInfeed) continue;
+    if (c._breakerAgainstCable) nAgainst++;
+    if (c._breakerUndersize) nUnder++;
+    if (c._cableOverflow) nOverflow++;
+  }
+  for (const n of S.nodes.values()) {
+    if (n.type === 'zone' || n.type === 'channel') continue;
+    if (n.isMv && n._mvIkOverload) nMv++;
+    if (n.type === 'source' || n.type === 'generator') {
+      const cap = Number(n.capacityKw) || 0;
+      const load = Number(n._loadKw) || 0;
+      if (cap > 0 && load > cap * 1.05) nSrc++;
+    }
+  }
+  try {
+    const sel = window.Raschet?.analyzeSelectivity?.();
+    if (sel && Array.isArray(sel.pairs)) nSel = sel.pairs.filter(p => !p.check?.selective).length;
+  } catch {}
+  let n1Bad = false;
+  try { const _n1 = _computeN1(S); n1Bad = !!(_n1 && _n1.applicable && !_n1.ok); } catch {}
+  const cats = [
+    { level: 'error', key: 'breakerAgainstCable', label: 'Кабель не защищён от перегрузки (In > Iz)', count: nAgainst },
+    { level: 'error', key: 'breakerUndersize', label: 'Автомат сработает при штатной нагрузке (In < Iрасч)', count: nUnder },
+    { level: 'warn', key: 'cableOverflow', label: 'Сечение превышает максимум ряда', count: nOverflow },
+    { level: 'error', key: 'mvIkOverload', label: 'Перегруз шин СН (I_k3 > термостойкость)', count: nMv },
+    { level: 'error', key: 'sourceOverload', label: 'Перегруз источника (нагрузка > 105% мощности)', count: nSrc },
+    { level: 'warn', key: 'selectivity', label: 'Нарушения селективности защит', count: nSel },
+    { level: 'warn', key: 'n1', label: 'N-1: дефицит мощности при отказе источника', count: n1Bad ? 1 : 0 },
+  ].filter(c => c.count > 0);
+  const snapshot = { ts: Date.now(), errors, warns, cats };
+  try { localStorage.setItem(key, JSON.stringify(snapshot)); } catch {}
 }
 
 function renderProjectIssues() {
