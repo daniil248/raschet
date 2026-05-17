@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.709', date: '2026-05-18', items: [
+      '🩹 <b>Критфикс: {{meta.custom.*}} не подставлялись</b> (корень пустых «Кому:»/«Компания:» в отчётах). substitute() для ключа meta.custom.&lt;k&gt; брал rest=«custom.recipient» и искал его как единый ключ в meta/meta.custom — не находил, отдавал пусто. Все встроенные шаблоны используют именно {{meta.custom.recipient/companyName/signName/…}}. Стало: явная ветка rest.startsWith(custom.) → meta.custom[&lt;k&gt;]. Теперь заполненные в форме реквизитов поля реально подставляются в шапку/адресата/подпись. Файл: shared/report/template.js (substitute).',
+    ] },
     { version: '0.60.708', date: '2026-05-18', items: [
       '🧾 <b>Реквизиты конкретного отчёта (форма «Кому / Составил / …»)</b> (репорт Пользователя «ожидал поля для конкретного отчёта»). Новый shared/report/meta-form.js: collectReportMeta() — модал перед генерацией с полями Составил, Кому+должность, Компания+адрес+тел, Должность/ФИО подписанта, № документа, Версия, Дата. Значения подставляются в плейсхолдеры шаблона ({{meta.author}}, {{meta.custom.recipient}} и т.п.), запоминаются (localStorage по project/kind) и предзаполняются в следующий раз; предзаполнение из проекта/варианта. Подключено в shared/report/compose.js (ВСЕ отчёты через composeReport; opts.collectMeta/metaDefaults/metaPersistKey) и в Технолог ЦОД (bindReport — пояснительная записка, prefill из projectData, persist per-project). «Пропустить» = без реквизитов, «Отмена/крестик» = отмена генерации. Файлы: shared/report/meta-form.js (новый), shared/report/compose.js, apps/tech-workspace/tech-workspace.js, js/engine/constants.js.',
     ] },

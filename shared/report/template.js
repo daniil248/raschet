@@ -980,9 +980,17 @@ export function substitute(text, tpl, ctx) {
     if (key === 'pages') return ctx.pages != null ? String(ctx.pages) : '';
     if (key === 'date')  return ctx.date  || new Date().toLocaleDateString('ru-RU');
     if (key.startsWith('meta.')) {
-      const rest = key.slice(5);
-      if (rest in tpl.meta) return String(tpl.meta[rest] ?? '');
-      if (tpl.meta.custom && rest in tpl.meta.custom) return String(tpl.meta.custom[rest] ?? '');
+      const m = tpl.meta || {};
+      let rest = key.slice(5);
+      // Явный путь {{meta.custom.<k>}} (так заданы шаблоны: recipient,
+      // companyName, signName и т.п.) — раньше НЕ резолвился, поля
+      // оставались пустыми даже после заполнения формы реквизитов.
+      if (rest.startsWith('custom.')) {
+        const ck = rest.slice(7);
+        return String((m.custom && m.custom[ck] != null ? m.custom[ck] : '') ?? '');
+      }
+      if (rest in m) return String(m[rest] ?? '');
+      if (m.custom && rest in m.custom) return String(m.custom[rest] ?? '');
       return '';
     }
     return '';
