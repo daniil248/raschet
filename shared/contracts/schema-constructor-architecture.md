@@ -128,6 +128,17 @@ contracts/README.md в силе):
   (tech-workspace / facility-inventory): единая точка агрегации BOM/
   инвентаря по всем дисциплинам.
 
+**Контракт-файл (Ф-E задел, v0.60.729):** `shared/object-registry.js`
+— чистый контракт + аксессоры (как Ф-A disciplines.js): typedef
+`RegistryObject` (id/kind/tag/ownerModule/ports[]/disciplineAttrs),
+`PORT_TYPES` (power|data|fieldbus|pipe|duct|gas), `objectPorts`,
+`isVisibleToPort`/`objectsVisibleToPort` (порт-driven видимость),
+`disciplineSlice` (read дисципл-среза, без мутации),
+`duplicateTagGroups` (fallback dedup-suggest для memory:rack-merge).
+БЕЗ доступа к LS, БЕЗ авто-записи, 0 потребителей (cache-safe).
+Интеграция с project-storage швом + реконсиляция с tech-workspace/
+rack-merge — следующие защищённые инкременты Ф-E.
+
 ## 7. Маппинг на существующий код (что переиспользуем)
 
 - `shared/disciplines.js` — реестр дисциплин + node.disciplines
