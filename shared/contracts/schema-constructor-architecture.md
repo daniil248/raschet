@@ -139,6 +139,17 @@ contracts/README.md в силе):
 Интеграция с project-storage швом + реконсиляция с tech-workspace/
 rack-merge — следующие защищённые инкременты Ф-E.
 
+**Ф-E интеграция #1 (v0.60.730):** `shared/object-registry-store.js`
+— персистентность через project-storage шов, НОВЫЙ namespace
+`raschet.project.<pid>.object-registry.objects.v1`. API
+loadRegistry/saveRegistry/upsertObject/removeObject/
+writeDisciplineSlice (merge disciplineAttrs без затирания чужих
+срезов; объекта нет → no-op). Аддитивно (rack-config/tech-workspace/
+scs-* не затронуты); copyProject/clearProjectData несут namespace
+автоматически. 0 потребителей (cache-safe). Деривация реестра из
+существующих rack/device-данных + wiring tech-workspace/rack-merge
+— следующие инкременты Ф-E.
+
 ## 7. Маппинг на существующий код (что переиспользуем)
 
 - `shared/disciplines.js` — реестр дисциплин + node.disciplines
