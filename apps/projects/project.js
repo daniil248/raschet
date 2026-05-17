@@ -19,6 +19,17 @@ import {
 // v0.60.142: «📋 Действующие нормативы» badges под местоположением проекта.
 // Visible reference какие стандарты будут применены в каждом расчётном модуле.
 import { NORM_MATRIX, detectCountryCode, countryLabel } from 'shared/auto-norm.js';
+// X.4.2 (v0.60.580): членство узлов схемы в дисциплинах + расчётный
+// роутинг. Размещено в проектном cross-discipline view (НЕ в Конструкторе
+// — он остаётся чистой электрикой, решение v0.60.277/278). Использует
+// контракт-реестр shared/disciplines.js (давно развёрнут — static import
+// cache-safe). projects читает/пишет engine-scheme через projectKey
+// (санкционированный helper, не сырой LS): read-modify-write, трогаем
+// только node.disciplines, остальное сохраняем байт-в-байт.
+import {
+  listDisciplines, nodeDisciplines, getDiscipline, DEFAULT_DISCIPLINE,
+  calcLibSpecifier,
+} from 'shared/disciplines.js';
 // v0.60.171 (Phase 3.5): «🔗 Sketch'и проекта и их связи» — обзорный раздел
 // в карточке проекта. Перечисляет все sketch'и + entity, на которые они
 // ссылаются. resolveLabel — actual-label из исходного модуля (если
@@ -3200,6 +3211,137 @@ function render() {
         • <b>1.5.5</b>: согласование разделов (✓ checklist с timestamp + подписью + историей ревизий)
       </div>
     `;
+  }
+
+  // X.4.2 (v0.60.580): членство узлов схемы в дисциплинах + расчётный
+  // роутинг. Хост — проектный cross-discipline view (Конструктор не
+  // трогаем). Read-modify-write engine-scheme через projectKey: меняем
+  // ТОЛЬКО node.disciplines, остальное сохраняем как было.
+  if (summaryHost) {
+    const pid = p.id;
+    let schemeRaw = null;
+    try { schemeRaw = JSON.parse(localStorage.getItem(projectKey(pid, 'engine', 'scheme.v1')) || 'null'); }
+    catch { schemeRaw = null; }
+    let nodes = [];
+    if (schemeRaw && schemeRaw.nodes) {
+      nodes = Array.isArray(schemeRaw.nodes) ? schemeRaw.nodes : Object.values(schemeRaw.nodes);
+    }
+    const projDisc = (schemeRaw && schemeRaw.project && schemeRaw.project.discipline) || DEFAULT_DISCIPLINE;
+    const meaningful = nodes.filter(n => n && n.type && n.type !== 'channel' && n.type !== 'zone');
+    const choices = listDisciplines({ onlyReady: true }); // electrical + hydraulic/hvac/gas/suppression
+    const CAP = 200;
+    const shown = meaningful.slice(0, CAP);
+
+    if (meaningful.length) {
+      const projDLbl = (getDiscipline(projDisc) || getDiscipline(DEFAULT_DISCIPLINE));
+      const rows = shown.map((n, i) => {
+        const eff = nodeDisciplines(n, projDisc);
+        const id = String(n.id || ('idx' + i));
+        const tag = n.tag || n.id || '—';
+        const nm = n.name ? ` · ${esc(n.name)}` : '';
+        const boxes = choices.map(d => {
+          const on = eff.includes(d.id);
+          return `<label style="display:inline-flex;align-items:center;gap:3px;margin:0 8px 2px 0;font-size:11.5px;white-space:nowrap" title="${esc(d.label)} (${esc(d.units)})">
+            <input type="checkbox" class="xd-disc-box" data-node="${esc(id)}" data-disc="${esc(d.id)}"${on ? ' checked' : ''}>
+            ${d.icon} ${esc(d.label)}</label>`;
+        }).join('');
+        return `<tr style="border-top:1px solid #eef1f5">
+          <td style="padding:5px 8px;font-size:12px;vertical-align:top;white-space:nowrap"><b>${esc(tag)}</b>${nm}<br><span class="muted" style="font-size:10.5px">${esc(n.type)}</span></td>
+          <td style="padding:5px 8px">${boxes}</td>
+        </tr>`;
+      }).join('');
+
+      const usedIds = new Set();
+      for (const n of meaningful) nodeDisciplines(n, projDisc).forEach(x => usedIds.add(x));
+      const routeRows = [...usedIds].map(idd => {
+        const d = getDiscipline(idd);
+        const spec = calcLibSpecifier(idd);
+        const engine = spec
+          ? `<code style="font-size:11px">${esc(spec)}</code>`
+          : (idd === 'electrical'
+            ? '<span class="muted" style="font-size:11px">CORE — js/calc (Конструктор)</span>'
+            : '<span class="muted" style="font-size:11px">движок не готов</span>');
+        return `<tr style="border-top:1px solid #eef1f5">
+          <td style="padding:5px 8px;font-size:12px">${d ? d.icon + ' ' + esc(d.label) : esc(idd)}</td>
+          <td style="padding:5px 8px;font-size:12px">${d ? esc(d.units) : ''}</td>
+          <td style="padding:5px 8px">${engine}</td></tr>`;
+      }).join('');
+
+      summaryHost.insertAdjacentHTML('beforeend', `
+        <h4 style="margin:18px 0 8px;font-size:13px;color:#0f172a">🧩 Дисциплины узлов схемы
+          <span class="help-icon" title="X.4.2: узел может участвовать в нескольких инженерных дисциплинах (cross-discipline). По умолчанию узел принадлежит дисциплине проекта (${esc(projDLbl ? projDLbl.label : projDisc)}). Здесь, в проектном контексте, ГИП назначает членство — Конструктор схем остаётся чистой электрикой. Поле node.disciplines[] сохраняется в схему и переживает перезагрузку." tabindex="0">?</span>
+        </h4>
+        <p class="muted" style="font-size:11.5px;margin:0 0 8px;line-height:1.6">
+          Узлов: <b>${meaningful.length}</b>${meaningful.length > CAP ? ` (показаны первые ${CAP})` : ''}.
+          Пусто = принадлежит дисциплине проекта (<b>${esc(projDLbl ? projDLbl.label : projDisc)}</b>).
+          Расчётный движок дисциплины — таблица «Роутинг» ниже.
+        </p>
+        <div style="overflow:auto;border:1px solid #e0e7ee;border-radius:6px;max-height:340px">
+          <table style="width:100%;border-collapse:collapse;background:#fff">
+            <thead><tr style="background:#f8fafc;position:sticky;top:0">
+              <th style="padding:6px 8px;text-align:left;font-size:11px;color:#475569">Узел</th>
+              <th style="padding:6px 8px;text-align:left;font-size:11px;color:#475569">Членство в дисциплинах</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin:8px 0 18px">
+          <button id="xd-disc-save" style="font-size:12px;padding:6px 14px;border:1px solid #2563eb;background:#2563eb;color:#fff;border-radius:4px;cursor:pointer">💾 Сохранить членство</button>
+          <span id="xd-disc-status" class="muted" style="font-size:11.5px"></span>
+        </div>
+        <h4 style="margin:0 0 8px;font-size:13px;color:#0f172a">🔀 Расчётный роутинг по дисциплинам</h4>
+        <div style="overflow:auto;border:1px solid #e0e7ee;border-radius:6px;margin-bottom:18px">
+          <table style="width:100%;border-collapse:collapse;background:#fff">
+            <thead><tr style="background:#f8fafc">
+              <th style="padding:6px 8px;text-align:left;font-size:11px;color:#475569">Дисциплина</th>
+              <th style="padding:6px 8px;text-align:left;font-size:11px;color:#475569">Базовые величины</th>
+              <th style="padding:6px 8px;text-align:left;font-size:11px;color:#475569">Расчётный движок</th>
+            </tr></thead>
+            <tbody>${routeRows}</tbody>
+          </table>
+        </div>
+      `);
+
+      const saveBtn = summaryHost.querySelector('#xd-disc-save');
+      const statusEl = summaryHost.querySelector('#xd-disc-status');
+      if (saveBtn) saveBtn.addEventListener('click', () => {
+        const setStatus = (m, ok) => { if (statusEl) { statusEl.textContent = m; statusEl.style.color = ok ? '#166534' : '#b91c1c'; } };
+        let fresh = null;
+        try { fresh = JSON.parse(localStorage.getItem(projectKey(pid, 'engine', 'scheme.v1')) || 'null'); }
+        catch { fresh = null; }
+        if (!fresh || !fresh.nodes) { setStatus('Схема не найдена или изменилась — обновите страницу.', false); return; }
+        const isArr = Array.isArray(fresh.nodes);
+        const byId = new Map();
+        (isArr ? fresh.nodes : Object.values(fresh.nodes)).forEach(nd => { if (nd && nd.id != null) byId.set(String(nd.id), nd); });
+        const sel = new Map(); // nodeId → Set(discId)
+        summaryHost.querySelectorAll('.xd-disc-box').forEach(cb => {
+          const nid = cb.getAttribute('data-node');
+          if (!sel.has(nid)) sel.set(nid, new Set());
+          if (cb.checked) sel.get(nid).add(cb.getAttribute('data-disc'));
+        });
+        let changed = 0;
+        for (const [nid, picked] of sel) {
+          const nd = byId.get(nid);
+          if (!nd) continue;
+          // Каноничный порядок = порядок choices.
+          const ordered = choices.map(d => d.id).filter(x => picked.has(x));
+          const isJustProject = ordered.length === 1 && ordered[0] === projDisc;
+          if (ordered.length === 0 || isJustProject) {
+            if (nd.disciplines !== undefined) { delete nd.disciplines; changed++; }
+          } else {
+            const prev = Array.isArray(nd.disciplines) ? nd.disciplines.join(',') : '';
+            if (prev !== ordered.join(',')) { nd.disciplines = ordered; changed++; }
+          }
+        }
+        if (!changed) { setStatus('Изменений нет.', true); return; }
+        try {
+          localStorage.setItem(projectKey(pid, 'engine', 'scheme.v1'), JSON.stringify(fresh));
+          setStatus(`✓ Сохранено: затронуто узлов — ${changed}. Применится при следующей загрузке Конструктора.`, true);
+        } catch (e) {
+          setStatus('Ошибка записи в хранилище: ' + (e && e.message || e), false);
+        }
+      });
+    }
   }
 
   // v0.60.293 (Этап 1.5.2 Phase 47): cross-discipline equipment list.
