@@ -17,17 +17,21 @@
 
 ## 0. Раскладка корня репозитория
 
-> **Папки модулей лежат в КОРНЕ репозитория намеренно — это
-> требование zero-build + GitHub Pages, а НЕ беспорядок.**
-> GitHub Pages раздаёт сайт из корня ветки `main`, поэтому
-> `daniil248.github.io/raschet/<module>/` ↔ физическая папка
-> `<module>/`. Импорты — сырые относительные (`../shared/`,
-> `../js/engine/`); глубина пути критична. Перенос модуля в
-> `modules/<name>/` сломал бы 58 файлов с `../`-импортами, 29
-> публичных URL, `modules.json`, `hub.html`, `/modules/`, ссылки
-> инспектора/Технолога и закладки → нерабочий прод. Вложение папок
-> модулей **запрещено** до отдельной фазы X.5 (`ROADMAP` X.5 /
-> §6 ниже), где это делается вместе с build-шагом и редиректами.
+> **Модули сгруппированы: `apps/` (UI-модули) + `lib/` (calc-lib).**
+> Развязка путей выполнена через **import maps** (zero-build, без
+> бандлера): в каждом entry-HTML `<script type="importmap">` с
+> bare-ключами `shared/`, `engine/` и namespace-модулей; все JS-
+> импорты — bare-спецификаторы и НЕ зависят от глубины файла.
+> Поэтому переезд папки = правка адресов в importmap + единой карты
+> `js/engine/module-paths.js` (nav-пути). GitHub Pages раздаёт сайт
+> из корня ветки `main`: `…/raschet/apps/<module>/` ↔ `apps/<module>/`.
+> **Закон формы новых модулей:** UI → `apps/<id>/`, calc-lib →
+> `lib/<id>/`; добавить запись в `modules.json`, importmap-ключ при
+> cross-import, MODULE_PATHS если есть nav-вход. НЕ переезжают (на
+> корне): CORE `js/`, SHARED `shared/`, лаунчеры `hub.html`/
+> `index.html`/`login.html`/`modules/`, вспом. `help/`/`dev/`/
+> `elements/`/`functions/`. (Реструктуризация: v0.60.541–547,
+> importmap Шаги 1–3b + массовый переезд; история git сохранена.)
 
 Легенда верхнего уровня (что где лежит):
 
@@ -41,26 +45,27 @@ raschet/
   README.md ARCHITECTURE.md           документация (этот файл — закон формы)
   CONTRIBUTING.md ROADMAP*.md TODO.md
   js/                  CORE: engine/ (recalc/render/serialization),
-                       calc/, methods/ — владеет APP_VERSION
+                       calc/, methods/ — владеет APP_VERSION;
+                       js/engine/module-paths.js — единая nav-карта
   shared/              SHARED-контракты + мосты + catalogs/ + contracts/
-  <module>/            PLUGGABLE-модули (по 1 папке на модуль, см. §1):
+  apps/<id>/           PLUGGABLE UI-модули (по 1 папке, скелет §1):
                        battery cable cooling tech-workspace ups-config
                        scs-config scs-design rack-config mdc-config
                        genset-config transformer-config mv-config
                        panel-config pdu-config suppression-config
-                       suppression-methods meteo psychrometrics service
-                       projects reports logistics facility-inventory
-                       catalog schematic sketch configurator3d
-  elements/ help/ dev/ functions/     вспомогательные (UI-ресурсы,
-                                       Cloud Functions, dev-страницы)
-  tools/ scripts/                     CI-утилиты (boundary-lint,
-                                       gen-modules-json, audit-manifest)
+                       meteo psychrometrics service projects reports
+                       logistics facility-inventory catalog schematic
+                       sketch configurator3d
+  lib/<id>/            calc-lib (kind:'calc-lib'): suppression-methods
+  modules/ help/ dev/ elements/  лаунчеры/вспом. (на корне, не модули)
+  functions/           Cloud Functions
+  tools/ scripts/      CI-утилиты + миграционные (mass-move, importmap)
   .github/workflows/   CI (Actions требует ИМЕННО этот путь — не трогать)
   .claude/  tmp/       локальное, в .gitignore — на Pages не попадает
 ```
 
-Итог: «плоско в корне» — это и есть правильная форма для данной
-платформы. Структуру делает понятной не вложенность папок, а §1
+Итог: модули сгруппированы (`apps/`+`lib/`), пути развязаны через
+importmap → переезд дёшев и безопасен. Структуру делает понятной §1
 (единый скелет модуля), `README.md` в каждой папке и эта легенда.
 
 ---
