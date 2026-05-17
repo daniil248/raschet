@@ -23,9 +23,11 @@ CORE владеет единым `APP_VERSION` (`js/engine/constants.js`).
 `history-log.js`, `module-nav.js`, `subscriptions.js`,
 `selection-panel.js`, `money.js`, `report/*`, `calc/*`,
 `currency-rates/*`, `ui/*`, `element-library.js`, `app-header.js`,
-`dialog.js`, и объявленные мосты `shared/<module>-bridge.js`
-(service-bridge, scheme-rack-bridge, inventory-bridge, meteo-bridge,
-legacy-rack-migration).
+`dialog.js`, `disciplines.js` (реестр-шов дисциплин ↔ calc-lib
+`lib/<id>-methods`, X.4.1; чистые данные, БЕЗ import lib — `calcLib`
+лишь bare-строка для `import()` потребителем), и объявленные мосты
+`shared/<module>-bridge.js` (service-bridge, scheme-rack-bridge,
+inventory-bridge, meteo-bridge, legacy-rack-migration).
 
 ## 3. Закон импортов
 
