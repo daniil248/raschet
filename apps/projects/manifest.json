@@ -2,7 +2,7 @@
   "id": "projects",
   "name": "Управление проектами",
   "description": "Реестр проектов компании. Создание / редактирование / удаление проектов. Только для project-manager / ГИП.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
@@ -33,7 +33,21 @@
       "raschet.projects.v1",
       "raschet.activeProjectId.v1",
       "raschet.storageMode.v1",
-      "raschet.project.<pid>.*"
+      "raschet.project.<pid>.tech-workspace.variants.v1",
+      "raschet.project.<pid>.engine.scheme.v1",
+      "raschet.project.<pid>.cooling.selections.v1",
+      "raschet.project.<pid>.cooling.activeSelectionId.v1",
+      "raschet.project.<pid>.meteo.datasets.v1",
+      "raschet.project.<pid>.scs-design.scs.v1",
+      "raschet.project.<pid>.scs-design.links.v1",
+      "raschet.project.<pid>.scs-design.plan.v1",
+      "raschet.project.<pid>.scs-config.contents.v1",
+      "raschet.project.<pid>.scs-config.rackTags.v1",
+      "raschet.project.<pid>.scs-config.inventory.v1",
+      "raschet.project.<pid>.rack-config.instances.v1",
+      "raschet.project.<pid>.service.orders.v1",
+      "raschet.project.<pid>.facility-inventory.items.v1",
+      "raschet.project.<pid>.facility-inventory.v1"
     ],
     "events": {
       "emits": [
@@ -43,12 +57,10 @@
     },
     "urlParams": [
       "project",
-      "tab"
+      "focus",
+      "tab",
+      "navResult"
     ],
-    "bridges": [
-      "service-bridge",
-      "scheme-rack-bridge",
-      "inventory-bridge"
-    ]
+    "bridges": []
   }
 }
