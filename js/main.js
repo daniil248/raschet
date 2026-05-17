@@ -34,7 +34,7 @@ import { state as _engineState } from './engine/state.js';
 // state.project.discipline. Электро-контекст (сентинел) =
 // #palette-sections БЕЗ изменений (регрессия-сейф). Прочие — scaffold-
 // превью (display-toggle, обратимо). CORE/constructor→shared разрешён.
-import { getContext, usesCurrentPalette } from '../shared/discipline-context.js';
+import { getContext, usesCurrentPalette, listContexts } from '../shared/discipline-context.js';
 import { selectNode as _engineSelectNode } from './engine/inspector.js';
 
 (function () {
@@ -2768,19 +2768,49 @@ function presetDisplayName(p) {
 // проектов. Для не-electrical (scaffold; реальных проектов нет) —
 // скрываем #palette-sections (display:none, обратимо) и показываем
 // read-only scaffold-палитру из реестра. Идемпотентно.
+// D3 X.4.5.3 Inc.3 (v0.60.608): эфемерное превью контекста дисциплины.
+// Селектор в баре позволяет ПОСМОТРЕТЬ scaffold-палитры других дисциплин
+// (гидравлика/ОВиК/газ) НЕ меняя project.discipline (свойства проекта
+// неприкосновенны — user-params-sacred; локация/дисциплина задаются в
+// карточке проекта). null = следовать дисциплине проекта. Сброс возвращает
+// к проекту. Электро-инвариант сохраняется: если эффективный контекст =
+// electrical (проект или превью), #palette-sections НЕ трогаем.
+let _previewDiscCtx = null;
 function applyDisciplineContextUI() {
   const pal = document.getElementById('palette');
   if (!pal) return;
-  const disc = (_engineState.project && _engineState.project.discipline) || 'electrical';
+  const projDisc = (_engineState.project && _engineState.project.discipline) || 'electrical';
+  // Превью валидно только если контекст существует; иначе игнор.
+  if (_previewDiscCtx && !listContexts().some(c => c.id === _previewDiscCtx)) _previewDiscCtx = null;
+  const previewing = !!_previewDiscCtx && _previewDiscCtx !== projDisc;
+  const disc = previewing ? _previewDiscCtx : projDisc;
   const ctx = getContext(disc);
   let bar = document.getElementById('rs-disc-ctx');
   if (!bar) {
     bar = document.createElement('div');
     bar.id = 'rs-disc-ctx';
-    bar.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;font-size:11.5px;border-bottom:1px solid #e5e7eb;background:#f8fafc;color:#475569;flex:0 0 auto';
+    bar.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;font-size:11.5px;border-bottom:1px solid #e5e7eb;background:#f8fafc;color:#475569;flex:0 0 auto;flex-wrap:wrap';
     pal.insertBefore(bar, pal.firstChild);
   }
-  bar.innerHTML = `<span title="Контекст Конструктора по дисциплине проекта (свойства проекта → Дисциплина схемы). Электро-контекст = текущая палитра без изменений; прочие дисциплины — каркас (в разработке).">${ctx.icon} <b>${escHtml(ctx.label)}</b>${ctx.status === 'scaffold' ? ' · <span style="color:#b45309">каркас</span>' : ''}</span>`;
+  const opts = listContexts().map(c =>
+    `<option value="${escHtml(c.id)}"${c.id === disc ? ' selected' : ''}>${c.icon} ${escHtml(c.label)}${c.status === 'scaffold' ? ' (каркас)' : ''}</option>`).join('');
+  bar.innerHTML =
+    `<span title="Контекст Конструктора по дисциплине проекта (свойства проекта → Дисциплина схемы). Электро-контекст = текущая палитра без изменений; прочие дисциплины — каркас (в разработке).">${ctx.icon} <b>${escHtml(ctx.label)}</b>${ctx.status === 'scaffold' ? ' · <span style="color:#b45309">каркас</span>' : ''}</span>` +
+    `<label style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;font-size:11px" title="Превью набора палитры другой дисциплины (только просмотр). Дисциплина проекта НЕ меняется — задаётся в карточке проекта. Сброс — вернуться к проекту.">👁 превью:` +
+    `<select id="rs-disc-ctx-sel" style="font-size:11px;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px;background:#fff">${opts}</select></label>` +
+    (previewing ? `<span style="color:#b45309;font-size:10.5px">превью · проект не изменён <a href="#" id="rs-disc-ctx-reset" style="color:#2563eb" title="Вернуться к дисциплине проекта">✕ сброс</a></span>` : '');
+  const _sel = document.getElementById('rs-disc-ctx-sel');
+  if (_sel) _sel.addEventListener('change', (e) => {
+    const v = e.target.value;
+    _previewDiscCtx = (v === projDisc) ? null : v;
+    try { applyDisciplineContextUI(); } catch (err) { console.warn('[disc-ctx preview]', err); }
+  });
+  const _rst = document.getElementById('rs-disc-ctx-reset');
+  if (_rst) _rst.addEventListener('click', (e) => {
+    e.preventDefault();
+    _previewDiscCtx = null;
+    try { applyDisciplineContextUI(); } catch (err) { console.warn('[disc-ctx reset]', err); }
+  });
   const sections = document.getElementById('palette-sections');
   let scaffold = document.getElementById('rs-scaffold-palette');
   if (usesCurrentPalette(disc)) {
