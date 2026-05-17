@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "ups-config/",
+  "path": "apps/ups-config/",
   "icon": "purple",
   "badge": "wip",
   "enabled": true,

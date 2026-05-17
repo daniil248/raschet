@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "facility-inventory/",
+  "path": "apps/facility-inventory/",
   "icon": "blue",
   "badge": "wip",
   "enabled": true,

@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "psychrometrics/",
+  "path": "apps/psychrometrics/",
   "icon": "blue",
   "badge": "active",
   "enabled": true,

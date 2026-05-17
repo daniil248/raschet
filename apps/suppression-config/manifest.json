@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "suppression-config/",
+  "path": "apps/suppression-config/",
   "icon": "orange",
   "badge": "active",
   "enabled": true,

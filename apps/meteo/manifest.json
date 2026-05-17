@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "meteo/",
+  "path": "apps/meteo/",
   "icon": "blue",
   "badge": "active",
   "enabled": true,

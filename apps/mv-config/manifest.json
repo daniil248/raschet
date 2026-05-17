@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "mv-config/",
+  "path": "apps/mv-config/",
   "icon": "orange",
   "badge": "new",
   "enabled": true,

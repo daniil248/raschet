@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "configurator3d/",
+  "path": "apps/configurator3d/",
   "icon": "purple",
   "badge": "wip",
   "enabled": true,

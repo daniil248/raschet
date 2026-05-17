@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "reports/",
+  "path": "apps/reports/",
   "icon": "green",
   "badge": "new",
   "enabled": true,

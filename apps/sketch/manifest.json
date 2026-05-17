@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "sketch/",
+  "path": "apps/sketch/",
   "icon": "purple",
   "badge": "wip",
   "enabled": false,

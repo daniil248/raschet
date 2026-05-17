@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "genset-config/",
+  "path": "apps/genset-config/",
   "icon": "blue",
   "badge": "active",
   "enabled": true,

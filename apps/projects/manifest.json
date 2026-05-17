@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "projects/",
+  "path": "apps/projects/",
   "icon": "blue",
   "badge": "internal",
   "enabled": true,

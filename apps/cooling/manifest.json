@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "cooling/",
+  "path": "apps/cooling/",
   "icon": "green",
   "badge": "active",
   "enabled": true,

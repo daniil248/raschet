@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "pdu-config/",
+  "path": "apps/pdu-config/",
   "icon": "orange",
   "badge": "new",
   "enabled": true,

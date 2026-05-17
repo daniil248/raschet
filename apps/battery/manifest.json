@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "battery/",
+  "path": "apps/battery/",
   "icon": "green",
   "badge": "new",
   "enabled": true,

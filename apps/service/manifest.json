@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "service/",
+  "path": "apps/service/",
   "icon": "green",
   "badge": "active",
   "enabled": true,

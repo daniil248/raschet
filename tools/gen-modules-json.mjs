@@ -39,11 +39,19 @@ const REGISTRY_ORDER = [
   'electrical-methods',
 ];
 
-// Папка модуля по id (для constructor манифест — в корне).
+// Папка модуля по id. После file-structure restructuring манифесты
+// лежат в apps/<id>/ (UI-модули) либо lib/<id>/ (calc-lib); constructor —
+// в корне (manifest.json); часть корневых модулей (help) — <id>/.
+// Резолвер ищет в каноничном порядке: apps → lib → root-<id> → root.
 function manifestPath(id) {
-  return id === 'constructor'
-    ? join(ROOT, 'manifest.json')
-    : join(ROOT, id, 'manifest.json');
+  if (id === 'constructor') return join(ROOT, 'manifest.json');
+  const cands = [
+    join(ROOT, 'apps', id, 'manifest.json'),
+    join(ROOT, 'lib', id, 'manifest.json'),
+    join(ROOT, id, 'manifest.json'),
+  ];
+  for (const c of cands) if (existsSync(c)) return c;
+  return cands[0]; // не найден — вернём apps-путь (existsSync ниже даст diagnostic)
 }
 
 // Проекция манифеста → запись modules.json (только потребительские поля,

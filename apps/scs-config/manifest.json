@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "scs-config/",
+  "path": "apps/scs-config/",
   "icon": "orange",
   "badge": "active",
   "enabled": true,

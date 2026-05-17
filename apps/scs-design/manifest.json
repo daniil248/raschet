@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "scs-design/",
+  "path": "apps/scs-design/",
   "icon": "orange",
   "badge": "new",
   "enabled": true,

@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "mdc-config/",
+  "path": "apps/mdc-config/",
   "icon": "purple",
   "badge": "wip",
   "enabled": true,

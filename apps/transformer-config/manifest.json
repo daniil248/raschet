@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
-  "path": "transformer-config/",
+  "path": "apps/transformer-config/",
   "icon": "blue",
   "badge": "wip",
   "enabled": true,
