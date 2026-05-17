@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.573', date: '2026-05-17', items: [
+      '🔍 <b>Полный аудит мёртвых заглушек/остатков — чисто</b>. По запросу Пользователя просканирован весь репозиторий: редирект-заглушки (только elements/, уже разрешён), temp/bak/old (0), пустые/orphan-папки (0), apps без index/manifest (0), orphan-.js с 0 ссылок не-entry (0, кроме уже удалённого elements-editor.js). 13 export-*-from файлов проверены — все ЖИВЫЕ compat-shim ы (2–80 импортёров каждый), намеренный слой совместимости миграций, НЕ остатки (CONTRIBUTING §7 — не удалять пока есть импортёры). Вывод: других мёртвых остатков в кодовой базе НЕТ. Зафиксированы результат + методология live-vs-dead в memory feedback_dead_code_audit (чтобы не перепроверять). Только документация/аудит.',
+    ] },
     { version: '0.60.572', date: '2026-05-17', items: [
       '🧾 <b>/modules/ техсписок синхронизирован</b>. Раздел «📚 Все модули»: (1) <code>elements/</code> переописан как редирект-заглушка→apps/catalog/ (не «Element-library editor», не модуль); (2) добавлен <code>lib/hydraulic-methods/</code> в Calc-библиотеки (memory:modules_index — обязательная регистрация нового модуля в /modules/, ретро для v0.60.570); (3) исправлен stale-путь <code>suppression-methods/</code> → <code>lib/suppression-methods/</code>. Прод-верификация v0.60.571: elements/ редирект жив (старые закладки ловятся), elements-editor.js → 404, карточка из реестра убрана, modules/ console-clean. Только лаунчер-страница/документация.',
     ] },
