@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.664', date: '2026-05-17', items: [
+      '🧩 <b>Отчёты — RR1: общий конвейер composeReport()</b>. Аудит вызывателей shared/report: logistics/pdu-config/ups-config/projects(мультидисц.) обходили pickTemplate/preview/flow (createTemplate-direct + exportPDF), cable/battery — без flow/preview. Чтобы привести ВСЕ отчёты к стандарту (кастомный сохраняемый шаблон + предпросмотр + flow без наложения) без дублирования ~15-строчного boilerplate, добавлен shared/report/compose.js: composeReport({tags,title,author,kind,build,filename}) → pickTemplate → createTemplate → meta → content=build(B) → migrateToFlow → sections.manifest → persist в выбранный шаблон → previewPDF. Новый файл, без потребителей в этом деплое (cache-safe; миграция вызывателей — RR2+). Файл: shared/report/compose.js.',
+    ] },
     { version: '0.60.663', date: '2026-05-17', items: [
       '📍 <b>Редизайн модуля отчётов завершён — ROADMAP X.6.3 синк</b>. Все фазы flow-редизайна (R1 модель / R2 рендереры+floating / R3a-core+R3b редактор / R4 правка из превью / R5a-e отчёты+сиды) отмечены ✅; X.6.3 закрыт; status-header ROADMAP синкнут на v0.60.663. R6 (чистка legacy migrateLegacyToOverlays) помечен опциональным/низкоприоритетным — функционального пробела нет (старый canvas-редактор удалён, дубль-наложение закрыто R5c). Headline-проблема Пользователя «блоки документа накладываются поверх шаблона» устранена и подтверждена сквозным сценарием (ТЗ/редактор/превью). Файлы: ROADMAP.md (X.6.3 ✅, R1–R6 статусы, status-header).',
     ] },
