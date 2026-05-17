@@ -495,14 +495,22 @@ export function migrateToFlow(tpl) {
   const extras = [];   // неклассифицированное — не теряем
 
   const seenRole = new Set();   // дедуп: один docTitle/addressee/...
-  const keptOverlays = [];      // остаются absolute (только колонтитулы)
+  const colontitles = [];       // overlay-колонтитулы → band (R6)
+  const pageH = pageSizeMm(tpl.page || {}).height || 297;
   for (const ov of overlays) {
-    // Бегущий колонтитул (номер страницы и т.п.) — НЕ тянем в поток;
-    // оставляем overlay (рисуется absolute в зоне полей — это
-    // санкционировано инвариантом: за поля можно колонтитулам).
+    // Бегущий колонтитул (номер страницы и т.п.) — НЕ тянем в поток
+    // и НЕ оставляем absolute (R6: убираем legacy overlay-путь).
+    // Конвертируем в band-колонтитул (зарезервированная зона полей,
+    // редактируется во вкладке «Колонтитулы»).
     if (ov.type !== 'image' &&
         /\{\{\s*pages?\s*\}\}/.test(String(ov.content?.text || ''))) {
-      keptOverlays.push(ov);
+      colontitles.push({
+        where: (Number(ov.y) || 0) < pageH / 2 ? 'header' : 'footer',
+        scope: ov.scope || 'all',
+        h: Math.max(8, Number(ov.height) || 8),
+        block: { type: 'paragraph', style: ov.content?.styleRef || 'caption',
+          align: ov.content?.align || 'center', text: ov.content?.text || '' },
+      });
       continue;
     }
     const role = classifyOverlay(ov);
@@ -557,10 +565,28 @@ export function migrateToFlow(tpl) {
   for (const b of bottom) { b.section = 'doc-sign'; b.sectionLabel = 'Подписи и печать'; }
 
   tpl.flow = [...top, ...extras, ...content, ...bottom];
-  // Структурные overlay СЪЕДЕНЫ потоком — оставляем только
-  // колонтитулы (page-number и т.п.), иначе drawOverlays нарисует
-  // их absolute ПОВЕРХ потока → дубль + возврат наложения.
-  tpl.overlays = keptOverlays;
+
+  // R6: колонтитул-overlay → band-колонтитулы (header/footer).
+  // Абсолютный overlay-путь полностью убран → рендер согласован с
+  // потоком, вкладка «Колонтитулы» авторитетна. tpl.overlays пуст.
+  if (colontitles.length) {
+    if (!tpl.header) tpl.header = { firstPage: {}, otherPages: {} };
+    if (!tpl.footer) tpl.footer = { firstPage: {}, otherPages: {} };
+    const apply = (band, c) => {
+      band.enabled = true;
+      band.height = Math.max(band.height || 0, c.h);
+      band.blocks = [c.block];
+    };
+    for (const c of colontitles) {
+      const grp = c.where === 'header' ? tpl.header : tpl.footer;
+      if (!grp.firstPage)  grp.firstPage  = {};
+      if (!grp.otherPages) grp.otherPages = {};
+      if (c.scope === 'first') apply(grp.firstPage, c);
+      else if (c.scope === 'other') apply(grp.otherPages, c);
+      else { apply(grp.firstPage, c); apply(grp.otherPages, c); }
+    }
+  }
+  tpl.overlays = [];
   return tpl;
 }
 

@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.674', date: '2026-05-17', items: [
+      '🏗 <b>Отчёты — R6: убран legacy absolute-overlay путь («доделай отчёты»)</b>. Закрыт последний пункт X.6.3. migrateToFlow: колонтитул-overlay ({{page}}/{{pages}}) больше НЕ остаются absolute — конвертируются в band-колонтитулы header/footer (по y → шапка/подвал; по scope → firstPage/otherPages/обе), tpl.overlays обнуляется полностью. Эффект: (1) рендер колонтитулов согласован с потоком (зарезервированная зона полей, инвариант «за поля можно колонтитулам» соблюдён), (2) absolute-overlay код-путь больше не используется flow-документами (drawOverlays/placeFloating overlays-ветки инертны), (3) вкладка редактора «Колонтитулы» теперь АВТОРИТЕТНА (правит реальный band, а не «мёртвый» absolute). migrateLegacyToOverlays в createTemplate нейтрализован R6 (его band→overlay для колонтитулов обращается обратно) — отдельное удаление не требуется, ниже риск. Файл: shared/report/template.js (migrateToFlow: colontitles→band, tpl.overlays=[]).',
+    ] },
     { version: '0.60.673', date: '2026-05-17', items: [
       '📍 <b>Отчёты — Word-style разделы/обложка завершены: ROADMAP-синк</b>. DS1-4 (модель cover/firstPage/sectionBreak; рендереры preview/PDF переменная геометрия пер-странично; редактор «Разрыв раздела»/«Обложка»/«Первая страница»; DOCX мульти-Section) отмечены ✅ в X.6.3; status-header → v0.60.673. Verified e2e: sectionBreak→landscape-страница в живом превью, консоль чистая; нулевая регрессия обычных отчётов (ТЗ идентичен). Часть документа может быть альбомной, часть книжной + отдельная обложка — как разделы Word. Также фикс вёрстки редактора (v0.60.668). Файл: ROADMAP.md.',
     ] },
