@@ -12,7 +12,7 @@
 // Pure JS / LS utility wrappers.
 
 import { projectKey, getProject } from './project-storage.js';
-import { formatOrderNumber, DEFAULT_NUMBER_PATTERNS } from '../service/calc/order-model.js';
+import { formatOrderNumber, DEFAULT_NUMBER_PATTERNS } from '../apps/service/calc/order-model.js';
 
 const KEY_ORDERS    = ['service', 'orders.v1'];
 const KEY_ACTIVE_ID = ['service', 'activeOrderId.v1'];

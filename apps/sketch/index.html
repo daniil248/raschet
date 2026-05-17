@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Скетч (временно отключён)</title>
+  <!-- v0.60.179 (по репорту Пользователя 2026-05-04 «пока проблемы с
+       drawio отключи вообще модуль скетч»): прямой переход на /sketch/
+       выводит заглушку с пояснением и ссылкой на hub. Полная разметка
+       drawio закомментирована ниже на случай быстрого возврата. -->
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+           background: #f8fafc; color: #1f2937;
+           display: flex; align-items: center; justify-content: center;
+           min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+    .stub-card { max-width: 520px; padding: 32px 36px;
+                 background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+                 box-shadow: 0 4px 12px rgba(0,0,0,0.06); text-align: center; }
+    .stub-card h1 { font-size: 22px; margin: 0 0 12px; color: #1e40af; }
+    .stub-card p { font-size: 14px; line-height: 1.5; color: #475569; margin: 0 0 16px; }
+    .stub-card a { display: inline-block; padding: 10px 20px;
+                   background: #1e40af; color: #fff; border-radius: 6px;
+                   text-decoration: none; font-weight: 600; font-size: 13px; }
+    .stub-card a:hover { background: #1e3a8a; }
+    .stub-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.6; }
+    .stub-version { margin-top: 18px; font-size: 11px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="stub-card">
+    <div class="stub-icon">⏸</div>
+    <h1>Модуль «Скетч» временно отключён</h1>
+    <p>Идут работы по интеграции официального drawio (jgraph/drawio).
+       Vendor-скрипт пока не подтянул webapp полностью.
+       Модуль вернётся в следующих релизах.</p>
+    <a href="../../hub.html">← К списку программ</a>
+    <div class="stub-version">v0.60.179 · disabled</div>
+  </div>
+</body>
+</html>
+<!--
+ОРИГИНАЛЬНАЯ РАЗМЕТКА (закомментирована для быстрого возврата). Чтобы
+включить обратно: раскомментируйте блок ниже, удалите stub выше, в
+modules.json верните "enabled": true, в hub.html раскомментируйте карточку.
+
+  <link rel="stylesheet" href="../../shared/styles/base.css">
+  <link rel="stylesheet" href="../../shared/app-header.css">
+  <link rel="stylesheet" href="sketch.css">
+  <script src="../../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="../../shared/auth.js"></script>
+  <script src="../../shared/auth-gate.js" defer></script>
+  <style>
+    /* v0.60.166: drawio-embed integration. Полный full-screen iframe
+       официального drawio (https://github.com/jgraph/drawio) через
+       embed.diagrams.net.
+       v0.60.168: добавлен правый sidebar «🔗 Связи» — список ссылок sketch'a
+       на данные других модулей Raschet (стойки, схемы, НКУ, ИБП, ...). */
+    body { margin: 0; padding: 0; height: 100vh; display: flex; flex-direction: column; }
+
+    /* main flex-area: drawio + refs-sidebar */
+    .sk-main {
+      flex: 1;
+      display: flex;
+      min-height: 0; /* allow flex children to shrink */
+    }
+    .sk-drawio-host {
+      flex: 1;
+      position: relative;
+      background: #f8fafc;
+      overflow: hidden;
+    }
+    .sk-drawio-iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+    }
+    .sk-drawio-toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding: 6px 12px;
+      background: #f9fafb;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 12.5px;
+      flex-wrap: wrap;
+    }
+    .sk-drawio-toolbar button,
+    .sk-drawio-toolbar select {
+      padding: 4px 10px;
+      border: 1px solid #cbd5e1;
+      background: #fff;
+      color: #1f2937;
+      border-radius: 4px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+    }
+    .sk-drawio-toolbar button:hover { background: #f1f5f9; }
+    .sk-drawio-toolbar .sk-drawio-status {
+      margin-left: auto;
+      color: #64748b;
+      font-size: 11.5px;
+      font-style: italic;
+    }
+    .sk-toolbar-sep {
+      border-left: 1px solid #cbd5e1;
+      height: 18px;
+    }
+    .sk-refs-toggle {
+      position: relative;
+      background: #eff6ff !important;
+      border-color: #93c5fd !important;
+      color: #1e40af !important;
+      font-weight: 600;
+    }
+    .sk-refs-toggle .sk-refs-count-badge {
+      display: inline-block;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      margin-left: 4px;
+      border-radius: 8px;
+      background: #1e40af;
+      color: #fff;
+      font-size: 10px;
+      line-height: 16px;
+      text-align: center;
+      vertical-align: top;
+    }
+    .sk-refs-count-badge:empty { display: none; }
+
+    .sk-drawio-loading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(248,250,252,0.95);
+      z-index: 10;
+      flex-direction: column;
+      gap: 12px;
+      color: #475569;
+      font-size: 13px;
+    }
+    .sk-drawio-loading.hidden { display: none; }
+    .sk-spinner {
+      width: 32px; height: 32px;
+      border: 3px solid #e2e8f0;
+      border-top-color: #1e40af;
+      border-radius: 50%;
+      animation: sk-spin 0.8s linear infinite;
+    }
+    @keyframes sk-spin { to { transform: rotate(360deg); } }
+
+    /* ─── Refs sidebar ───────────────────────────────────────────────── */
+    .sk-refs-aside {
+      width: 320px;
+      max-width: 40vw;
+      border-left: 1px solid #e2e8f0;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: sticky;
+      top: 0;
+      max-height: 100%;
+    }
+    .sk-refs-aside.hidden { display: none; }
+    .sk-refs-aside-head {
+      padding: 8px 12px;
+      border-bottom: 1px solid #e2e8f0;
+      background: #f9fafb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 600;
+      color: #1e40af;
+    }
+    .sk-refs-aside-head button {
+      border: 0; background: none; cursor: pointer;
+      font-size: 14px; color: #64748b;
+      padding: 2px 6px;
+    }
+    .sk-refs-aside-head button:hover { color: #1e293b; }
+    .sk-refs-sidebar {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+    .sk-refs-empty {
+      text-align: center;
+      padding: 28px 16px;
+      color: #475569;
+      font-size: 12.5px;
+    }
+    .sk-refs-toolbar {
+      margin-bottom: 8px;
+    }
+    .sk-refs-add-btn {
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px dashed #93c5fd;
+      background: #eff6ff;
+      color: #1e40af;
+      border-radius: 6px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 12.5px;
+      font-weight: 600;
+    }
+    .sk-refs-add-btn:hover { background: #dbeafe; }
+    .sk-refs-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .sk-refs-card {
+      border: 1px solid #e2e8f0;
+      border-left: 3px solid #64748b;
+      border-radius: 6px;
+      padding: 8px;
+      background: #f8fafc;
+    }
+    .sk-refs-card-head {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+    .sk-refs-icon { font-size: 14px; }
+    .sk-refs-type { font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+    .sk-refs-stale { margin-left: auto; color: #b45309; }
+    .sk-refs-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: #0f172a;
+      margin-bottom: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sk-refs-note {
+      font-size: 11px;
+      color: #64748b;
+      font-style: italic;
+      margin-bottom: 4px;
+    }
+    .sk-refs-actions {
+      display: flex;
+      gap: 4px;
+      margin-top: 6px;
+    }
+    .sk-refs-actions button {
+      flex: 1;
+      padding: 3px 6px;
+      border: 1px solid #cbd5e1;
+      background: #fff;
+      color: #334155;
+      border-radius: 3px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 11px;
+    }
+    .sk-refs-actions button:hover { background: #f1f5f9; border-color: #94a3b8; }
+    .sk-refs-actions button[data-act="remove"] {
+      flex: 0 0 auto;
+      color: #dc2626;
+    }
+
+    /* ─── Picker modal ───────────────────────────────────────────────── */
+    .sk-refs-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,0.5);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .sk-refs-modal {
+      width: 480px;
+      max-width: 90vw;
+      max-height: 80vh;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.3);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .sk-refs-modal-head {
+      padding: 12px 16px;
+      border-bottom: 1px solid #e2e8f0;
+      background: #f9fafb;
+      font-size: 14px;
+      font-weight: 600;
+      color: #1e40af;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .sk-refs-modal-head button {
+      border: 0; background: none; cursor: pointer;
+      font-size: 18px; color: #64748b;
+    }
+    .sk-refs-modal-body {
+      padding: 14px 16px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .sk-refs-modal-label {
+      display: block;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: #475569;
+      margin-bottom: 4px;
+    }
+    .sk-refs-modal select,
+    .sk-refs-modal input[type="text"] {
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      font: inherit;
+      font-size: 13px;
+    }
+    .sk-refs-modal-list {
+      max-height: 240px;
+      overflow-y: auto;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      padding: 4px;
+      background: #f8fafc;
+    }
+    .sk-refs-modal-item {
+      padding: 6px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .sk-refs-modal-item:hover { background: #fff; border-color: #cbd5e1; }
+    .sk-refs-modal-item.selected {
+      background: #dbeafe;
+      border-color: #3b82f6;
+    }
+    .sk-refs-modal-item-label { font-size: 13px; color: #0f172a; }
+    .sk-refs-modal-item-sub { font-size: 11px; color: #64748b; }
+    .sk-refs-modal-empty {
+      padding: 20px;
+      text-align: center;
+      color: #64748b;
+      font-size: 12px;
+    }
+    .sk-refs-modal-foot {
+      padding: 10px 16px;
+      border-top: 1px solid #e2e8f0;
+      background: #f9fafb;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .sk-refs-modal-hint {
+      flex: 1 1 100%;
+      font-size: 11px;
+      color: #64748b;
+      margin-bottom: 6px;
+    }
+    .sk-refs-modal-check {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: #334155;
+      cursor: pointer;
+    }
+    .sk-refs-modal-foot button {
+      padding: 6px 14px;
+      border: 1px solid #cbd5e1;
+      background: #fff;
+      color: #1f2937;
+      border-radius: 4px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 12.5px;
+    }
+    .sk-refs-modal-foot button:hover { background: #f1f5f9; }
+    .sk-refs-modal-foot .sk-refs-modal-primary {
+      background: #1e40af;
+      color: #fff;
+      border-color: #1e40af;
+      font-weight: 600;
+    }
+    .sk-refs-modal-foot .sk-refs-modal-primary:hover { background: #1e3a8a; }
+  </style>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="importmap">
+  {"imports": {"shared/": "../../shared/", "engine/": "../../js/engine/", "cooling/": "../cooling/", "meteo/": "../meteo/", "service/": "../service/", "suppression-methods/": "../../lib/suppression-methods/"}}
+  </script>
+  <script type="module">
+    import { mountHeader } from 'shared/app-header.js';
+    mountHeader({ title: 'Скетч (drawio)', home: '../../hub.html' });
+  </script>
+
+  <div class="sk-drawio-toolbar">
+    <button type="button" id="sk-save-btn" title="Сохранить текущий sketch в проект (Ctrl+S)">💾 Сохранить</button>
+    <button type="button" id="sk-export-svg" title="Экспортировать в SVG">📤 SVG</button>
+    <button type="button" id="sk-export-png" title="Экспортировать в PNG">📤 PNG</button>
+    <button type="button" id="sk-export-xml" title="Экспортировать XML (drawio формат)">📤 XML</button>
+    <button type="button" id="sk-import-xml" title="Импортировать XML из файла">📥 XML</button>
+    <input type="file" id="sk-import-file" accept=".xml,.drawio,.svg" hidden>
+    <span style="border-left:1px solid #cbd5e1;height:18px"></span>
+    <select id="sk-sketch-sel" title="Выбрать существующий sketch проекта"></select>
+    <button type="button" id="sk-new-sketch" title="Создать новый sketch">＋ Новый</button>
+    <button type="button" id="sk-rename-sketch" title="Переименовать текущий sketch">✏ Переименовать</button>
+    <button type="button" id="sk-delete-sketch" title="Удалить текущий sketch">🗑 Удалить</button>
+    <span class="sk-toolbar-sep"></span>
+    <button type="button" id="sk-refs-toggle" class="sk-refs-toggle"
+      title="Показать/скрыть панель связей с данными других модулей Raschet (стойки, схемы, НКУ, ИБП, ...)">
+      🔗 Связи<span class="sk-refs-count-badge" id="sk-refs-count"></span>
+    </button>
+    <span class="sk-drawio-status" id="sk-status-text">Загрузка drawio…</span>
+  </div>
+
+  <div class="sk-main">
+    <div class="sk-drawio-host">
+      <div class="sk-drawio-loading" id="sk-drawio-loading">
+        <div class="sk-spinner"></div>
+        <div>Загрузка официального drawio (jgraph/drawio)…</div>
+        <div style="font-size:11px;color:#94a3b8">embed.diagrams.net • postMessage protocol</div>
+      </div>
+      <!-- Drawio iframe. v0.60.166 (по репорту Пользователя 2026-05-04
+           «давай drawio просто заберем с гитхаба и интегрируем» +
+           «обновлять так же будем с гитхаба»):
+           Используем self-hosted drawio из локальной папки drawio-app/,
+           если она существует. Если нет — fallback на embed.diagrams.net
+           (тоже официальный drawio от jgraph, автообновляемый).
+           Update workflow: см. sketch/UPDATE-DRAWIO.md — bash-скрипт
+           выкачивает свежий webapp из github тегированного релиза
+           jgraph/drawio. Версия фиксируется в drawio-app/VERSION. -->
+      <iframe id="sk-drawio-iframe"
+              class="sk-drawio-iframe"
+              src="about:blank"
+              allow="clipboard-read; clipboard-write"
+              title="drawio editor (https://github.com/jgraph/drawio)"></iframe>
+    </div>
+
+    <!-- v0.60.168: правый сайдбар «🔗 Связи» — sketch как первоклассный
+         participant проектных данных Raschet. Список ссылок на стойки,
+         схемы, конфигурации НКУ/ИБП/РУ-СН/трансформатора, кабельные
+         линии, листы РД, другие sketch'и текущего проекта. Каждая
+         ссылка хранится в раздельном LS-ключе и может быть вставлена
+         в drawio-холст как UserObject с raschet.* атрибутами. -->
+    <aside class="sk-refs-aside" id="sk-refs-aside">
+      <div class="sk-refs-aside-head">
+        <span>🔗 Связи sketch'a</span>
+        <button type="button" id="sk-refs-aside-close"
+          title="Скрыть панель связей">✕</button>
+      </div>
+      <div class="sk-refs-sidebar" id="sk-refs-sidebar"></div>
+    </aside>
+  </div>
+
+  <!-- Модальный picker связей. v0.60.168 -->
+  <div id="sk-refs-modal-host"></div>
+
+  <div id="rs-footer-mount"></div>
+  <script type="module">
+    import { mountFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
+    mountFooter({
+      appVersion: APP_VERSION,
+      moduleId: 'sketch',
+      moduleTitle: 'Скетч (drawio)',
+    });
+  </script>
+  <script type="module" src="sketch.js"></script>
+</body>
+</html>
+-->
+

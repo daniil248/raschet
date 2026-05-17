@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Проект</title>
+  <link rel="stylesheet" href="../../shared/styles/base.css">
+  <link rel="stylesheet" href="../../shared/app-header.css">
+  <link rel="stylesheet" href="projects.css">
+  <!-- v0.59.377: загружаем Storage-адаптер, чтобы project.js мог
+       перечислить схемы (window.Storage.listMyProjects), привязанные к
+       проекту через scheme.projectId. Без этого «⚡ Схемы» всегда были
+       пустыми, даже если схема существует. -->
+  <script src="../../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="../../shared/auth.js"></script>
+  <script src="../../shared/auth-gate.js" defer></script>
+  <script src="../../js/projects.js"></script>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="importmap">
+  {"imports": {"shared/": "../../shared/", "engine/": "../../js/engine/", "cooling/": "../cooling/", "meteo/": "../meteo/", "service/": "../service/", "suppression-methods/": "../../lib/suppression-methods/"}}
+  </script>
+  <script type="module">
+    import { mountHeader } from 'shared/app-header.js';
+    mountHeader({ title: 'Карточка проекта', home: '../../hub.html' });
+  </script>
+
+  <main class="pr-wrap">
+    <section class="pr-card" id="pr-detail-head">
+      <!-- Заполняется project.js -->
+    </section>
+
+    <!-- v0.60.288 (Phase 47.1.2 / Этап 1.2): tab-bar над секциями карточки.
+         Подсекции группируются по ролевой логике — Общее / Модули / Экономика /
+         Планирование / Команда / Управление. ГИП-функции (cross-discipline
+         сводка, согласование) добавятся как новые tabs в Этапе 1.5. -->
+    <nav id="pr-detail-tabs" style="display:flex;gap:4px;flex-wrap:wrap;margin:12px 0;padding:6px;background:#fff;border-radius:8px;border:1px solid #e5e7eb">
+      <button type="button" class="pr-tab pr-tab-active" data-tab="general"  title="Реквизиты, тип объекта, локация, общие данные">📋 Общее</button>
+      <button type="button" class="pr-tab" data-tab="summary" title="Cross-discipline сводка: метаданные проекта и обзор по дисциплинам (Этап 1.5.1)">🧐 Сводка ГИП</button>
+      <button type="button" class="pr-tab" data-tab="equipment" title="Перечень всего оборудования проекта (Этап 1.5.2): объединение Конструктора схем и Технолога объекта">📦 Оборудование</button>
+      <button type="button" class="pr-tab" data-tab="validation" title="Проверка корректности схем и cross-discipline согласованности (Этап 1.5.3+1.5.4)">🛡 Проверки</button>
+      <button type="button" class="pr-tab" data-tab="approvals" title="Согласование разделов проекта ГИПом: подпись, timestamp, история ревизий (Этап 1.5.5)">✓ Согласование</button>
+      <button type="button" class="pr-tab" data-tab="modules"  title="Модули проекта (Конструктор, Технолог, СКС, BOM) и sketch'и проекта">🔗 Модули и связи</button>
+      <button type="button" class="pr-tab" data-tab="economics" title="Тариф, валюта, дата курса">💰 Экономика</button>
+      <button type="button" class="pr-tab" data-tab="plan"     title="Этапы реализации + План-график задач (Phase 38)">📅 План</button>
+      <button type="button" class="pr-tab" data-tab="team" title="Команда проекта, visibility, доступы">👥 Команда</button>
+      <button type="button" class="pr-tab" data-tab="actions"  title="Удаление, дублирование, экспорт">⚙ Управление</button>
+    </nav>
+
+    <!-- v0.60.292 (Этап 1.5.1 Phase 47): Сводка ГИП — cross-discipline view. -->
+    <section class="pr-card pr-tab-panel" data-tab-panel="summary" hidden>
+      <h3 style="margin:0 0 12px">🧐 Сводка проекта (cross-discipline)</h3>
+      <div id="pr-detail-summary"></div>
+    </section>
+
+    <!-- v0.60.293 (Этап 1.5.2 Phase 47): Перечень оборудования (cross-discipline). -->
+    <section class="pr-card pr-tab-panel" data-tab-panel="equipment" hidden>
+      <h3 style="margin:0 0 12px">📦 Перечень оборудования проекта</h3>
+      <div id="pr-detail-equipment"></div>
+    </section>
+
+    <!-- v0.60.296 (Этап 1.5.3 Phase 47): Проверки корректности схем + cross-discipline. -->
+    <section class="pr-card pr-tab-panel" data-tab-panel="validation" hidden>
+      <h3 style="margin:0 0 12px">🛡 Проверки проекта</h3>
+      <div id="pr-detail-validation"></div>
+    </section>
+
+    <!-- v0.60.302 (Этап 1.5.5 Phase 47): Согласование разделов ГИПом. -->
+    <section class="pr-card pr-tab-panel" data-tab-panel="approvals" hidden>
+      <h3 style="margin:0 0 12px">✓ Согласование разделов</h3>
+      <div id="pr-detail-approvals"></div>
+    </section>
+
+    <section class="pr-card pr-tab-panel" data-tab-panel="general">
+      <h3 style="margin:0 0 12px" title="Свойства проекта: реквизиты (заказчик, адрес, стадия, ГИП), место расположения объекта (single/multi). Передаётся во все calc-модули проекта.">⚙ Свойства проекта</h3>
+      <div id="pr-detail-properties"></div>
+    </section>
+
+    <!-- v0.60.10: Leaflet для выбора точки на карте OpenStreetMap. -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <section class="pr-card pr-tab-panel" data-tab-panel="modules" hidden>
+      <h3 style="margin:0 0 12px">Модули проекта</h3>
+      <p class="muted" style="margin:0 0 14px">
+        Только модули, которые имеют смысл в контексте проекта. «Штучные»
+        конфигураторы (Расчёт кабельной линии, РУ СН, ИБП, щит, PDU,
+        трансформатор, АГПТ, корпус шкафа) — на главном экране
+        <a href="../../hub.html">Программы</a>; они вызываются разово или из
+        других модулей по контексту.
+      </p>
+      <div id="pr-detail-modules"></div>
+    </section>
+
+    <!-- v0.60.98: Экономика проекта (тариф / валюта / дата курса) — единая
+         для всех модулей по запросу Пользователя 2026-05-03. -->
+    <section class="pr-card pr-tab-panel" data-tab-panel="economics" hidden>
+      <h3 style="margin:0 0 8px" title="Экономические параметры всего проекта: тариф на электричество, валюта расчётов, дата курса для конвертации. Используется ВСЕМИ calc-модулями.">💰 Экономика проекта</h3>
+      <div id="pr-detail-economics"></div>
+    </section>
+
+    <!-- Phase 38.1 (v0.60.97): План-график проекта. -->
+    <section class="pr-card pr-tab-panel" data-tab-panel="plan" hidden>
+      <h3 style="margin:0 0 8px" title="План-график задач проекта (Phase 38). Per-discipline tasks с датами, прогрессом, milestones.">📅 План-график (Phase 38 START)</h3>
+      <div id="pr-detail-plan"></div>
+    </section>
+
+    <!-- v0.60.171: Sketch references — все sketch'и + ссылки. -->
+    <section class="pr-card pr-tab-panel" data-tab-panel="modules" hidden>
+      <h3 style="margin:0 0 8px" title="Все sketch'и (drawio) этого проекта и какие данные модулей они упоминают.">🔗 Sketch'и проекта и их связи</h3>
+      <div id="pr-detail-sketch-refs"></div>
+    </section>
+
+    <!-- v0.60.289 (Этап 1.3 Phase 47.1): Команда — visibility 3 уровня. -->
+    <section class="pr-card pr-tab-panel" data-tab-panel="team" hidden>
+      <h3 style="margin:0 0 12px">👥 Команда и доступ</h3>
+      <div id="pr-detail-team"></div>
+    </section>
+
+    <section class="pr-card pr-tab-panel" data-tab-panel="actions" hidden>
+      <h3 style="margin:0 0 12px">Действия с проектом</h3>
+      <div id="pr-detail-actions" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    </section>
+
+    <section class="pr-card pr-tab-panel" data-tab-panel="actions" hidden>
+      <h3 style="margin:0 0 8px">Заметки и метаданные</h3>
+      <div id="pr-detail-meta"></div>
+    </section>
+
+    <!-- v0.60.288: tab-bar styles + JS handler. -->
+    <style>
+      .pr-tab {
+        padding: 8px 14px; border: 1px solid transparent; background: #f8fafc;
+        color: #475569; font: inherit; font-size: 13px; font-weight: 500;
+        border-radius: 5px; cursor: pointer; transition: all 0.15s;
+      }
+      .pr-tab:hover { background: #eff6ff; color: #1e40af; }
+      .pr-tab-active { background: #1e40af; color: #fff; }
+      .pr-tab-active:hover { background: #1e3a8a; color: #fff; }
+      .pr-tab-stub { opacity: 0.65; }
+      .pr-tab-stub::after { content: ' 🚧'; }
+    </style>
+    <script type="module">
+      // Tab switching: hide all .pr-tab-panel except those matching active tab.
+      // Sync state with URL ?tab=X для сохранения после reload.
+      const _setTab = (tab) => {
+        document.querySelectorAll('.pr-tab').forEach(b => {
+          b.classList.toggle('pr-tab-active', b.dataset.tab === tab);
+        });
+        document.querySelectorAll('.pr-tab-panel').forEach(p => {
+          p.hidden = p.dataset.tabPanel !== tab;
+        });
+        try {
+          const url = new URL(location.href);
+          if (tab && tab !== 'general') url.searchParams.set('tab', tab);
+          else url.searchParams.delete('tab');
+          history.replaceState({}, '', url.toString());
+        } catch {}
+      };
+      document.querySelectorAll('.pr-tab').forEach(btn => {
+        btn.addEventListener('click', () => _setTab(btn.dataset.tab));
+      });
+      // Init from URL ?tab=X
+      try {
+        const t = new URL(location.href).searchParams.get('tab');
+        if (t) _setTab(t);
+      } catch {}
+    </script>
+  </main>
+
+  <script type="module" src="project.js"></script>
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'projects', moduleTitle: 'Карточка проекта' });
+  </script>
+</body>
+</html>

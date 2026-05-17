@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Конфигуратор РУ СН</title>
+  <link rel="stylesheet" href="../../shared/styles/base.css">
+  <link rel="stylesheet" href="../../shared/app-header.css">
+  <link rel="stylesheet" href="../panel-config/panel-config.css">
+  <link rel="stylesheet" href="mv-config.css">
+  <!-- v0.59.834: единая авторизация Firebase. Если firebase-config.js
+       пуст или SDK не загрузился — shared/auth.js работает в локальном
+       режиме, кнопка «Войти» в header'е показывает соответствующий toast. -->
+  <script src="../../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="../../shared/auth.js"></script>
+  <script src="../../shared/auth-gate.js" defer></script>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="importmap">
+  {"imports": {"shared/": "../../shared/", "engine/": "../../js/engine/", "cooling/": "../cooling/", "meteo/": "../meteo/", "service/": "../service/", "suppression-methods/": "../../lib/suppression-methods/"}}
+  </script>
+  <script type="module">
+    import { mountHeader } from 'shared/app-header.js';
+    // v0.60.216 (по репорту Пользователя 2026-05-04 «да фикс примени для всех
+    // модулей»): app-footer (.rs-footer) удалён — используем только
+    // module-footer (.rs-mfoot) ниже, чтобы не было двойного футера.
+    import { mountHelp } from 'shared/help-panel.js';
+    mountHeader({ title: 'Конфигуратор РУ СН', home: '../../hub.html' });
+    mountHelp({
+      module: 'mv-config',
+      title: 'Конфигуратор РУ СН',
+      usage: `
+        <h4>Назначение модуля</h4>
+        <p>Справочник и подбор распределительных устройств среднего напряжения (6-35 кВ) по <b>IEC 62271-200</b>: моноблоки SF<sub>6</sub> (RM6, SafeRing) и сборные панели (ЩО-70, КРУ). Wizard-режим открывается при переходе из инспектора трансформатора / щита Конструктора схем (<code>?nodeId=…</code> в URL).</p>
+        <h4>Wizard подбора (4 шага)</h4>
+        <ol>
+          <li><b>Шаг 1. Требования</b> — U<sub>n</sub> (6 / 10 / 20 / 24 / 35 кВ), I<sub>расч</sub> (A), I<sub>n</sub> шин, I<sub>cu</sub> (ток КЗ, кА), тип РУ (моноблок / сборные / GIS / AIS), число ячеек, IP, дугостойкость (IAC AFLR).</li>
+          <li><b>Шаг 2. Подбор РУ</b> — из element-library (kind=mv-switchgear) отбираются подходящие модели.</li>
+          <li><b>Шаг 3. Состав ячеек</b> — типовая конфигурация функциональных модулей (см. ниже).</li>
+          <li><b>Шаг 4. Итог</b> — применение к узлу Конструктора схем.</li>
+        </ol>
+        <h4>Функциональные модули ячеек (RM6 / SafeRing)</h4>
+        <ul>
+          <li><b>I</b> (Interrupter) — выключатель нагрузки с разъединителем (для кабельного ввода).</li>
+          <li><b>B</b> (Breaker) — вакуумный выключатель + ТН (защита фидера).</li>
+          <li><b>D</b> (Direct) — глухое присоединение.</li>
+          <li><b>Q</b> (QM) — выключатель нагрузки + предохранители (защита трансформатора до 1250 кВА).</li>
+          <li><b>O</b> — «ответвление» (шиносоединительная).</li>
+          <li><b>Ic / Bc</b> — с выключателем и CT для АСКУЭ/измерений.</li>
+          <li><b>Mt</b> — модуль с трансформатором напряжения.</li>
+        </ul>
+        <h4>Типы ячеек (IEC 62271-200)</h4>
+        <ul>
+          <li><b>LSC1</b> — после доступа к отсеку необходимо снять напряжение со всей РУ.</li>
+          <li><b>LSC2A</b> — доступ к одному отсеку возможен без снятия напряжения с шин.</li>
+          <li><b>LSC2B</b> — доступ к любому отсеку без снятия напряжения с соседних ячеек.</li>
+          <li><b>PM</b> (Partition Metal) — металлическая перегородка между отсеками.</li>
+          <li><b>PI</b> (Partition Insulating) — диэлектрическая перегородка.</li>
+        </ul>
+        <div class="note">Для ЦОД Tier III/IV, больниц уровня 2, промышленных процессов 24/7 — рекомендуется LSC2B-PM и IAC AFLR (internal arc classification, arc-proof class с front/lateral/rear защитой).</div>
+        <div class="warn">Классификация IAC: AFLR = A (для персонала), F (front), L (lateral), R (rear) — защита от внутренней дуги с указанных сторон. Обычно IAC AFLR 16 кА 1 с или 20 кА 1 с.</div>
+      `,
+      calcs: `
+        <h4>Формулы и стандарты</h4>
+        <h5>1. Ток трёхфазного КЗ (IEC 60909)</h5>
+        <p><code>I<sub>k3</sub>″ = c · U<sub>n</sub> / (√3 · Z<sub>k</sub>)</code>, где c<sub>max</sub> = 1.10 (для подбора автоматики), c<sub>min</sub> = 0.95 (для проверки чувствительности).</p>
+        <p>Z<sub>k</sub> = полное сопротивление до точки КЗ (сеть + трансформатор + кабели).</p>
+        <h5>2. Ударный ток</h5>
+        <p><code>i<sub>p</sub> = κ · √2 · I<sub>k3</sub>″</code>, где <code>κ = 1.02 + 0.98 · e<sup>-3R/X</sup></code>.</p>
+        <p>Для X/R → ∞ κ → 2.0. В сетях 10 кВ типично κ = 1.7…1.8 (X/R ≈ 10…15).</p>
+        <h5>3. Термическая стойкость</h5>
+        <p><code>I<sub>th</sub><sup>2</sup> · t<sub>k</sub> ≥ I<sub>k</sub><sup>2</sup> · t<sub>отк</sub></code>, где I<sub>th</sub> — нормированный ток 1 с из паспорта РУ.</p>
+        <p>Пересчёт на фактическое время: <code>I<sub>th,t</sub> = I<sub>th,1s</sub> · √(1/t)</code>.</p>
+        <h5>4. Динамическая стойкость</h5>
+        <p><code>i<sub>pk,паспорт</sub> ≥ i<sub>p,расч</sub></code>. Паспортно i<sub>pk</sub> = 2.5 · I<sub>n</sub> (для I<sub>cu</sub> 20 кА, i<sub>pk</sub> = 50 кА).</p>
+        <h5>5. Номинал шин I<sub>n</sub></h5>
+        <p><code>I<sub>n,bus</sub> ≥ I<sub>расч</sub> · k<sub>запас</sub></code>. Типовые номиналы: 400/630/800/1000/1250/1600/2000/2500/3150 А.</p>
+        <h5>6. Предохранитель для защиты трансформатора (HV fuse, IEC 60282-1)</h5>
+        <p><code>I<sub>nom,fuse</sub> = (1.5…2.0) · I<sub>nom,TP</sub></code> — с запасом на пусковой ток (inrush 8-12 × I<sub>nom</sub>).</p>
+        <p>Для TМГ 630 кВА, 10 кВ: I<sub>nom,TP</sub> = 36 А → предохранитель 63 А (или 80 А).</p>
+        <h5>7. Токоограничение</h5>
+        <p>ВВЭ (вакуумные выключатели): без токоограничения.</p>
+        <p>Предохранители типа «q»: токоограничение до I<sub>k3</sub>″ на 5-10 мс (срез до пикового тока).</p>
+        <h5>8. Изоляция и испытания (IEC 62271-1)</h5>
+        <table>
+          <tr><th>U<sub>n</sub>, кВ</th><th>U<sub>d</sub> (50 Гц, 1 мин), кВ</th><th>U<sub>p</sub> (LI), кВ</th></tr>
+          <tr><td>6</td><td>28</td><td>75</td></tr>
+          <tr><td>10</td><td>42</td><td>95</td></tr>
+          <tr><td>20</td><td>50</td><td>125</td></tr>
+          <tr><td>24</td><td>60</td><td>145</td></tr>
+          <tr><td>35</td><td>95</td><td>200</td></tr>
+        </table>
+        <h5>9. Изоляционные среды</h5>
+        <ul>
+          <li><b>SF<sub>6</sub></b> — моноблоки (RM6). Герметичный объём, низкое обслуживание. Парниковый газ (GWP = 23500!). Тенденция — замена на сухой воздух / фторкетон.</li>
+          <li><b>Воздух</b> (AIS) — классика ЩО-70, требует изоляционных расстояний.</li>
+          <li><b>Твердая изоляция</b> (solid-insulated) — эпоксид, заливка токоведущих частей (SM6 Merlin-Gerin и т.п.).</li>
+        </ul>
+        <div class="note">Стандарты: IEC 62271-200 (РУ переменного тока 1-52 кВ), IEC 62271-1 (общие определения), IEC 60909 (расчёт токов КЗ), IEC 60282-1 (HV fuses), ГОСТ 14693 (старые РУ).</div>
+        <div class="warn">Дугостойкая классификация IAC AFLR требуется с 2017 для жилых зданий класса Ф1.1, больниц, ЦОД. Проверка: продолжительность внутр. дуги I<sub>cu</sub> · t<sub>k</sub> — обычно 20 кА · 1 с = 80 МА²·с.</div>
+      `,
+    });
+    if (window.Auth && typeof window.Auth.init === 'function') {
+      window.Auth.init().catch(e => console.warn('[mv-config] auth init failed', e));
+    }
+  </script>
+
+  <main class="mvc-layout">
+    <aside class="rs-sidebar rs-sidebar-left" id="mvc-sidebar">
+      <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
+    </aside>
+    <div class="mvc-content">
+    <div class="page-intro">
+      <h2>Конфигуратор РУ среднего напряжения</h2>
+      <p class="muted">
+        Справочник и подбор РУ 6-35 кВ: моноблоки SF6 (RM6, SafeRing) и сборные (ЩО-70).
+        Wizard-режим доступен при открытии из инспектора трансформатора/щита Конструктора схем
+        (?nodeId=&lt;id&gt;).
+      </p>
+    </div>
+
+    <!-- Wizard (Фаза 1.19.1) -->
+    <section id="mv-wizard" class="panel" style="display:none;margin-bottom:16px;border:2px solid #f57c00">
+      <div class="panel-head" style="background:#fff4e5">
+        <h3>🧙 Конфигуратор РУ СН для проекта</h3>
+        <div id="mv-wiz-step-indicator" class="muted" style="font-size:12px"></div>
+      </div>
+
+      <div id="mv-wiz-step-1" class="wiz-step">
+        <h4>Шаг 1. Требования</h4>
+        <p class="muted" style="font-size:12px">Параметры из Конструктора схем. Можно подправить.</p>
+        <div class="wiz-grid">
+          <label>Имя<input type="text" id="mv-name"></label>
+          <label>Напряжение, кВ
+            <select id="mv-Un">
+              <option value="6">6 кВ</option>
+              <option value="10" selected>10 кВ</option>
+              <option value="20">20 кВ</option>
+              <option value="24">24 кВ</option>
+              <option value="35">35 кВ</option>
+            </select>
+          </label>
+          <!-- v0.59.732: парные поля Ток + Мощность с двунаправленным
+               пересчётом (через √3 × U × cos φ для MV — обычно 3ф). -->
+          <label>Расчётный ток, A<input type="number" id="mv-loadA" min="0" step="10"></label>
+          <label>Расчётная мощность, МВт<input type="number" id="mv-loadMW" min="0" step="0.1"></label>
+          <label>Ток шин (In), A
+            <select id="mv-In">
+              <option value="400">400</option>
+              <option value="630" selected>630</option>
+              <option value="800">800</option>
+              <option value="1000">1000</option>
+              <option value="1250">1250</option>
+              <option value="1600">1600</option>
+              <option value="2000">2000</option>
+            </select>
+          </label>
+          <label>Ток КЗ (Icu), кА
+            <select id="mv-Icu">
+              <option value="16">16</option>
+              <option value="20" selected>20</option>
+              <option value="25">25</option>
+              <option value="31.5">31.5</option>
+              <option value="40">40</option>
+            </select>
+          </label>
+          <label>Тип РУ
+            <select id="mv-type">
+              <option value="">Любой</option>
+              <option value="ringmain" selected>Моноблок SF6 (RM6, SafeRing)</option>
+              <option value="panelboard">Сборные панели (ЩО-70)</option>
+              <option value="gis">GIS элегазовое</option>
+              <option value="air">AIS воздушное</option>
+            </select>
+          </label>
+          <label>Число ячеек<input type="number" id="mv-cellsCount" min="2" max="20" value="3"></label>
+          <label>IP
+            <select id="mv-IP">
+              <option value="IP31">IP31</option>
+              <option value="IP4X" selected>IP4X</option>
+              <option value="IP54">IP54</option>
+              <option value="IP67">IP67 (только SF6)</option>
+            </select>
+          </label>
+          <label style="grid-column:span 2">
+            <input type="checkbox" id="mv-arcProof"> Дугостойкое (IAC AFLR, обязательно для современных ЦОД/больниц)
+          </label>
+        </div>
+        <div class="wiz-actions">
+          <button id="mv-wiz-cancel" class="btn-sm">Отмена</button>
+          <button id="mv-wiz-next-1" class="btn-sm btn-primary">Далее → Подбор РУ</button>
+        </div>
+      </div>
+
+      <div id="mv-wiz-step-2" class="wiz-step" style="display:none">
+        <h4>Шаг 2. Подбор РУ из справочника</h4>
+        <p class="muted" style="font-size:12px">Подходящие модели из element-library (kind=mv-switchgear).</p>
+        <div id="mv-wiz-list"></div>
+        <div class="wiz-actions">
+          <button id="mv-wiz-back-2" class="btn-sm">← Назад</button>
+          <button id="mv-wiz-next-2" class="btn-sm btn-primary" disabled>Далее → Состав</button>
+        </div>
+      </div>
+
+      <div id="mv-wiz-step-3" class="wiz-step" style="display:none">
+        <h4>Шаг 3. Состав ячеек</h4>
+        <p class="muted" style="font-size:12px">Типовая конфигурация ячеек подобранной модели. Можно добавить/удалить/изменить.</p>
+        <div id="mv-wiz-cells"></div>
+        <div class="wiz-actions">
+          <button id="mv-wiz-back-3" class="btn-sm">← Назад</button>
+          <button id="mv-wiz-next-3" class="btn-sm btn-primary">Далее → Итог</button>
+        </div>
+      </div>
+
+      <div id="mv-wiz-step-4" class="wiz-step" style="display:none">
+        <h4>Шаг 4. Итоговая конфигурация</h4>
+        <div id="mv-wiz-summary"></div>
+        <div class="wiz-actions">
+          <button id="mv-wiz-back-4" class="btn-sm">← Назад</button>
+          <button id="mv-wiz-apply" class="btn-sm btn-primary">✓ Применить к схеме</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- v0.59.363: standalone-режим. Запуск конфигуратора без nodeId. -->
+    <section class="panel" id="mv-standalone-panel" style="margin-bottom:16px">
+      <div class="panel-head">
+        <h3>Самостоятельная конфигурация</h3>
+      </div>
+      <div style="padding:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+        <button id="mv-start-standalone" class="btn-sm btn-primary" type="button">🧙 Запустить wizard подбора</button>
+        <button id="mv-export-config" class="btn-sm" type="button" title="Сохранить текущую конфигурацию из wizard'а в JSON-файл">⬇ Экспорт конфигурации</button>
+        <label class="btn-sm" style="cursor:pointer" title="Загрузить JSON-конфигурацию">
+          ⬆ Импорт<input type="file" id="mv-import-config" accept=".json,application/json" style="display:none">
+        </label>
+        <span class="muted" style="font-size:11px;margin-left:auto">Конфигурации можно экспортировать/импортировать как JSON-файлы для переноса между проектами или машинами.</span>
+      </div>
+    </section>
+
+    <!-- Справочник MV (когда открыто без nodeId) -->
+    <section id="mv-catalog-panel" class="panel" data-reference-panel="1">
+      <div class="panel-head">
+        <h3>Справочник РУ СН</h3>
+        <div class="muted" style="font-size:11px">Управление справочником — в модуле <a href="../catalog/" target="_blank" style="color:#1976d2">«Каталог и библиотека»</a> (фильтр kind = «Распределительное устройство СН»).</div>
+      </div>
+      <div id="mv-catalog-list"></div>
+    </section>
+    </div><!-- /.mvc-content -->
+  </main>
+
+  <div id="flash" class="flash"></div>
+
+  <script type="module" src="mv-config.js"></script>
+  <script type="module" src="../../shared/reference-panels.js"></script>
+  <script type="module">
+    import 'shared/sidebar-resizer.js';
+    import { mountConfigSidebar, mountEmbeddedPicker } from 'shared/config-sidebar.js';
+    import { isEmbeddedMode } from 'shared/configuration-catalog.js';
+    if (isEmbeddedMode()) {
+      document.body.classList.add('mvc-embed');
+      const slot = document.createElement('div');
+      document.querySelector('main')?.prepend(slot);
+      mountEmbeddedPicker({
+        kind: 'mv',
+        title: 'Выберите шаблон РУ СН',
+        mountEl: slot,
+        onApply: (entry, targets) => {
+          try { window.parent?.postMessage({ type: 'mv-config:apply', entry, targetNodeIds: targets }, '*'); } catch {}
+        },
+      });
+    } else {
+      mountConfigSidebar({
+        kind: 'mv',
+        title: 'Конфигурации РУ СН',
+        onSelect: (entry) => {
+          const p = entry && entry.payload || {};
+          const set = (id, v) => {
+            const el = document.getElementById(id);
+            if (el && v != null && v !== '') el.value = v;
+          };
+          set('mv-wiz-family', p.family);
+          set('mv-wiz-uv', p.kv); set('mv-kv', p.kv);
+          try { window.dispatchEvent(new CustomEvent('mv-config:load', { detail: entry })); } catch {}
+        },
+        onSave: () => {
+          const $ = (id) => document.getElementById(id);
+          const kv = $('mv-wiz-uv')?.value || $('mv-kv')?.value || '';
+          const fam = $('mv-wiz-family')?.value || '';
+          return {
+            label: fam || 'РУ СН',
+            description: [fam, kv && (kv + ' кВ')].filter(Boolean).join(' · '),
+            payload: { family: fam, kv },
+          };
+        },
+      });
+    }
+  </script>
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'mv-config', moduleTitle: 'РУ СН' });
+  </script>
+</body>
+</html>

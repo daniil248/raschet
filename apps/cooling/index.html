@@ -25,16 +25,7 @@
        При будущем переезде папки меняется ТОЛЬКО этот блок (1 правка на
        HTML вместо N импортов на файл). Должен идти ДО первого module-script. -->
   <script type="importmap">
-  {
-    "imports": {
-      "shared/": "../../shared/",
-      "engine/": "../../js/engine/",
-      "cooling/": "./",
-      "meteo/": "../../meteo/",
-      "service/": "../../service/",
-      "suppression-methods/": "../../suppression-methods/"
-    }
-  }
+  {"imports": {"shared/": "../../shared/", "engine/": "../../js/engine/", "cooling/": "./", "meteo/": "../meteo/", "service/": "../service/", "suppression-methods/": "../../lib/suppression-methods/"}}
   </script>
   <script type="module">
     import { mountHeader } from 'shared/app-header.js';

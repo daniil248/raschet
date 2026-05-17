@@ -185,7 +185,7 @@ function resolveCatalogHref() {
   try {
     // Этот модуль лежит в /shared/report/; каталог — в /reports/.
     // Берём URL модуля и откатываемся на 2 уровня выше.
-    const base = new URL('../../reports/', import.meta.url);
+    const base = new URL('../../apps/reports/', import.meta.url);
     return base.href;
   } catch {
     return '../reports/';

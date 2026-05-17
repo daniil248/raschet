@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Конфигуратор щита</title>
+  <link rel="stylesheet" href="../../shared/styles/base.css">
+  <link rel="stylesheet" href="../../shared/app-header.css">
+  <link rel="stylesheet" href="panel-config.css">
+  <script src="../../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="../../shared/auth.js"></script>
+  <script src="../../shared/auth-gate.js" defer></script>
+  <!-- SheetJS для импорта XLSX-каталогов -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="importmap">
+  {"imports": {"shared/": "../../shared/", "engine/": "../../js/engine/", "cooling/": "../cooling/", "meteo/": "../meteo/", "service/": "../service/", "suppression-methods/": "../../lib/suppression-methods/"}}
+  </script>
+  <script type="module">
+    import { mountHeader } from 'shared/app-header.js';
+    // v0.60.216 (по репорту Пользователя 2026-05-04 «да фикс примени для всех
+    // модулей»): app-footer (.rs-footer) удалён — используем только
+    // module-footer (.rs-mfoot) ниже, чтобы не было двойного футера.
+    import { mountHelp } from 'shared/help-panel.js';
+    mountHeader({ title: 'Конфигуратор НКУ (LV)', home: '../../hub.html' });
+    mountHelp({
+      module: 'panel-config',
+      title: 'Конфигуратор НКУ (LV)',
+      usage: `
+        <h4>Назначение модуля</h4>
+        <p>Справочник и мастер подбора низковольтных комплектных устройств (НКУ) по <b>IEC 61439</b>: ВРУ, ВРУ с АВР, ЩС, ЩР, ЩО, ЩК. Конфигуратор подбирает оболочку (корпус) по току, IP, форме разделения и типу ввода, затем формирует состав автоматов (ввод + отходящие). Для РУ среднего напряжения (6-35 кВ) — отдельный модуль «Конфигуратор РУ СН».</p>
+        <h4>Работа со справочником</h4>
+        <ol>
+          <li><b>Добавить вручную / Импорт XLSX</b> — загрузите каталог оболочек (Supplier, Series, Variant, In_Nominal, busbarA, maxHeatDissipationW, IP, Form, габариты).</li>
+          <li><b>Шаблон</b> — скачать XLSX-заготовку.</li>
+          <li><b>Очистить</b> — удалить все записи справочника для текущего пользователя.</li>
+        </ol>
+        <h4>Wizard подбора (4 шага)</h4>
+        <ol>
+          <li><b>Шаг 1. Требования</b> — имя щита, тип (распределительный / вводной / АВР / групповой / двигательный), P<sub>нагр</sub> (кВт), напряжение (230 / 400 / 690 В), число вводов и отходящих линий, IP, форма разделения (Form 1…4 по IEC 61439-2), запас (%) на развитие.</li>
+          <li><b>Шаг 2. Оболочка</b> — из справочника отбираются оболочки с <code>In<sub>ном</sub> ≥ I<sub>расч</sub></code>, подходящим IP и формой.</li>
+          <li><b>Шаг 3. Автоматы</b> — вводной автомат + N автоматов отходящих линий (детальный подбор селективности — в справочнике автоматов).</li>
+          <li><b>Шаг 4. Итог</b> — конфигурация применяется к узлу Конструктора схем (оболочка + состав).</li>
+        </ol>
+        <h4>Формы разделения (IEC 61439-2 § 8.101)</h4>
+        <ul>
+          <li><b>Form 1</b> — без внутренних перегородок.</li>
+          <li><b>Form 2a/2b</b> — шины изолированы от функциональных блоков (2b — и зажимы тоже).</li>
+          <li><b>Form 3a/3b</b> — и функциональные блоки разделены между собой.</li>
+          <li><b>Form 4a/4b</b> — полное разделение (каждый блок в своём отсеке, зажимы в отдельных отсеках).</li>
+        </ul>
+        <div class="note">Form 4b обычно требуется для щитов ЦОД, больниц, взрывоопасных производств, 24/7 промышленных объектов — где обслуживание отходящих линий без снятия напряжения ввода.</div>
+        <div class="warn">IP и форма независимы! IP определяет защиту снаружи, Form — внутреннее разделение. Для улиц IP54/IP65 с Form 1 — допустимо, а для ЦОД часто берут IP31 Form 4b.</div>
+      `,
+      calcs: `
+        <h4>Формулы и стандарты</h4>
+        <h5>1. Расчётный ток шин</h5>
+        <p><code>I<sub>bus</sub> = Σ(I<sub>нагр,i</sub> · k<sub>одновр,i</sub>) · k<sub>запас</sub></code>.</p>
+        <p>k<sub>одновр</sub>: группа освещения 0.8-1.0, розеточная 0.3-0.5, силовая смеш. 0.6-0.8, эл.привод 0.85 (ГОСТ Р 50571.5.52).</p>
+        <h5>2. Подбор оболочки</h5>
+        <p>Оболочка проходит, если: <code>In<sub>ном</sub> ≥ I<sub>bus</sub></code> и <code>P<sub>отвод,шкаф</sub> ≥ P<sub>тепло,выдел</sub></code>.</p>
+        <h5>3. Тепловой баланс (IEC 61439-1 § 10.10)</h5>
+        <p>Потери в оболочке: <code>P<sub>loss</sub> = Σ P<sub>i,ном</sub> · (I<sub>i</sub>/I<sub>i,ном</sub>)²</code>.</p>
+        <p>Допустимое повышение температуры шин внутри — не более 70 К (в зависимости от типа соединений), воздуха внутри — 35 К над окружающей средой (при t<sub>amb</sub> = 35°C → t<sub>inside</sub> ≤ 70°C).</p>
+        <h5>4. Проверка на КЗ (IEC 61439-1 § 10.11)</h5>
+        <p>Условный ток КЗ: <code>I<sub>pk</sub> ≥ i<sub>p</sub></code> (ударный) и <code>I<sub>cw</sub><sup>2</sup> · t<sub>k</sub> ≥ I<sub>k</sub><sup>2</sup> · t</code> (термостойкость).</p>
+        <h5>5. Координация автоматов (IEC 60947-4-1)</h5>
+        <p><b>Тип 1</b>: после КЗ ПЗА или контактор могут быть повреждены, но без опасности для людей. <b>Тип 2</b>: после КЗ ПЗА и контактор продолжают работать (допускается лёгкое приваривание контактов).</p>
+        <h5>6. Селективность</h5>
+        <p>По току: <code>I<sub>ном,вв</sub> ≥ 1.6 · I<sub>ном,отх</sub></code>. По времени: ступень t ≥ 100 мс между уровнями. По кривой: D-кривая / MCCB на вводе, C-кривая на отходящих.</p>
+        <h5>7. Степень защиты IP (IEC 60529)</h5>
+        <p>Первая цифра (0-6): защита от твёрдых. Вторая цифра (0-8): от воды. Например, IP54 = пыль + брызги, IP65 = пыль-непроницаемый + струи, IP67 = погружение.</p>
+        <h5>8. Конструктивные нормы (ПУЭ / IEC 61439-1)</h5>
+        <ul>
+          <li>Высота ввода-вывода кабеля с лицевой стороны: 300-1800 мм от пола.</li>
+          <li>Зазоры (clearances): 10-15 мм между 400 В шинами, 50 мм до корпуса.</li>
+          <li>Пути утечки (creepage): ≥ 20 мм по материалу CTI 400…600.</li>
+        </ul>
+        <h5>9. Вес и габариты</h5>
+        <p>Ориентировочные: ЩР 12-мест 5 кг, ЩРНМ-1 15 кг, ВРУ 630А — 180-250 кг (надо иметь в виду при доставке и монтаже на стенах / постаментах).</p>
+        <div class="note">Стандарты: IEC 61439-1 (общие требования), IEC 61439-2 (силовые НКУ), IEC 61439-3 (распределительные до 250 А), IEC 61439-5 (для сетей общего назначения), ГОСТ Р 51321.1-5.</div>
+        <div class="warn">TTA vs PTTA: TTA (type-tested) — полностью сертифицированная сборка, PTTA (partially) — комплектация по каталогу изготовителя. Для ответственных объектов (ЦОД, медицина, нефтегаз) — только TTA.</div>
+      `,
+    });
+    if (window.Auth && typeof window.Auth.init === 'function') {
+      window.Auth.init().catch(e => console.warn('[panel-config] auth init failed', e));
+    }
+  </script>
+
+  <main class="pc-layout">
+    <aside class="rs-sidebar rs-sidebar-left" id="pc-sidebar">
+      <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
+    </aside>
+    <div class="pc-content">
+    <div class="page-intro">
+      <h2>Конфигуратор НКУ (LV, до 1 кВ)</h2>
+      <p class="muted">
+        Низковольтные комплектные устройства по <b>IEC 61439</b> (TTA / PTTA):
+        ВРУ, ВРУ с АВР, ЩС, ЩО, ЩК. Для РУ среднего напряжения (6-35 кВ) —
+        отдельный <a href="../mv-config/" style="color:#1976d2">Конфигуратор РУ СН</a>.
+      </p>
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+        <button type="button" class="btn-secondary" id="pc-export-config" title="Сохранить конфигурацию НКУ в JSON-файл">⬇ Экспорт</button>
+        <button type="button" class="btn-secondary" id="pc-import-config" title="Загрузить конфигурацию НКУ из JSON-файла">⬆ Импорт<input type="file" id="pc-import-file" accept="application/json,.json" hidden></button>
+      </div>
+    </div>
+
+    <!-- Wizard конфигуратора (Фаза 1.7): основной UI модуля, виден по умолчанию -->
+    <section id="pc-wizard" class="panel" style="margin-bottom:16px;border:2px solid #1976d2">
+      <div class="panel-head" style="background:#f0f4ff">
+        <h3>🧙 Конфигуратор щита для проекта</h3>
+        <div id="pc-wiz-step-indicator" class="muted" style="font-size:12px"></div>
+      </div>
+
+      <!-- Шаг 1: Требования -->
+      <div id="pc-wiz-step-1" class="wiz-step">
+        <h4>Шаг 1. Требования из проекта</h4>
+        <p class="muted" style="font-size:12px">Параметры переданы из Конструктора схем. Можно подправить.</p>
+        <div class="wiz-grid">
+          <label>Имя щита
+            <input type="text" id="pc-name" value="">
+          </label>
+          <label>Тип щита
+            <select id="pc-kind">
+              <option value="distribution">Распределительный (ЩС/ЩР)</option>
+              <option value="main">Вводной (ВРУ/ГРЩ)</option>
+              <option value="avr">С АВР</option>
+              <option value="group">Групповой (квартирный/этажный)</option>
+              <option value="motor">Двигательный (ЩМ)</option>
+            </select>
+          </label>
+          <!-- v0.59.731: парные поля Мощность + Ток с двунаправленным
+               пересчётом (P ↔ I через U/cos φ/фазу). Симметрично с
+               cable/index.html v0.59.729 и инспектором потребителя. -->
+          <label>Расч. нагрузка, kW
+            <input type="number" id="pc-loadKw" min="0" step="0.5" value="20">
+          </label>
+          <label>Расчётный ток, А
+            <input type="number" id="pc-loadA" min="0" step="0.1" value="">
+          </label>
+          <label>Напряжение
+            <select id="pc-voltage">
+              <option value="lv-400">400/230 В, 3-фазный</option>
+              <option value="lv-230">230 В, 1-фазный</option>
+              <option value="lv-690">690/400 В, 3-фазный</option>
+            </select>
+          </label>
+          <label>Вводов
+            <input type="number" id="pc-inputs" min="1" max="4" step="1" value="1">
+          </label>
+          <label>Отходящих линий
+            <input type="number" id="pc-outputs" min="1" max="100" step="1" value="6">
+          </label>
+          <label>Степень защиты (IP)
+            <select id="pc-ip">
+              <option value="IP20">IP20 — внутри помещений</option>
+              <option value="IP30">IP30 — сухие помещения</option>
+              <option value="IP31" selected>IP31 — жилые/офис</option>
+              <option value="IP54">IP54 — уличн./цех пыль+влага</option>
+              <option value="IP65">IP65 — наружная установка</option>
+            </select>
+          </label>
+          <label>Форма разделения (IEC 61439)
+            <select id="pc-form">
+              <option value="1">Form 1 — без разделения</option>
+              <option value="2" selected>Form 2 — шины изолированы</option>
+              <option value="3">Form 3 — функц. блоки разделены</option>
+              <option value="4">Form 4 — полное разделение</option>
+            </select>
+          </label>
+          <label>Мин. запас, %
+            <input type="number" id="pc-reserve" min="0" max="100" step="5" value="20">
+          </label>
+        </div>
+        <div class="wiz-actions">
+          <button id="pc-wiz-cancel" class="btn-sm">Отмена</button>
+          <button id="pc-wiz-next-1" class="btn-sm btn-primary">Далее → Подбор оболочки</button>
+        </div>
+      </div>
+
+      <!-- Шаг 2: Оболочка -->
+      <div id="pc-wiz-step-2" class="wiz-step" style="display:none">
+        <h4>Шаг 2. Подбор оболочки (корпуса)</h4>
+        <p class="muted" style="font-size:12px">Оболочки из справочника, подходящие по току, IP и форме.</p>
+        <div id="pc-wiz-enclosure-list"></div>
+        <div class="wiz-actions">
+          <button id="pc-wiz-back-2" class="btn-sm">← Назад</button>
+          <button id="pc-wiz-next-2" class="btn-sm btn-primary" disabled>Далее → Состав</button>
+        </div>
+      </div>
+
+      <!-- Шаг 3: Состав автоматов -->
+      <div id="pc-wiz-step-3" class="wiz-step" style="display:none">
+        <h4>Шаг 3. Состав автоматов</h4>
+        <p class="muted" style="font-size:12px">Вводной автомат + N автоматов отходящих линий. Детальный подбор (настройки, селективность) — в Фазе 1.10 (справочник автоматов).</p>
+        <div id="pc-wiz-breakers"></div>
+        <div class="wiz-actions">
+          <button id="pc-wiz-back-3" class="btn-sm">← Назад</button>
+          <button id="pc-wiz-next-3" class="btn-sm btn-primary">Далее → Учёт и мониторинг</button>
+        </div>
+      </div>
+
+      <!-- Шаг 4: Учёт, ТТ, мониторинг, аксессуары -->
+      <div id="pc-wiz-step-4" class="wiz-step" style="display:none">
+        <h4>Шаг 4. Учёт, ТТ, мониторинг, аксессуары</h4>
+        <p class="muted" style="font-size:12px">Измерительные трансформаторы, приборы учёта, мониторинг и навесное оборудование. Можно включать для всех линий, только вводов или выборочно.</p>
+
+        <!-- Коммерческий учёт -->
+        <div class="pc-acc-section">
+          <div class="pc-acc-head">
+            <label class="pc-acc-toggle"><input type="checkbox" id="pc-meter-com-en"> <b>Коммерческий учёт</b> <span class="muted" style="font-size:11px">(АСКУЭ, класс 0.5S)</span></label>
+          </div>
+          <div id="pc-meter-com-body" class="pc-acc-body" style="display:none">
+            <div class="wiz-grid">
+              <label>Прибор учёта
+                <select id="pc-meter-com-type">
+                  <option value="mercury-230">Меркурий 230</option>
+                  <option value="mercury-234">Меркурий 234</option>
+                  <option value="ce303">Энергомера СЕ303</option>
+                  <option value="a1800" selected>Landis+Gyr E650 / A1800</option>
+                  <option value="iem3255">Schneider iEM3255</option>
+                  <option value="other">Другой (указать в примечании)</option>
+                </select>
+              </label>
+              <label>Точка установки
+                <select id="pc-meter-com-pos">
+                  <option value="input" selected>На вводе (до автомата)</option>
+                  <option value="after-input">После вводного автомата</option>
+                </select>
+              </label>
+              <label>Примечание
+                <input type="text" id="pc-meter-com-note" placeholder="класс 0.5S, учёт активной+реактивной">
+              </label>
+            </div>
+            <div class="muted" style="font-size:11px">Класс точности 0.5S обязателен для расчёта с сетевой компанией. Требует ТТ класса 0.5S (включается автоматически ниже).</div>
+          </div>
+        </div>
+
+        <!-- Технический учёт -->
+        <div class="pc-acc-section">
+          <div class="pc-acc-head">
+            <label class="pc-acc-toggle"><input type="checkbox" id="pc-meter-tech-en"> <b>Технический учёт</b> <span class="muted" style="font-size:11px">(внутренний, по отходящим)</span></label>
+          </div>
+          <div id="pc-meter-tech-body" class="pc-acc-body" style="display:none">
+            <div class="wiz-grid">
+              <label>Прибор учёта
+                <select id="pc-meter-tech-type">
+                  <option value="iem3155" selected>Schneider iEM3155</option>
+                  <option value="iem3255">Schneider iEM3255</option>
+                  <option value="pm2120">Schneider PM2120</option>
+                  <option value="mercury-236">Меркурий 236</option>
+                  <option value="ce308">Энергомера СЕ308</option>
+                  <option value="other">Другой</option>
+                </select>
+              </label>
+              <label>Охват
+                <select id="pc-meter-tech-scope">
+                  <option value="input">Только вводные</option>
+                  <option value="each">Каждая отходящая</option>
+                  <option value="selected" selected>Выборочно (ниже)</option>
+                </select>
+              </label>
+            </div>
+            <div id="pc-meter-tech-sel" class="pc-acc-list"></div>
+          </div>
+        </div>
+
+        <!-- Трансформаторы тока -->
+        <div class="pc-acc-section">
+          <div class="pc-acc-head">
+            <label class="pc-acc-toggle"><input type="checkbox" id="pc-ct-en"> <b>Трансформаторы тока (ТТ)</b> <span class="muted" style="font-size:11px">первичный номинал подбирается автоматически</span></label>
+          </div>
+          <div id="pc-ct-body" class="pc-acc-body" style="display:none">
+            <div class="wiz-grid">
+              <label>Охват
+                <select id="pc-ct-scope">
+                  <option value="input" selected>Только вводные</option>
+                  <option value="each">Каждый автомат</option>
+                  <option value="selected">Выборочно</option>
+                </select>
+              </label>
+              <label>Класс точности
+                <select id="pc-ct-class">
+                  <option value="0.5S" selected>0.5S (коммерческий учёт)</option>
+                  <option value="0.5">0.5 (техн. учёт)</option>
+                  <option value="1">1.0 (амперметр/индикация)</option>
+                  <option value="3">3 (защита)</option>
+                  <option value="5P10">5P10 (защита)</option>
+                </select>
+              </label>
+              <label>Мощность, ВА
+                <select id="pc-ct-va">
+                  <option value="2.5">2.5</option>
+                  <option value="5" selected>5</option>
+                  <option value="10">10</option>
+                  <option value="15">15</option>
+                  <option value="30">30</option>
+                </select>
+              </label>
+              <label>Вторичная обмотка
+                <select id="pc-ct-secondary">
+                  <option value="5" selected>5 А</option>
+                  <option value="1">1 А</option>
+                </select>
+              </label>
+            </div>
+            <div id="pc-ct-list" class="pc-acc-list"></div>
+            <div class="muted" style="font-size:11px">Авто-номинал: ближайший стандартный ряд ≥ 1.25 · Iₙ автомата (ГОСТ 7746 / IEC 61869-2).</div>
+          </div>
+        </div>
+
+        <!-- Мониторинг -->
+        <div class="pc-acc-section">
+          <div class="pc-acc-head">
+            <label class="pc-acc-toggle"><input type="checkbox" id="pc-mon-en"> <b>Мониторинг</b> <span class="muted" style="font-size:11px">мультиметры / анализаторы качества / дискретные входы</span></label>
+          </div>
+          <div id="pc-mon-body" class="pc-acc-body" style="display:none">
+            <div class="wiz-grid">
+              <label>Охват
+                <select id="pc-mon-scope">
+                  <option value="input" selected>Только вводные</option>
+                  <option value="each">Каждый автомат</option>
+                  <option value="selected">Выборочно</option>
+                </select>
+              </label>
+              <label>Устройство
+                <select id="pc-mon-device">
+                  <option value="multimeter" selected>Мультиметр (U, I, P, Q, S, cosφ)</option>
+                  <option value="pq-analyzer">Анализатор качества (THD, flicker)</option>
+                  <option value="aux-io">Дискр. вход (positions/trip)</option>
+                  <option value="relay-output">Сигнальное реле</option>
+                </select>
+              </label>
+              <label>Интерфейс
+                <select id="pc-mon-bus">
+                  <option value="modbus-rtu" selected>Modbus RTU (RS-485)</option>
+                  <option value="modbus-tcp">Modbus TCP</option>
+                  <option value="dry-contact">Сухие контакты</option>
+                  <option value="none">Только локальная индикация</option>
+                </select>
+              </label>
+            </div>
+            <div id="pc-mon-list" class="pc-acc-list"></div>
+          </div>
+        </div>
+
+        <!-- Аксессуары -->
+        <div class="pc-acc-section">
+          <div class="pc-acc-head">
+            <b>Принадлежности из каталога</b>
+            <button type="button" id="pc-acc-add" class="btn-sm">+ Добавить</button>
+          </div>
+          <div id="pc-acc-rows"></div>
+          <div class="muted" style="font-size:11px">Реле напряжения, лампы сигнализации, замки, обогрев, вентиляторы, термостаты, шинодержатели и т.п. Позиции войдут в спецификацию.</div>
+        </div>
+
+        <div class="wiz-actions">
+          <button id="pc-wiz-back-4" class="btn-sm">← Назад</button>
+          <button id="pc-wiz-next-4" class="btn-sm btn-primary">Далее → Итог</button>
+        </div>
+      </div>
+
+      <!-- Шаг 5: Итог -->
+      <div id="pc-wiz-step-5" class="wiz-step" style="display:none">
+        <h4>Шаг 5. Итоговая конфигурация</h4>
+        <div id="pc-wiz-summary"></div>
+        <div class="wiz-actions">
+          <button id="pc-wiz-back-5" class="btn-sm">← Назад</button>
+          <button id="pc-wiz-apply" class="btn-sm btn-primary">✓ Применить к схеме</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="pc-catalog-panel" data-reference-panel="1">
+      <div class="panel-head">
+        <h3>Справочник щитов</h3>
+        <div style="display:flex;gap:8px">
+          <button id="btn-add-manual" class="btn-sm">+ Добавить вручную</button>
+          <button id="btn-import-xlsx" class="btn-sm" title="Импорт XLSX-каталога: Supplier, Series, Variant, In_Nominal и т.д. (рус./англ.)">📊 Импорт XLSX</button>
+          <button id="btn-template-xlsx" class="btn-sm" title="Скачать шаблон XLSX с заголовками и примерами">⬇ Шаблон</button>
+          <input id="import-xlsx-input" type="file" accept=".xlsx" multiple style="display:none">
+          <button id="btn-clear-catalog" class="btn-sm btn-danger">Очистить</button>
+        </div>
+      </div>
+
+      <div id="panel-cascade-mount" style="margin-bottom:10px"></div>
+
+      <div id="catalog-list"></div>
+    </section>
+
+    <section class="panel" style="margin-top:20px">
+      <div class="panel-head">
+        <h3>Выбранная модель</h3>
+      </div>
+      <div id="selected-panel-details" class="empty">Выберите модель в каскаде выше.</div>
+    </section>
+    </div><!-- /.pc-content -->
+  </main>
+
+  <div id="flash" class="flash"></div>
+
+  <script type="module" src="panel-config.js"></script>
+  <script type="module" src="../../shared/reference-panels.js"></script>
+  <script type="module">
+    import 'shared/sidebar-resizer.js';
+    import { mountConfigSidebar, mountEmbeddedPicker } from 'shared/config-sidebar.js';
+    import { isEmbeddedMode } from 'shared/configuration-catalog.js';
+    if (isEmbeddedMode()) {
+      document.body.classList.add('pc-embed');
+      const slot = document.createElement('div');
+      document.querySelector('main')?.prepend(slot);
+      mountEmbeddedPicker({
+        kind: 'panel',
+        title: 'Выберите шаблон щита',
+        mountEl: slot,
+        onApply: (entry, targets) => {
+          try { window.parent?.postMessage({ type: 'panel-config:apply', entry, targetNodeIds: targets }, '*'); } catch {}
+          try { window.dispatchEvent(new CustomEvent('panel-config:pick', { detail: entry })); } catch {}
+        },
+      });
+    } else {
+      mountConfigSidebar({
+        kind: 'panel',
+        title: 'Конфигурации щитов',
+        onSelect: (entry) => {
+          const p = entry && entry.payload || {};
+          const set = (id, v) => {
+            const el = document.getElementById(id);
+            if (el && v != null && v !== '') el.value = v;
+          };
+          set('pc-name', p.name);
+          set('pc-kind', p.kind);
+          set('pc-loadKw', p.loadKw);
+          set('pc-voltage', p.voltage);
+          set('pc-inputs', p.inputs);
+          set('pc-outputs', p.outputs);
+          set('pc-ip', p.ip);
+          set('pc-form', p.form);
+          set('pc-reserve', p.reserve);
+          try { window.dispatchEvent(new CustomEvent('panel-config:load', { detail: entry })); } catch {}
+        },
+        onSave: () => {
+          const name = (document.getElementById('pc-name')?.value || '').trim();
+          const kind = document.getElementById('pc-kind')?.value || '';
+          const kw = document.getElementById('pc-loadKw')?.value || '';
+          const v = document.getElementById('pc-voltage')?.value || '';
+          const ip = document.getElementById('pc-ip')?.value || '';
+          return {
+            label: name || 'Щит',
+            description: [kind, kw && (kw + ' кВт'), v, ip].filter(Boolean).join(' · '),
+            payload: {
+              name, kind, loadKw: kw, voltage: v, ip,
+              inputs: document.getElementById('pc-inputs')?.value,
+              outputs: document.getElementById('pc-outputs')?.value,
+              form: document.getElementById('pc-form')?.value,
+              reserve: document.getElementById('pc-reserve')?.value,
+            },
+          };
+        },
+      });
+    }
+  </script>
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'panel-config', moduleTitle: 'НКУ' });
+  </script>
+</body>
+</html>

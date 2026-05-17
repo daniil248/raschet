@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Метеоданные</title>
+  <link rel="stylesheet" href="../../shared/styles/base.css">
+  <link rel="stylesheet" href="../../shared/app-header.css">
+  <link rel="stylesheet" href="meteo.css">
+  <!-- Chart.js: качественные графики вместо ручного canvas. UMD сборка ~73 КБ gzip. -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="../../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="../../shared/auth.js"></script>
+  <script src="../../shared/auth-gate.js" defer></script>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="importmap">
+  {"imports": {"shared/": "../../shared/", "engine/": "../../js/engine/", "cooling/": "../cooling/", "meteo/": "./", "service/": "../service/", "suppression-methods/": "../../lib/suppression-methods/"}}
+  </script>
+  <script type="module">
+    import { mountHeader } from 'shared/app-header.js';
+    import { mountHelp } from 'shared/help-panel.js';
+    mountHeader({ title: 'Метеоданные', home: '../../hub.html', moduleId: 'meteo', moduleTitle: 'Метеоданные' });
+    mountHelp({
+      module: 'meteo',
+      title: 'Модуль метеоданных',
+      usage: `
+        <h4>Назначение</h4>
+        <p>Сбор климатических рядов (температура, влажность, ветер) для расчёта PUE, freecooling-потенциала, диаграмм i-d и параметров климат-системы ЦОД. Plugin-арх источников: Open-Meteo REST, ASHRAE design conditions, ручная rp5 CSV.</p>
+        <h4>Tab «📋 Сводка»</h4>
+        <p>KPI + гистограмма температуры (интервалы 1°C, ось Y — дней/год) + сводка HDD/CDD.</p>
+        <h4>Tab «📊 Графики»</h4>
+        <p>Гистограмма влажности RH (интервалы 5%), линия среднемесячной T с min/max envelope, матрица «дней в интервале T × год».</p>
+        <h4>Tab «📋 Годовые часы (таблица)»</h4>
+        <p>Сводная таблица интервалов температуры с настраиваемыми столбцами (часы/год, дни/год, RH avg/min/max, ветер). Экспорт в CSV/Excel.</p>
+      `,
+      calcs: `
+        <h4>Производные показатели</h4>
+        <ul>
+          <li>T<sub>min/max/mean/99%</sub> — для подбора климат-системы по ASHRAE TC 9.9.</li>
+          <li>HDD/CDD — heating/cooling degree-days (база 18°C).</li>
+          <li>FreeCool часы — T &lt; 14°C (прямой) / T &lt; 18°C (косвенный).</li>
+          <li>ASHRAE design conditions — heating 99.6%/99% T<sub>db</sub>, cooling 0.4%/1%/2% T<sub>db</sub> с MCWB (упрощённая Stull-формула 2011).</li>
+        </ul>
+
+        <h4>Глобальный фильтр периода (v0.59.986)</h4>
+        <p>Все вкладки (Сводка, Графики, Annual hours, ASHRAE design) фильтруются единым селектором «📅 Период» над табами. Режимы: Все годы (среднее по выборке), Конкретный год, Период (от-до). Выбор сохраняется в LocalStorage.</p>
+
+        <h4>Расчёт чиллера / DX-системы (v0.59.987)</h4>
+        <p>Annual hours table → ❄ Chiller / DX → задайте rated capacity и тип системы. Table добавит столбцы Capacity / COP_mech / FC% / COP_eff / Power / Energy.</p>
+
+        <h5>Поддерживаемые типы систем</h5>
+        <ul>
+          <li><b>Чиллер (CHW)</b> — водяной контур охлаждённой воды. Поддерживает free-cooling (dry/wet).</li>
+          <li><b>DX air-cooled (RTU/сплит)</b> — direct expansion с воздушным конденсатором. Без FC.</li>
+          <li><b>DX с pumped refrigerant FC</b> — DX с насосом хладагента (Liebert/Vertiv pumped refrigerant economizer). Когда T<sub>amb</sub> достаточно холодная, компрессор отключается, и хладагент циркулирует насосом через outdoor coil → indoor coil напрямую.</li>
+        </ul>
+
+        <h5>Capacity и COP correction</h5>
+        <ul>
+          <li><code>Capacity(T) = ratedCap × (1 + capCorr × (T<sub>amb</sub> − T<sub>rated</sub>))</code> — холодопроизводительность снижается с ростом T<sub>amb</sub> (горячий конденсатор → хуже теплоотдача). Типично −1.5%/°C для air-cooled.</li>
+          <li><code>COP<sub>mech</sub>(T) = ratedCOP × (1 + 0.02 × (T<sub>rated</sub> − T<sub>amb</sub>))</code> clamp [0.6×; 1.8×]. Carnot-подобная кривая: чем холоднее наружный воздух, тем эффективнее компрессор.</li>
+        </ul>
+
+        <h5>Free-cooling chiller (dry/wet)</h5>
+        <ul>
+          <li><b>dry</b> — drycooler / dry cooler, T<sub>ref</sub> = T<sub>db</sub>. Простой, без водопотребления, но меньше часов FC.</li>
+          <li><b>wet</b> — cooling tower / градирня, T<sub>ref</sub> = T<sub>wb</sub> (Stull 2011 из средней RH в интервале). Эффективнее (запас 5–10°C), но требует подпитки.</li>
+          <li>FC fraction (0..1): <code>fc = clamp((CHWS − T<sub>ref</sub>) / approach, 0, 1)</code>.</li>
+          <li>100% когда T<sub>ref</sub> ≤ CHWS − approach; 0% когда T<sub>ref</sub> ≥ CHWS; между — линейный partial FC.</li>
+        </ul>
+
+        <h5>DX pumped refrigerant FC</h5>
+        <ul>
+          <li>Бинарный режим: <code>fc = 1</code> если T<sub>db</sub> ≤ threshold, иначе <code>fc = 0</code>.</li>
+          <li>Threshold обычно T<sub>indoor_supply</sub> − 5°C (для ЦОД supply ≈ 18°C → 13°C).</li>
+          <li>P<sub>aux</sub> = 2–4% от ratedCap (только насос хладагента).</li>
+        </ul>
+
+        <h5>Power и Energy</h5>
+        <ul>
+          <li><code>P<sub>mech</sub> = (1 − fc) × Capacity / COP<sub>mech</sub></code> — компрессор.</li>
+          <li><code>P<sub>aux</sub> = aux% × ratedCap / 100</code> (только если fc &gt; 0) — насосы / вентиляторы FC.</li>
+          <li><code>P<sub>total</sub> = P<sub>mech</sub> + P<sub>aux</sub></code>; COP<sub>eff</sub> = Capacity / P<sub>total</sub> (15–30 при 100% FC).</li>
+          <li><code>Energy = P<sub>total</sub> × часы_в_интервале</code>; Σ по всем интервалам = годовое потребление.</li>
+        </ul>
+
+        <h5>Источники методики</h5>
+        <ul>
+          <li>ASHRAE Handbook — Fundamentals (2021) гл. 18 «Refrigeration» — capacity correction, COP curves.</li>
+          <li>ASHRAE Standard 90.1 — IPLV bin-method с economizer modifier.</li>
+          <li>Vertiv / Liebert Pumped Refrigerant Economizer whitepapers — DX-FC threshold logic.</li>
+          <li>Stull R. (2011) «Wet-Bulb Temperature from Relative Humidity and Air Temperature» — упрощённая формула T<sub>wb</sub> с погрешностью ±1°C при RH 5–99%.</li>
+          <li>ASHRAE TC 9.9 «Thermal Guidelines for Data Processing Environments» — рекомендуемые CHWS температуры (W3/W4 → 18–22°C).</li>
+        </ul>
+
+        <p style="font-size:11px;color:#94a3b8;margin-top:10px">
+          ⚠ Это упрощённая методика для быстрой оценки. Не учитывает part-load на самой нагрузке (предполагается работа на rated capacity), реальные кривые COP(T_cond) производителя, defrost-циклы. Для точного расчёта используйте симулятор IES / EnergyPlus с performance maps конкретного оборудования.
+        </p>
+      `
+    });
+  </script>
+
+  <main class="mt-main">
+    <aside class="mt-sidebar rs-sidebar">
+      <div class="mt-section">
+        <h3>📊 Датасеты</h3>
+        <div id="mt-datasets-list" class="mt-datasets-list"></div>
+      </div>
+      <div class="mt-section">
+        <!-- Кнопки импорта генерируются динамически из meteo/sources/index.js. -->
+        <h3>➕ Импорт</h3>
+      </div>
+      <!-- Phase 35: история загруженных данных + корзина. -->
+      <div class="mt-section">
+        <h3 title="Журнал всех импортов/удалений датасетов в этом проекте. Удалённые датасеты можно восстановить из Корзины.">📜 История</h3>
+        <button type="button" id="mt-btn-history" class="mt-action-btn" title="Открыть полный журнал событий: импорты, обновления, удаления.">📜 Журнал…</button>
+        <button type="button" id="mt-btn-trash" class="mt-action-btn" title="Корзина: удалённые датасеты, можно восстановить или удалить навсегда.">🗑 Корзина <span id="mt-trash-count" style="margin-left:4px;color:#92400e"></span></button>
+      </div>
+    </aside>
+
+    <section class="mt-content">
+      <div class="mt-content-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div>
+          <h2 id="mt-active-name">— нет датасета —</h2>
+          <div class="mt-content-meta">
+            <span class="muted" id="mt-active-meta"></span>
+          </div>
+        </div>
+        <!-- v0.59.995: cross-links/return-buttons рендерятся динамически
+             в зависимости от mode и referrer. См. meteo.js. -->
+        <div id="mt-content-actions" style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;font-size:12px"></div>
+      </div>
+
+      <!-- v0.60.31: embed-баннер — большой видимый блок при работе из embed -->
+      <div id="mt-embed-banner" hidden></div>
+
+      <div id="mt-empty" class="mt-empty">
+        <div>
+          <h3>Нет загруженных метеоданных</h3>
+          <p class="muted">Слева — кнопки импорта. Open-Meteo REST загружается автоматически по координатам, ASHRAE — design-условия из 10 лет архива, rp5 — файлом.</p>
+        </div>
+      </div>
+
+      <div id="mt-active-pane" class="mt-active-pane" hidden>
+        <!-- v0.59.986: ГЛОБАЛЬНЫЙ фильтр периода — применяется ко всем
+             вкладкам (Сводка/Графики/Annual hours/ASHRAE design). -->
+        <div class="mt-global-filter" title="Фильтр периода применяется ко всем вкладкам и графикам.">
+          <span class="mt-gf-label">📅 Период:</span>
+          <select id="mt-filter-mode" title="Режим фильтра: «Все годы» — усреднение по всем доступным годам; «Конкретный год» — выборка только за один год; «Период от-до» — произвольный диапазон дат YYYY-MM-DD">
+            <option value="all">Все годы (среднее)</option>
+            <option value="year">Конкретный год</option>
+            <option value="period">Период (от — до)</option>
+          </select>
+          <select id="mt-filter-year" title="Календарный год выборки. Список заполняется автоматически из доступных в датасете годов." hidden></select>
+          <span id="mt-filter-period-wrap" class="mt-gf-period" hidden>
+            <input type="date" id="mt-filter-from" title="Начальная дата периода (включительно). Формат YYYY-MM-DD.">
+            <span class="mt-gf-dash">—</span>
+            <input type="date" id="mt-filter-to" title="Конечная дата периода (включительно). Формат YYYY-MM-DD.">
+          </span>
+          <span class="mt-gf-info" id="mt-filter-info" title="Сводка по выбранному периоду: количество записей и фактический диапазон дат."></span>
+        </div>
+
+        <div class="mt-tabs">
+          <button type="button" class="mt-tab active" data-tab="summary"
+                  title="Сводка: ключевые KPI (T средняя/мин/макс/99%, FreeCool часы) + гистограмма распределения температуры по интервалам 1°C + табличная сводка (HDD/CDD).">📋 Сводка</button>
+          <button type="button" class="mt-tab" data-tab="charts"
+                  title="Графики: распределение влажности RH (интервалы 5%), среднемесячная T с диапазоном min..max, роза ветров (16 румбов), сводная матрица «дней с T в интервале × год».">📊 Графики</button>
+          <button type="button" class="mt-tab" data-tab="annual"
+                  title="Сводная таблица годовых часов: интервалы температуры наружного воздуха (°C, шаг 1°C) × часы/дни года, с настраиваемыми столбцами (RH, ветер). Расчёт чиллеров — в отдельном модуле «Подбор холодильных систем». Экспорт CSV.">📐 Годовые часы</button>
+          <button type="button" class="mt-tab" data-tab="ashrae"
+                  title="ASHRAE Design Conditions (HoF гл. 14): расчётные температуры heating 99.6%/99.0% и cooling 0.4%/1.0%/2.0% с MCWB и MCDP.">🌡 ASHRAE design</button>
+        </div>
+
+        <div class="mt-tab-pane" data-pane="summary">
+          <div class="mt-kpi-bar">
+            <div class="mt-kpi" title="Среднее арифметическое температуры по всем записям выбранного периода. T̄ = Σ T_i / N. Используется как baseline для оценки климатического региона.">
+              <span class="mt-kpi-lbl">T средн</span><span class="mt-kpi-val" id="mt-kpi-tmean">—</span></div>
+            <div class="mt-kpi" title="Минимальная зафиксированная температура за период. Используется как абсолютный экстремум; для расчёта систем отопления — берите ASHRAE design 99.6% (вкладка ASHRAE design), не абсолютный мин.">
+              <span class="mt-kpi-lbl">T min</span><span class="mt-kpi-val" id="mt-kpi-tmin">—</span></div>
+            <div class="mt-kpi" title="Максимальная зафиксированная температура за период. Аналог абсолютного экстремума; для расчёта охлаждения — берите ASHRAE design 0.4% (вкладка ASHRAE design).">
+              <span class="mt-kpi-lbl">T max</span><span class="mt-kpi-val" id="mt-kpi-tmax">—</span></div>
+            <div class="mt-kpi" title="99-й перцентиль температуры — T, ниже которой 99% записей. Используется как «расчётная мин. температура» (опираясь на ASHRAE 99% T_db). Защищает от выбросов абсолютного минимума.">
+              <span class="mt-kpi-lbl">T 99%</span><span class="mt-kpi-val" id="mt-kpi-t99">—</span></div>
+            <div class="mt-kpi" title="Часы в году с T_amb < 14°C — потенциал прямого фрикулинга (без чиллера). Косвенный (через теплообменник) расширяет порог до ~18°C. См. Annual hours table → Chiller/DX → free-cooling.">
+              <span class="mt-kpi-lbl">FreeCool ч</span><span class="mt-kpi-val" id="mt-kpi-fc">—</span></div>
+            <div class="mt-kpi" title="Количество строк (записей) в выборке после применения фильтра периода. Один час = одна запись. 8760 = полный год.">
+              <span class="mt-kpi-lbl">Записей</span><span class="mt-kpi-val" id="mt-kpi-n">—</span></div>
+          </div>
+
+          <div class="mt-section-card">
+            <h3 title="Гистограмма распределения температуры наружного воздуха. Каждый столбец = 1°C интервал; высота = сколько дней в году T попадает в этот интервал. Зелёная подсветка слева — потенциал прямого фрикулинга (T &lt; 14°C).">📈 Распределение температуры (интервалы по 1 °C, ось Y — дней / год)</h3>
+            <div class="mt-chart-box"><canvas id="mt-hist-canvas"></canvas></div>
+          </div>
+
+          <div class="mt-section-card">
+            <h3>📋 Сводка</h3>
+            <div id="mt-summary"></div>
+          </div>
+        </div>
+
+        <div class="mt-tab-pane" data-pane="charts" hidden>
+          <div class="mt-section-card">
+            <h3 title="Гистограмма распределения относительной влажности. Интервалы по 5%, высота столбца = сколько дней в году RH попадает в этот интервал. Помогает оценить нагрузку на систему увлажнения/осушения.">💧 Распределение относительной влажности (интервалы 5 %, ось Y — дней / год)</h3>
+            <div class="mt-chart-box"><canvas id="mt-rh-canvas"></canvas></div>
+          </div>
+          <div class="mt-section-card">
+            <h3>🗓 Среднемесячная температура (с диапазоном min…max)</h3>
+            <div class="mt-chart-box"><canvas id="mt-monthly-canvas"></canvas></div>
+          </div>
+          <div class="mt-section-card">
+            <h3>🧭 Роза ветров (16 румбов, цвет = средняя сила)</h3>
+            <!-- Wind rose: canvas (не Chart.js), нужен фиксированный pixel-buffer 480×480. -->
+            <div class="mt-windrose-wrap"><canvas id="mt-windrose-canvas" width="480" height="480"></canvas></div>
+          </div>
+          <div class="mt-section-card">
+            <h3 title="Сводная матрица: строки = интервалы T (1°C), колонки = годы. В ячейке — кол-во дней этого года, в которых среднесуточная T попадала в данный интервал. Последняя колонка — среднее по всем годам. Помогает оценить год-к-году вариативность климата.">📅 Дней в интервале T × год</h3>
+            <p class="muted" style="font-size:11.5px;margin:0 0 8px">Каждая ячейка — кол-во дней (по среднесуточной T) в указанном интервале T в данном году. Последняя колонка — среднее по годам.</p>
+            <div id="mt-pivot-table" class="mt-table-scroll"></div>
+          </div>
+        </div>
+
+        <div class="mt-tab-pane" data-pane="annual" hidden>
+          <div class="mt-section-card">
+            <div class="mt-annual-toolbar">
+              <h3 style="margin:0" title="Сводная таблица: интервалы температуры наружного воздуха (целочисленные диапазоны 1°C) × агрегированные показатели (часы/год, дни/год, RH avg/min/max, ветер). Расчёт мощности чиллера/DX и годовой энергии — в отдельном модуле «Подбор холодильных систем».">📐 Годовые часы (сводная таблица)</h3>
+              <span class="muted" style="flex:1;font-size:11.5px" title="Период выборки задаётся ГЛОБАЛЬНЫМ фильтром выше (📅 Период).">Интервалы температуры наружного воздуха × часы/дни в году.</span>
+              <a href="../cooling/" class="mt-btn-ghost" style="text-decoration:none"
+                 title="Перейти в модуль «Подбор холодильных систем» — расчёт чиллеров/DX/free-cooling по этим климатическим данным.">❄ Подбор оборудования →</a>
+              <button type="button" class="mt-btn-ghost" id="mt-cols-btn"
+                      title="Выбор отображаемых столбцов: hours/days/% года, RH avg/min/max, ветер.">🔧 Столбцы</button>
+              <button type="button" class="mt-btn-primary" id="mt-export-btn"
+                      title="Экспорт текущей таблицы (с применённым фильтром и активными столбцами) в CSV. Файл UTF-8 с BOM, открывается в Excel.">📥 Экспорт CSV</button>
+            </div>
+            <div class="mt-col-picker-wrap" id="mt-col-picker-wrap" hidden></div>
+            <div id="mt-annual-table" class="mt-table-scroll"></div>
+          </div>
+        </div>
+
+        <div class="mt-tab-pane" data-pane="ashrae" hidden>
+          <div class="mt-section-card">
+            <h3>🌡 ASHRAE Design Conditions (HoF гл. 14)</h3>
+            <div id="mt-ashrae-block"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="meteo.js"></script>
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'meteo', moduleTitle: 'Метеоданные' });
+  </script>
+</body>
+</html>

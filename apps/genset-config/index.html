@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · ДГУ-конфигуратор</title>
+  <link rel="stylesheet" href="../../shared/styles/base.css">
+  <link rel="stylesheet" href="../../shared/app-header.css">
+  <link rel="stylesheet" href="../../shared/configurator-shell.css">
+  <link rel="stylesheet" href="genset-config.css">
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="importmap">
+  {"imports": {"shared/": "../../shared/", "engine/": "../../js/engine/", "cooling/": "../cooling/", "meteo/": "../meteo/", "service/": "../service/", "suppression-methods/": "../../lib/suppression-methods/"}}
+  </script>
+  <script type="module">
+    import { mountHeader } from 'shared/app-header.js';
+    mountHeader({ title: 'ДГУ-конфигуратор', home: '../../hub.html' });
+  </script>
+
+  <main class="dg-main rs-cfg-shell">
+    <aside class="dg-sidebar rs-cfg-sidebar rs-sidebar">
+      <!-- v0.60.81: project context picker — состояние ДГУ-расчёта сохраняется
+           per-project. Переключение через select. -->
+      <div id="dg-project-context" class="dg-project-context"
+           title="Контекст проекта. Параметры расчёта и выбранная модель сохраняются per-project."></div>
+
+      <div class="dg-section">
+        <h3 title="Параметры расчёта мощности ДГУ. Нагрузка = IT + cooling + UPS_loss + aux. Mode определяет допустимую нагрузку: ESP — аварийный, PRP — основной, COP — постоянный 24/7.">⚙ Параметры</h3>
+
+        <label class="dg-lbl" title="Суммарная электрическая нагрузка объекта (кВт): IT-стойки + охлаждение + потери ИБП + aux. Для ЦОД — обычно 1.4-1.6 × IT-нагрузка.">
+          <span>Нагрузка, кВт:</span>
+          <input type="number" id="dg-loadKw" min="0" step="10" value="500">
+        </label>
+
+        <label class="dg-lbl" title="Режимы по ISO 8528 (части 1 и 13). Подробное описание в tooltip каждой опции. Расчёт required_kW = load_kW / maxLoadFactor.">
+          <span>Режим (ISO 8528):</span>
+          <select id="dg-mode">
+            <!-- v0.60.315: порядок от ПРОСТЫХ к ТРЕБОВАТЕЛЬНЫМ режимам.
+                 По возрастанию суммы (часы работы × load factor): ESP (резерв 200ч)
+                 → LTP (500ч) → PRP (без лимита, 70%) → COP (24/7, 100%). -->
+            <optgroup label="Общие (ISO 8528-1)">
+              <option value="ESP" selected title="Emergency Standby Power. До 200 ч/год, ≤25 ч непрерывно. Без перегрузки. САМЫЙ ПРОСТОЙ режим.">ESP — аварийный (200 ч/год)</option>
+              <option value="LTP" title="Limited-Time Prime. До 500 ч/год при 100% нагрузке. Без перегрузки.">LTP — ограниченный (500 ч/год)</option>
+              <option value="PRP" title="Prime Power. Постоянный режим без лимита часов. Средняя нагрузка ≤70% nameplate. 10% перегрузка 1ч из 12.">PRP — основной (без лимита, 70%)</option>
+              <option value="COP" title="Continuous Operating Power. 24/7 при 100% постоянной нагрузке. САМЫЙ ТРЕБОВАТЕЛЬНЫЙ режим.">COP — непрерывный 24/7, 100%</option>
+            </optgroup>
+            <optgroup label="ЦОД (ISO 8528-13)">
+              <option value="DCS" title="Data Centre Standby Power. Резерв ЦОД с запуском ≤10 сек (критично для UPS bypass). До 200 ч/год.">DCS — ЦОД резервный</option>
+              <option value="DCP" title="Data Centre Prime Power. Средняя нагрузка ≤85% (PRP-аналог для ЦОД). Без лимита часов.">DCP — ЦОД основной (85%)</option>
+              <option value="DCC" title="Data Centre Continuous Power. 24/7 для критической IT-нагрузки. Допуск 10% переменной + запуск ≤10 сек.">DCC — ЦОД непрерывный 24/7</option>
+              <option value="MCSP" title="Mission Critical Standby Power. Tier IV ЦОД и критические объекты. Синхронная параллельная работа с UPS bypass.">MCSP — Tier IV критический</option>
+            </optgroup>
+          </select>
+        </label>
+
+        <label class="dg-lbl" title="Резервирование:&#10;• N — без резерва.&#10;• N+1 — одна резервная единица в горячем резерве.&#10;• 2N — полное дублирование (две независимые установки).">
+          <span>Резервирование:</span>
+          <select id="dg-redundancy">
+            <option value="N" selected>N (без резерва)</option>
+            <option value="N+1">N+1</option>
+            <option value="2N">2N (полное)</option>
+          </select>
+        </label>
+
+        <label class="dg-lbl" title="Запас мощности на нерасчётные нагрузки и эффективность охлаждения. Default 15%.">
+          <span>Margin, %:</span>
+          <input type="number" id="dg-margin" min="0" max="50" step="5" value="15">
+        </label>
+
+        <h4 class="dg-section-h4" title="Climate derate по ISO 3046-1: высота, T наружного воздуха, влажность снижают отдаваемую мощность от nameplate.">🌡 Климат / высота</h4>
+
+        <label class="dg-lbl" title="Высота над уровнем моря. Derate −3% за каждые 300м выше 100м.">
+          <span>Высота, м:</span>
+          <input type="number" id="dg-altitude" min="0" max="5000" step="100" value="0">
+        </label>
+
+        <label class="dg-lbl" title="Расчётная T наружного воздуха при работе ДГУ. Derate −2.5% за каждые 5°C выше 25°C.">
+          <span>T наружн., °C:</span>
+          <input type="number" id="dg-tamb" min="-40" max="60" step="1" value="25">
+        </label>
+
+        <label class="dg-lbl" title="Относительная влажность. Derate −1% за каждые 25% выше 60% RH.">
+          <span>Влажность, %:</span>
+          <input type="number" id="dg-rh" min="0" max="100" step="5" value="60">
+        </label>
+
+        <label class="dg-lbl" title="Профиль дирейтинга двигателя. По умолчанию (auto) — определяется по выбранной модели: для Perkins 1106A-70TAG2 точные паспортные данные, для других известных серий — типовая кривая, иначе generic ISO 3046-1 (консервативный).">
+          <span>Профиль derate:</span>
+          <select id="dg-engine-profile">
+            <option value="">Auto (по модели)</option>
+            <option value="iso-naturally-aspirated">Generic ISO 3046-1 (нормативная)</option>
+            <option value="modern-turbo-aftercooled">Современный turbo+aftercooled</option>
+            <option value="perkins-1106a-70tag2">Perkins 1106A-70TAG2 (паспорт)</option>
+            <option value="perkins-4000-series">Perkins 4000-series (1306/4006/4008)</option>
+            <option value="cummins-qs-series">Cummins QSB/QSL/QSX</option>
+            <option value="cat-c-series">Caterpillar C-series</option>
+            <option value="volvo-tad-twd">Volvo Penta TAD/TWD</option>
+            <option value="mtu-large">MTU 12V/16V 2000/4000</option>
+          </select>
+          <!-- v0.60.319: показываем что auto-detect выбрал — ранее Пользователь
+               не замечал, что профиль можно/нужно менять, и не видел результат
+               авто-определения. -->
+          <div id="dg-profile-auto-hint" style="font-size:11px;margin-top:3px;padding:4px 6px;background:#dbeafe;border-radius:3px;color:#1e3a8a;line-height:1.4;display:none"></div>
+        </label>
+
+        <h4 class="dg-section-h4" title="Параметры топливной системы.">⛽ Топливо</h4>
+
+        <label class="dg-lbl" title="Желаемое время автономной работы (часы). Tier IV ЦОД — обычно 72 ч (3 суток). Tier III — 12-24 ч.">
+          <span>Автономия, ч:</span>
+          <input type="number" id="dg-autonomy" min="1" max="168" step="1" value="24">
+        </label>
+
+        <h4 class="dg-section-h4">📦 Подбор</h4>
+        <label class="dg-lbl" title="Производитель. ☐ — все.">
+          <span>Вендор:</span>
+          <select id="dg-vendor">
+            <option value="">Все вендоры</option>
+          </select>
+        </label>
+        <button type="button" id="dg-recalc" class="rs-cfg-btn-primary" style="width:100%;margin-top:6px"
+                title="Пересчитать все параметры по введённым данным.">🔄 Пересчитать</button>
+      </div>
+    </aside>
+
+    <section class="dg-content rs-cfg-content">
+      <div class="dg-content-header">
+        <h2 id="dg-active-name">⚡ ДГУ-конфигуратор</h2>
+        <div class="dg-content-meta">
+          <span class="muted">Расчёт по ISO 8528-1 / ISO 3046-1 + подбор из каталога Caterpillar / Cummins / Volvo Penta / FG Wilson.</span>
+        </div>
+      </div>
+
+      <!-- Раздел 1: Расчётные параметры -->
+      <div class="rs-cfg-card">
+        <h3 title="Результат расчёта необходимой мощности с учётом режима, резервирования, climate derate и margin.">📊 Расчёт мощности</h3>
+        <div id="dg-calc-result"></div>
+      </div>
+
+      <!-- Раздел 2: Подбор -->
+      <div class="rs-cfg-card">
+        <h3 title="Каталог типовых ДГУ с автоматическим подбором ближайшей модели по требуемой мощности.">📦 Подбор оборудования</h3>
+        <div id="dg-suggest-result"></div>
+      </div>
+
+      <!-- Раздел 3: Топливо -->
+      <div class="rs-cfg-card">
+        <h3 title="Расчёт расхода топлива и объёма бака для заданной автономии.">⛽ Топливная система</h3>
+        <div id="dg-fuel-result"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="rs-footer-mount"></div>
+  <script type="module">
+    import { mountFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
+    mountFooter({ appVersion: APP_VERSION, moduleId: 'genset-config', moduleTitle: 'ДГУ-конфигуратор' });
+  </script>
+
+  <script type="module" src="genset-config.js"></script>
+</body>
+</html>

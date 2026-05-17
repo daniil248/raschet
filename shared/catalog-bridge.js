@@ -63,7 +63,7 @@ async function _loadBatteries() {
   // первым кандидатом был './battery-catalog.js' (shared/), который дал
   // постоянный 404 в консоли. Убрали несуществующий путь.
   try {
-    const m = await import('../battery/battery-catalog.js');
+    const m = await import('../apps/battery/battery-catalog.js');
     const list = m.listBatteries ? m.listBatteries() : [];
     return list.map(fromBatteryRecord).filter(Boolean);
   } catch (e) { console.warn('[catalog-bridge] batteries', e.message); return []; }
@@ -283,7 +283,7 @@ async function _subscribeSameTab() {
     { path: './panel-catalog.js',         hook: 'onPanelsChange' },
     { path: './ups-catalog.js',           hook: 'onUpsesChange' },
     // v0.59.871: убрали несуществующий './battery-catalog.js' — давал 404.
-    { path: '../battery/battery-catalog.js', hook: 'onBatteriesChange' },
+    { path: '../apps/battery/battery-catalog.js', hook: 'onBatteriesChange' },
     { path: './transformer-catalog.js',   hook: 'onTransformersChange' },
     { path: './cable-types-catalog.js',   hook: 'onCableTypesChange' },
   ];

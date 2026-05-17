@@ -30,7 +30,7 @@
       "id": "cable",
       "name": "Расчёт кабельной линии",
       "description": "Подбор сечения кабеля по IEC / ПУЭ с учётом температуры, группирования, способа прокладки, экономической плотности тока и падения напряжения",
-      "path": "cable/",
+      "path": "apps/cable/",
       "icon": "orange",
       "badge": "new",
       "requires": [
@@ -53,7 +53,7 @@
       "id": "schematic",
       "name": "Схема принципиальная",
       "description": "Редактор принципиальных электрических схем и рабочей документации. Библиотека IEC 60617-DB-12M, листы ISO 216 (A4…A0), основная надпись по ISO 7200",
-      "path": "schematic/",
+      "path": "apps/schematic/",
       "icon": "purple",
       "badge": "new",
       "requires": [
@@ -73,7 +73,7 @@
       "id": "sketch",
       "name": "Скетч (drawio)",
       "description": "ВРЕМЕННО ОТКЛЮЧЁН (v0.60.179). Полнофункциональный drawio (jgraph/drawio, Apache 2.0) интегрирован через embed iframe + postMessage protocol. Все библиотеки drawio (BPMN, AWS, Azure, GCP, networking, electrical, UML, ...). Multi-page, undo/redo, экспорт SVG/PNG/XML. Self-hosted из GitHub release или fallback на embed.diagrams.net. Update: bash sketch/update-drawio.sh. v0.60.168: связи с данными других модулей Raschet (стойки, схемы, НКУ, ИБП, РУ-СН, трансформаторы, кабели) — sidebar «🔗 Связи» + метка-ссылка в drawio-холсте.",
-      "path": "sketch/",
+      "path": "apps/sketch/",
       "icon": "purple",
       "badge": "wip",
       "requires": [
@@ -94,7 +94,7 @@
       "id": "battery",
       "name": "Расчёт АКБ",
       "description": "Подбор ёмкости и конфигурации АКБ для ИБП. Загрузка таблиц разряда производителей (Kehua, Panasonic, SVC, Sonnenschein) в XLSX и точный расчёт по ним",
-      "path": "battery/",
+      "path": "apps/battery/",
       "icon": "green",
       "badge": "new",
       "requires": [
@@ -120,7 +120,7 @@
       "id": "ups-config",
       "name": "Конфигуратор ИБП",
       "description": "Подбор конфигурации ИБП по нагрузке: тип (моноблок / модульный), резервирование N+X, параметры входа и батарейной цепи",
-      "path": "ups-config/",
+      "path": "apps/ups-config/",
       "icon": "purple",
       "badge": "wip",
       "requires": [
@@ -144,7 +144,7 @@
       "id": "panel-config",
       "name": "Конфигуратор НКУ (LV щит)",
       "description": "Низковольтное комплектное устройство до 1 кВ по IEC 61439 (TTA/PTTA): ВРУ, АВР, ЩС, ЩО, ЩК. Подбор оболочки, вводные/отходящие автоматы, секционирование, формы разделения 1-4",
-      "path": "panel-config/",
+      "path": "apps/panel-config/",
       "icon": "orange",
       "badge": "new",
       "requires": [
@@ -166,7 +166,7 @@
       "id": "mv-config",
       "name": "Конфигуратор РУ СН",
       "description": "Распределительные устройства среднего напряжения 6-35 кВ: моноблоки SF6 (RM6, FafeRing) и сборные (ЩО-70). Справочник + wizard-подбор с конфигурированием ячеек",
-      "path": "mv-config/",
+      "path": "apps/mv-config/",
       "icon": "orange",
       "badge": "new",
       "requires": [
@@ -187,7 +187,7 @@
       "id": "transformer-config",
       "name": "Конфигуратор трансформатора",
       "description": "Подбор силового трансформатора: мощность, первичное / вторичное напряжение, группа соединений, потери ХХ / КЗ, uk, тип охлаждения",
-      "path": "transformer-config/",
+      "path": "apps/transformer-config/",
       "icon": "blue",
       "badge": "wip",
       "requires": [
@@ -209,7 +209,7 @@
       "id": "reports",
       "name": "Шаблоны отчётов",
       "description": "Подготовка и хранение шаблонов оформления отчётов: страница, поля, логотип, колонтитулы, стили заголовков. Используются подпрограммами для экспорта в PDF и DOCX",
-      "path": "reports/",
+      "path": "apps/reports/",
       "icon": "green",
       "badge": "new",
       "requires": [
@@ -230,7 +230,7 @@
       "id": "catalog",
       "name": "Каталог и библиотека элементов",
       "description": "Единый источник оборудования платформы: элементы (ИБП, щиты, АКБ, трансформаторы, автоматы, корпуса, климат, кабели), цены по датам и контрагентам, импорт прайс-листов XLSX, аналитика. Страница elements/ объединена с catalog/ во избежание дублирования UI",
-      "path": "catalog/",
+      "path": "apps/catalog/",
       "icon": "blue",
       "badge": "new",
       "requires": [
@@ -275,7 +275,7 @@
       "id": "tech-workspace",
       "name": "Технолог ЦОД",
       "description": "Предпроектная стадия ЦОД: концепция объекта (стойки, IT-нагрузка, ИБП, климат, ввод ТП/ДГУ, PDU, площади), multi-variant compare, handoff в детальное проектирование. Два режима входа — список параметров или план зала.",
-      "path": "tech-workspace/",
+      "path": "apps/tech-workspace/",
       "icon": "purple",
       "badge": "wip",
       "requires": [
@@ -301,7 +301,7 @@
       "id": "logistics",
       "name": "Рабочее место логиста",
       "description": "Отправления, склады, тарифы перевозчиков, калькулятор доставки. Интеграция с контрагентами и BOM проекта",
-      "path": "logistics/",
+      "path": "apps/logistics/",
       "icon": "green",
       "badge": "new",
       "requires": [
@@ -325,7 +325,7 @@
       "id": "projects",
       "name": "Управление проектами",
       "description": "Реестр проектов компании. Создание / редактирование / удаление проектов. Только для project-manager / ГИП.",
-      "path": "projects/",
+      "path": "apps/projects/",
       "icon": "blue",
       "badge": "internal",
       "requires": [
@@ -374,7 +374,7 @@
       "id": "meteo",
       "name": "Метеоданные",
       "description": "Stand-alone модуль метеоданных: хранит наборы почасовых метеоизмерений («датасеты») внутри активного проекта, загрузка из источников (Open-Meteo, ASHRAE, RP5, CSV), графики и годовые таблицы.",
-      "path": "meteo/",
+      "path": "apps/meteo/",
       "icon": "blue",
       "badge": "active",
       "requires": [
@@ -395,7 +395,7 @@
       "id": "service",
       "name": "Сервис: монтаж и ТО",
       "description": "Расчёт стоимости технического обслуживания и монтажных работ: формирование себестоимости и цены для клиента по нарядам (проектным или разовым), генерация КП. Импорт позиций из любого инженерного модуля.",
-      "path": "service/",
+      "path": "apps/service/",
       "icon": "green",
       "badge": "active",
       "requires": [
@@ -418,7 +418,7 @@
       "id": "scs-config",
       "name": "Компоновщик шкафа",
       "description": "Конфигуратор СКС / телеком-оборудования: содержимое стойки (юниты, заглушки, PDU-раскладка), реестр шкафов проекта, инвентаризация.",
-      "path": "scs-config/",
+      "path": "apps/scs-config/",
       "icon": "orange",
       "badge": "active",
       "requires": [
@@ -439,7 +439,7 @@
       "id": "scs-design",
       "name": "Проектирование СКС",
       "description": "Проектирование структурированной кабельной системы: мастер меж-шкафных связей (выбор стоек проекта, создание связей юнит↔юнит, список связей с типом кабеля).",
-      "path": "scs-design/",
+      "path": "apps/scs-design/",
       "icon": "orange",
       "badge": "new",
       "requires": [
@@ -459,7 +459,7 @@
       "id": "rack-config",
       "name": "Конфигуратор стойки",
       "description": "Конфигуратор 19\" стойки: каталог готовых комплектов или произвольная сборка (корпус, двери, стенки, крыша/пол, вводы, заглушки U); PDU со смешанным набором розеток и проверкой ёмкости.",
-      "path": "rack-config/",
+      "path": "apps/rack-config/",
       "icon": "orange",
       "badge": "active",
       "requires": [
@@ -481,7 +481,7 @@
       "id": "mdc-config",
       "name": "Конфигуратор модульного ЦОД",
       "description": "Конфигуратор модульного ЦОД серии GDM-600: цепочка типовых модулей, стены/рама/фальшпол, тамбур, ODU на балконе, климат, cosφ, загрузка ИБП, Li-ion АКБ, трубопровод АГПТ.",
-      "path": "mdc-config/",
+      "path": "apps/mdc-config/",
       "icon": "purple",
       "badge": "wip",
       "requires": [
@@ -500,7 +500,7 @@
       "id": "genset-config",
       "name": "ДГУ-конфигуратор",
       "description": "Подбор дизель-генераторной установки по нагрузке с учётом режима (ESP/PRP/COP), резервирования, высоты над уровнем моря, температуры наружного воздуха и автономии.",
-      "path": "genset-config/",
+      "path": "apps/genset-config/",
       "icon": "blue",
       "badge": "active",
       "requires": [
@@ -519,7 +519,7 @@
       "id": "pdu-config",
       "name": "Конфигуратор PDU",
       "description": "Standalone-подбор PDU из единой библиотеки элементов: расчёт тока стойки по контексту (серверов, кВт/серв, cos φ, 2N), автоподбор номинала и количества розеток C13, ранжирование вариантов.",
-      "path": "pdu-config/",
+      "path": "apps/pdu-config/",
       "icon": "orange",
       "badge": "new",
       "requires": [
@@ -539,7 +539,7 @@
       "id": "suppression-config",
       "name": "АГПТ (газовое пожаротушение)",
       "description": "Конфигуратор автоматического газового пожаротушения: иерархическая модель Установка → (Сборка модулей | Направления → Зоны), аксонометрия и отчёт. Расчёт — через библиотеку suppression-methods.",
-      "path": "suppression-config/",
+      "path": "apps/suppression-config/",
       "icon": "orange",
       "badge": "active",
       "requires": [
@@ -558,7 +558,7 @@
       "id": "psychrometrics",
       "name": "ID-диаграмма Молье-Рамзина",
       "description": "Психрометрический калькулятор и редактор цикла точек с построением диаграммы Молье (i-d): нагрев, охлаждение/осушение, адиабатическое и паровое увлажнение, расчёт мощности и влагосъёма.",
-      "path": "psychrometrics/",
+      "path": "apps/psychrometrics/",
       "icon": "blue",
       "badge": "active",
       "requires": [
@@ -578,7 +578,7 @@
       "id": "facility-inventory",
       "name": "Реестр оборудования объекта",
       "description": "Реестр установленного на объекте оборудования. Модуль в стадии заготовки (stub) — экран-заглушка без рабочей функциональности.",
-      "path": "facility-inventory/",
+      "path": "apps/facility-inventory/",
       "icon": "blue",
       "badge": "wip",
       "requires": [],
@@ -595,7 +595,7 @@
       "id": "configurator3d",
       "name": "Конфигуратор модульного ЦОД (2D → 3D)",
       "description": "Конфигуратор модульного ЦОД с переходом из 2D-компоновки в 3D-визуализацию (рендер на Three.js). Экспериментальный.",
-      "path": "configurator3d/",
+      "path": "apps/configurator3d/",
       "icon": "purple",
       "badge": "wip",
       "requires": [
@@ -614,7 +614,7 @@
       "id": "suppression-methods",
       "name": "Методики газового пожаротушения",
       "description": "Переиспользуемая библиотека методик расчёта газового пожаротушения (без UI): СП РК 2022, СП 485-2020 (+Прил. Д), NFPA 2001, ISO 14520. Единый интерфейс { META, compute(input) }, справочник ГОТВ, гидравлика, текст отчёта. Потребляется модулем suppression-config.",
-      "path": "suppression-methods/",
+      "path": "lib/suppression-methods/",
       "icon": "orange",
       "badge": "lib",
       "requires": [],

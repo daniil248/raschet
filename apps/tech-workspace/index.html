@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Технолог объекта</title>
+  <link rel="stylesheet" href="../../shared/styles/base.css">
+  <link rel="stylesheet" href="../../shared/app-header.css">
+  <link rel="stylesheet" href="tech-workspace.css">
+  <script src="../../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="../../shared/auth.js"></script>
+  <script src="../../shared/auth-gate.js" defer></script>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="importmap">
+  {"imports": {"shared/": "../../shared/", "engine/": "../../js/engine/", "cooling/": "../cooling/", "meteo/": "../meteo/", "service/": "../service/", "suppression-methods/": "../../lib/suppression-methods/"}}
+  </script>
+  <script type="module">
+    import { mountHeader } from 'shared/app-header.js';
+    import { mountHelp } from 'shared/help-panel.js';
+    mountHeader({ title: 'Технолог объекта', home: '../../hub.html', moduleId: 'tech-workspace', moduleTitle: 'Технолог объекта' });
+    mountHelp({
+      module: 'tech-workspace',
+      title: 'Технолог объекта (универсальный)',
+      usage: `
+        <h4>Назначение модуля</h4>
+        <p>Предпроектная стадия объекта проектирования: формирование <b>концепции объекта</b> до углубления в детальное проектирование. Поддерживает разные типы объектов (ЦОД, завод, насосная станция, офис, своё) — состав активных разделов адаптируется по типу. Технолог определяет основные параметры (количество стоек / линий / насосов / помещений), мощности, резервирование, площади.</p>
+        <h4>Два режима входа</h4>
+        <ul>
+          <li><b>📋 Список компонентов</b> — заполнить параметры по разделам (стойки → ИБП → климат → ввод → площади). Подходит когда есть готовые ТЗ от заказчика и нужно быстро посчитать мощности.</li>
+          <li><b>🗺 План зала</b> — начать с расстановки помещений и оборудования на сетке. Подходит когда заказчик дал план или есть площадка с фиксированными размерами.</li>
+        </ul>
+        <h4>Опциональная привязка к каталогу</h4>
+        <p>Каждый параметрический узел (стойка, ИБП, кондиционер, ТП, ДГУ, PDU) можно <b>привязать к конкретной модели из каталога</b> — кнопка «📦 Привязать модель…». После этого параметры читаются из каталога; ручной ввод остаётся доступен как override.</p>
+        <h4>Multi-variant compare</h4>
+        <p>В левой панели — список вариантов концепции (например «Базовый», «Расширение N+1», «2N для финансового сектора»). Side-by-side сравнение мощностей, площадей и стоимости concept-уровня.</p>
+        <h4>Handoff в детальное проектирование</h4>
+        <p>После согласования с заказчиком — кнопка «📤 Передать в проектирование». Концепция переходит в read-only и предзаполняет <code>schematic/</code> (главная схема), <code>scs-design/</code> (план СКС) и <code>mdc-config/</code> (если МЦОД).</p>
+      `,
+      calcs: `
+        <h4>Расчёты</h4>
+        <h5>Итоговая IT-нагрузка</h5>
+        <p><code>P<sub>IT</sub> = N<sub>стоек</sub> · P<sub>стойка</sub></code></p>
+        <h5>Достаточность ИБП</h5>
+        <p><code>P<sub>ИБП,доступная</sub> = N<sub>работающих</sub> · S<sub>ном</sub> · cos φ · k<sub>ЗАГ</sub></code>, где N<sub>работающих</sub> = N − N<sub>резерв</sub> по схеме (N+1: −1; 2N: ÷2).</p>
+        <h5>Достаточность климата</h5>
+        <p>Холодопроизводительность <code>≥ P<sub>IT</sub> · 1.0</code> с учётом потерь по ASHRAE TC 9.9.</p>
+        <h5>Площади помещений</h5>
+        <ul>
+          <li>Машзал: <code>S = N<sub>стоек</sub> · 2.5 м² + проходы</code> (при шаге между рядами 1.2 м, hot/cold aisle).</li>
+          <li>ИБП-зал: <code>S = N<sub>ИБП</sub> · 4 м² + проходы</code>.</li>
+          <li>АКБ-зал: <code>S = E<sub>АКБ</sub> · 0.8 м²/кА·ч</code> для VRLA или <code>0.4</code> для Li-Ion.</li>
+        </ul>
+        <p>Минимумы по ТКП 308-2011 / TIA-942 / Uptime Tier-III.</p>
+      `
+    });
+  </script>
+
+  <main class="tw-main">
+    <!-- Левая панель: варианты + переключатель режима -->
+    <aside class="tw-sidebar rs-sidebar rs-sidebar-left">
+      <!-- v0.60.512: изменяемая ширина сайдбара как в конфигураторах
+           (shared/sidebar-resizer.js, ширина в --rs-sidebar-left-w). -->
+      <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
+      <!-- v0.60.134 (по репорту Пользователя 2026-05-04 «как то объедини
+           выбор и отображение проекта в одном месте»): дублирующий picker
+           проекта в sidebar убран. Активный проект отображается в шапке
+           через rs-proj-badge (shared/app-header.js); клик по нему
+           открывает меню переключения / создания. tw-project-context
+           больше не используется, но id оставлен скрытым на случай
+           legacy-кода / тестов (не вмешивается в layout). -->
+      <div id="tw-project-context" class="tw-project-context" hidden></div>
+
+      <div class="tw-mode-toggle">
+        <button type="button" class="tw-mode-btn active" data-mode="list" title="Заполнение параметров по разделам">📋 Список</button>
+        <button type="button" class="tw-mode-btn" data-mode="plan" title="План зала с drag-drop">🗺 План</button>
+        <button type="button" class="tw-mode-btn" data-mode="compare" title="Сравнение вариантов side-by-side">📊 Сравнение</button>
+      </div>
+      <div class="tw-variants-head">
+        <h3>Варианты концепции</h3>
+        <button type="button" id="tw-variant-add" title="Добавить новый вариант">➕</button>
+      </div>
+      <div id="tw-variants-list" class="tw-variants-list"></div>
+
+      <!-- v0.60.502 (правка Пользователя 2026-05-16): «второй левый сайдбар
+           (его состав) переместить в первый левый сайдбар». Состав разделов
+           (rail) рендерится сюда из tech-workspace.js::renderActiveVariant()
+           в split-режиме; данные/группы/редакторы — в основном окне. -->
+      <div id="tw-rail-mount" class="tw-rail-mount"></div>
+
+      <div class="tw-actions">
+        <button type="button" id="tw-report" title="Открыть пояснительную записку в новой вкладке (можно сохранить как PDF через Ctrl+P → «Сохранить как PDF»)">📄 Пояснительная записка</button>
+        <button type="button" id="tw-handoff" disabled title="Передать в детальное проектирование (заполняет schematic/scs-design/mdc-config из concept.*)">📤 Передать в проектирование</button>
+      </div>
+
+      <!-- Phase 30.6 (v0.60.62): кросс-модульная панель. v0.60.502 (правка
+           Пользователя): свёрнута в <details> и перенесена вниз сайдбара —
+           для пользователя это вторичная навигация, не должна занимать
+           основное место. -->
+      <details class="tw-cross-modules" id="tw-cross-modules-wrap">
+        <summary title="Модули проекта, связанные с этой концепцией. Один клик — переход в модуль с подгрузкой контекста этого проекта.">🔗 Связанные модули проекта</summary>
+        <div id="tw-cross-modules" class="tw-cross-modules-list"></div>
+      </details>
+    </aside>
+
+    <!-- Правая панель: содержимое активного варианта -->
+    <section class="tw-content">
+      <div class="tw-content-header">
+        <h2 id="tw-variant-name">— выберите вариант —</h2>
+        <div class="tw-content-meta">
+          <span class="muted" id="tw-content-summary"></span>
+          <span class="tw-readonly-badge" id="tw-readonly-badge" hidden>🔒 read-only (после handoff)</span>
+        </div>
+      </div>
+
+      <!-- Mode: List — содержимое рендерится из tech-workspace.js
+           (динамические карточки rackGroups[] / upsSystems[] / coolingUnits[]). -->
+      <div id="tw-mode-list" class="tw-mode-pane"></div>
+
+      <!-- Mode: Compare (multi-variant side-by-side) -->
+      <div id="tw-mode-compare" class="tw-mode-pane" hidden></div>
+
+      <!-- Mode: Plan (план зала, MVP — заглушка) -->
+      <div id="tw-mode-plan" class="tw-mode-pane" hidden>
+        <div class="tw-plan-toolbar">
+          <span class="muted">Drag-drop помещений и оборудования на сетку. Выходные данные синхронизируются с разделами «Список».</span>
+        </div>
+        <div id="tw-plan-canvas" class="tw-plan-canvas">
+          <div class="tw-plan-placeholder">
+            🗺 План зала<br>
+            <small>MVP-заглушка. Полный редактор появится в 20.7.</small>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty state -->
+      <div id="tw-empty-state" class="tw-empty-state">
+        <div>
+          <h3>Создайте вариант концепции</h3>
+          <p class="muted">Слева — кнопка ➕ для нового варианта. Можно начать со списка параметров или сразу с плана зала.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="../../shared/sidebar-resizer.js"></script>
+  <script type="module" src="tech-workspace.js"></script>
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'tech-workspace', moduleTitle: 'Технолог объекта' });
+  </script>
+</body>
+</html>

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Реестр IT-оборудования</title>
+  <link rel="stylesheet" href="../../shared/styles/base.css">
+  <link rel="stylesheet" href="../../shared/app-header.css">
+  <link rel="stylesheet" href="scs-config.css">
+  <!-- v0.59.834: единая авторизация Firebase для всех модулей. -->
+  <script src="../../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="../../shared/auth.js"></script>
+  <script src="../../shared/auth-gate.js" defer></script>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="importmap">
+  {"imports": {"shared/": "../../shared/", "engine/": "../../js/engine/", "cooling/": "../cooling/", "meteo/": "../meteo/", "service/": "../service/", "suppression-methods/": "../../lib/suppression-methods/"}}
+  </script>
+  <script type="module">
+    import { mountHeader } from 'shared/app-header.js';
+    mountHeader({ title: 'Реестр IT-оборудования', home: '../../hub.html' });
+  </script>
+
+  <div class="sc-wrap">
+    <div id="pr-project-banner" class="pr-project-banner"></div>
+    <div id="inv-prefill-banner" style="display:none"></div>
+    <nav class="rs-breadcrumb">
+      <a href="../projects/">📁 Проекты</a>
+      <span class="sep">›</span>
+      <a href="./rack.html">🗄 Компоновщик шкафа</a>
+      <span class="sep">›</span>
+      <strong>📋 Реестр IT-оборудования</strong>
+    </nav>
+
+    <section class="sc-section">
+      <h2>Всё оборудование проекта</h2>
+      <p class="sc-hint muted">
+        Единый журнал всех устройств проекта независимо от места: установлено в шкафу,
+        в межстоечной тележке или на складе. Статус, серийный номер, примечания и регламенты
+        редактируются inline. Удаление / добавление — в соответствующих местах:
+        в <a href="./rack.html">Компоновщике шкафа</a> или на складе.
+      </p>
+      <div class="sc-tools" style="margin-bottom:8px">
+        <input id="flt-q" type="search" placeholder="🔎 поиск: имя, S/N, тег, заметка…" style="min-width:260px;padding:4px 8px">
+        <select id="flt-loc">
+          <option value="">Где угодно</option>
+          <option value="rack">В шкафу</option>
+          <option value="cart">В тележке</option>
+          <option value="warehouse">На складе</option>
+        </select>
+        <select id="flt-status">
+          <option value="">Любой статус</option>
+          <option value="active">🟢 Активен</option>
+          <option value="standby">🟡 Резерв</option>
+          <option value="maintenance">🛠 Обслуживание</option>
+          <option value="decommissioned">⚫ Списан</option>
+        </select>
+        <button type="button" id="csv" class="sc-btn">📥 CSV</button>
+        <span class="muted" id="count" style="margin-left:auto"></span>
+      </div>
+      <table class="sc-cat">
+        <thead>
+          <tr>
+            <th>Тег (TIA-606)</th>
+            <th>Название</th>
+            <th>Тип</th>
+            <th>Место</th>
+            <th>S/N</th>
+            <th>Статус</th>
+            <th>Регламент (мес)</th>
+            <th>Последнее ТО</th>
+            <th>Заметка</th>
+            <th>Поступил</th>
+          </tr>
+        </thead>
+        <tbody id="inv-tbody"></tbody>
+      </table>
+    </section>
+  </div>
+
+  <script type="module" src="./inventory.js"></script>
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'scs-config', moduleTitle: 'СКС' });
+  </script>
+</body>
+</html>

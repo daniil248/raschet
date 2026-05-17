@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Raschet · Конфигуратор модульного ЦОД</title>
+  <link rel="stylesheet" href="../../shared/styles/base.css">
+  <link rel="stylesheet" href="../../shared/app-header.css">
+  <link rel="stylesheet" href="mdc-config.css">
+  <!-- SheetJS для экспорта BOM в XLSX -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- v0.59.834: единая авторизация Firebase для всех модулей. -->
+  <script src="../../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="../../shared/auth.js"></script>
+  <script src="../../shared/auth-gate.js" defer></script>
+</head>
+<body>
+  <div id="rs-header-mount"></div>
+  <script type="importmap">
+  {"imports": {"shared/": "../../shared/", "engine/": "../../js/engine/", "cooling/": "../cooling/", "meteo/": "../meteo/", "service/": "../service/", "suppression-methods/": "../../lib/suppression-methods/"}}
+  </script>
+  <script type="module">
+    import { mountHeader } from 'shared/app-header.js';
+    mountHeader({ title: 'Конфигуратор модульного ЦОД (GDM-600)', home: '../../hub.html' });
+  </script>
+
+  <div class="mdc-wrap">
+    <div class="mdc-grid">
+      <!-- =========== Форма (опросник) =========== -->
+      <aside class="mdc-form rs-sidebar rs-sidebar-left">
+        <div class="rs-sidebar-resizer" title="Потяните, чтобы изменить ширину"></div>
+        <div id="mdc-cfg-mount" data-cfg-mount></div>
+        <section class="mdc-section">
+          <h2>1. IT-нагрузка (исходные данные)</h2>
+          <label class="mdc-field">
+            <span>Количество стоек, всего</span>
+            <input type="number" id="mdc-total-racks" value="88" min="1" max="500" step="1">
+          </label>
+          <label class="mdc-field">
+            <span>Мощность на стойку, кВт</span>
+            <input type="number" id="mdc-rack-kw" value="15" min="3" max="60" step="1">
+          </label>
+          <label class="mdc-field">
+            <span>Ток на стойку, А</span>
+            <input type="number" id="mdc-rack-a" value="" min="0" step="0.1">
+          </label>
+          <label class="mdc-field">
+            <span>Резервирование</span>
+            <select id="mdc-redundancy">
+              <option value="N">N (базовое)</option>
+              <option value="N+1" selected>N+1</option>
+              <option value="2N">2N (Tier III+)</option>
+            </select>
+          </label>
+          <div class="mdc-hint">Состав модулей (машзалы 300 кВт / энергоблоки 1600 кВт),
+            количество ИБП Kehua MR33, АКБ S3 и кондиционеров определяется
+            автоматически по IT-нагрузке и резервированию.</div>
+        </section>
+
+        <section class="mdc-section">
+          <h2>2. ИБП / АКБ</h2>
+          <div class="mdc-hint">ИБП: Kehua MR33-200 / MR33-300 (всегда).<br>
+            АКБ: Kehua S3 (58 кВт·ч/шкаф) или Li-ion.</div>
+          <label class="mdc-field">
+            <span>Время автономии, мин</span>
+            <select id="mdc-autonomy">
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="15" selected>15</option>
+              <option value="30">30</option>
+              <option value="60">60</option>
+            </select>
+          </label>
+          <label class="mdc-field">
+            <span>Тип АКБ</span>
+            <select id="mdc-batt-tech">
+              <option value="VRLA" selected>VRLA свинцово-кислотные (S3)</option>
+              <option value="LiFePO4">Li-ion LFP (плотнее, дороже)</option>
+            </select>
+          </label>
+          <label class="mdc-field">
+            <span>cos φ нагрузки</span>
+            <input type="number" id="mdc-cosphi" value="0.9" min="0.7" max="1" step="0.01">
+          </label>
+          <label class="mdc-field">
+            <span>Коэфф. загрузки ИБП, % (от Pнoм)</span>
+            <input type="number" id="mdc-ups-load" value="80" min="30" max="100" step="5">
+          </label>
+          <label class="mdc-field">
+            <span>Резерв масштабирования, %</span>
+            <input type="number" id="mdc-scale-reserve" value="20" min="0" max="100" step="5">
+          </label>
+        </section>
+
+        <section class="mdc-section">
+          <h2>3. Охлаждение</h2>
+          <label class="mdc-field">
+            <span>Вариант расстановки рядов</span>
+            <select id="mdc-layout-variant">
+              <option value="A" selected>A: сверху 1800 + ряд 1200 + коридор 1200 + ряд 1200 + снизу 1500</option>
+              <option value="B">B: сверху 1500 + ряд 1200 + коридор 1200 + ряд 1200 + снизу 1800</option>
+            </select>
+          </label>
+          <label class="mdc-field">
+            <span>Температурный класс (ASHRAE)</span>
+            <select id="mdc-ashrae">
+              <option value="A1">A1 (18–27 °C)</option>
+              <option value="A2" selected>A2 (10–35 °C)</option>
+              <option value="A3">A3 (5–40 °C)</option>
+              <option value="A4">A4 (5–45 °C)</option>
+            </select>
+          </label>
+          <label class="mdc-field">
+            <span>Расчётная Tmax снаружи (20-летн.), °C</span>
+            <input type="number" id="mdc-tmax" value="32" min="20" max="50" step="1">
+          </label>
+          <label class="mdc-field">
+            <span>Расчётная Tmin снаружи (20-летн.), °C</span>
+            <input type="number" id="mdc-tmin" value="-28" min="-50" max="10" step="1">
+          </label>
+          <label class="mdc-field">
+            <span>Высота над уровнем моря, м</span>
+            <input type="number" id="mdc-elev" value="200" min="0" max="3000" step="50">
+          </label>
+          <label class="mdc-field">
+            <span>Класс влажности</span>
+            <select id="mdc-humidity">
+              <option value="low">сухой (≤40%)</option>
+              <option value="norm" selected>нормальный (40–60%)</option>
+              <option value="high">влажный (≥60%)</option>
+            </select>
+          </label>
+          <label class="mdc-field">
+            <span>Наружный блок (ODU)</span>
+            <select id="mdc-odu-type">
+              <option value="horiz-axial" selected>горизонт. выдув, осевой</option>
+              <option value="horiz-radial">горизонт. выдув, радиальный</option>
+              <option value="vert">вертикальный выдув (для балкона)</option>
+            </select>
+          </label>
+          <div class="mdc-hint">inRow-ACU 25 кВт (300×1200) ≤ 4/модуль,
+            ACU-65 (600×1200) ≤ 2/модуль. Конденсаторы — на балконе.</div>
+        </section>
+
+        <section class="mdc-section">
+          <h2>4. Внешние блоки</h2>
+          <label class="mdc-check"><input type="checkbox" id="mdc-with-tp" checked> Трансформаторная подстанция 10/0.4</label>
+          <label class="mdc-check"><input type="checkbox" id="mdc-with-dgu" checked> Дизель-генераторные установки (ДГУ)</label>
+        </section>
+
+        <section class="mdc-section">
+          <h2>5. Слаботочные системы</h2>
+          <label class="mdc-check"><input type="checkbox" id="mdc-scs" checked> СКС (патч-панели + коммутация)</label>
+          <label class="mdc-check"><input type="checkbox" id="mdc-skud" checked> СКУД на вход</label>
+          <label class="mdc-check"><input type="checkbox" id="mdc-video" checked> Видеонаблюдение</label>
+          <label class="mdc-check"><input type="checkbox" id="mdc-fire" checked> Пожарка (газовое пожаротушение)</label>
+          <label class="mdc-check"><input type="checkbox" id="mdc-leak"> Контроль протечек</label>
+        </section>
+
+        <div class="mdc-actions">
+          <button type="button" id="mdc-export-bom" class="mdc-btn mdc-btn-primary">📋 BOM (XLSX)</button>
+          <button type="button" id="mdc-send-suppression" class="mdc-btn" title="Создать установку АГПТ с зонами = IT-модули ЦОД, открыть расчёт газового пожаротушения">🔥 → АГПТ</button>
+          <button type="button" id="mdc-export-config" class="mdc-btn" title="Сохранить конфигурацию ЦОД в JSON-файл">⬇ Экспорт</button>
+          <button type="button" id="mdc-import-config" class="mdc-btn" title="Загрузить конфигурацию ЦОД из JSON-файла">⬆ Импорт<input type="file" id="mdc-import-file" accept="application/json,.json" hidden></button>
+        </div>
+      </aside>
+
+      <!-- =========== Визуализация + сводка =========== -->
+      <main class="mdc-view">
+        <div class="mdc-summary" id="mdc-summary"></div>
+        <div class="mdc-plan-head">
+          <h3>План площадки (top-view)</h3>
+          <div class="mdc-plan-legend">
+            <span><i class="lg-srv"></i>Серверные стойки</span>
+            <span><i class="lg-ups"></i>ИБП + АКБ</span>
+            <span><i class="lg-crac"></i>Кондиционеры</span>
+            <span><i class="lg-svc"></i>Сервисный коридор</span>
+          </div>
+        </div>
+        <div id="mdc-plan" class="mdc-plan"></div>
+      </main>
+    </div>
+  </div>
+
+  <script type="module" src="../../shared/sidebar-resizer.js"></script>
+  <script type="module" src="mdc-config.js"></script>
+  <script type="module">
+    import { mountFooter as mountModuleFooter } from 'shared/module-footer.js';
+    import { APP_VERSION } from 'engine/constants.js';
+    mountModuleFooter({ appVersion: APP_VERSION, moduleId: 'mdc-config', moduleTitle: 'Модульный ЦОД' });
+  </script>
+  <script type="module">
+    import 'shared/sidebar-resizer.js';
+    import { mountConfigSidebar, mountEmbeddedPicker } from 'shared/config-sidebar.js';
+    import { isEmbeddedMode } from 'shared/configuration-catalog.js';
+    if (isEmbeddedMode()) {
+      const host = document.createElement('div');
+      document.querySelector('.mdc-wrap')?.prepend(host);
+      mountEmbeddedPicker({
+        kind: 'mdc',
+        title: 'Выберите шаблон модульного ЦОД',
+        mountEl: host,
+        onApply: (entry, targets) => {
+          try { window.parent?.postMessage({ type: 'mdc-config:apply', entry, targetNodeIds: targets }, '*'); } catch {}
+        },
+      });
+    }
+    if (!isEmbeddedMode()) {
+      mountConfigSidebar({
+        kind: 'mdc',
+        title: 'Конфигурации модульных ЦОД',
+        sections: ['properties', 'list'],
+        mountEl: document.getElementById('mdc-cfg-mount'),
+        onSelect: (entry) => {
+          const p = entry && entry.payload || {};
+          const set = (id, v) => {
+            const el = document.getElementById(id);
+            if (el && v != null && v !== '') el.value = v;
+          };
+          set('mdc-it-kw', p.itKw);
+          set('mdc-racks', p.racks);
+          set('mdc-width', p.width);
+          set('mdc-length', p.length);
+          try { window.dispatchEvent(new CustomEvent('mdc-config:load', { detail: entry })); } catch {}
+        },
+        onSave: () => {
+          const $ = (id) => document.getElementById(id);
+          const kw = $('mdc-it-kw')?.value || '';
+          const racks = $('mdc-racks')?.value || '';
+          const width = $('mdc-width')?.value || '';
+          const len = $('mdc-length')?.value || '';
+          return {
+            label: (racks ? (racks + ' стоек') : 'ЦОД') + (kw ? (' · ' + kw + ' кВт') : ''),
+            description: [width && (width + 'мм ширина'), len && (len + 'мм длина')].filter(Boolean).join(' · '),
+            payload: { itKw: kw, racks, width, length: len },
+          };
+        },
+      });
+    }
+  </script>
+</body>
+</html>
