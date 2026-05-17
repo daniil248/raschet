@@ -7,8 +7,14 @@
 - `formulas.js` — примитивы SI: ρ(t)/ν(t)/Pv(t) воды, Re, коэф. трения
   (Свами–Джейн / Colebrook–White), Дарси–Вейсбах, местные потери,
   напор↔давление, таблица шероховатостей `ROUGHNESS`.
-- `darcy-weisbach.js` — `{META,compute}`: потери напора/давления в
-  напорном трубопроводе (длина + местные + геодезия), удельные i/100м.
+- Потери напора — ОБОСОБЛЕНЫ ПО МЕТОДИКЕ/НОРМЕ (D4/D5, picker =
+  METHOD_LIST; отключаемые/версионируемые файлы):
+  - `darcy-weisbach.js` — универсальный Дарси–Вейсбах (+Swamee–Jain,
+    местные + геодезия, i/100м).
+  - `head-loss-sprk.js` — КЗ: СН РК 4.01-02 / СП РК 4.01-101 (своя
+    META, переиспускает ядро Дарси).
+  - `head-loss-hazen-williams.js` — эмпирич. Хазен–Вильямс (вода).
+  - `head-loss-manning.js` — Шези–Маннинг (R=D/4, полное сечение).
 - `npsh.js` — `{META,compute}`: NPSHa, проверка против NPSHr+запас.
 - `index.js` — реестр `METHODS`/`METHOD_LIST`/`run(id,input)` +
   re-export `formulas`, `DISCIPLINE='hydraulic'`.
