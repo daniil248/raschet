@@ -446,7 +446,10 @@ function classifyOverlay(ov) {
  *  совместимость сохранённых шаблонов). Идемпотентно: если flow уже
  *  непуст — только гарантирует наличие floating[] и выходит. Контент
  *  НИКОГДА не теряется (неклассифицированные overlay → текст/картинка
- *  в начале потока). Не мутирует content/overlays. */
+ *  в начале потока). Структурные overlay СЪЕДАЮТСЯ потоком:
+ *  tpl.overlays перезаписывается только колонтитулами (page-number),
+ *  чтобы drawOverlays не рисовал их absolute поверх потока. content
+ *  не мутируется (работает копия tpl от createTemplate). */
 export function migrateToFlow(tpl) {
   if (!tpl || typeof tpl !== 'object') return tpl;
   if (!Array.isArray(tpl.floating)) tpl.floating = [];
@@ -459,12 +462,16 @@ export function migrateToFlow(tpl) {
   const extras = [];   // неклассифицированное — не теряем
 
   const seenRole = new Set();   // дедуп: один docTitle/addressee/...
+  const keptOverlays = [];      // остаются absolute (только колонтитулы)
   for (const ov of overlays) {
     // Бегущий колонтитул (номер страницы и т.п.) — НЕ тянем в поток;
     // оставляем overlay (рисуется absolute в зоне полей — это
     // санкционировано инвариантом: за поля можно колонтитулам).
     if (ov.type !== 'image' &&
-        /\{\{\s*pages?\s*\}\}/.test(String(ov.content?.text || ''))) continue;
+        /\{\{\s*pages?\s*\}\}/.test(String(ov.content?.text || ''))) {
+      keptOverlays.push(ov);
+      continue;
+    }
     const role = classifyOverlay(ov);
     // Шаблоны хранят зоны для firstPage и otherPages (миграция
     // колонтитулов даёт 2 overlay scope first/other) → один и тот же
@@ -517,6 +524,10 @@ export function migrateToFlow(tpl) {
   for (const b of bottom) { b.section = 'doc-sign'; b.sectionLabel = 'Подписи и печать'; }
 
   tpl.flow = [...top, ...extras, ...content, ...bottom];
+  // Структурные overlay СЪЕДЕНЫ потоком — оставляем только
+  // колонтитулы (page-number и т.п.), иначе drawOverlays нарисует
+  // их absolute ПОВЕРХ потока → дубль + возврат наложения.
+  tpl.overlays = keptOverlays;
   return tpl;
 }
 

@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.657', date: '2026-05-17', items: [
+      '🩹 <b>Редизайн отчётов — R5c: migrateToFlow съедает структурные overlay (фикс дубля/наложения)</b>. Диагностика in-page: после R5b flow корректен (1 docTitle+1 addressee), НО tpl.overlays сохранял исходные структурные overlay, и drawOverlays рисовал их absolute ПОВЕРХ потока → заголовок/адресат двоились и наложение возвращалось легаси-путём. Фикс: migrateToFlow теперь перезаписывает tpl.overlays, оставляя ТОЛЬКО колонтитулы (page-number/{{pages}}) — структурные overlay съедены потоком, drawOverlays больше их не дублирует. Инвариант соблюдён: за поля печати absolute остаются лишь колонтитулы; структура — в потоке. Файл: shared/report/template.js (migrateToFlow: keptOverlays → tpl.overlays).',
+    ] },
     { version: '0.60.656', date: '2026-05-17', items: [
       '🩹 <b>Редизайн отчётов — R5b: дедуп структурных блоков в migrateToFlow</b>. После R5a наложение устранено (структура в потоке), но виден дубль заголовка/адресата ×2-3: builtin-шаблоны хранят зоны для firstPage И otherPages, migrateLegacyToOverlays разворачивает их в 2 overlay (scope first/other) → migrateToFlow делал по 2 структурных блока docTitle/addressee. Фикс: seenRole-дедуп — один docTitle/companyInfo/addressee/metaLine/signature на поток (берём первый; signatureScan не дедупится — это floating-картинка). Файл: shared/report/template.js (migrateToFlow seenRole).',
     ] },
