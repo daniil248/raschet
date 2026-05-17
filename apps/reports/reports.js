@@ -13,6 +13,7 @@
 import * as Report   from 'shared/report/index.js';
 import * as B        from 'shared/report/blocks.js';
 import * as Catalog  from 'shared/report-catalog.js';
+import { migrateToFlow, applyBaseChrome } from 'shared/report/template.js';
 import { BUILTIN_TEMPLATES, BUILTIN_VERSION, getDemoContent } from 'shared/report/templates-seed.js';
 import { openHelp }  from './help.js';
 import { rsToast, rsConfirm } from 'shared/dialog.js';
@@ -174,11 +175,24 @@ function renderDetail() {
   // Превью: клонируем шаблон, вливаем демо-контент (если контент пуст).
   // Для встроенных шаблонов demoContentFor отдаёт персональный набор —
   // так пользователь видит реалистичное представление отчёта под задачу.
-  const previewTpl = Report.createTemplate(rec.template);
-  if (!previewTpl.content || previewTpl.content.length === 0) {
-    previewTpl.content = demoContentFor(rec);
-  }
+  const previewTpl = prepTpl(rec);
   Report.renderPreview(previewTpl, $preview, { mode: 'edit' });
+}
+
+// Каталог-превью/экспорт ДОЛЖНЫ идти тем же конвейером, что и реальная
+// генерация: наследование базы (applyBaseChrome) + единый поток
+// (migrateToFlow) → без дублей/наложения, превью = факт.
+function prepTpl(rec) {
+  const tpl = Report.createTemplate(rec.template);
+  if (tpl.baseTemplateId) {
+    try {
+      const b = Catalog.getTemplate(tpl.baseTemplateId);
+      if (b && b.template) applyBaseChrome(tpl, b.template);
+    } catch (e) { /* база недоступна */ }
+  }
+  if (!tpl.content || tpl.content.length === 0) tpl.content = demoContentFor(rec);
+  migrateToFlow(tpl);
+  return tpl;
 }
 
 // ——— действия ———
@@ -332,8 +346,7 @@ $fileImport.addEventListener('change', async () => {
 async function onPdf() {
   const rec = state.selectedId ? Catalog.getTemplate(state.selectedId) : null;
   if (!rec) return;
-  const tpl = Report.createTemplate(rec.template);
-  if (!tpl.content || tpl.content.length === 0) tpl.content = demoContentFor(rec);
+  const tpl = prepTpl(rec);
   // v0.60.325: previewPDF показывает modal с iframe-предпросмотром.
   // Кнопка «💾 Скачать» внутри сохраняет; «✕ Закрыть» — отмена.
   try {
@@ -345,8 +358,7 @@ async function onPdf() {
 async function onDocx() {
   const rec = state.selectedId ? Catalog.getTemplate(state.selectedId) : null;
   if (!rec) return;
-  const tpl = Report.createTemplate(rec.template);
-  if (!tpl.content || tpl.content.length === 0) tpl.content = demoContentFor(rec);
+  const tpl = prepTpl(rec);
   try { await Report.exportDOCX(tpl, rec.name || 'report'); }
   catch (e) { rsToast('Не удалось сформировать DOCX: ' + e.message, 'err'); }
 }

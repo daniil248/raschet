@@ -88,11 +88,12 @@ export function openTemplateEditor(tpl, opts = {}) {
   const tabContent = el('div', 'rpt-editor__tab-content');
   sidebar.appendChild(tabContent);
 
-  // Панель зума превью (поля печати видны: renderPane → mode:'edit').
-  const zoomBar = el('div', 'rpt-zoombar');
-  zoomBar.style.cssText = 'position:sticky;top:0;z-index:6;display:flex;gap:6px;align-items:center;justify-content:flex-end;padding:6px 10px;background:#eef0f4;border-bottom:1px solid #dfe3ea;font:12px system-ui';
+  // Зум-управление — в ШАПКЕ модалки (рядом с Отмена/Сохранить),
+  // а не плавающей панелью над превью.
+  const zWrap = el('div');
+  zWrap.style.cssText = 'display:inline-flex;align-items:center;gap:4px;margin-right:10px';
   const zLabel = el('span');
-  zLabel.style.cssText = 'min-width:42px;text-align:center;color:#475569';
+  zLabel.style.cssText = 'min-width:42px;text-align:center;color:#475569;font:12px system-ui';
   const setZoom = (z) => { state.zoom = Math.max(0.4, Math.min(3, z)); zLabel.textContent = Math.round(state.zoom * 100) + '%'; renderPane(); };
   const zMinus = btn('−'); zMinus.style.padding = '2px 9px';
   zMinus.addEventListener('click', () => setZoom(state.zoom - 0.1));
@@ -100,24 +101,52 @@ export function openTemplateEditor(tpl, opts = {}) {
   zPlus.addEventListener('click', () => setZoom(state.zoom + 0.1));
   const zFit = btn('⤢ Вписать'); zFit.style.padding = '2px 8px';
   zFit.addEventListener('click', () => setZoom(1));
-  const zHint = el('span');
-  zHint.style.cssText = 'margin-right:auto;color:#94a3b8';
-  zHint.textContent = 'Поля печати — пунктир. Ctrl+колесо — зум.';
-  zoomBar.appendChild(zHint);
-  zoomBar.appendChild(zMinus); zoomBar.appendChild(zLabel); zoomBar.appendChild(zPlus); zoomBar.appendChild(zFit);
-  previewWrap.appendChild(zoomBar);
+  const zFull = btn('⛶ Весь экран');
+  zFull.style.padding = '2px 8px';
+  let _full = false;
+  zFull.addEventListener('click', () => {
+    _full = !_full;
+    if (_full) {
+      modal.style.cssText = 'width:100vw;height:100vh;max-width:none;max-height:none;border-radius:0';
+      zFull.textContent = '⤡ Свернуть';
+    } else {
+      modal.style.cssText = '';
+      zFull.textContent = '⛶ Весь экран';
+    }
+    setTimeout(renderPane, 30);
+  });
+  zWrap.appendChild(zMinus); zWrap.appendChild(zLabel); zWrap.appendChild(zPlus);
+  zWrap.appendChild(zFit); zWrap.appendChild(zFull);
+  hb.insertBefore(zWrap, bCancel);
 
   const previewEl = el('div', 'rpt-canvas');
   previewWrap.appendChild(previewEl);
   zLabel.textContent = '100%';
 
-  // Ctrl+колесо — зум превью; обычное колесо — нативный скролл
-  // (правило memory feedback_zoom_ctrl_scroll).
+  // Панорамирование/зум по общим правилам (memory feedback_zoom_
+  // ctrl_scroll): колесо БЕЗ Ctrl — нативный скролл (пан), Ctrl+
+  // колесо — зум; ЛКМ-перетаскивание по фону — grab-пан.
   previewWrap.addEventListener('wheel', (ev) => {
     if (!ev.ctrlKey) return;
     ev.preventDefault();
     setZoom(state.zoom + (ev.deltaY < 0 ? 0.1 : -0.1));
   }, { passive: false });
+  let _pan = null;
+  previewWrap.addEventListener('mousedown', (ev) => {
+    if (ev.button !== 0) return;
+    if (ev.target.closest('.rpt-overlay, img, input, textarea, select, button')) return;
+    _pan = { x: ev.clientX, y: ev.clientY, sl: previewWrap.scrollLeft, st: previewWrap.scrollTop };
+    previewWrap.style.cursor = 'grabbing';
+    ev.preventDefault();
+  });
+  const onPanMove = (ev) => {
+    if (!_pan) return;
+    previewWrap.scrollLeft = _pan.sl - (ev.clientX - _pan.x);
+    previewWrap.scrollTop  = _pan.st - (ev.clientY - _pan.y);
+  };
+  const onPanUp = () => { _pan = null; previewWrap.style.cursor = ''; };
+  window.addEventListener('mousemove', onPanMove);
+  window.addEventListener('mouseup', onPanUp);
 
   const ALL_TABS = [
     ['structure', 'Структура'],
@@ -162,6 +191,8 @@ export function openTemplateEditor(tpl, opts = {}) {
   const close = (save) => {
     backdrop.remove();
     window.removeEventListener('keydown', onKey);
+    window.removeEventListener('mousemove', onPanMove);
+    window.removeEventListener('mouseup', onPanUp);
     if (save) opts.onSave && opts.onSave(working);
     else opts.onCancel && opts.onCancel();
   };
