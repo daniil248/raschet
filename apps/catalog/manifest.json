@@ -2,7 +2,7 @@
   "id": "catalog",
   "name": "Каталог и библиотека элементов",
   "description": "Единый источник оборудования платформы: элементы (ИБП, щиты, АКБ, трансформаторы, автоматы, корпуса, климат, кабели), цены по датам и контрагентам, импорт прайс-листов XLSX, аналитика. Страница elements/ объединена с catalog/ во избежание дублирования UI",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
@@ -37,7 +37,8 @@
       "raschet.upsCatalog.v1",
       "raschet.batteryCatalog.v1",
       "raschet.transformerCatalog.v1",
-      "raschet.panelCatalog.v1"
+      "raschet.panelCatalog.v1",
+      "raschet.currentRole"
     ],
     "events": {
       "emits": [
@@ -48,8 +49,13 @@
       "consumes": []
     },
     "urlParams": [
-      "project"
+      "project",
+      "filterKind",
+      "filterSubtype",
+      "filterRole",
+      "filterSearch",
+      "q"
     ],
-    "bridges": []
+    "bridges": ["shared/catalog-bridge.js"]
   }
 }

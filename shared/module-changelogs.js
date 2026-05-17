@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.636', date: '2026-05-17', items: [
+      '📋 <b>Фаза 1 (хвост): манифест catalog честный</b>. apps/catalog/manifest.json: storageKeys +raschet.currentRole (флаг роли user/catalog-admin); urlParams +filterKind/filterSubtype/filterRole/filterSearch/q (deep-link фильтров каталога); bridges [] → shared/catalog-bridge.js (фактический импорт, был пропущен). Базовые catalog-ключи и события (work-templates/materials/wizards-change) уже верны. version 1.0.0→1.1.0. Непроецируемые поля → modules.json не меняется, паритет 33 OK, нулевой runtime-риск. Файл: apps/catalog/manifest.json.',
+    ] },
     { version: '0.60.635', date: '2026-05-17', items: [
       '📋 <b>Фаза 1 (хвост): манифест logistics честный</b>. apps/logistics/manifest.json: storageKeys (raschet.logistics.handoff) уже верны; urlParams +import (?import=1 — приём handoff из BOM-источника). version 1.0.0→1.1.0. Непроецируемые поля → modules.json не меняется, паритет 33 OK, нулевой runtime-риск. Файл: apps/logistics/manifest.json.',
     ] },
