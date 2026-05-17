@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.681', date: '2026-05-17', items: [
+      '🧩 <b>Двухуровневые шаблоны — B1a: модель (level/baseTemplateId/applyBaseChrome)</b> (уточнение Пользователя: базовые шаблоны = поля/колонтитулы/стили; документные = свой порядок блоков, наследуют базу). template.js (только модель, без потребителей — cache-safe, нулевая регрессия): defaultTemplate.level ('document'|'base', дефолт document), baseTemplateId (null); applyBaseChrome(tpl,base) — документный шаблон наследует chrome (page/header/footer/styles/logo/cover/firstPage) из базового (единый источник), flow/content/sections/floating/meta остаются документными; level==='base' или нет base → no-op. Потребители (composeReport/редактор/каталог) — B1b/B2/B3. Файл: shared/report/template.js.',
+    ] },
     { version: '0.60.680', date: '2026-05-17', items: [
       '🛠 <b>Редактор отчётов — UX: видимые поля + зум + drag-and-drop блоков</b> (репорты Пользователя «не вижу полей», «нет зума», «блоки должны перетаскиваться»). (1) renderPane: mode «view»→«edit» — направляющие полей печати (.rpt-page__margins, пунктир) теперь видны. (2) Панель зума над превью (− / % / + / ⤢ Вписать) + Ctrl+колесо = зум (обычное колесо — нативный скролл, правило memory feedback_zoom_ctrl_scroll); state.zoom 0.4–3, scale = fit×zoom. (3) Блоки «Структуры» — полноценный drag-and-drop (HTML5 DnD: grip ⠿, dragstart/over/drop, индикатор вставки), функция moveBlockTo(from,to); ▲▼ и ✕-удаление сохранены. Файл: shared/report/editor.js (state.zoom, zoomBar, wheel-handler, renderPane mode edit, DnD-строки, moveBlockTo).',
     ] },

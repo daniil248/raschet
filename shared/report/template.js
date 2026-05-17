@@ -28,6 +28,16 @@ export const FONT_FAMILIES = ['Helvetica', 'Times', 'Courier'];
 /** Пустой (но валидный) шаблон отчёта. */
 export function defaultTemplate() {
   return {
+    // ——— уровень шаблона (двухуровневая модель) ———
+    // 'base'     — только chrome (поля/колонтитулы/стили/логотип),
+    //              без content/flow; переиспользуемая основа.
+    // 'document' — конкретный документ: наследует chrome базы по
+    //              baseTemplateId + свой порядок блоков (flow).
+    // Обратная совместимость: дефолт 'document', baseTemplateId=null →
+    // ведёт себя как раньше (нулевая регрессия).
+    level: 'document',
+    baseTemplateId: null,
+
     // ——— метаданные ———
     meta: {
       title:   'Отчёт',
@@ -749,6 +759,21 @@ export function flowSegments(tpl) {
   const out = segs.filter((s, i) => s.isCover || s.blocks.length ||
     (i === segs.length - 1 && !segs.some(x => !x.isCover && x.blocks.length)));
   return out.length ? out : segs;
+}
+
+/** Двухуровневая модель: документный шаблон наследует chrome
+ *  (поля/колонтитулы/стили/логотип/обложка) из базового. Мутирует и
+ *  возвращает tpl: chrome берётся ИЗ base (единый источник правды),
+ *  flow/content/sections/floating/meta/level/baseTemplateId остаются
+ *  документными. Если tpl.level==='base' или base нет — no-op
+ *  (обратная совместимость, нулевая регрессия). */
+export function applyBaseChrome(tpl, base) {
+  if (!tpl || tpl.level === 'base' || !base) return tpl;
+  const clone = (o) => { try { return JSON.parse(JSON.stringify(o)); } catch { return o; } };
+  for (const k of ['page', 'header', 'footer', 'styles', 'logo', 'cover', 'firstPage']) {
+    if (base[k] != null) tpl[k] = clone(base[k]);
+  }
+  return tpl;
 }
 
 /** Подстановка плейсхолдеров {{meta.title}}, {{page}}, {{pages}}, {{date}}. */
