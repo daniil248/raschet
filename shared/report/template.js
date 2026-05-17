@@ -120,6 +120,17 @@ export function defaultTemplate() {
     // Массив блоков — см. blocks.js для конструкторов.
     content: [],
 
+    // ——— разделы документа (порядок и видимость) ———
+    // Подпрограмма при формировании отчёта помечает блоки content
+    // полями block.section (id) и block.sectionLabel (человекочитаемо)
+    // и кладёт в tpl.sections.manifest список { id, label } в
+    // естественном порядке. Пользователь в редакторе («Разделы»)
+    // меняет order (порядок) и hidden (скрытые). effectiveContent()
+    // применяет это при рендере. Если content НЕ полностью
+    // разбит на секции — order/hidden игнорируются (legacy-совместимо,
+    // нулевая регрессия для ещё не мигрированных отчётов).
+    sections: { order: [], hidden: [], manifest: [] },
+
     // ——— свободно-позиционируемые зоны (overlays) ———
     // Накладываются поверх страницы в фиксированных координатах —
     // независимо от потока основного content. Используются
@@ -306,6 +317,56 @@ export function overlaysForPage(tpl, isFirstPage) {
     if (o.scope === 'other') return !isFirstPage;
     return true;
   });
+}
+
+/** Список разделов {id,label} в естественном порядке появления в
+ *  content. Подпрограмма вызывает её после сборки блоков и кладёт
+ *  результат в tpl.sections.manifest, чтобы редактор «Разделы» знал
+ *  состав даже когда сам content в сохранённый шаблон не пишется. */
+export function sectionManifestFromContent(content) {
+  const seen = new Map();
+  for (const b of (Array.isArray(content) ? content : [])) {
+    if (b && b.section && !seen.has(b.section)) {
+      seen.set(b.section, b.sectionLabel || b.section);
+    }
+  }
+  return [...seen].map(([id, label]) => ({ id, label }));
+}
+
+/** Content с применённым порядком/видимостью разделов.
+ *  Правило (предсказуемое, нулевая регрессия): если content НЕ
+ *  полностью разбит на секции (есть хоть один блок без .section) —
+ *  возвращаем как есть. Иначе группируем по секциям с сохранением
+ *  порядка первого появления, затем применяем tpl.sections.order
+ *  (неизвестные/новые секции дописываются в естественном порядке) и
+ *  выкидываем tpl.sections.hidden. */
+export function effectiveContent(tpl) {
+  const content = Array.isArray(tpl?.content) ? tpl.content : [];
+  if (!content.length) return content;
+  if (!content.every(b => b && b.section)) return content;
+
+  const sec = tpl.sections || {};
+  const hidden = new Set(Array.isArray(sec.hidden) ? sec.hidden : []);
+  const groups = new Map();
+  const natural = [];
+  for (const b of content) {
+    if (!groups.has(b.section)) { groups.set(b.section, []); natural.push(b.section); }
+    groups.get(b.section).push(b);
+  }
+  const wanted = Array.isArray(sec.order) && sec.order.length ? sec.order : natural;
+  const finalIds = [];
+  for (const id of wanted) {
+    if (groups.has(id) && !finalIds.includes(id)) finalIds.push(id);
+  }
+  for (const id of natural) {
+    if (!finalIds.includes(id)) finalIds.push(id);
+  }
+  const out = [];
+  for (const id of finalIds) {
+    if (hidden.has(id)) continue;
+    out.push(...groups.get(id));
+  }
+  return out;
 }
 
 /** Подстановка плейсхолдеров {{meta.title}}, {{page}}, {{pages}}, {{date}}. */

@@ -57,6 +57,10 @@ export function openTemplateEditor(tpl, opts = {}) {
   ensureCss();
   const working = createTemplate(tpl);
   if (!Array.isArray(working.overlays)) working.overlays = [];
+  if (!working.sections || typeof working.sections !== 'object') working.sections = {};
+  if (!Array.isArray(working.sections.order))    working.sections.order = [];
+  if (!Array.isArray(working.sections.hidden))   working.sections.hidden = [];
+  if (!Array.isArray(working.sections.manifest)) working.sections.manifest = [];
 
   // ——— состояние ———
   const state = {
@@ -98,6 +102,7 @@ export function openTemplateEditor(tpl, opts = {}) {
   const TABS = [
     { id: 'page',   label: 'Лист' },
     { id: 'zones',  label: 'Зоны' },
+    { id: 'sections', label: 'Разделы' },
     { id: 'styles', label: 'Стили' },
     { id: 'props',  label: 'Свойства' },
   ];
@@ -256,6 +261,7 @@ export function openTemplateEditor(tpl, opts = {}) {
     tabContent.innerHTML = '';
     if (state.activeTab === 'page')   buildPageTab(tabContent);
     if (state.activeTab === 'zones')  buildZonesTab(tabContent);
+    if (state.activeTab === 'sections') buildSectionsTab(tabContent);
     if (state.activeTab === 'styles') buildStylesTab(tabContent);
     if (state.activeTab === 'props')  buildPropsTab(tabContent);
   }
@@ -493,6 +499,102 @@ export function openTemplateEditor(tpl, opts = {}) {
 
   // ——————————————————————————————————————————————————————
   // Вкладка «Стили» — настройка типографики
+  // ——————————————————————————————————————————————————————
+  // Вкладка «Разделы» — порядок и видимость разделов тела отчёта
+  // ——————————————————————————————————————————————————————
+  function orderedSectionIds() {
+    const manifest = working.sections.manifest || [];
+    const ids = manifest.map(m => m.id);
+    const order = working.sections.order || [];
+    const res = [];
+    for (const id of order) if (ids.includes(id) && !res.includes(id)) res.push(id);
+    for (const id of ids)   if (!res.includes(id)) res.push(id);
+    return res;
+  }
+
+  function buildSectionsTab(parent) {
+    sectionTitle(parent, 'Разделы документа');
+
+    const manifest = working.sections.manifest || [];
+    const labelOf = (id) =>
+      (manifest.find(m => m.id === id) || {}).label || id;
+
+    const hint = el('div', 'rpt-hint');
+    if (!manifest.length) {
+      hint.innerHTML = 'Состав разделов задаёт подпрограмма при формировании отчёта. '
+        + 'Сформируйте отчёт этой подпрограммой хотя бы раз — список разделов появится здесь, '
+        + 'и заданный порядок/видимость сохранятся в шаблоне для повторного использования.';
+      parent.appendChild(hint);
+      return;
+    }
+    hint.innerHTML = 'Перетаскивание стрелками меняет порядок следования разделов в документе. '
+      + 'Снятая галочка — раздел скрыт (не попадёт в PDF/DOCX). Сохраняется в шаблоне.';
+    parent.appendChild(hint);
+
+    const ids = orderedSectionIds();
+    const hidden = new Set(working.sections.hidden || []);
+
+    const listBox = el('div', 'rpt-zone-list');
+    ids.forEach((id, idx) => {
+      const row = el('div', 'rpt-zone-list__item');
+      row.style.display = 'flex';
+      row.style.alignItems = 'center';
+      row.style.gap = '4px';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !hidden.has(id);
+      cb.title = 'Показывать раздел в документе';
+      cb.style.marginRight = '6px';
+      cb.addEventListener('change', () => {
+        const h = new Set(working.sections.hidden || []);
+        if (cb.checked) h.delete(id); else h.add(id);
+        working.sections.hidden = [...h];
+      });
+      row.appendChild(cb);
+
+      const name = document.createElement('span');
+      name.textContent = labelOf(id);
+      name.style.flex = '1';
+      if (hidden.has(id)) { name.style.opacity = '0.5'; name.style.textDecoration = 'line-through'; }
+      row.appendChild(name);
+
+      const up = buttonEl('▲');
+      up.title = 'Выше';
+      up.disabled = idx === 0;
+      up.style.padding = '2px 6px';
+      up.addEventListener('click', () => { moveSection(ids, idx, -1); });
+      row.appendChild(up);
+
+      const dn = buttonEl('▼');
+      dn.title = 'Ниже';
+      dn.disabled = idx === ids.length - 1;
+      dn.style.padding = '2px 6px';
+      dn.addEventListener('click', () => { moveSection(ids, idx, 1); });
+      row.appendChild(dn);
+
+      listBox.appendChild(row);
+    });
+    parent.appendChild(listBox);
+
+    const reset = buttonEl('Сбросить порядок');
+    reset.addEventListener('click', () => {
+      working.sections.order = [];
+      working.sections.hidden = [];
+      rebuildTab();
+    });
+    parent.appendChild(reset);
+  }
+
+  function moveSection(ids, idx, dir) {
+    const next = ids.slice();
+    const j = idx + dir;
+    if (j < 0 || j >= next.length) return;
+    const t = next[idx]; next[idx] = next[j]; next[j] = t;
+    working.sections.order = next;
+    rebuildTab();
+  }
+
   // ——————————————————————————————————————————————————————
   function buildStylesTab(parent) {
     const STYLES = [
