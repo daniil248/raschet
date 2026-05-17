@@ -5176,6 +5176,29 @@ function generateReportBlocks(v, B) {
   return blk;
 }
 
+// Помечает каждый блок пояснительной записки разделом (section/
+// sectionLabel) — чтобы редактор шаблона («Разделы») мог менять
+// порядок и видимость, а effectiveContent применял это при рендере.
+// Новый раздел начинается с каждого заголовка 2-го уровня; всё до
+// первого заголовка — «Шапка».
+function tagReportSections(blocks) {
+  let id = 'head';
+  let label = 'Шапка';
+  let n = 0;
+  for (const b of blocks) {
+    if (b && b.type === 'heading' && b.level === 2) {
+      n += 1;
+      label = String(b.text || ('Раздел ' + n));
+      const slug = label.toLowerCase()
+        .replace(/[^a-z0-9а-яё]+/gi, '-')
+        .replace(/^-+|-+$/g, '') || ('sec' + n);
+      id = 'sec' + n + '-' + slug;
+    }
+    if (b) { b.section = id; b.sectionLabel = label; }
+  }
+  return blocks;
+}
+
 function bindReport() {
   const btn = $('tw-report');
   if (!btn) return;
@@ -5183,15 +5206,35 @@ function bindReport() {
     const v = _variants.find(x => x.id === _activeId);
     if (!v) { twToast('Сначала выберите вариант.', 'warn'); return; }
     try {
-      const [{ createTemplate, previewPDF }, B] = await Promise.all([
+      const [Report, B] = await Promise.all([
         import('shared/report/index.js'),
         import('shared/report/blocks.js'),
       ]);
-      const blocks = generateReportBlocks(v, B);
-      const tpl = createTemplate({ meta: { title: `Пояснительная записка — ${v.name}`, author: v.concept?.projectData?.designer || '' } });
+      // Отчёт ТОЛЬКО через кастомный сохраняемый шаблон (требование
+      // Пользователя): пользователь выбирает шаблон (оформление,
+      // колонтитулы, печать/подпись, порядок разделов), подпрограмма
+      // отдаёт лишь содержимое.
+      const rec = await Report.pickTemplate({
+        title: 'Шаблон пояснительной записки',
+        tags: ['tech-workspace', 'концепция', 'общее'],
+      });
+      if (!rec) return;
+      const blocks = tagReportSections(generateReportBlocks(v, B));
+      const tpl = Report.createTemplate(rec.template);
+      tpl.meta = {
+        ...(tpl.meta || {}),
+        title:  `Пояснительная записка — ${v.name}`,
+        author: v.concept?.projectData?.designer || tpl.meta?.author || '',
+      };
       tpl.content = blocks;
+      // Состав разделов — из содержимого; порядок/видимость берём из
+      // сохранённого шаблона (если пользователь их уже настроил).
+      if (!tpl.sections || typeof tpl.sections !== 'object') tpl.sections = {};
+      tpl.sections.manifest = Report.sectionManifestFromContent(blocks);
+      if (!Array.isArray(tpl.sections.order))  tpl.sections.order  = [];
+      if (!Array.isArray(tpl.sections.hidden)) tpl.sections.hidden = [];
       twToast('📄 Открываю предпросмотр пояснительной записки…', 'info');
-      await previewPDF(tpl);
+      await Report.previewPDF(tpl);
     } catch (e) {
       console.error('[tw-report]', e);
       twToast('Ошибка формирования отчёта: ' + (e && e.message || e), 'warn');
