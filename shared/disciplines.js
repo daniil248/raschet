@@ -51,9 +51,18 @@ export const DISCIPLINES = [
     units: 'кг / % / МПа', core: false, ready: true,
   },
   // 47.4.1 перечислил также mechanical/data — задел без движка.
+  // mechanical = роль «конструктор» (несущие/нагрузки, structural).
   {
-    id: 'mechanical', label: 'Механика / нагрузки', icon: '🧱',
+    id: 'mechanical', label: 'Конструкции / нагрузки', icon: '🧱',
     calcLibId: null, calcLib: null, units: 'кН / кг',
+    core: false, ready: false,
+  },
+  // SPATIAL-BASE (schema-constructor-architecture.md §10, memory D8):
+  // роль «архитектор» — стены/площади/пространства/уровни. Аддитивно,
+  // ready:false (0 потребителей, cache-safe; движок — будущая фаза).
+  {
+    id: 'architectural', label: 'Архитектура / пространства', icon: '🏛',
+    calcLibId: null, calcLib: null, units: 'м² / м',
     core: false, ready: false,
   },
   {
