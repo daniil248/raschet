@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.692', date: '2026-05-17', items: [
+      '📑 <b>Отчёты: базовые и документные шаблоны разделены вкладками</b> (выбор Пользователя «две вкладки сверху списка»). Вместо одного списка с группами-заголовками — переключатель [Документы]/[Базовые] над списком (apps/reports/index.html #cat-tabs): видна только активная категория, без прокрутки через чужой раздел. Счётчики в подписях вкладок. Поиск фильтрует в рамках активной вкладки. «+ Новый» создаёт шаблон сразу нужного уровня (Базовые → level:base, Документы → document) — без переключения уровня внутри редактора. Файлы: apps/reports/index.html, apps/reports/reports.js (state.catTab, renderList, onNew, обработчик вкладок), apps/reports/reports.css (.rpt-cat-tabs/.rpt-cat-tab), js/engine/constants.js.',
+    ] },
     { version: '0.60.691', date: '2026-05-17', items: [
       '🩹 <b>Фикс: «Ошибка превью: Cannot access guides before initialization»</b> (репорт Пользователя, регрессия v0.60.689). В preview.js replace_all (mode===edit→guides) ошибочно затронул сами объявления: const guides = … : (guides) и pageLabel = … : (guides) → TDZ-самоссылка, превью в редакторе шаблона падало. Стало: введена const editMode = mode===edit, дефолты guides/pageLabel ссылаются на editMode. Файлы: shared/report/preview.js, js/engine/constants.js.',
     ] },

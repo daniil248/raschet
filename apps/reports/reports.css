@@ -109,6 +109,33 @@ main {
 .rpt-cat-item__badge.user    { background: #e3f2fd; color: #1976d2; }
 .rpt-cat-item__badge.base    { background: #ede7f6; color: #5e35b1; }
 
+/* Вкладки списка: Документы / Базовые (полное разделение) */
+.rpt-cat-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid #d8dde6;
+  background: #f7f9fc;
+}
+.rpt-cat-tab {
+  flex: 1;
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 9px 8px;
+  font: 600 12px system-ui, sans-serif;
+  color: #6b7280;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.rpt-cat-tab:hover { color: #1976d2; }
+.rpt-cat-tab.active {
+  color: #1976d2;
+  border-bottom-color: #1976d2;
+  background: #fff;
+}
+
 /* Заголовок группы списка (Документы / Базовые) */
 .rpt-cat-group {
   padding: 10px 16px 4px;

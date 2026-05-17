@@ -28,10 +28,12 @@ const state = {
   filterText: '',
   prevGuides: false,   // показывать направляющие полей в превью
   prevZoom: 1,         // масштаб превью (1 = вписать по ширине)
+  catTab: 'docs',      // активная вкладка списка: 'docs' | 'base'
 };
 
 // ——— DOM-ссылки ———
 const $list        = document.getElementById('cat-list');
+const $catTabs     = document.getElementById('cat-tabs');
 const $search      = document.getElementById('cat-search');
 const $detail      = document.getElementById('detail');
 const $detailEmpty = document.getElementById('detail-empty');
@@ -106,32 +108,35 @@ function renderList() {
     ? all.filter(t => (t.name + ' ' + (t.description || '') + ' ' + (t.tags || []).join(' ')).toLowerCase().includes(q))
     : all;
 
-  $list.innerHTML = '';
-  if (filtered.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'rpt-cat-empty';
-    empty.textContent = q ? 'Нет совпадений' : 'Шаблоны не созданы';
-    $list.appendChild(empty);
-    return;
-  }
-
-  // Базовые шаблоны (level==='base' — задают только поля/колонтитулы/
-  // стили) отделены от шаблонов документов (свой порядок блоков,
-  // наследуют базу). Документы показываем первыми.
+  // Базовые шаблоны (level==='base' — только поля/колонтитулы/стили)
+  // и шаблоны документов (свой порядок блоков, наследуют базу) —
+  // ПОЛНОСТЬЮ разделены вкладками: видим только активную категорию.
   const isBase = (t) => t.template && t.template.level === 'base';
   const docs  = filtered.filter(t => !isBase(t));
   const bases = filtered.filter(isBase);
 
-  const addGroup = (title, arr) => {
-    if (!arr.length) return;
-    const h = document.createElement('div');
-    h.className = 'rpt-cat-group';
-    h.textContent = title + '  (' + arr.length + ')';
-    $list.appendChild(h);
-    for (const t of arr) $list.appendChild(buildCatItem(t));
-  };
-  addGroup('Шаблоны документов', docs);
-  addGroup('Базовые шаблоны', bases);
+  // Счётчики на вкладках
+  if ($catTabs) {
+    const dBtn = $catTabs.querySelector('[data-cat="docs"]');
+    const bBtn = $catTabs.querySelector('[data-cat="base"]');
+    if (dBtn) dBtn.textContent = 'Документы (' + docs.length + ')';
+    if (bBtn) bBtn.textContent = 'Базовые (' + bases.length + ')';
+    for (const b of $catTabs.querySelectorAll('.rpt-cat-tab'))
+      b.classList.toggle('active', b.dataset.cat === state.catTab);
+  }
+
+  const arr = state.catTab === 'base' ? bases : docs;
+  $list.innerHTML = '';
+  if (arr.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'rpt-cat-empty';
+    empty.textContent = q
+      ? 'Нет совпадений'
+      : (state.catTab === 'base' ? 'Базовых шаблонов нет' : 'Шаблоны документов не созданы');
+    $list.appendChild(empty);
+    return;
+  }
+  for (const t of arr) $list.appendChild(buildCatItem(t));
 }
 
 function buildCatItem(t) {
@@ -352,12 +357,16 @@ function openPrompt({ title, name = '', description = '', onOk }) {
 }
 
 function onNew() {
+  // Тип нового шаблона = активная вкладка (Документы → document,
+  // Базовые → base): создаём сразу в нужной категории без
+  // переключения уровня внутри редактора.
+  const lvl = state.catTab === 'base' ? 'base' : 'document';
   openPrompt({
-    title: 'Новый шаблон',
+    title: lvl === 'base' ? 'Новый базовый шаблон' : 'Новый шаблон документа',
     onOk({ name, description }) {
       const rec = Catalog.saveTemplate({
         name, description,
-        template: Report.createTemplate({ meta: { title: name, author: '', subject: '' } }),
+        template: Report.createTemplate({ level: lvl, meta: { title: name, author: '', subject: '' } }),
         source: 'user',
       });
       state.selectedId = rec.id;
@@ -515,6 +524,12 @@ async function onDocx() {
 
 // ——— события ———
 $search.addEventListener('input', () => { state.filterText = $search.value; renderList(); });
+if ($catTabs) $catTabs.addEventListener('click', (e) => {
+  const b = e.target.closest('.rpt-cat-tab');
+  if (!b || !b.dataset.cat || b.dataset.cat === state.catTab) return;
+  state.catTab = b.dataset.cat;
+  renderList();
+});
 $btnNew     .addEventListener('click', onNew);
 $btnImport  .addEventListener('click', onImport);
 $btnExport  .addEventListener('click', onExportCatalog);
