@@ -2,7 +2,7 @@
   "id": "constructor",
   "name": "Конструктор схем",
   "description": "Проектирование принципиальных схем электроснабжения с автоматическим расчётом нагрузок, подбором кабелей и защиты",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
@@ -17,7 +17,7 @@
   "permissions": ["constructor.use"],
   "lsNamespacesOwned": ["engine"],
   "dependsOnContracts": {
-    "storageKeys": ["raschet.project.<pid>.engine.scheme.v1", "raschet.project.<pid>.engine.issues.v1", "raschet.projects.v1", "raschet.activeProjectId.v1", "raschet.global.v1"],
+    "storageKeys": ["raschet.project.<pid>.engine.scheme.v1", "raschet.project.<pid>.engine.issues.v1", "raschet.projects.v1", "raschet.activeProjectId.v1", "raschet.activeProject.v1", "raschet.global.v1", "raschet.configurations.panel.v1", "raschet.batteryCatalog.v1", "raschet.container-members.cols.v1", "raschet.container-members.preset-id.v1", "raschet.container-members.presets.v1", "raschet.container-members.view.v1"],
     "events": { "emits": [], "consumes": ["rs-selection-change", "rs-cs-focus", "raschet:card-preset-changed"] },
     "urlParams": ["project", "openFile", "focusNode", "nodeId"],
     "bridges": ["scheme-rack-bridge", "service-bridge", "legacy-rack-migration", "scheme-orphan-migration"]

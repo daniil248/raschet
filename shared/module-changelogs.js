@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.638', date: '2026-05-17', items: [
+      '📋✅ <b>Фаза 1 (хвост): манифест constructor честный — ревизия завершена</b>. Корневой manifest.json (constructor = Конструктор схем, js/main.js + js/engine + инспектор): storageKeys +raschet.activeProject.v1 (legacy-flat указатель, grep-подтверждён) +raschet.configurations.panel.v1 +raschet.batteryCatalog.v1 (cross-read инспектора ИБП/щитов) +raschet.container-members.cols/preset-id/presets/view .v1 (UI-пресеты группового контейнера). Базовые engine-ключи/события/urlParams/bridges уже верны. version 1.0.0→1.1.0. Непроецируемые поля → modules.json не меняется, паритет 33 OK. <b>ИТОГ ревизии «manifest честен»:</b> пройдены ВСЕ модули — 9 связных (v615–v623) + auditor-инструмент (v624) + cooling-drift-free (v625) + хвост mdc/pdu/mv/panel/ups/battery/cable/suppression/logistics/catalog/sketch/constructor (v627–v638); help проверен — пуст КОРРЕКТНО (auditor false-flag из текста справочных статей); 5 calc-lib + transformer/psychrometrics/facility-inventory/reports/schematic/configurator3d уже были корректны. modules.json неизменен на каждом шаге, паритет 33 OK. Файл: manifest.json.',
+    ] },
     { version: '0.60.637', date: '2026-05-17', items: [
       '📋 <b>Фаза 1 (хвост): манифест sketch честный</b>. apps/sketch/manifest.json: storageKeys = raschet.sketch.&lt;pid&gt;.list.v1 (список скетчей) + raschet.sketch.&lt;pid&gt;.&lt;sketchId&gt;.v2 (XML-данные drawio/mxGraph) + raschet.sketch.refs.sidebar.open.v1 (UI-флаг сайдбара связей); urlParams +sketch (deep-link конкретного скетча). version 1.0.0→1.1.0. Модуль enabled:false (ВРЕМЕННО ОТКЛЮЧЁН) — проецируемые поля не тронуты. Непроецируемые поля → modules.json не меняется, паритет 33 OK, нулевой runtime-риск. Файл: apps/sketch/manifest.json.',
     ] },
