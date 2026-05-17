@@ -181,6 +181,13 @@
   background: #1a202c; border: 1px solid #2a313e; color: #cbd5e1;
   font-size: 13px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
 }
+/* Ф-F1 (§5.1): read-only индикатор дисциплины-контекста (СКС=data). */
+.sd-disc-ctx {
+  padding: 5px 12px; margin-bottom: 10px; border-radius: 8px;
+  background: #0e1726; border: 1px solid #1e3a5f; color: #93c5fd;
+  font-size: 12px; display: flex; align-items: center; gap: 6px;
+  flex-wrap: wrap;
+}
 .sd-project-bar code { font-size: 11px; color: #94a3b8; }
 .sd-project-bar a { color: #60a5fa; }
 .sd-project-bar select {

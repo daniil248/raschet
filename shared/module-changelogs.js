@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.734', date: '2026-05-18', items: [
+      '📐 <b>Конструктор/дисциплины — Ф-F1: read-only индикатор дисциплины-контекста в scs-design (X.4.5.3 §5.1)</b>. apps/scs-design/index.html +статичный бейдж под project-bar: «🔌 Контекст: СКС / слаботочка · дисциплина data · только индикатор» + tooltip-пояснение. Чисто HTML+CSS (новый класс .sd-disc-ctx в scs-design.css), <b>0 JS, 0 поведенческих изменений движка</b>: «План зала»/связи/авто-раскладка/длины и владение СКС-данными НЕ затронуты (контракт §5.1 — оболочка, не движок). Самый низкорисковый инкремент Ф-F. scs-config (тонкая HTML-оболочка, UI строит JS) — следующим ходом через JS-корень. Файлы: apps/scs-design/index.html, apps/scs-design/scs-design.css, shared/module-changelogs.js, ROADMAP.md, js/engine/constants.js.',
+    ] },
     { version: '0.60.733', date: '2026-05-18', items: [
       '📐 <b>Конструктор/дисциплины — Ф-F контракт-задел: шов «оболочка vs движок СКС» (X.4.5.3 §5.1)</b>. В schema-constructor-architecture.md добавлен §5.1 — точная таблица границы: какие SHELL-слои scs-design/scs-config принимают (app-header, sidebar-аккордеон, project-context chip, zoom Ctrl+wheel, экспорт→reports, role-gate дисциплины data, discipline-context бар) и что ОСТАЁТСЯ за СКС (движок «План зала» — авто-раскладка/каналы/фитинги/длины; владение СКС-данными в project-storage data-ns; Конструктор только ПО ССЫЛКЕ §6). Зафиксирован порядок код-инкрементов Ф-F1…Ф-F4 (низкий→высокий риск, по одному ходу, verify естественной загрузкой scs-* index.html, memory:verify_methodology) — движок и владение данными не трогаются ни в одном. Только контракт, кода нет. Файлы: shared/contracts/schema-constructor-architecture.md, ROADMAP.md, js/engine/constants.js.',
     ] },
