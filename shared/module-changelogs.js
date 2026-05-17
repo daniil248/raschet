@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.565', date: '2026-05-17', items: [
+      '📄 <b>Фаза 3 / 1.7 ЗАВЕРШЕНО: ups-config отчёт конфигурации ИБП → reports/ blocks[]</b>. _printUpsReport (172 строки direct-HTML window.open+document.write) → 146 строк blocks[]: h1/caption + 5 секций (h2 + table Параметр/Значение/Ед.) + 2 BOM-таблицы (ИБП-комплект, АКБ-комплект) + коэффициенты derate; pageBreak перед секцией АКБ; Report.createTemplate+exportPDF, динамический import shared/report (cache-safe). Вся data-логика сохранена 1:1, условные строки через .filter(Boolean). window.open(empty) в ups-config = 0. <b>Все 4 direct-HTML отчёта Фазы 3/1.7 мигрированы</b>: pdu-config (v0.60.562) + logistics (v0.60.563) + battery (v0.60.564) + ups-config (v0.60.565). Анти-паттерн window.open+захардкоженный HTML-документ в проекте устранён; отчёты только через reports/ blocks API (memory:reports_via_module).',
+    ] },
     { version: '0.60.564', date: '2026-05-17', items: [
       '📄 <b>Фаза 3 / 1.7: battery «Печать отчёта АКБ» — direct-HTML → общий blocks-builder</b>. printBatteryReport() (156 строк прямого HTML+window.open+w.print) заменён 16-строчной делегацией на buildBatteryReportBlocks(lastBatteryCalc) — ТОТ ЖЕ builder, что использует уже-рабочий exportBatteryReport (парность вывода гарантирована, нулевой риск расхождения). Прямой PDF через Report.createTemplate+exportPDF без выбора шаблона (быстрый print). battery уже статически импортировал shared/report — без изменения импортов. window.open в battery-calc = 0. Канонический отчёт (buildBatteryReportBlocks) — единый источник истины для содержимого. Остаток 1.7: ups-config:2221.',
     ] },
