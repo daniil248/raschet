@@ -458,6 +458,7 @@ export function migrateToFlow(tpl) {
   const bottom = [];   // подпись/печать снизу
   const extras = [];   // неклассифицированное — не теряем
 
+  const seenRole = new Set();   // дедуп: один docTitle/addressee/...
   for (const ov of overlays) {
     // Бегущий колонтитул (номер страницы и т.п.) — НЕ тянем в поток;
     // оставляем overlay (рисуется absolute в зоне полей — это
@@ -465,6 +466,11 @@ export function migrateToFlow(tpl) {
     if (ov.type !== 'image' &&
         /\{\{\s*pages?\s*\}\}/.test(String(ov.content?.text || ''))) continue;
     const role = classifyOverlay(ov);
+    // Шаблоны хранят зоны для firstPage и otherPages (миграция
+    // колонтитулов даёт 2 overlay scope first/other) → один и тот же
+    // структурный блок не дублируем (берём первый).
+    if (role && role !== 'signatureScan' && seenRole.has(role)) continue;
+    if (role) seenRole.add(role);
     if (role === 'docTitle') {
       top.push({ type: 'docTitle', text: ov.content?.text || '{{meta.title}}',
         styleRef: 'h1', align: ov.content?.align || 'left' });
