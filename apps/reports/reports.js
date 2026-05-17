@@ -172,6 +172,21 @@ function renderDetail() {
   $btnEdit.disabled   = false;
   $btnRename.disabled = rec.source === 'builtin';
 
+  // Кнопка «↺ Сбросить» (восстановить встроенный из сид-эталона) —
+  // создаётся динамически, видна только для встроенных.
+  if (!window.__rptResetBtn) {
+    const b = document.createElement('button');
+    b.id = 'btn-reset-builtin';
+    b.type = 'button';
+    b.textContent = '↺ Сбросить';
+    b.title = 'Восстановить встроенный шаблон из эталона';
+    b.className = $btnRename.className || '';
+    b.addEventListener('click', onResetBuiltin);
+    ($btnRename.parentElement || $btnEdit.parentElement).insertBefore(b, $btnDelete);
+    window.__rptResetBtn = b;
+  }
+  window.__rptResetBtn.style.display = rec.source === 'builtin' ? '' : 'none';
+
   // Превью: клонируем шаблон, вливаем демо-контент (если контент пуст).
   // Для встроенных шаблонов demoContentFor отдаёт персональный набор —
   // так пользователь видит реалистичное представление отчёта под задачу.
@@ -250,14 +265,42 @@ function onNew() {
 function onEdit() {
   const rec = state.selectedId ? Catalog.getTemplate(state.selectedId) : null;
   if (!rec) return;
-  // Редактор мутирует working-копию; сохраняет только по «Сохранить»
+  // Редактор мутирует working-копию; сохраняет только по «Сохранить».
+  // Встроенный шаблон НЕ перезаписываем (иначе правки разрушают сид —
+  // инцидент с «Технической запиской») → форкаем в пользовательскую
+  // копию; встроенный остаётся эталоном.
   Report.openTemplateEditor(rec.template, {
     onSave(updated) {
-      Catalog.saveTemplate({ ...rec, template: updated });
+      if (rec.source === 'builtin') {
+        const copy = Catalog.saveTemplate({
+          name: rec.name + ' (моя копия)',
+          description: rec.description || '',
+          tags: rec.tags || [],
+          template: updated,
+          source: 'user',
+        });
+        if (copy) state.selectedId = copy.id;
+        rsToast('Встроенный шаблон не изменяется — сохранена ваша копия', 'ok');
+      } else {
+        Catalog.saveTemplate({ ...rec, template: updated });
+      }
       renderList();
       renderDetail();
     },
   });
+}
+
+// Восстановить встроенный шаблон из сид-эталона (если был повреждён
+// прежними правками/тестами). Доступно только для source==='builtin'.
+function onResetBuiltin() {
+  const rec = state.selectedId ? Catalog.getTemplate(state.selectedId) : null;
+  if (!rec || rec.source !== 'builtin') return;
+  const seed = BUILTIN_TEMPLATES.find(b => b.id === rec.id);
+  if (!seed) { rsToast('Сид для этого шаблона не найден', 'err'); return; }
+  Catalog.saveTemplate({ ...seed, source: 'builtin' });
+  renderList();
+  renderDetail();
+  rsToast('Встроенный шаблон восстановлен из эталона', 'ok');
 }
 
 function onRename() {
