@@ -1022,18 +1022,35 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
 .tw-rail-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* v0.60.604: было space-between → кнопки секций «гуляли» по ширине
+     (разное число кнопок). Теперь заголовок растягивается (flex:1),
+     все экшен-кнопки прижаты к ПРАВОМУ краю единообразно, фикс. gap. */
+  gap: 4px;
   padding: 7px 10px;
   background: #f9fafb;
   border-bottom: 1px solid #e5e7eb;
 }
 .tw-rail-title {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 11.5px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.4px;
   color: #374151;
 }
+/* v0.60.604: экшен-кнопки секции — фикс. размер, не растягиваются,
+   последняя всегда flush к правому padding заголовка. */
+.tw-rail-head .tw-rail-cfg,
+.tw-rail-head .tw-rail-add { flex: 0 0 auto; }
+/* v0.60.604: «🏷 Объект» релоцирован наверх (над вариантами) как
+   ОБЩИЙ заголовок проекта — не аккордеон: без каретки/курсора-указки,
+   список всегда виден. */
+.tw-project-common { margin: 0 0 8px; }
+.tw-project-common-sec .tw-rail-head { cursor: default; }
+.tw-project-common-sec .tw-rail-title::before { content: none; }
+.tw-project-common-sec .tw-rail-list,
+.tw-project-common-sec .tw-rail-foot { display: block !important; }
 /* v0.60.585: сайдбар-аккордеон (memory:sidebar_accordion) — секции
    свёрнуты, развёрнута только активная. Заголовок кликабелен. */
 .tw-rail-head { cursor: pointer; }

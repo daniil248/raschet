@@ -3465,6 +3465,22 @@ function renderActiveVariant() {
         });
       });
     } catch (e) { console.warn('[tw] objectKind section filter', e); }
+    // v0.60.604 (правка Пользователя): «данные объекта — общие, вынести
+    // наверх, до вариантов». Релоцируем секцию «🏷 Объект» из rail в
+    // #tw-project-common (над списком вариантов). Делаем её фиксированным
+    // общим заголовком (не аккордеон): снимаем data-acc/collapsed, чтобы
+    // _applyRailAccordion её не трогал и она всегда раскрыта.
+    try {
+      const commonMount = $('tw-project-common');
+      const objSec = railMount && railMount.querySelector('.tw-rail-section[data-acc="obj"]');
+      if (commonMount && objSec) {
+        objSec.classList.remove('tw-collapsed');
+        objSec.removeAttribute('data-acc');
+        objSec.classList.add('tw-project-common-sec');
+        commonMount.innerHTML = '';
+        commonMount.appendChild(objSec);
+      }
+    } catch (e) { console.warn('[tw] relocate object section', e); }
     try { _applyRailAccordion(railMount); } catch (e) { console.warn('[tw] rail accordion', e); }
     $('tw-content-summary').textContent = `${totalRacks} стоек · ${itKw.toFixed(1)} кВт IT · Σ ${sumM2} м²`;
   } else {

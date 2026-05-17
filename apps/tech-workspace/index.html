@@ -79,6 +79,14 @@
         <button type="button" class="tw-mode-btn" data-mode="plan" title="План зала с drag-drop">🗺 План</button>
         <button type="button" class="tw-mode-btn" data-mode="compare" title="Сравнение вариантов side-by-side">📊 Сравнение</button>
       </div>
+      <!-- v0.60.604 (правка Пользователя): «данные объекта — общие,
+           вынести наверх, до вариантов». Секция «🏷 Объект»
+           релоцируется сюда из rail в renderActiveVariant(). Примечание:
+           для multi-location проектов локация может отличаться по
+           вариантам — это учитывается per-variant ниже (feedback_
+           project_location), здесь — общие данные объекта. -->
+      <div id="tw-project-common" class="tw-project-common"></div>
+
       <div class="tw-variants-head">
         <h3>Варианты концепции</h3>
         <button type="button" id="tw-variant-add" title="Добавить новый вариант">➕</button>
