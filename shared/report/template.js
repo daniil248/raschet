@@ -47,6 +47,24 @@ export function defaultTemplate() {
       margins:     { top: 20, right: 15, bottom: 20, left: 20 },
     },
 
+    // ——— ОБЛОЖКА / ТИТУЛ (Word-style, redesign DS) ———
+    // Если enabled — это ОТДЕЛЬНАЯ первая страница(ы) перед потоком:
+    // своя геометрия (page=null → как базовая), свои блоки (тот же
+    // формат, что flow: docTitle/companyInfo/… + текст), колонтитулы
+    // по умолчанию ВЫКЛючены (chrome:false). Содержимое отчёта идёт
+    // ПОСЛЕ обложки со своей пагинацией.
+    cover: {
+      enabled: false,
+      page:    null,                  // {format,orientation,margins} | null
+      chrome:  false,                 // показывать ли header/footer на обложке
+      blocks:  [],
+    },
+
+    // ——— ПЕРВАЯ СТРАНИЦА КОНТЕНТА (Word «особая первая страница») ———
+    // Геометрия первой страницы потока может отличаться от базовой
+    // (разный колонтитул 1-й стр. уже задаётся header/footer.firstPage).
+    firstPage: { page: null },        // {format,orientation,margins} | null
+
     // ——— логотип (опционально) ———
     logo: {
       src:      null,                  // data URL (PNG/JPEG) или null
@@ -629,6 +647,82 @@ function expandStructural(b, tpl) {
     default:
       return [b];
   }
+}
+
+// ——————————————————————————————————————————————————————————————————————
+// Word-style разделы документа (DS): обложка + переменная геометрия
+// страницы по блоку sectionBreak. Здесь — только МОДЕЛЬ/хелперы;
+// рендереры подключаются в DS2 (нет потребителей сейчас — cache-safe).
+//   flow-блок: { type:'sectionBreak', page:{format?,orientation?,
+//                margins?} } — новая страница + смена геометрии до
+//                следующего sectionBreak.
+// ——————————————————————————————————————————————————————————————————————
+
+/** Слияние геометрии: override поверх базовой (поля — поглубже). */
+export function mergePageGeom(base, ov) {
+  base = base || {};
+  if (!ov) return {
+    format: base.format || 'A4', width: base.width || 210,
+    height: base.height || 297, orientation: base.orientation || 'portrait',
+    margins: { ...(base.margins || { top: 20, right: 15, bottom: 20, left: 20 }) },
+  };
+  return {
+    format:      ov.format      || base.format      || 'A4',
+    width:       ov.width       || base.width       || 210,
+    height:      ov.height      || base.height      || 297,
+    orientation: ov.orientation || base.orientation || 'portrait',
+    margins: { ...(base.margins || {}), ...(ov.margins || {}) },
+  };
+}
+
+/** contentBox для произвольной геометрии (с учётом колонтитулов,
+ *  если chromeOn). isFirst — для выбора header/footer.firstPage. */
+export function contentBoxFor(tpl, geom, chromeOn, isFirst) {
+  const { width, height } = pageSizeMm(geom);
+  const m = geom.margins || { top: 20, right: 15, bottom: 20, left: 20 };
+  const hdr = chromeOn ? (isFirst ? tpl.header?.firstPage : tpl.header?.otherPages) : null;
+  const ftr = chromeOn ? (isFirst ? tpl.footer?.firstPage : tpl.footer?.otherPages) : null;
+  const top    = m.top    + (hdr && hdr.enabled ? hdr.height : 0);
+  const bottom = m.bottom + (ftr && ftr.enabled ? ftr.height : 0);
+  return {
+    x: m.left, y: top,
+    width:  width  - m.left - m.right,
+    height: height - top - bottom,
+  };
+}
+
+/** Документ → сегменты с собственной геометрией:
+ *  [{ isCover, chrome, geom, blocks[] }]. Обложка (если enabled) —
+ *  первый сегмент; затем контент, разрезаемый блоками sectionBreak
+ *  (каждый меняет геометрию относительно текущей). Структурные блоки
+ *  уже развёрнуты (effectiveFlow). */
+export function flowSegments(tpl) {
+  const base = tpl.page || {};
+  const segs = [];
+  if (tpl.cover && tpl.cover.enabled) {
+    const cb = (tpl.cover.blocks && tpl.cover.blocks.length)
+      ? effectiveFlow({ flow: tpl.cover.blocks, meta: tpl.meta, sections: {} })
+      : [];
+    segs.push({ isCover: true, chrome: !!tpl.cover.chrome,
+      geom: mergePageGeom(base, tpl.cover.page), blocks: cb });
+  }
+  let geom = mergePageGeom(base, tpl.firstPage && tpl.firstPage.page);
+  let cur = { isCover: false, chrome: true, geom, blocks: [] };
+  for (const b of effectiveFlow(tpl)) {
+    if (b && b.type === 'sectionBreak') {
+      segs.push(cur);
+      geom = mergePageGeom(geom, b.page);
+      cur = { isCover: false, chrome: true, geom, blocks: [] };
+      continue;
+    }
+    cur.blocks.push(b);
+  }
+  segs.push(cur);
+  // Пустые контент-сегменты (например, break в самом начале) не
+  // создают пустую страницу — кроме случая, когда документ пуст.
+  const out = segs.filter((s, i) => s.isCover || s.blocks.length ||
+    (i === segs.length - 1 && !segs.some(x => !x.isCover && x.blocks.length)));
+  return out.length ? out : segs;
 }
 
 /** Подстановка плейсхолдеров {{meta.title}}, {{page}}, {{pages}}, {{date}}. */

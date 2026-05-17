@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.669', date: '2026-05-17', items: [
+      '🏗 <b>Отчёты — DS1: модель Word-style разделов + обложки</b> (запрос Пользователя «отдельная обложка/первая страница + разделы с разной ориентацией как в Word», объём — полный Word-аналог). template.js (только модель, без потребителей — cache-safe, нулевая регрессия): defaultTemplate.cover {enabled,page,chrome,blocks} (отдельная титульная страница: своя геометрия, свои блоки, колонтитулы по умолч. выкл), defaultTemplate.firstPage.page (особая геометрия 1-й стр. контента); flow-блок sectionBreak {page:{format?,orientation?,margins?}} (новая страница + смена геометрии до следующего break); хелперы mergePageGeom (override поверх базовой), contentBoxFor (contentBox для произвольной геометрии±колонтитулы), flowSegments (документ → сегменты {isCover,chrome,geom,blocks} — обложка + контент, резанный sectionBreak; структурные блоки развёрнуты). Рендереры/редактор подключатся DS2/DS3. Файл: shared/report/template.js.',
+    ] },
     { version: '0.60.668', date: '2026-05-17', items: [
       '🩹 <b>Редактор отчётов — фикс вёрстки (репорт «верха не видно, сайдбар кривой»)</b>. После R3b новый flow-редактор использовал классы, которых не было в editor.css. Исправлено: (1) .rpt-editor__canvas-wrap align-items center→flex-start — при center+overflow верх страницы превью обрезался (классический flex-баг), теперь виден; (2) .rpt-editor__tabs button white-space:nowrap+font 12px+компактный паддинг + ярлык вкладки «Плавающий слой»→«Слой» — 5 вкладок больше не переносятся/не обрезаются; (3) sect() класс rpt-sect-title→rpt-section-title (есть в CSS — заголовки секций сайдбара теперь стилизованы); (4) добавлен .rpt-zone-add (колонка кнопок добавления). Файлы: shared/report/editor.css, editor.js.',
     ] },
