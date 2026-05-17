@@ -145,10 +145,16 @@ export function defaultTemplate() {
     flow: [],
 
     // Плавающий слой — ЕДИНСТВЕННОЕ намеренное наложение поверх
-    // потока: водяной знак («ЧЕРНОВИК»), печать поверх подписи.
+    // потока (вместе с колонтитулами — единственное, чему можно за
+    // поля печати). Два режима привязки:
+    //   • absolute: { x,y } (мм от листа) — фон/водяной знак на всю
+    //     страницу;
+    //   • anchor:{ role:'signature'|<...>, refId?, dx,dy } — привязка
+    //     к блоку потока (печать/скан-подпись ПОВЕРХ подписанта;
+    //     остаётся на подписанте при изменении длины контента).
     //   { id, type:'text'|'image', scope:'first'|'all'|'other',
-    //     x,y,width,height (мм), opacity, rotate,
-    //     content:{...} }  // как у overlay
+    //     anchor|null, x,y,width,height (мм), opacity, rotate,
+    //     content:{ src|text, ... } }
     floating: [],
 
     // ——— разделы документа (порядок и видимость) ———
@@ -470,12 +476,17 @@ export function migrateToFlow(tpl) {
       bottom.push({ type: 'signature', text: ov.content?.text || '',
         align: ov.content?.align || 'left' });
     } else if (role === 'stamp') {
-      bottom.push({ type: 'stamp', src: ov.content?.src || null,
-        width: ov.width || 38, height: ov.height || 38,
-        align: ov.content?.align || 'left' });
+      // Печать — НЕ блок потока, а floating с привязкой к подписанту
+      // (намеренное наложение поверх блока signature).
+      tpl.floating.push({ id: 'flt-stamp', type: 'image',
+        anchor: { role: 'signature', dx: ov.content?.dx ?? 60, dy: ov.content?.dy ?? -4 },
+        scope: 'all', width: ov.width || 38, height: ov.height || 38,
+        opacity: 1, content: { src: ov.content?.src || null, label: 'Печать организации' } });
     } else if (role === 'signatureScan') {
-      bottom.push({ type: 'signature', scanSrc: ov.content?.src || null,
-        width: ov.width || 50, height: ov.height || 20 });
+      tpl.floating.push({ id: 'flt-sign', type: 'image',
+        anchor: { role: 'signature', dx: ov.content?.dx ?? 18, dy: ov.content?.dy ?? -2 },
+        scope: 'all', width: ov.width || 50, height: ov.height || 20,
+        opacity: 1, content: { src: ov.content?.src || null, label: 'Подпись (скан)' } });
     } else if (ov.type === 'image') {
       // нелого/неструктурная картинка — сохранить как image-блок
       if (ov.content?.src) extras.push({ type: 'image', src: ov.content.src,
@@ -561,17 +572,16 @@ function expandStructural(b, tpl) {
         : [b.role || 'Должность',
            '_______________ / ' + (b.name || '') + ' /',
            '«___» __________ 20__ г.' + (b.mp === false ? '' : '\nМ.П.')].join('\n');
-      arr.push(wrap({ type: 'paragraph', style: 'caption',
+      // _anchorTag — маркер для floating-слоя: печать/скан-подпись
+      // привязываются к этому блоку (намеренное наложение поверх).
+      arr.push(wrap({ type: 'paragraph', style: 'caption', _anchorTag: 'signature',
         text: S(txt), align: b.align || 'left' }));
-      if (b.scanSrc) arr.push(wrap({ type: 'image', src: b.scanSrc,
-        width: b.width || 50, height: b.height || 20, align: b.align || 'left' }));
       return arr;
     }
     case 'stamp':
-      return b.src
-        ? [wrap({ type: 'image', src: b.src, width: b.width || 38,
-            height: b.height || 38, align: b.align || 'left' })]
-        : [];
+      // Печать — floating с привязкой к подписанту (см. migrateToFlow /
+      // tpl.floating), НЕ блок потока.
+      return [];
     default:
       return [b];
   }
