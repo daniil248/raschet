@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.631', date: '2026-05-17', items: [
+      '📋 <b>Фаза 1 (хвост): манифест ups-config честный</b>. apps/ups-config/manifest.json: storageKeys (7) и events (rs-selection-change/rs-cs-focus/ups-config:configs-changed/ups:open-master) уже корректны; schema-id raschet.ups-config.v1 уже верно НЕ включён (wire-format, RENAME.md §3). Дополнены urlParams +vdcMin/vdcMax/canParallel/maxLoadFactor/maxLoadFactorActive/pid (pre-fill подбора из ?nodeId/handoff). version 1.0.0→1.1.0. Непроецируемые поля → modules.json не меняется, паритет 33 OK, нулевой runtime-риск. Файл: apps/ups-config/manifest.json.',
+    ] },
     { version: '0.60.630', date: '2026-05-17', items: [
       '📋 <b>Фаза 1 (хвост): манифест panel-config честный</b>. apps/panel-config/manifest.json: storageKeys +raschet.lastPanelConfig.v1/pendingPanelSelection.v1/panelWizardPreload.v1 (handoff write/read с инспектором/конструктором); urlParams +name/kind/voltage/inputs/outputs/ip/form (pre-fill из ?nodeId-контекста). Базовые storageKeys (configurations.panel/panelCatalog) и events (rs-selection-change/rs-cs-focus) уже верны. Исключён raschet.panel-config.v1 — schema-id (wire-format, RENAME.md §3). version 1.0.0→1.1.0. Непроецируемые поля → modules.json не меняется, паритет 33 OK, нулевой runtime-риск. Файл: apps/panel-config/manifest.json.',
     ] },

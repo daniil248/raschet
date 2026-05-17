@@ -2,7 +2,7 @@
   "id": "ups-config",
   "name": "Конфигуратор ИБП",
   "description": "Подбор конфигурации ИБП по нагрузке: тип (моноблок / модульный), резервирование N+X, параметры входа и батарейной цепи",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
@@ -59,7 +59,13 @@
       "cosPhi",
       "phases",
       "redundancy",
-      "upsType"
+      "upsType",
+      "vdcMin",
+      "vdcMax",
+      "canParallel",
+      "maxLoadFactor",
+      "maxLoadFactorActive",
+      "pid"
     ],
     "bridges": []
   }
