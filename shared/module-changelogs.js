@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.550', date: '2026-05-17', items: [
+      '🌉 <b>Фаза 2 мосты: meteo-bridge перенесён в каноничное shared/</b>. apps/cooling/meteo-bridge.js (единственный мост вне shared/) перенесён git mv в shared/meteo-bridge.js — теперь ВСЕ мосты в shared/ (catalog/inventory/scheme-rack/service/meteo + legacy-rack-migration). Импорты самого моста уже были bare (shared/project-storage, shared/idb-store) — резолв через importmap независим от расположения, правок не потребовал. Единственный импортёр кода apps/cooling/cooling.js переведён на bare shared/meteo-bridge.js. На старом пути apps/cooling/meteo-bridge.js оставлен re-export shim (кэш-безопасность Pages: уже закэшenный старый cooling.js, импортирующий ./meteo-bridge.js, продолжит резолвиться; удалить после истечения кэша). lint-allowlist advisoryNote bridges обновлён. История файла сохранена (git mv R). Поведение идентично. Один мост = один коммит, чистый single-revert.',
+    ] },
     { version: '0.60.549', date: '2026-05-17', items: [
       '🧹 <b>Граница CORE-calc vs registered calc-lib сделана явной</b>. После массового переезда manifest.json библиотеки suppression-methods сохранил устаревший path suppression-methods/ (в modules.json уже был верный lib/suppression-methods/) — синхронизировано. В ARCHITECTURE.md §2 добавлен лакмус-критерий: почему кабельные методики js/methods (iec/nec/vdrop/pue/rtm) остаются в ядре, а suppression-methods переехал в lib/ — js/methods тянет ядро пересчёта recalc.js и весь inspector (живая математика движка, не плагин), suppression-methods ядро не импортирует, её потребляет один UI-модуль и у неё есть manifest + kind calc-lib. Правило: в ядре пересчёта → js/ (CORE, без манифеста); самодостаточная, тянется 1–2 UI-модулями, есть manifest+kind calc-lib → lib/ (запись реестра). Только документация + правка одного поля манифеста.',
     ] },

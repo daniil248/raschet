@@ -6,6 +6,6 @@
   "allow": [],
   "advisoryNotes": {
     "R2-raw-foreign-ls": "Файлы, читающие чужой raschet.(project|projects|configurations|subscription).* literal/template вне project-storage/configuration-catalog/subscriptions/мостов: projects/project.js (15+ ключей — высший приоритет), projects/projects.js, js/main.js, tech-workspace, scs-design, rack-config/rack-sidebar, suppression-config, shared/app-header, shared/auto-norm, shared/company-profile, shared/scheme-orphan-migration, и др. Многие фактически используют projectKey()-helper (ложноположительно) — поэтому R2 advisory. Genuine рефактор сырого доступа — ROADMAP X.1.3 / Фаза 2.",
-    "bridges": "shared/<m>-bridge.js + shared/legacy-rack-migration.js — санкционированный кросс-модульный адаптер: вправе импортировать модуль и читать мульти-модульные LS (исключены из R1/R3/R4/R-shared/R2). Каноничное место мостов — shared/ (cooling/meteo-bridge.js → перенести в shared/meteo-bridge.js, X.1.3)."
+    "bridges": "shared/<m>-bridge.js + shared/legacy-rack-migration.js — санкционированный кросс-модульный адаптер: вправе импортировать модуль и читать мульти-модульные LS (исключены из R1/R3/R4/R-shared/R2). Каноничное место мостов — shared/. ВСЕ мосты теперь в shared/ (v0.60.550, Фаза 2): cooling/meteo-bridge.js перенесён в shared/meteo-bridge.js (старый путь — re-export shim, удалить после истечения кэша Pages)."
   }
 }

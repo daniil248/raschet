@@ -7,7 +7,7 @@
 // Использует:
 //   • cooling/calc/* — pure-функции расчёта (без DOM, переиспользуемые)
 //   • cooling/ui/*   — рендереры (tooltips, формы, чарты)
-//   • cooling/meteo-bridge.js — мост к данным meteo (без cross-import)
+//   • shared/meteo-bridge.js — мост к данным meteo (без cross-import)
 //
 // Состояние модуля:
 //   _options  — массив { id, name, spec, eco }
@@ -48,7 +48,7 @@ import { simulateOptionTopology } from './calc/topology.js';
 import { renderTopologyResults } from './ui/topology-view.js';
 
 import { tableToCsv, downloadCsv } from 'shared/meteo-util.js'; // v0.60.523: SHARED (burndown cooling→meteo/charts)
-import { getActiveMeteoDataset, getMeteoFilter, applyFilter, preloadMeteoForPid } from './meteo-bridge.js';
+import { getActiveMeteoDataset, getMeteoFilter, applyFilter, preloadMeteoForPid } from 'shared/meteo-bridge.js';
 import { CURRENCIES, currencyToIso } from './calc/fc-summary.js';
 import { open as openRatesDialog } from 'shared/currency-rates/rates-dialog.js';
 import { fetchRates, convert as convertRate } from 'shared/currency-rates/index.js';
