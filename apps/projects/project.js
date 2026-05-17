@@ -8,8 +8,6 @@ import {
   setActiveProjectId, getActiveProjectId, exportProject,
   // v0.59.373: подпроекты — артефакты внутри родителя (схемы, СКС, шкафы).
   listSubProjects, createSubProject,
-  // v0.59.862: hide-when-empty — для определения «есть ли данные модуля».
-  projectKey,
   // Фаза 2 (R2): чтение/запись чужих module-scoped данных через шов
   // (projectLoad/projectSave — централизовано, типобезоп., bump updatedAt).
   projectLoad,
@@ -32,9 +30,9 @@ import { NORM_MATRIX, detectCountryCode, countryLabel } from 'shared/auto-norm.j
 // роутинг. Размещено в проектном cross-discipline view (НЕ в Конструкторе
 // — он остаётся чистой электрикой, решение v0.60.277/278). Использует
 // контракт-реестр shared/disciplines.js (давно развёрнут — static import
-// cache-safe). projects читает/пишет engine-scheme через projectKey
-// (санкционированный helper, не сырой LS): read-modify-write, трогаем
-// только node.disciplines, остальное сохраняем байт-в-байт.
+// cache-safe). projects читает/пишет engine-scheme через шов
+// projectLoad/projectSave: read-modify-write, трогаем только
+// node.disciplines, остальное сохраняем байт-в-байт.
 import {
   listDisciplines, nodeDisciplines, getDiscipline, DEFAULT_DISCIPLINE,
   calcLibSpecifier,
@@ -2709,14 +2707,14 @@ function render() {
     // — также учитываем legacy: rackId, под которыми есть contents/rackTags
     //   (это данные размещения и тегов; инстансы могли быть удалены, а содержимое осталось).
     try {
-      const instRaw    = localStorage.getItem(projectKey(p.id, 'rack-config', 'instances.v1'));
-      const rcContents = localStorage.getItem(projectKey(p.id, 'scs-config', 'contents.v1'));
-      const rcTags     = localStorage.getItem(projectKey(p.id, 'scs-config', 'rackTags.v1'));
-      let nInstances = 0;
-      try { const arr = instRaw ? JSON.parse(instRaw) : []; nInstances = Array.isArray(arr) ? arr.length : 0; } catch {}
+      // Фаза 2 (R2): чтение legacy rack/scs-данных проекта — через шов.
+      const instArr   = projectLoad(p.id, 'rack-config', 'instances.v1', []);
+      const rcContents = projectLoad(p.id, 'scs-config', 'contents.v1', {}) || {};
+      const rcTags     = projectLoad(p.id, 'scs-config', 'rackTags.v1', {}) || {};
+      const nInstances = Array.isArray(instArr) ? instArr.length : 0;
       const orphanIds = new Set();
-      try { const o = rcContents ? JSON.parse(rcContents) : {}; Object.keys(o || {}).forEach(k => { if (Array.isArray(o[k]) && o[k].length) orphanIds.add(k); }); } catch {}
-      try { const o = rcTags ? JSON.parse(rcTags) : {}; Object.keys(o || {}).forEach(k => { if ((o[k] || '').trim()) orphanIds.add(k); }); } catch {}
+      try { Object.keys(rcContents).forEach(k => { if (Array.isArray(rcContents[k]) && rcContents[k].length) orphanIds.add(k); }); } catch {}
+      try { Object.keys(rcTags).forEach(k => { if ((rcTags[k] || '').trim()) orphanIds.add(k); }); } catch {}
       const total = Math.max(nInstances, orphanIds.size);
       if (total > 0) {
         const meta = nInstances > 0
