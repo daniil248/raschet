@@ -137,3 +137,36 @@ export function isNodeInDiscipline(node, disciplineId, projectDiscipline) {
 export function isMultiDiscipline(node) {
   return _sanitizeIds(node && node.disciplines).length >= 2;
 }
+
+/* -------------------------------------------------------------------------
+   Ф-A (X.4.5.3, Вариант I) — дисциплина СТРАНИЦЫ-схемы.
+   Контракт: schema-constructor-architecture.md §2. Страница =
+   типизированная схема; тип (дисциплина) задаётся в мастере создания
+   и НЕИЗМЕНЯЕМ. Поле `page.discipline` аддитивно: serialization
+   пропускает любые не-`_` поля → round-trip без миграции. Отсутствие
+   поля ≠ ошибка: fallback на дисциплину проекта (как до Варианта I),
+   затем DEFAULT_DISCIPLINE. НИКАКОЙ авто-записи (memory:user-params-
+   sacred, typeof-guard). На этом шаге ПОТРЕБИТЕЛЕЙ нет (cache-safe);
+   разводка в Конструктор/serialization — фазы Ф-B…Ф-C.
+   ------------------------------------------------------------------------- */
+
+/**
+ * Эффективная дисциплина страницы-схемы.
+ * @param {object} page             объект страницы (может быть null)
+ * @param {string} projectDiscipline дисциплина проекта (backward-compat)
+ * @returns {string} известный id дисциплины (никогда не пустой)
+ */
+export function pageDiscipline(page, projectDiscipline) {
+  const explicit = page && typeof page.discipline === 'string'
+    ? page.discipline : '';
+  if (explicit && _byId[explicit]) return explicit;
+  const base = (typeof projectDiscipline === 'string' && _byId[projectDiscipline])
+    ? projectDiscipline : DEFAULT_DISCIPLINE;
+  return base;
+}
+
+/** true → у страницы ЯВНО зафиксирован immutable-тип (есть валидное
+ *  page.discipline). false → тип ещё не присвоен (legacy/наследует проект). */
+export function isPageTyped(page) {
+  return !!(page && typeof page.discipline === 'string' && _byId[page.discipline]);
+}
