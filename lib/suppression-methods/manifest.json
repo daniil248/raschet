@@ -6,7 +6,7 @@
   "owner": "unassigned",
   "kind": "calc-lib",
   "standalone": false,
-  "path": "suppression-methods/",
+  "path": "lib/suppression-methods/",
   "icon": "orange",
   "badge": "lib",
   "enabled": true,

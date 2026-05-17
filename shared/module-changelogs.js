@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.549', date: '2026-05-17', items: [
+      '🧹 <b>Граница CORE-calc vs registered calc-lib сделана явной</b>. После массового переезда manifest.json библиотеки suppression-methods сохранил устаревший path suppression-methods/ (в modules.json уже был верный lib/suppression-methods/) — синхронизировано. В ARCHITECTURE.md §2 добавлен лакмус-критерий: почему кабельные методики js/methods (iec/nec/vdrop/pue/rtm) остаются в ядре, а suppression-methods переехал в lib/ — js/methods тянет ядро пересчёта recalc.js и весь inspector (живая математика движка, не плагин), suppression-methods ядро не импортирует, её потребляет один UI-модуль и у неё есть manifest + kind calc-lib. Правило: в ядре пересчёта → js/ (CORE, без манифеста); самодостаточная, тянется 1–2 UI-модулями, есть manifest+kind calc-lib → lib/ (запись реестра). Только документация + правка одного поля манифеста.',
+    ] },
     { version: '0.60.548', date: '2026-05-16', items: [
       '📐 <b>ARCHITECTURE.md §0 синхронизирован с новой раскладкой</b>. Канон-доку обновлён под структуру apps/ + lib/ (раньше описывал старый плоский корень как обязательный). Зафиксирован закон формы новых модулей: UI в apps/<id>/, calc-lib в lib/<id>/, плюс запись в modules.json, importmap-ключ при cross-import, MODULE_PATHS при наличии nav-входа. Перечислено что НЕ переезжает (CORE js/, SHARED shared/, лаунчеры, вспом.). Только документация.',
     ] },

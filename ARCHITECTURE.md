@@ -132,6 +132,24 @@ shared/
 противоречила бы закону слоёв `contracts/README.md`). Их «видимость»
 обеспечивается этим документом и контракт-доками, а не реестром.
 
+**Лакмус «CORE calc (`js/`) vs registered calc-lib (`lib/`)»** — почему
+кабельные методики (`js/methods/iec|nec|vdrop|pue|rtm`) остаются в
+ядре, а `suppression-methods` переехал в `lib/`, хотя оба —
+«мульти-стандартные методики расчёта»:
+
+- **Импортирует ли `js/engine/recalc.js` (ядро пересчёта)?** `js/methods`
+  тянут `recalc.js`, весь `inspector/*`, `report-sections.js`,
+  `js/main.js`, `shared/calc-modules/*` — это живая математика движка,
+  каждый пересчёт проекта проходит через неё. Не плагин → CORE, `js/`,
+  без манифеста, не запись реестра.
+- **`suppression-methods` ядро не импортирует** — потребляет ровно один
+  UI-модуль `apps/suppression-config`; есть `manifest.json` +
+  `kind:'calc-lib'` + свой README/modules-catalog/validation-tests.
+  Самодостаточная отделяемая библиотека → `lib/`, запись реестра.
+
+Правило: в ядре пересчёта → `js/` (CORE). Самодостаточная, тянется
+1–2 UI-модулями, есть manifest+`kind:'calc-lib'` → `lib/` (реестр).
+
 ## 3. Привязка структуры к модульной системе
 
 Источник правды реестра — `<module>/manifest.json`; корневой
