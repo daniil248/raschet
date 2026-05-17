@@ -59,7 +59,8 @@ raschet/
                        sketch configurator3d
   lib/<id>/            calc-lib (kind:'calc-lib'): suppression-methods
   modules/ help/ dev/ elements/  лаунчеры/вспом. (на корне, НЕ модули;
-                                 modules/index.html — каталог-страница)
+                                 modules/index.html — каталог-страница;
+                                 elements/ — редирект-заглушка→catalog/)
   functions/           Cloud Functions
   tools/ scripts/      CI-утилиты + миграционные (mass-move, importmap)
   .github/workflows/   CI (Actions требует ИМЕННО этот путь — не трогать)
