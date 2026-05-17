@@ -68,6 +68,9 @@ let _layoutMode = 'split';
 const KEY_VARIANTS = ['tech-workspace', 'variants.v1'];
 const KEY_ACTIVE = ['tech-workspace', 'activeVariantId.v1'];
 const KEY_LAYOUT = ['tech-workspace', 'layoutMode.v1'];
+// v0.60.585: какая секция rail развёрнута (accordion single-open).
+const KEY_RAILSEC = ['tech-workspace', 'railOpenSec.v1'];
+let _railOpenSec; // undefined=не загружено; null=не задано; иначе ключ
 
 function loadJson(suffix, fallback) {
   if (!_pid) return fallback;
@@ -81,6 +84,30 @@ function loadJson(suffix, fallback) {
 function saveJson(suffix, value) {
   if (!_pid) return;
   try { localStorage.setItem(projectKey(_pid, ...suffix), JSON.stringify(value)); } catch {}
+}
+
+// v0.60.585: сайдбар-аккордеон. Ключ секции = data-objsec || data-acc.
+// Развёрнута ровно одна: сохранённая (_railOpenSec) → секция активного
+// блока → первая. memory:sidebar_accordion (project-wide UX).
+const _RAIL_SEC_BY_KIND = {
+  project: 'obj', room: 'rooms', rack: 'racks', ups: 'ups',
+  cool: 'cool', coolsys: 'cool', feed: 'feed', areas: 'areas',
+  mdc: 'mdc', pue: 'pue',
+};
+function _railSecKey(el) { return el && (el.dataset.objsec || el.dataset.acc) || ''; }
+function _applyRailAccordion(host) {
+  if (!host) return;
+  if (_railOpenSec === undefined) _railOpenSec = loadJson(KEY_RAILSEC, null);
+  const secs = [...host.querySelectorAll('.tw-rail-section')];
+  if (!secs.length) return;
+  const keys = secs.map(_railSecKey);
+  let open = (_railOpenSec && keys.includes(_railOpenSec)) ? _railOpenSec : null;
+  if (!open) {
+    const k = _selectedBlock && _RAIL_SEC_BY_KIND[_selectedBlock.kind];
+    if (k && keys.includes(k)) open = k;
+  }
+  if (!open) open = keys.find(Boolean) || keys[0];
+  secs.forEach((s, i) => s.classList.toggle('tw-collapsed', keys[i] !== open));
 }
 
 // ─── ID generator
@@ -1523,7 +1550,7 @@ function renderListRail(c, ro) {
   }).join('');
 
   return `
-    <div class="tw-rail-section">
+    <div class="tw-rail-section" data-acc="obj">
       <div class="tw-rail-head">
         <span class="tw-rail-title">🏷 Объект</span>
       </div>
@@ -3438,6 +3465,7 @@ function renderActiveVariant() {
         });
       });
     } catch (e) { console.warn('[tw] objectKind section filter', e); }
+    try { _applyRailAccordion(railMount); } catch (e) { console.warn('[tw] rail accordion', e); }
     $('tw-content-summary').textContent = `${totalRacks} стоек · ${itKw.toFixed(1)} кВт IT · Σ ${sumM2} м²`;
   } else {
     // Не-list режим — очищаем rail-mount в сайдбаре.
@@ -3855,6 +3883,21 @@ function bindListEvents() {
       _layoutMode = layoutBtn.dataset.layout;
       saveJson(KEY_LAYOUT, _layoutMode);
       renderActiveVariant();
+      return;
+    }
+
+    // v0.60.585: клик по заголовку секции rail → аккордеон (развернуть
+    // эту, свернуть остальные). Игнорируем клики по кнопкам/ссылкам
+    // внутри головы (➕ / 🛠 / cfg). memory:sidebar_accordion.
+    const secHead = e.target.closest('.tw-rail-head');
+    if (secHead && !e.target.closest('button, a, .tw-rail-add, .tw-rail-cfg')) {
+      const sec = secHead.closest('.tw-rail-section');
+      const key = sec && _railSecKey(sec);
+      if (key && sec.parentElement) {
+        _railOpenSec = key;
+        saveJson(KEY_RAILSEC, key);
+        _applyRailAccordion(sec.parentElement);
+      }
       return;
     }
 

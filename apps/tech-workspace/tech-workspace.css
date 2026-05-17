@@ -1034,6 +1034,24 @@ body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, san
   letter-spacing: 0.4px;
   color: #374151;
 }
+/* v0.60.585: сайдбар-аккордеон (memory:sidebar_accordion) — секции
+   свёрнуты, развёрнута только активная. Заголовок кликабелен. */
+.tw-rail-head { cursor: pointer; }
+.tw-rail-title::before {
+  content: '▾';
+  display: inline-block;
+  width: 1em;
+  margin-right: 2px;
+  font-size: 10px;
+  color: #9ca3af;
+  transition: transform 0.12s;
+}
+.tw-rail-section.tw-collapsed > .tw-rail-head .tw-rail-title::before {
+  content: '▸';
+}
+.tw-rail-section.tw-collapsed > .tw-rail-list,
+.tw-rail-section.tw-collapsed > .tw-rail-foot { display: none !important; }
+.tw-rail-section.tw-collapsed > .tw-rail-head { border-bottom: 0; }
 .tw-rail-add {
   width: 22px; height: 22px;
   border: 1px solid #4f46e5;
