@@ -10,6 +10,8 @@ import {
   listSubProjects, createSubProject,
   // v0.59.862: hide-when-empty — для определения «есть ли данные модуля».
   projectKey,
+  // Фаза 2: список sketch'ей через шов, не сырым литералом.
+  loadSketchList,
 } from 'shared/project-storage.js';
 import { buildModuleHref, clearNavStack } from 'shared/project-context.js';
 import {
@@ -209,12 +211,7 @@ function _renderNormBadgesForCountry(country) {
 // Группировка по sketch'у. Click на ссылку → открывает исходный модуль.
 function renderProjectSketchRefs(p, host) {
   const pid = p.id;
-  let sketchList = [];
-  try {
-    const raw = localStorage.getItem(`raschet.sketch.${pid}.list.v1`);
-    sketchList = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(sketchList)) sketchList = [];
-  } catch {}
+  const sketchList = loadSketchList(pid);
 
   if (!sketchList.length) {
     host.innerHTML = `

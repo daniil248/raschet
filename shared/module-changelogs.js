@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.677', date: '2026-05-17', items: [
+      '🔧 <b>Фаза 2 (мин. безопасный шаг) — деплой B: project.js через loadSketchList</b>. projects/project.js: сырой литерал localStorage.getItem(`raschet.sketch.${pid}.list.v1`)+try/parse заменён на шовный loadSketchList(pid) (edge с деплоя A — cache-safe). Поведение идентично (тот же ключ/parse/array-fallback). Последний внешовный sketch-литерал в project.js убран; миграция/projectKey не тронуты. Файл: apps/projects/project.js (import + renderProjectSketchRefs).',
+    ] },
     { version: '0.60.676', date: '2026-05-17', items: [
       '🔧 <b>Фаза 2 (мин. безопасный шаг) — деплой A: аксессор шва loadSketchList</b>. Аудит projects/project.js: ~90% LS-доступа уже через шовный projectKey(); реально вне шва — единичный сырой литерал raschet.sketch.&lt;pid&gt;.list.v1 (стр.214) + санкционированные migration-циклы (не трогаем). shared/project-storage.js: добавлен export loadSketchList(pid) — шов владеет ключом sketch-namespace, всегда массив. Без потребителей в этом деплое (cache-safe; project.js перейдёт в деплое B). Миграцию/projectKey НЕ трогаем (низкий риск). Файл: shared/project-storage.js.',
     ] },
