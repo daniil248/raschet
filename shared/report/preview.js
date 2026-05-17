@@ -61,6 +61,40 @@ export function paginate(tpl) {
       pushPage();
       continue;
     }
+
+    // Таблицы режем построчно по страницам с повтором шапки —
+    // иначе длинная таблица «уезжает» под колонтитул следующей
+    // страницы (визуальный «ужас», репорт Пользователя).
+    if (block.type === 'table' && (block.rows || []).length) {
+      const lay = tableLayout(block, tpl);
+      let idx = 0;
+      const rows = block.rows;
+      while (idx < rows.length) {
+        let free = availH() - usedH;
+        // на странице уже есть контент и не влезает даже шапка+1 строка → новая
+        if (current.length > 0 && free < lay.headH + lay.rowHs[idx] + 2) {
+          pushPage();
+          free = availH();
+        }
+        let h = lay.headH;
+        const chunk = [];
+        while (idx < rows.length && h + lay.rowHs[idx] + 2 <= free) {
+          h += lay.rowHs[idx];
+          chunk.push(rows[idx]);
+          idx += 1;
+        }
+        if (chunk.length === 0) {                 // гарантия прогресса
+          chunk.push(rows[idx]);
+          h += lay.rowHs[idx];
+          idx += 1;
+        }
+        current.push({ ...block, rows: chunk });
+        usedH += h + 2;
+        if (idx < rows.length) pushPage();
+      }
+      continue;
+    }
+
     const h = estimateBlockHeight(block, tpl);
     if (usedH + h > availH() && current.length > 0) {
       pushPage();
@@ -102,9 +136,8 @@ export function estimateBlockHeight(block, tpl) {
       return h;
     }
     case 'table': {
-      const s = styles.table;
-      const rowH = ptToMm(s.size * 1.4) + 2 * (s.cellPadding || 1.8);
-      return rowH * (1 + (block.rows?.length || 0)) + 2;
+      const lay = tableLayout(block, tpl);
+      return lay.headH + lay.rowHs.reduce((a, b) => a + b, 0) + 2;
     }
     case 'image': {
       return (Number(block.height) || 20) + 2;
@@ -118,20 +151,61 @@ export function estimateBlockHeight(block, tpl) {
 
 function ptToMm(pt) { return pt * 0.3528; }
 
-/** Очень грубая оценка количества строк текста в блоке при ширине
- * contentWidthMm. В 1 мм при 11pt укладывается примерно 2.6 символа
- * пропорционального шрифта — этого достаточно для оценки. */
-function wrapLines(text, widthMm, style) {
+/** Перенос строки по символьной эвристике. Возвращает МАССИВ строк.
+ * Используется и пагинатором (для оценки высоты), и PDF-экспортом
+ * (для фактической отрисовки) — единая логика → разбиение страниц
+ * и реальная высота таблицы СХОДЯТСЯ (нет наезда на колонтитул).
+ * Длинные «слова» (шифры без пробелов) жёстко рубятся по perLine,
+ * чтобы текст не вылезал за границу ячейки. */
+export function wrapCell(text, widthMm, style) {
   const charsPerMm = Math.max(0.1, 3.2 - (style.size - 11) * 0.15);
-  const perLine   = Math.max(1, Math.floor(widthMm * charsPerMm));
-  const words     = String(text).split(/\s+/);
-  let lines = 1, cur = 0;
-  for (const w of words) {
-    const add = (cur ? 1 : 0) + w.length;
-    if (cur + add > perLine) { lines += 1; cur = w.length; }
-    else cur += add;
+  const perLine    = Math.max(1, Math.floor(widthMm * charsPerMm));
+  const out = [];
+  for (const raw of String(text ?? '').split('\n')) {
+    let cur = '';
+    for (let w of raw.split(/\s+/).filter(Boolean)) {
+      while (w.length > perLine) {                 // жёсткий разрыв шифра
+        if (cur) { out.push(cur); cur = ''; }
+        out.push(w.slice(0, perLine));
+        w = w.slice(perLine);
+      }
+      const add = (cur ? 1 : 0) + w.length;
+      if (cur && cur.length + add > perLine) { out.push(cur); cur = w; }
+      else cur = cur ? cur + ' ' + w : w;
+    }
+    out.push(cur);
   }
-  return lines;
+  return out.length ? out : [''];
+}
+
+function wrapLines(text, widthMm, style) {
+  return wrapCell(text, widthMm, style).length;
+}
+
+/** Единая геометрия таблицы — общая для пагинатора и PDF-рендера.
+ * Возвращает { widths[], lineH, pad, headH, rowHs[] } в мм. */
+export function tableLayout(block, tpl) {
+  const s = tpl.styles.table;
+  const boxW = contentBox(tpl, true).width;
+  const cols = (block.columns || []).map(c => (typeof c === 'string' ? { text: c } : c));
+  const n = cols.length || 1;
+  let fixed = 0, freeCnt = 0;
+  cols.forEach(c => { if (c.width) fixed += c.width; else freeCnt++; });
+  const freeW = Math.max(0, boxW - fixed);
+  const widths = cols.map(c => c.width || (freeCnt ? freeW / freeCnt : boxW / n));
+  const pad   = s.cellPadding || 1.8;
+  const lineH = ptToMm(s.size * 1.32);
+  const rowH  = (cells) => {
+    let maxLines = 1;
+    (cells || []).forEach((cell, i) => {
+      const w = (widths[i] || boxW / n) - 2 * pad;
+      maxLines = Math.max(maxLines, wrapCell(cell, w, s).length);
+    });
+    return 2 * pad + maxLines * lineH;
+  };
+  const headH = rowH(cols.map(c => c.text || ''));
+  const rowHs = (block.rows || []).map(r => rowH(r));
+  return { widths, lineH, pad, headH, rowHs, cols };
 }
 
 // ——————————————————————————————————————————————————————————————————————
