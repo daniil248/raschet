@@ -12,17 +12,29 @@
   "enabled": true,
   "internalOnly": false,
   "subscriptionPlan": "free",
-  "requires": ["shared/gdm600-templates"],
+  "requires": [
+    "shared/gdm600-templates"
+  ],
   "dbCollections": [],
-  "permissions": ["mdc-config.use"],
-  "lsNamespacesOwned": ["mdc-config"],
+  "permissions": [
+    "mdc-config.use"
+  ],
+  "lsNamespacesOwned": [
+    "mdc-config"
+  ],
   "dependsOnContracts": {
     "storageKeys": [
       "raschet.activeProject.v1",
+      "raschet.mdc-config.v1",
       "raschet.mdcToSuppression.v1"
     ],
-    "events": { "emits": [], "consumes": [] },
-    "urlParams": ["project"],
+    "events": {
+      "emits": [],
+      "consumes": []
+    },
+    "urlParams": [
+      "project"
+    ],
     "bridges": []
   }
 }

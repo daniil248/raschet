@@ -28,10 +28,11 @@
   "dependsOnContracts": {
     "storageKeys": [
       "raschet.configurations.panel.v1",
-      "raschet.panelCatalog.v1",
       "raschet.lastPanelConfig.v1",
-      "raschet.pendingPanelSelection.v1",
-      "raschet.panelWizardPreload.v1"
+      "raschet.panel-config.v1",
+      "raschet.panelCatalog.v1",
+      "raschet.panelWizardPreload.v1",
+      "raschet.pendingPanelSelection.v1"
     ],
     "events": {
       "emits": [
@@ -44,16 +45,16 @@
       ]
     },
     "urlParams": [
-      "project",
-      "nodeId",
+      "form",
+      "inputs",
+      "ip",
+      "kind",
       "loadKw",
       "name",
-      "kind",
-      "voltage",
-      "inputs",
+      "nodeId",
       "outputs",
-      "ip",
-      "form"
+      "project",
+      "voltage"
     ],
     "bridges": []
   }

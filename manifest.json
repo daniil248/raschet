@@ -12,14 +12,74 @@
   "enabled": true,
   "internalOnly": false,
   "subscriptionPlan": "starter",
-  "requires": ["shared/auth", "shared/global-settings", "shared/calc-modules"],
-  "dbCollections": ["projects"],
-  "permissions": ["constructor.use"],
-  "lsNamespacesOwned": ["engine"],
+  "requires": [
+    "shared/auth",
+    "shared/global-settings",
+    "shared/calc-modules"
+  ],
+  "dbCollections": [
+    "projects"
+  ],
+  "permissions": [
+    "constructor.use"
+  ],
+  "lsNamespacesOwned": [
+    "engine"
+  ],
   "dependsOnContracts": {
-    "storageKeys": ["raschet.project.<pid>.engine.scheme.v1", "raschet.project.<pid>.engine.issues.v1", "raschet.projects.v1", "raschet.activeProjectId.v1", "raschet.activeProject.v1", "raschet.global.v1", "raschet.configurations.panel.v1", "raschet.batteryCatalog.v1", "raschet.container-members.cols.v1", "raschet.container-members.preset-id.v1", "raschet.container-members.presets.v1", "raschet.container-members.view.v1"],
-    "events": { "emits": [], "consumes": ["rs-selection-change", "rs-cs-focus", "raschet:card-preset-changed"] },
-    "urlParams": ["project", "openFile", "focusNode", "nodeId"],
-    "bridges": ["scheme-rack-bridge", "service-bridge", "legacy-rack-migration", "scheme-orphan-migration"]
+    "storageKeys": [
+      "raschet.activeProject.v1",
+      "raschet.activeProjectId.v1",
+      "raschet.batteryCatalog.v1",
+      "raschet.batteryCatalog.v1.<pid>",
+      "raschet.configurations.panel.v1",
+      "raschet.container-members.cols.v1",
+      "raschet.container-members.preset-id.v1",
+      "raschet.container-members.presets.v1",
+      "raschet.container-members.view.v1",
+      "raschet.currentUserId",
+      "raschet.global.v1",
+      "raschet.lastUpsConfig.v1",
+      "raschet.logistics.handoff",
+      "raschet.main.cleanup-phantoms-hard.session",
+      "raschet.paletteWidth",
+      "raschet.panelCatalog.v1",
+      "raschet.panelWizardPreload.v1",
+      "raschet.pendingBatterySelection.v1",
+      "raschet.pendingMvSelection.v1",
+      "raschet.pendingPanelSelection.v1",
+      "raschet.pendingUpsSelection.v1",
+      "raschet.presetsDeleted.v1",
+      "raschet.presetsOverrides.v1",
+      "raschet.project.<pid>.engine.issues.v1",
+      "raschet.project.<pid>.engine.scheme.v1",
+      "raschet.projects.v1",
+      "raschet.storageMode.v1",
+      "raschet.tableColumns",
+      "raschet.transformerCatalog.v1",
+      "raschet.upsCatalog.v1",
+      "raschet.userConsumerCatalog.v1",
+      "raschet.userPresets.v1"
+    ],
+    "events": {
+      "emits": [],
+      "consumes": [
+        "rs-selection-change",
+        "rs-cs-focus",
+        "raschet:card-preset-changed"
+      ]
+    },
+    "urlParams": [
+      "focusNode",
+      "nodeId",
+      "openFile",
+      "project"
+    ],
+    "bridges": [
+      "legacy-rack-migration",
+      "scheme-orphan-migration",
+      "scheme-rack-bridge",
+      "service-bridge"
+    ]
   }
 }

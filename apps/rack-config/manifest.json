@@ -12,17 +12,41 @@
   "enabled": true,
   "internalOnly": false,
   "subscriptionPlan": "free",
-  "requires": ["shared/catalog-bridge", "shared/pdu-picker-modal", "shared/rack-catalog-data", "shared/sketch-refs-reverse"],
+  "requires": [
+    "shared/catalog-bridge",
+    "shared/pdu-picker-modal",
+    "shared/rack-catalog-data",
+    "shared/sketch-refs-reverse"
+  ],
   "dbCollections": [],
-  "permissions": ["rack-config.use"],
-  "lsNamespacesOwned": ["rack-config"],
+  "permissions": [
+    "rack-config.use"
+  ],
+  "lsNamespacesOwned": [
+    "rack-config"
+  ],
   "dependsOnContracts": {
     "storageKeys": [
+      "raschet.lastPduConfig.v1",
+      "raschet.project",
       "raschet.project.<pid>.rack-config.instances.v1",
-      "raschet.project.<pid>.rack-config.templates.v1"
+      "raschet.project.<pid>.rack-config.templates.v1",
+      "raschet.projects.v1",
+      "raschet.rack-config.v1"
     ],
-    "events": { "emits": [], "consumes": [] },
-    "urlParams": ["project", "pid", "embedded", "mode", "nodeId"],
-    "bridges": ["shared/catalog-bridge.js"]
+    "events": {
+      "emits": [],
+      "consumes": []
+    },
+    "urlParams": [
+      "embedded",
+      "mode",
+      "nodeId",
+      "pid",
+      "project"
+    ],
+    "bridges": [
+      "shared/catalog-bridge.js"
+    ]
   }
 }

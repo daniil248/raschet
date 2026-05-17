@@ -14,11 +14,21 @@
   "subscriptionPlan": "free",
   "requires": [],
   "dbCollections": [],
-  "permissions": ["help.use"],
-  "lsNamespacesOwned": ["help"],
+  "permissions": [
+    "help.use"
+  ],
+  "lsNamespacesOwned": [
+    "help"
+  ],
   "dependsOnContracts": {
-    "storageKeys": [],
-    "events": { "emits": [], "consumes": [] },
+    "storageKeys": [
+      "raschet.project.p_123.engine.scheme.v1",
+      "raschet.storageMode.v1"
+    ],
+    "events": {
+      "emits": [],
+      "consumes": []
+    },
     "urlParams": [],
     "bridges": []
   }

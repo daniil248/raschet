@@ -28,14 +28,15 @@
   ],
   "dependsOnContracts": {
     "storageKeys": [
-      "raschet.global.v1",
-      "raschet.cable.autoNormHint.shown"
+      "raschet.cable.autoNormHint.shown",
+      "raschet.global.v1"
     ],
     "events": {
       "emits": [],
       "consumes": []
     },
     "urlParams": [
+      "economic",
       "project"
     ],
     "bridges": []

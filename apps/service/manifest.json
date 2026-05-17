@@ -28,22 +28,31 @@
   ],
   "dependsOnContracts": {
     "storageKeys": [
-      "raschet.project.<pid>.service.orders.v1",
+      "raschet.cooling.standalone.cooling.selections.v1",
+      "raschet.kp-templates.activeId.v1",
+      "raschet.kp-templates.v1",
       "raschet.project.<pid>.service.activeOrderId.v1",
       "raschet.project.<pid>.service.currency.v1",
       "raschet.project.<pid>.service.numberCounters.v1",
-      "raschet.service.standalone.*"
+      "raschet.project.<pid>.service.numberPatterns.v1",
+      "raschet.project.<pid>.service.orders.v1",
+      "raschet.service.materials.user.v1",
+      "raschet.service.standalone.*",
+      "raschet.service.wizards.org.v1",
+      "raschet.service.wizards.user.v1",
+      "raschet.service.workTemplates.org.v1",
+      "raschet.service.workTemplates.v1"
     ],
     "events": {
       "emits": [],
       "consumes": []
     },
     "urlParams": [
-      "project",
+      "navResult",
       "pid",
-      "standalone",
+      "project",
       "return",
-      "navResult"
+      "standalone"
     ],
     "bridges": [
       "shared/service-bridge.js"

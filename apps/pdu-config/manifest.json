@@ -12,14 +12,32 @@
   "enabled": true,
   "internalOnly": false,
   "subscriptionPlan": "free",
-  "requires": ["shared/catalog-bridge", "shared/module-changelogs"],
+  "requires": [
+    "shared/catalog-bridge",
+    "shared/module-changelogs"
+  ],
   "dbCollections": [],
-  "permissions": ["pdu-config.use"],
-  "lsNamespacesOwned": ["pdu-config"],
+  "permissions": [
+    "pdu-config.use"
+  ],
+  "lsNamespacesOwned": [
+    "pdu-config"
+  ],
   "dependsOnContracts": {
-    "storageKeys": ["raschet.lastPduConfig.v1"],
-    "events": { "emits": [], "consumes": [] },
-    "urlParams": ["project", "embed"],
-    "bridges": ["shared/catalog-bridge.js"]
+    "storageKeys": [
+      "raschet.lastPduConfig.v1",
+      "raschet.pdu-config.v1"
+    ],
+    "events": {
+      "emits": [],
+      "consumes": []
+    },
+    "urlParams": [
+      "embed",
+      "project"
+    ],
+    "bridges": [
+      "shared/catalog-bridge.js"
+    ]
   }
 }

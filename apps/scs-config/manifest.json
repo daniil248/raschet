@@ -12,26 +12,53 @@
   "enabled": true,
   "internalOnly": false,
   "subscriptionPlan": "free",
-  "requires": ["shared/rack-storage", "shared/scheme-rack-bridge", "shared/scs-catalog-data"],
+  "requires": [
+    "shared/rack-storage",
+    "shared/scheme-rack-bridge",
+    "shared/scs-catalog-data"
+  ],
   "dbCollections": [],
-  "permissions": ["scs-config.use"],
-  "lsNamespacesOwned": ["scs-config"],
+  "permissions": [
+    "scs-config.use"
+  ],
+  "lsNamespacesOwned": [
+    "scs-config"
+  ],
   "dependsOnContracts": {
     "storageKeys": [
+      "raschet.project.<pid>.scs-config.assemblyTemplates.v1",
+      "raschet.project.<pid>.scs-config.cart.v1",
+      "raschet.project.<pid>.scs-config.catFilter.v1",
+      "raschet.project.<pid>.scs-config.catalog.v1",
       "raschet.project.<pid>.scs-config.contents.v1",
-      "raschet.project.<pid>.scs-config.rackTags.v1",
+      "raschet.project.<pid>.scs-config.faceMode.v1",
       "raschet.project.<pid>.scs-config.inventory.v1",
       "raschet.project.<pid>.scs-config.matrix.v1",
+      "raschet.project.<pid>.scs-config.rackTags.v1",
+      "raschet.project.<pid>.scs-config.uNumDir.v1",
       "raschet.project.<pid>.scs-config.warehouse.v1",
-      "raschet.project.<pid>.scs-config.cart.v1",
-      "raschet.project.<pid>.scs-config.catalog.v1",
-      "raschet.project.<pid>.scs-config.assemblyTemplates.v1",
-      "raschet.project.<pid>.scs-config.catFilter.v1",
-      "raschet.project.<pid>.scs-config.faceMode.v1",
-      "raschet.project.<pid>.scs-config.uNumDir.v1"
+      "raschet.scs-config.v1"
     ],
-    "events": { "emits": [], "consumes": [] },
-    "urlParams": ["project", "pid", "from", "rackId", "schemeNodeId", "tag"],
-    "bridges": ["shared/scheme-rack-bridge.js"]
+    "events": {
+      "emits": [],
+      "consumes": []
+    },
+    "urlParams": [
+      "from",
+      "id",
+      "new",
+      "pid",
+      "prefillAssetId",
+      "prefillName",
+      "prefillSn",
+      "prefillTag",
+      "project",
+      "rackId",
+      "schemeNodeId",
+      "tag"
+    ],
+    "bridges": [
+      "shared/scheme-rack-bridge.js"
+    ]
   }
 }

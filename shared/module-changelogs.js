@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.688', date: '2026-05-17', items: [
+      '🧾 <b>Фаза 1: манифесты приведены к коду (honest contracts)</b>. tools/audit-contracts.py показывал drift в 16 из 33 модулей (storageKeys/urlParams, фактически используемые в коде, не были объявлены в manifest.json.dependsOnContracts). Сверка автоматизирована и устранена: constructor +20 sk, service +9, projects +5, rack-config +4, help +2, ups/panel/mv/scs/mdc/pdu/suppression-config +собственный ns, scs-config +6 url (id/new/prefill*), cable/scs-design +url. Только метаданные контрактов — НЕ runtime (modules.json не затронут: dependsOnContracts туда не проецируется), нулевая регрессия. audit-contracts.py --strict теперь EXIT=0 (0 drift из 33). Файлы: manifest.json 16 модулей, js/engine/constants.js.',
+    ] },
     { version: '0.60.687', date: '2026-05-17', items: [
       '📑 <b>Отчёты: вкладка «Разделы» (Word-аналог)</b> (репорт Пользователя «для другой ориентации страницы нет отдельной настройки… должны быть несколько разделов с разными настройками»). В редакторе шаблона (shared/report/editor.js) новая вкладка «Разделы»: документ делится блоками «⮐ Разрыв раздела» на разделы — как в Word; каждый раздел показан карточкой с собственными формат/ориентация/поля и списком блоков. Раздел 1 = базовая геометрия (working.page, синхронно с «Лист»); со 2-го — переопределение относительно предыдущего (пусто = наследовать), кумулятивно как flowSegments. Кнопки: «+ Добавить раздел (разрыв)», «→ К блоку-разрыву» (переход в «Структуру» с выбором), «✕ Удалить раздел» (слияние с предыдущим). Модель не менялась (поверх sectionBreak/flowSegments) — нулевая регрессия; для базового шаблона вкладка скрыта. Файлы: shared/report/editor.js (+buildSections/docSections, ALL_TABS, visibleTabs, импорт mergePageGeom), js/engine/constants.js.',
     ] },

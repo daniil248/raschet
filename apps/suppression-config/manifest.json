@@ -12,19 +12,32 @@
   "enabled": true,
   "internalOnly": false,
   "subscriptionPlan": "free",
-  "requires": ["suppression-methods"],
+  "requires": [
+    "suppression-methods"
+  ],
   "dbCollections": [],
-  "permissions": ["suppression-config.use"],
-  "lsNamespacesOwned": ["suppression-config", "sup"],
+  "permissions": [
+    "suppression-config.use"
+  ],
+  "lsNamespacesOwned": [
+    "suppression-config",
+    "sup"
+  ],
   "dependsOnContracts": {
     "storageKeys": [
-      "raschet.sup.installations.v1",
       "raschet.activeProject.v1",
+      "raschet.mdcToSuppression.v1",
       "raschet.projects.v1",
-      "raschet.mdcToSuppression.v1"
+      "raschet.sup.installations.v1",
+      "raschet.suppression-config.v1"
     ],
-    "events": { "emits": [], "consumes": [] },
-    "urlParams": ["project"],
+    "events": {
+      "emits": [],
+      "consumes": []
+    },
+    "urlParams": [
+      "project"
+    ],
     "bridges": []
   }
 }

@@ -6,3 +6,7 @@ tmp/
 
 scripts/__pycache__/
 __pycache__/
+
+# Локальные инструкции Claude (не версионируются; не сметать git add -A)
+/CLAUDE.md
+/claude.md

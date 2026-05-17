@@ -12,21 +12,40 @@
   "enabled": true,
   "internalOnly": false,
   "subscriptionPlan": "free",
-  "requires": ["shared/draggable-modal", "shared/idb-store", "shared/meteo-util"],
+  "requires": [
+    "shared/draggable-modal",
+    "shared/idb-store",
+    "shared/meteo-util"
+  ],
   "dbCollections": [],
-  "permissions": ["meteo.use"],
-  "lsNamespacesOwned": ["meteo"],
+  "permissions": [
+    "meteo.use"
+  ],
+  "lsNamespacesOwned": [
+    "meteo"
+  ],
   "dependsOnContracts": {
     "storageKeys": [
-      "raschet.project.<pid>.meteo.datasets.v1",
+      "idb:meteo.datasets.<pid>",
+      "raschet.meteo.last-loc.v1",
       "raschet.project.<pid>.meteo.activeId.v1",
       "raschet.project.<pid>.meteo.annualCols.v1",
-      "raschet.project.<pid>.meteo.globalFilter.v1",
       "raschet.project.<pid>.meteo.autoFetchOk.v1",
-      "idb:meteo.datasets.<pid>"
+      "raschet.project.<pid>.meteo.datasets.v1",
+      "raschet.project.<pid>.meteo.globalFilter.v1"
     ],
-    "events": { "emits": [], "consumes": [] },
-    "urlParams": ["project", "pid", "return", "navResult"],
-    "bridges": ["shared/meteo-bridge.js"]
+    "events": {
+      "emits": [],
+      "consumes": []
+    },
+    "urlParams": [
+      "navResult",
+      "pid",
+      "project",
+      "return"
+    ],
+    "bridges": [
+      "shared/meteo-bridge.js"
+    ]
   }
 }

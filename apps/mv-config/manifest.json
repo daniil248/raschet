@@ -27,6 +27,7 @@
   "dependsOnContracts": {
     "storageKeys": [
       "raschet.configurations.mv.v1",
+      "raschet.mv-config.v1",
       "raschet.pendingMvSelection.v1"
     ],
     "events": {
@@ -40,16 +41,18 @@
       ]
     },
     "urlParams": [
-      "project",
-      "nodeId",
-      "name",
-      "Un_kV",
-      "loadA",
       "In_A",
-      "mvType",
+      "Un_kV",
       "cellsCount",
-      "lockedId"
+      "loadA",
+      "lockedId",
+      "mvType",
+      "name",
+      "nodeId",
+      "project"
     ],
-    "bridges": ["shared/catalog-bridge.js"]
+    "bridges": [
+      "shared/catalog-bridge.js"
+    ]
   }
 }

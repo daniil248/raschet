@@ -29,13 +29,14 @@
   ],
   "dependsOnContracts": {
     "storageKeys": [
-      "raschet.project.<pid>.ups-config.selected.v1",
       "raschet.configurations.ups.v1",
+      "raschet.cs.ctx.ups",
       "raschet.lastUpsConfig.v1",
       "raschet.pendingUpsSelection.v1",
-      "raschet.upsHandoff.v1",
+      "raschet.project.<pid>.ups-config.selected.v1",
+      "raschet.ups-config.v1",
       "raschet.upsBatteryReturn.v1",
-      "raschet.cs.ctx.ups"
+      "raschet.upsHandoff.v1"
     ],
     "events": {
       "emits": [
@@ -50,22 +51,22 @@
       ]
     },
     "urlParams": [
-      "project",
-      "nodeId",
-      "capacityKw",
-      "loadKw",
       "autonomyMin",
-      "targetAutonomyMin",
-      "cosPhi",
-      "phases",
-      "redundancy",
-      "upsType",
-      "vdcMin",
-      "vdcMax",
       "canParallel",
+      "capacityKw",
+      "cosPhi",
+      "loadKw",
       "maxLoadFactor",
       "maxLoadFactorActive",
-      "pid"
+      "nodeId",
+      "phases",
+      "pid",
+      "project",
+      "redundancy",
+      "targetAutonomyMin",
+      "upsType",
+      "vdcMax",
+      "vdcMin"
     ],
     "bridges": []
   }

@@ -31,25 +31,26 @@
   ],
   "dependsOnContracts": {
     "storageKeys": [
-      "raschet.project.<pid>.tech-workspace.variants.v1",
+      "raschet.activeProject.v1",
+      "raschet.cooling.prefill.v1",
+      "raschet.project.<pid>.cooling.activeSelectionId.v1",
+      "raschet.project.<pid>.cooling.selections.v1",
+      "raschet.project.<pid>.engine.scheme.v1",
+      "raschet.project.<pid>.meteo.activeId.v1",
+      "raschet.project.<pid>.meteo.datasets.v1",
       "raschet.project.<pid>.tech-workspace.activeVariantId.v1",
       "raschet.project.<pid>.tech-workspace.layoutMode.v1",
       "raschet.project.<pid>.tech-workspace.railOpenSec.v1",
-      "raschet.cooling.prefill.v1",
-      "raschet.project.<pid>.meteo.datasets.v1",
-      "raschet.project.<pid>.meteo.activeId.v1",
-      "raschet.project.<pid>.cooling.selections.v1",
-      "raschet.project.<pid>.cooling.activeSelectionId.v1",
-      "raschet.project.<pid>.engine.scheme.v1"
+      "raschet.project.<pid>.tech-workspace.variants.v1"
     ],
     "events": {
       "emits": [],
       "consumes": []
     },
     "urlParams": [
-      "project",
+      "navResult",
       "pid",
-      "navResult"
+      "project"
     ],
     "bridges": [
       "shared/service-bridge.js"

@@ -12,22 +12,38 @@
   "enabled": true,
   "internalOnly": false,
   "subscriptionPlan": "free",
-  "requires": ["shared/rack-storage", "shared/scheme-rack-bridge"],
+  "requires": [
+    "shared/rack-storage",
+    "shared/scheme-rack-bridge"
+  ],
   "dbCollections": [],
-  "permissions": ["scs-design.use"],
-  "lsNamespacesOwned": ["scs-design"],
+  "permissions": [
+    "scs-design.use"
+  ],
+  "lsNamespacesOwned": [
+    "scs-design"
+  ],
   "dependsOnContracts": {
     "storageKeys": [
       "raschet.project.<pid>.scs-design.links.v1",
-      "raschet.project.<pid>.scs-design.plan.v1",
-      "raschet.project.<pid>.scs-design.selection.v1",
       "raschet.project.<pid>.scs-design.linksOverlay.overrack.v1",
       "raschet.project.<pid>.scs-design.linksOverlay.sag.v1",
       "raschet.project.<pid>.scs-design.linksOverlay.visible.v1",
+      "raschet.project.<pid>.scs-design.plan.v1",
+      "raschet.project.<pid>.scs-design.selection.v1",
       "ss:raschet.scs-design.legacy-migrate-attempted.<pid>.session"
     ],
-    "events": { "emits": [], "consumes": [] },
-    "urlParams": ["project", "pid"],
-    "bridges": ["shared/scheme-rack-bridge.js"]
+    "events": {
+      "emits": [],
+      "consumes": []
+    },
+    "urlParams": [
+      "embed",
+      "pid",
+      "project"
+    ],
+    "bridges": [
+      "shared/scheme-rack-bridge.js"
+    ]
   }
 }
