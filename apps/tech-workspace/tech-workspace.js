@@ -1334,10 +1334,10 @@ function calcPueFromCoolingModule(c, meteoSummary) {
     // Используем глобальный helper если есть; иначе ensureDefaultProject из импорта
     const projectId = pid?.id || (window._activeProjectId || ensureDefaultProject()?.id);
     if (!projectId) return null;
-    const selsRaw = localStorage.getItem(`raschet.project.${projectId}.cooling.selections.v1`);
+    const selsRaw = localStorage.getItem(projectKey(projectId, 'cooling', 'selections.v1'));
     const sels = selsRaw ? JSON.parse(selsRaw) : [];
     if (!sels.length) return null;
-    const activeRaw = localStorage.getItem(`raschet.project.${projectId}.cooling.activeSelectionId.v1`);
+    const activeRaw = localStorage.getItem(projectKey(projectId, 'cooling', 'activeSelectionId.v1'));
     const activeId = activeRaw ? JSON.parse(activeRaw) : null;
     const sel = sels.find(s => s.id === activeId) || sels[0];
     if (!sel || !sel.options?.length) return null;
@@ -4209,9 +4209,9 @@ function bindListEvents() {
     if (createMaintOrder) {
       try {
         if (!_pid) { twToast('Нет активного проекта.', 'warn'); return; }
-        const sels = JSON.parse(localStorage.getItem(`raschet.project.${_pid}.cooling.selections.v1`) || '[]');
+        const sels = JSON.parse(localStorage.getItem(projectKey(_pid, 'cooling', 'selections.v1')) || '[]');
         if (!Array.isArray(sels) || !sels.length) { twToast('В проекте нет cooling-подборов.', 'warn'); return; }
-        const activeId = JSON.parse(localStorage.getItem(`raschet.project.${_pid}.cooling.activeSelectionId.v1`) || 'null');
+        const activeId = JSON.parse(localStorage.getItem(projectKey(_pid, 'cooling', 'activeSelectionId.v1')) || 'null');
         const sel = sels.find(s => s.id === activeId) || sels[0];
         const main = sel.options.find(o => o.id === sel.mainOptionId) || sel.options[0];
         if (!main) { twToast('У подбора нет вариантов.', 'warn'); return; }
@@ -4882,9 +4882,9 @@ function _purposeLabel(p) {
 function _readCoolingSummary() {
   if (!_pid) return null;
   try {
-    const sels = JSON.parse(localStorage.getItem(`raschet.project.${_pid}.cooling.selections.v1`) || '[]');
+    const sels = JSON.parse(localStorage.getItem(projectKey(_pid, 'cooling', 'selections.v1')) || '[]');
     if (!Array.isArray(sels) || !sels.length) return null;
-    const activeId = JSON.parse(localStorage.getItem(`raschet.project.${_pid}.cooling.activeSelectionId.v1`) || 'null');
+    const activeId = JSON.parse(localStorage.getItem(projectKey(_pid, 'cooling', 'activeSelectionId.v1')) || 'null');
     const sel = sels.find(s => s.id === activeId) || sels[0];
     if (!sel || !sel.options?.length) return null;
     const main = sel.options.find(o => o.id === sel.mainOptionId) || sel.options[0];
@@ -4925,7 +4925,7 @@ function _readCoolingSummary() {
 function _readServiceSummary() {
   if (!_pid) return null;
   try {
-    const orders = JSON.parse(localStorage.getItem(`raschet.project.${_pid}.service.orders.v1`) || '[]');
+    const orders = JSON.parse(localStorage.getItem(projectKey(_pid, 'service', 'orders.v1')) || '[]');
     if (!Array.isArray(orders) || !orders.length) return null;
     let installCount = 0, maintCount = 0;
     let installTotal = 0, maintTotal = 0;

@@ -6,7 +6,7 @@
 import {
   listProjects, createProject, updateProject, deleteProject, copyProject,
   getActiveProjectId, setActiveProjectId, ensureDefaultProject,
-  exportProject, importProject,
+  exportProject, importProject, projectKey,
 } from 'shared/project-storage.js';
 import { buildModuleHref, clearNavStack } from 'shared/project-context.js';
 import { migrateOrphanSchemes } from 'shared/scheme-orphan-migration.js';
@@ -184,7 +184,7 @@ let statusFilter = (() => {
 function projectStats(pid) {
   const s = { nodes: 0, racks: 0, links: 0, inventory: 0, facility: 0 };
   try {
-    const sch = localStorage.getItem(`raschet.project.${pid}.engine.scheme.v1`);
+    const sch = localStorage.getItem(projectKey(pid, 'engine', 'scheme.v1'));
     if (sch) {
       try { s.nodes = (JSON.parse(sch).nodes || []).length; } catch {}
     }
@@ -193,8 +193,8 @@ function projectStats(pid) {
     // Шаблоны стоек (rack-config.templates.v1) хранятся глобально. Per-project
     // «стойками проекта» считаем те, у которых в scs-config.contents.v1
     // этого проекта есть хоть одно устройство или в racktags — тег.
-    const cont = localStorage.getItem(`raschet.project.${pid}.scs-config.contents.v1`);
-    const tags = localStorage.getItem(`raschet.project.${pid}.scs-config.rackTags.v1`);
+    const cont = localStorage.getItem(projectKey(pid, 'scs-config', 'contents.v1'));
+    const tags = localStorage.getItem(projectKey(pid, 'scs-config', 'rackTags.v1'));
     const ids = new Set();
     try {
       const obj = cont ? JSON.parse(cont) : {};
@@ -207,14 +207,14 @@ function projectStats(pid) {
     s.racks = ids.size;
   } catch {}
   try {
-    const ln = localStorage.getItem(`raschet.project.${pid}.scs-design.links.v1`);
+    const ln = localStorage.getItem(projectKey(pid, 'scs-design', 'links.v1'));
     if (ln) {
       try { s.links = (JSON.parse(ln) || []).length; } catch {}
     }
   } catch {}
   try {
     // IT-оборудование = устройства из contents.v1, просуммированные по всем стойкам.
-    const cont = localStorage.getItem(`raschet.project.${pid}.scs-config.contents.v1`);
+    const cont = localStorage.getItem(projectKey(pid, 'scs-config', 'contents.v1'));
     if (cont) {
       try {
         const obj = JSON.parse(cont) || {};
@@ -223,7 +223,7 @@ function projectStats(pid) {
     }
   } catch {}
   try {
-    const f = localStorage.getItem(`raschet.project.${pid}.facility-inventory.v1`);
+    const f = localStorage.getItem(projectKey(pid, 'facility-inventory', 'v1'));
     if (f) {
       try {
         const obj = JSON.parse(f);

@@ -203,8 +203,8 @@ function _renderProjectBadgeImpl(pid, host) {
   let legacyActive = false;
   try {
     if (parent) {
-      const linksRaw = localStorage.getItem(`raschet.project.${parent.id}.scs-design.links.v1`);
-      const planRaw  = localStorage.getItem(`raschet.project.${parent.id}.scs-design.plan.v1`);
+      const linksRaw = localStorage.getItem(projectKey(parent.id, 'scs-design', 'links.v1'));
+      const planRaw  = localStorage.getItem(projectKey(parent.id, 'scs-design', 'plan.v1'));
       const hasLinks = !!(linksRaw && (() => { try { return (JSON.parse(linksRaw) || []).length > 0; } catch { return false; } })());
       const hasPlan  = !!(planRaw  && (() => { try { const o = JSON.parse(planRaw); return !!(o && (o.items || []).length); } catch { return false; } })());
       legacyActive = hasLinks || hasPlan;
@@ -1302,7 +1302,7 @@ function _checkRackUsage(r) {
       ? activeProj.parentProjectId
       : pid;
     if (schemePid && r.porObjectId) {
-      const schKey = `raschet.project.${schemePid}.engine.scheme.v1`;
+      const schKey = projectKey(schemePid, 'engine', 'scheme.v1');
       const sch = loadJson(schKey, null);
       if (sch && Array.isArray(sch.nodes)) {
         // Найти engine-узел с этим porObjectId.
@@ -1353,7 +1353,7 @@ function _hardDeleteRack(r) {
       ? activeProj.parentProjectId
       : pid;
     if (targetPid) {
-      const instKey = `raschet.project.${targetPid}.rack-config.instances.v1`;
+      const instKey = projectKey(targetPid, 'rack-config', 'instances.v1');
       const arr = loadJson(instKey, []);
       const filtered = (Array.isArray(arr) ? arr : []).filter(x => x && x.id !== rackId);
       if (filtered.length !== arr.length) localStorage.setItem(instKey, JSON.stringify(filtered));

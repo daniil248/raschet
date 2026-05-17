@@ -28,7 +28,7 @@ import {
   loadTableLiveState as _loadTableLiveState,
   saveTableLiveState as _saveTableLiveState,
 } from '../shared/table-presets.js';
-import { listProjects as _listProjectCtx, createProject as _createProjectCtx } from '../shared/project-storage.js';
+import { listProjects as _listProjectCtx, createProject as _createProjectCtx, projectKey } from '../shared/project-storage.js';
 import { state as _engineState } from './engine/state.js';
 import { selectNode as _engineSelectNode } from './engine/inspector.js';
 
@@ -6123,7 +6123,7 @@ function _persistProjectIssuesSnapshot(errors, warns) {
   let pid = null;
   try { pid = localStorage.getItem('raschet.activeProjectId.v1') || null; } catch {}
   if (!pid) return;
-  const key = `raschet.project.${pid}.engine.issues.v1`;
+  const key = projectKey(pid, 'engine', 'issues.v1');
   if (!S) return;
   // v0.60.513: не-electrical дисциплина — электротехнический снапшот
   // не формируем (движок дисциплины в разработке). Чистим прежний,
