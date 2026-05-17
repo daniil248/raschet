@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.675', date: '2026-05-17', items: [
+      '📍 <b>Модуль отчётов завершён ПОЛНОСТЬЮ — ROADMAP X.6.3 закрыт</b>. R6 verified e2e (ТЗ идентичен после конвертации колонтитул-overlay→band, консоль чистая). X.6.3 отмечен 100% (R1–R6 + RR1-3 общий composeReport + DS1-4 Word-разделы); status-header → v0.60.675; убрана устаревшая заметка в пункте. «Доделать отчёты» закрыто: единый flow без наложения, редактор=WYSIWYG=PDF, правка из превью, все отчёты унифицированы, Word-style разделы/обложка (preview/PDF/DOCX), legacy absolute-overlay путь удалён. Файл: ROADMAP.md.',
+    ] },
     { version: '0.60.674', date: '2026-05-17', items: [
       '🏗 <b>Отчёты — R6: убран legacy absolute-overlay путь («доделай отчёты»)</b>. Закрыт последний пункт X.6.3. migrateToFlow: колонтитул-overlay ({{page}}/{{pages}}) больше НЕ остаются absolute — конвертируются в band-колонтитулы header/footer (по y → шапка/подвал; по scope → firstPage/otherPages/обе), tpl.overlays обнуляется полностью. Эффект: (1) рендер колонтитулов согласован с потоком (зарезервированная зона полей, инвариант «за поля можно колонтитулам» соблюдён), (2) absolute-overlay код-путь больше не используется flow-документами (drawOverlays/placeFloating overlays-ветки инертны), (3) вкладка редактора «Колонтитулы» теперь АВТОРИТЕТНА (правит реальный band, а не «мёртвый» absolute). migrateLegacyToOverlays в createTemplate нейтрализован R6 (его band→overlay для колонтитулов обращается обратно) — отдельное удаление не требуется, ниже риск. Файл: shared/report/template.js (migrateToFlow: colontitles→band, tpl.overlays=[]).',
     ] },
