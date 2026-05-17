@@ -420,7 +420,23 @@ export function openTemplateEditor(tpl, opts = {}) {
       }
     });
     list.push(cur);
-    // Кумулятивная геометрия (как в flowSegments).
+    const ps = Array.isArray(working.pageSections) ? working.pageSections : [];
+    if (ps.length) {
+      // По-раздельная модель: геометрия из выбранного раздела базы.
+      let idx = 0;
+      list.forEach((s, k) => {
+        if (k > 0) {
+          const ref = s.brk && s.brk.sectionRef;
+          const f = ref != null ? ps.find(x => x.id === ref || x.name === ref) : null;
+          idx = f ? ps.indexOf(f) : Math.min(idx + 1, ps.length - 1);
+        }
+        const sec = ps[Math.min(idx, ps.length - 1)] || {};
+        s.secName = sec.name;
+        s.geom = mergePageGeom(working.page || {}, sec.page);
+      });
+      return list;
+    }
+    // Legacy: кумулятивная геометрия (как в flowSegments).
     let geom = mergePageGeom(working.page || {}, working.firstPage && working.firstPage.page);
     list.forEach((s, k) => {
       if (k > 0) geom = mergePageGeom(geom, s.brk && s.brk.page);
@@ -474,17 +490,27 @@ export function openTemplateEditor(tpl, opts = {}) {
           'базовом шаблоне.';
         card.appendChild(ro);
       } else {
-        const bp = s.brk.page || (s.brk.page = {});
-        // В документе у раздела настраивается ТОЛЬКО ориентация —
-        // формат и поля наследуются из базы. Отдельных полей нет.
-        fld(card, 'Ориентация раздела', selectInput(
-          [['', '(как в базе)'], ['portrait', 'Книжная'], ['landscape', 'Альбомная']],
-          bp.orientation || '', v => {
-            bp.orientation = v || undefined;
-            // формат/поля раздел из документа не задаёт
-            delete bp.format; delete bp.margins;
-            rebuild();
-          }));
+        // Документ ЯВНО выбирает именованный раздел БАЗЫ (требование
+        // Пользователя). Геометрия/колонтитул — из выбранного раздела.
+        const ps = Array.isArray(working.pageSections) ? working.pageSections : [];
+        if (ps.length) {
+          fld(card, 'Раздел базы', selectInput(
+            [['', '(следующий по порядку)'], ...ps.map(x => [x.id, x.name])],
+            s.brk.sectionRef || '', v => {
+              s.brk.sectionRef = v || undefined;
+              if (s.brk.page) delete s.brk.page;   // геометрия из базы
+              rebuild();
+            }));
+        } else {
+          const bp = s.brk.page || (s.brk.page = {});
+          fld(card, 'Ориентация раздела', selectInput(
+            [['', '(как в базе)'], ['portrait', 'Книжная'], ['landscape', 'Альбомная']],
+            bp.orientation || '', v => {
+              bp.orientation = v || undefined;
+              delete bp.format; delete bp.margins;
+              rebuild();
+            }));
+        }
         const act = el('div', 'rpt-row');
         const go = btn('→ К блоку-разрыву');
         go.addEventListener('click', () => {
@@ -518,15 +544,26 @@ export function openTemplateEditor(tpl, opts = {}) {
     if (b.type === 'sectionBreak') {
       if (!b.page || typeof b.page !== 'object') b.page = {};
       const h = el('div', 'rpt-hint');
-      h.textContent = 'Новый раздел (новая страница). Формат и поля — из базового шаблона; в документе задаётся только ориентация раздела.';
+      h.textContent = 'Новый раздел (новая страница). Выберите, на какой именованный раздел базового шаблона переключиться — его геометрия и колонтитул применятся отсюда.';
       p.appendChild(h);
-      fld(p, 'Ориентация раздела', selectInput(
-        [['', '(как в базе)'], ['portrait', 'Книжная'], ['landscape', 'Альбомная']],
-        b.page.orientation || '', v => {
-          b.page.orientation = v || undefined;
-          delete b.page.format; delete b.page.margins;
-          renderPane();
-        }));
+      const psB = Array.isArray(working.pageSections) ? working.pageSections : [];
+      if (psB.length) {
+        fld(p, 'Раздел базы', selectInput(
+          [['', '(следующий по порядку)'], ...psB.map(x => [x.id, x.name])],
+          b.sectionRef || '', v => {
+            b.sectionRef = v || undefined;
+            if (b.page) delete b.page;
+            renderPane();
+          }));
+      } else {
+        fld(p, 'Ориентация раздела', selectInput(
+          [['', '(как в базе)'], ['portrait', 'Книжная'], ['landscape', 'Альбомная']],
+          b.page.orientation || '', v => {
+            b.page.orientation = v || undefined;
+            delete b.page.format; delete b.page.margins;
+            renderPane();
+          }));
+      }
       return;
     }
     if (b.type === 'signature') {
