@@ -3341,6 +3341,147 @@ function render() {
           setStatus('Ошибка записи в хранилище: ' + (e && e.message || e), false);
         }
       });
+
+      // ── X.4.4-producer Increment B1 (v0.60.582): расчёт по дисциплинам ──
+      // Узел с не-электрической ready-дисциплиной → авто-форма из
+      // META.inputs выбранной методики → run() → результат + сохранение
+      // node.disciplineParams (round-trip бесплатный, stripRuntime).
+      const calcNodes = meaningful.filter(n => {
+        const eff = nodeDisciplines(n, projDisc);
+        return eff.some(id => id !== 'electrical' && calcLibSpecifier(id));
+      });
+      if (calcNodes.length) {
+        const libCache = new Map(); // spec → module
+        const loadLib = async (spec) => {
+          if (libCache.has(spec)) return libCache.get(spec);
+          const url = new URL('../../lib/' + spec, location.href).href;
+          const m = await import(url);
+          libCache.set(spec, m);
+          return m;
+        };
+        const nodeOpts = calcNodes.map(n =>
+          `<option value="${esc(String(n.id))}">${esc(n.tag || n.id)}${n.name ? ' · ' + esc(n.name) : ''} (${esc(n.type)})</option>`).join('');
+        summaryHost.insertAdjacentHTML('beforeend', `
+          <h4 style="margin:0 0 8px;font-size:13px;color:#0f172a">🧮 Расчёт по дисциплинам
+            <span class="help-icon" title="X.4.4: для узла, входящего в не-электрическую дисциплину, выберите методику lib/<id>-methods, заполните параметры (схема META.inputs) и выполните расчёт. Параметры сохраняются в node.disciplineParams и переживают перезагрузку Конструктора." tabindex="0">?</span>
+          </h4>
+          <div style="border:1px solid #e0e7ee;border-radius:6px;padding:12px;background:#fff;margin-bottom:18px">
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
+              <label style="font-size:11.5px;color:#475569">Узел<br><select id="xdc-node" style="font-size:12px;padding:4px 6px;min-width:200px">${nodeOpts}</select></label>
+              <label style="font-size:11.5px;color:#475569">Дисциплина<br><select id="xdc-disc" style="font-size:12px;padding:4px 6px;min-width:150px"></select></label>
+              <label style="font-size:11.5px;color:#475569">Методика<br><select id="xdc-method" style="font-size:12px;padding:4px 6px;min-width:200px"></select></label>
+            </div>
+            <div id="xdc-form" style="display:flex;flex-wrap:wrap;gap:8px 14px;margin-bottom:10px"></div>
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+              <button id="xdc-run" style="font-size:12px;padding:6px 14px;border:1px solid #059669;background:#059669;color:#fff;border-radius:4px;cursor:pointer">▶ Рассчитать</button>
+              <button id="xdc-save" style="font-size:12px;padding:6px 14px;border:1px solid #2563eb;background:#fff;color:#2563eb;border-radius:4px;cursor:pointer">💾 Сохранить параметры</button>
+              <span id="xdc-status" class="muted" style="font-size:11.5px"></span>
+            </div>
+            <div id="xdc-result" style="font-size:12px"></div>
+          </div>
+        `);
+
+        const elNode = summaryHost.querySelector('#xdc-node');
+        const elDisc = summaryHost.querySelector('#xdc-disc');
+        const elMethod = summaryHost.querySelector('#xdc-method');
+        const elForm = summaryHost.querySelector('#xdc-form');
+        const elRes = summaryHost.querySelector('#xdc-result');
+        const elSt = summaryHost.querySelector('#xdc-status');
+        const cStat = (m, ok) => { elSt.textContent = m; elSt.style.color = ok ? '#166534' : '#b91c1c'; };
+        const nodeById = id => calcNodes.find(n => String(n.id) === String(id));
+        const readScheme = () => { try { return JSON.parse(localStorage.getItem(projectKey(pid, 'engine', 'scheme.v1')) || 'null'); } catch { return null; } };
+        const savedParams = (nid, disc, mid) => {
+          const fr = readScheme(); if (!fr || !fr.nodes) return null;
+          const arr = Array.isArray(fr.nodes) ? fr.nodes : Object.values(fr.nodes);
+          const nd = arr.find(x => x && String(x.id) === String(nid));
+          return nd && nd.disciplineParams && nd.disciplineParams[disc] && nd.disciplineParams[disc][mid] || null;
+        };
+
+        function fillDisc() {
+          const n = nodeById(elNode.value);
+          const eff = n ? nodeDisciplines(n, projDisc) : [];
+          const ds = eff.filter(id => id !== 'electrical' && calcLibSpecifier(id));
+          elDisc.innerHTML = ds.map(id => { const d = getDiscipline(id); return `<option value="${esc(id)}">${d ? d.icon + ' ' + esc(d.label) : esc(id)}</option>`; }).join('');
+          fillMethods();
+        }
+        async function fillMethods() {
+          elMethod.innerHTML = '<option>…</option>'; elForm.innerHTML = ''; elRes.innerHTML = '';
+          const disc = elDisc.value; const spec = calcLibSpecifier(disc);
+          if (!spec) { elMethod.innerHTML = ''; return; }
+          try {
+            const M = await loadLib(spec);
+            elMethod.innerHTML = (M.METHOD_LIST || []).map(m => `<option value="${esc(m.id)}">${esc(m.label || m.id)}</option>`).join('');
+            buildForm();
+          } catch (e) { cStat('Не удалось загрузить движок: ' + (e && e.message || e), false); }
+        }
+        async function buildForm() {
+          elForm.innerHTML = ''; elRes.innerHTML = '';
+          const disc = elDisc.value, mid = elMethod.value, spec = calcLibSpecifier(disc);
+          if (!spec || !mid) return;
+          const M = await loadLib(spec);
+          const meta = (M.METHOD_LIST || []).find(m => m.id === mid);
+          const fields = meta && Array.isArray(meta.inputs) ? meta.inputs : [];
+          const prev = savedParams(elNode.value, disc, mid) || {};
+          elForm.innerHTML = fields.map(f => {
+            const v = (prev[f.key] != null) ? prev[f.key] : f.default;
+            const lbl = `${esc(f.label)}${f.unit ? ' <span class="muted">(' + esc(f.unit) + ')</span>' : ''}${f.required ? ' *' : ''}`;
+            if (f.type === 'select') {
+              const opts = (f.options || []).map(o => `<option value="${esc(o.value)}"${String(o.value) === String(v) ? ' selected' : ''}>${esc(o.label)}</option>`).join('');
+              return `<label style="font-size:11.5px;color:#475569">${lbl}<br><select data-fk="${esc(f.key)}" style="font-size:12px;padding:3px 6px;min-width:140px">${opts}</select></label>`;
+            }
+            return `<label style="font-size:11.5px;color:#475569">${lbl}<br><input type="number" step="any" data-fk="${esc(f.key)}" value="${esc(String(v))}" style="font-size:12px;padding:3px 6px;width:120px"></label>`;
+          }).join('') || '<span class="muted" style="font-size:11.5px">У методики нет описанных входов.</span>';
+        }
+        const gather = () => {
+          const o = {};
+          elForm.querySelectorAll('[data-fk]').forEach(el => {
+            const k = el.getAttribute('data-fk');
+            o[k] = (el.tagName === 'SELECT') ? el.value
+              : (el.value === '' ? '' : Number(el.value));
+          });
+          return o;
+        };
+
+        elNode.addEventListener('change', fillDisc);
+        elDisc.addEventListener('change', fillMethods);
+        elMethod.addEventListener('change', buildForm);
+
+        summaryHost.querySelector('#xdc-run').addEventListener('click', async () => {
+          const disc = elDisc.value, mid = elMethod.value, spec = calcLibSpecifier(disc);
+          if (!spec || !mid) { cStat('Выберите дисциплину и методику.', false); return; }
+          try {
+            const M = await loadLib(spec);
+            const r = M.run(mid, gather());
+            const rows = Object.entries(r).filter(([k, v]) =>
+              k !== 'method' && k !== 'inputs' && k !== 'steps' &&
+              (typeof v === 'number' || typeof v === 'string'))
+              .map(([k, v]) => `<tr><td style="padding:3px 8px;color:#475569">${esc(k)}</td><td style="padding:3px 8px"><b>${typeof v === 'number' ? (Number.isInteger(v) ? v : Math.round(v * 1e4) / 1e4) : esc(String(v))}</b></td></tr>`).join('');
+            const steps = Array.isArray(r.steps) ? `<ol style="margin:6px 0 0 18px;font-size:11.5px;color:#475569">${r.steps.map(s => `<li>${esc(String(s))}</li>`).join('')}</ol>` : '';
+            elRes.innerHTML = `<div style="margin-top:6px"><table style="border-collapse:collapse;background:#f8fafc;border:1px solid #e0e7ee;border-radius:4px">${rows}</table>${steps}</div>`;
+            cStat('✓ Рассчитано.', true);
+          } catch (e) { cStat('Ошибка расчёта: ' + (e && e.message || e), false); }
+        });
+
+        summaryHost.querySelector('#xdc-save').addEventListener('click', () => {
+          const nid = elNode.value, disc = elDisc.value, mid = elMethod.value;
+          if (!disc || !mid) { cStat('Нечего сохранять.', false); return; }
+          const fr = readScheme();
+          if (!fr || !fr.nodes) { cStat('Схема не найдена — обновите страницу.', false); return; }
+          const isArr = Array.isArray(fr.nodes);
+          const arr = isArr ? fr.nodes : Object.values(fr.nodes);
+          const nd = arr.find(x => x && String(x.id) === String(nid));
+          if (!nd) { cStat('Узел не найден в схеме.', false); return; }
+          if (!nd.disciplineParams || typeof nd.disciplineParams !== 'object') nd.disciplineParams = {};
+          if (!nd.disciplineParams[disc] || typeof nd.disciplineParams[disc] !== 'object') nd.disciplineParams[disc] = {};
+          nd.disciplineParams[disc][mid] = gather();
+          try {
+            localStorage.setItem(projectKey(pid, 'engine', 'scheme.v1'), JSON.stringify(fr));
+            cStat('✓ Параметры сохранены в узел (применятся при загрузке Конструктора).', true);
+          } catch (e) { cStat('Ошибка записи: ' + (e && e.message || e), false); }
+        });
+
+        fillDisc(); // инициализация цепочки селектов
+      }
     }
   }
 
