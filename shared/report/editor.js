@@ -12,7 +12,7 @@
 //   openTemplateEditor(tpl, { onSave(newTpl){...}, onCancel(){...} });
 // ======================================================================
 
-import { PAGE_SIZES, FONT_FAMILIES, createTemplate, pageSizeMm, migrateToFlow, applyBaseChrome }
+import { PAGE_SIZES, FONT_FAMILIES, createTemplate, pageSizeMm, migrateToFlow, applyBaseChrome, mergePageGeom }
   from './template.js';
 import { renderPreview } from './preview.js';
 
@@ -150,14 +150,15 @@ export function openTemplateEditor(tpl, opts = {}) {
 
   const ALL_TABS = [
     ['structure', 'Структура'],
+    ['sections',  'Разделы'],
     ['chrome',    'Колонтитулы'],
     ['floating',  'Слой'],
     ['page',      'Лист'],
     ['styles',    'Стили'],
   ];
-  // Базовый шаблон = только chrome → без «Структуры»/«Слоя».
+  // Базовый шаблон = только chrome → без «Структуры»/«Разделов»/«Слоя».
   const visibleTabs = () => working.level === 'base'
-    ? ALL_TABS.filter(([id]) => id !== 'structure' && id !== 'floating')
+    ? ALL_TABS.filter(([id]) => id !== 'structure' && id !== 'sections' && id !== 'floating')
     : ALL_TABS;
   const tabBtns = {};
   function renderTabs() {
@@ -215,6 +216,7 @@ export function openTemplateEditor(tpl, opts = {}) {
     for (const id of Object.keys(tabBtns)) tabBtns[id].classList.toggle('active', id === state.tab);
     tabContent.innerHTML = '';
     if (state.tab === 'structure') buildStructure(tabContent);
+    else if (state.tab === 'sections') buildSections(tabContent);
     else if (state.tab === 'chrome') buildChrome(tabContent);
     else if (state.tab === 'floating') buildFloating(tabContent);
     else if (state.tab === 'page') buildPage(tabContent);
@@ -380,6 +382,133 @@ export function openTemplateEditor(tpl, opts = {}) {
     if (b.section) return '▸ ' + (b.sectionLabel || t) + ' · ' + t;
     const txt = (b.text || (Array.isArray(b.items) ? b.items[0] : '') || '').toString();
     return '· ' + t + (txt ? ' — ' + txt.slice(0, 28) : '');
+  }
+
+  // ——— Вкладка «Разделы» (Word-аналог: разделы документа с
+  // посекционными настройками страницы) ———
+  //
+  // Разделы выводятся ИЗ потока: блок sectionBreak начинает новый
+  // раздел (новая страница + смена геометрии до следующего break),
+  // ровно как flowSegments в PDF/превью. Здесь — наглядный список
+  // вместо поиска настройки в свойствах блока-разрыва.
+  function docSections() {
+    const flow = Array.isArray(working.flow) ? working.flow : [];
+    const list = [];
+    let cur = { brk: null, brkIdx: -1, blocks: [] };
+    flow.forEach((b, i) => {
+      if (b && b.type === 'sectionBreak') {
+        list.push(cur);
+        cur = { brk: b, brkIdx: i, blocks: [] };
+      } else {
+        cur.blocks.push(b);
+      }
+    });
+    list.push(cur);
+    // Кумулятивная геометрия (как в flowSegments).
+    let geom = mergePageGeom(working.page || {}, working.firstPage && working.firstPage.page);
+    list.forEach((s, k) => {
+      if (k > 0) geom = mergePageGeom(geom, s.brk && s.brk.page);
+      s.geom = geom;
+    });
+    return list;
+  }
+
+  function buildSections(p) {
+    const hint = el('div', 'rpt-hint');
+    hint.innerHTML = 'Документ делится на <b>разделы</b> блоками «⮐ Разрыв раздела» — ' +
+      'как в Word. У каждого раздела свои формат/ориентация/поля (со 2-го: ' +
+      'пусто = наследовать предыдущий). Новый раздел начинается с новой страницы.';
+    p.appendChild(hint);
+
+    const addRow = el('div', 'rpt-zone-add');
+    const aS = btn('+ Добавить раздел (разрыв)');
+    aS.className = 'rpt-zone-add-btn';
+    aS.addEventListener('click', () => {
+      const blk = { type: 'sectionBreak', page: { orientation: 'landscape' } };
+      const sgIdx = working.flow.findIndex(x => x && x.section === 'doc-sign');
+      if (sgIdx < 0) working.flow.push(blk);
+      else working.flow.splice(sgIdx, 0, blk);
+      rebuild();
+    });
+    addRow.appendChild(aS);
+    p.appendChild(addRow);
+
+    const secs = docSections();
+    secs.forEach((s, k) => {
+      const card = el('div', 'rpt-style-card');
+      const h = document.createElement('h4');
+      const g = s.geom || {};
+      const oTxt = (g.orientation === 'landscape' ? 'альбомная' : 'книжная');
+      h.textContent = (k === 0 ? '📄 Раздел 1 · основной' : '⮐ Раздел ' + (k + 1)) +
+        ' · ' + (g.format || 'A4') + ' · ' + oTxt +
+        ' · блоков: ' + s.blocks.length;
+      card.appendChild(h);
+
+      if (k === 0) {
+        const hh = el('div', 'rpt-hint');
+        hh.textContent = 'Базовая геометрия документа (она же на вкладке «Лист»). ' +
+          'Со 2-го раздела — переопределение относительно предыдущего.';
+        card.appendChild(hh);
+        const pg = working.page || (working.page = {});
+        fld(card, 'Формат', selectInput(
+          [...Object.keys(PAGE_SIZES).map(f => [f, f]), ['Custom', 'Custom']],
+          pg.format || 'A4', v => { pg.format = v; rebuild(); }));
+        fld(card, 'Ориентация', selectInput(
+          [['portrait', 'Книжная'], ['landscape', 'Альбомная']],
+          pg.orientation || 'portrait', v => { pg.orientation = v; rebuild(); }));
+        const m = pg.margins || (pg.margins = { top: 20, right: 15, bottom: 20, left: 20 });
+        const r1 = el('div', 'rpt-row');
+        fld(r1, 'Поле верх', numInput(m.top, v => { m.top = v; renderPane(); }));
+        fld(r1, 'Поле низ', numInput(m.bottom, v => { m.bottom = v; renderPane(); }));
+        card.appendChild(r1);
+        const r2 = el('div', 'rpt-row');
+        fld(r2, 'Поле лево', numInput(m.left, v => { m.left = v; renderPane(); }));
+        fld(r2, 'Поле право', numInput(m.right, v => { m.right = v; renderPane(); }));
+        card.appendChild(r2);
+      } else {
+        const bp = s.brk.page || (s.brk.page = {});
+        fld(card, 'Формат', selectInput(
+          [['', '(как в предыдущем)'], ...Object.keys(PAGE_SIZES).map(f => [f, f]), ['Custom', 'Custom']],
+          bp.format || '', v => { bp.format = v || undefined; rebuild(); }));
+        fld(card, 'Ориентация', selectInput(
+          [['', '(как в предыдущем)'], ['portrait', 'Книжная'], ['landscape', 'Альбомная']],
+          bp.orientation || '', v => { bp.orientation = v || undefined; rebuild(); }));
+        const m = bp.margins || (bp.margins = {});
+        const r1 = el('div', 'rpt-row');
+        fld(r1, 'Поле верх', numInput(m.top != null ? m.top : '', v => { m.top = v; renderPane(); }));
+        fld(r1, 'Поле низ', numInput(m.bottom != null ? m.bottom : '', v => { m.bottom = v; renderPane(); }));
+        card.appendChild(r1);
+        const r2 = el('div', 'rpt-row');
+        fld(r2, 'Поле лево', numInput(m.left != null ? m.left : '', v => { m.left = v; renderPane(); }));
+        fld(r2, 'Поле право', numInput(m.right != null ? m.right : '', v => { m.right = v; renderPane(); }));
+        card.appendChild(r2);
+        const act = el('div', 'rpt-row');
+        const go = btn('→ К блоку-разрыву');
+        go.addEventListener('click', () => {
+          state.tab = 'structure'; state.sel = s.brkIdx; rebuild();
+        });
+        const del = btn('✕ Удалить раздел', 'danger');
+        del.title = 'Убрать разрыв — блоки сольются с предыдущим разделом';
+        del.addEventListener('click', () => {
+          const idx = working.flow.indexOf(s.brk);
+          if (idx >= 0) working.flow.splice(idx, 1);
+          state.sel = -1;
+          rebuild();
+        });
+        act.appendChild(go); act.appendChild(del);
+        card.appendChild(act);
+      }
+
+      // Блоки раздела (только чтение — перестановка во вкладке «Структура»).
+      const bl = el('div', 'rpt-hint');
+      bl.style.marginTop = '6px';
+      bl.textContent = s.blocks.length
+        ? 'Блоки: ' + s.blocks.map(b => blockLabel(b).replace(/^[^\wА-Яа-я]+\s*/, '')).join(' · ')
+        : '(нет блоков — добавьте во вкладке «Структура»)';
+      card.appendChild(bl);
+
+      p.appendChild(card);
+    });
   }
 
   function buildBlockProps(p, b) {
