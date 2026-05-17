@@ -66,6 +66,10 @@ export function serialize() {
         revision: p.revision || '',
         description: p.description || '',
       };
+      // Ф-B (X.4.5.3, Вариант I): immutable-дисциплина страницы.
+      // Пишем ТОЛЬКО если явно задана (no-auto-write; legacy без поля
+      // получает эффективную дисциплину через pageDiscipline при чтении).
+      if (typeof p.discipline === 'string' && p.discipline) out.discipline = p.discipline;
       if (p.scale) out.scale = String(p.scale);
       if (p.originMm && Number.isFinite(p.originMm.x) && Number.isFinite(p.originMm.y)) {
         out.originMm = { x: p.originMm.x, y: p.originMm.y };
@@ -313,6 +317,10 @@ export function deserialize(data) {
     state.pages = data.pages.map(p => ({
       id: p.id, name: p.name || p.id, type: p.type || 'independent',
       kind: p.kind || 'schematic',
+      // Ф-B: round-trip immutable-дисциплины. Сохраняем только явное
+      // значение (legacy без поля → undefined; pageDiscipline даёт
+      // fallback на project.discipline при чтении, без авто-записи).
+      ...(typeof p.discipline === 'string' && p.discipline ? { discipline: p.discipline } : {}),
       sourcePageId: p.sourcePageId || null,
       view: sanitizeView(p.view),
       designation: p.designation || '',

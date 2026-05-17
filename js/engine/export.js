@@ -11,6 +11,10 @@ import { flash } from './utils.js';
 import { exportBomXlsx, exportBomCsv, buildBOM } from './bom.js';
 import { rsToast, rsConfirm, rsPrompt } from '../../shared/dialog.js';
 import { getActiveProjectId, ensureDefaultProject, listProjects } from '../../shared/project-storage.js';
+// Ф-B (X.4.5.3, Вариант I): страница = типизированная схема. Дисциплина
+// штампуется ОДИН раз при создании (осознанное действие = создание
+// типизированной схемы) и далее immutable. Контракт — Ф-A pageDiscipline.
+import { pageDiscipline } from '../../shared/disciplines.js';
 // v0.60.258: file-based storage (drawio-style).
 // v0.60.260: + persistent handle через IndexedDB + reload helper.
 import { openProjectFile, saveProjectAsFile, writeProjectToHandle, buildFilePayload, isFileSystemAccessSupported, reloadFromHandle, rememberHandle, loadRememberedHandle, forgetHandle, ensurePermission } from '../../shared/file-sync.js';
@@ -808,6 +812,10 @@ export function initToolbar() {
       name: `Страница ${nextNum}`,
       type,
       kind: PAGE_KINDS.includes(kind) ? kind : 'schematic',
+      // Ф-B: immutable-дисциплина новой страницы. По умолчанию —
+      // дисциплина проекта (Вариант I backward-compat); явный выбор
+      // в мастере — Ф-B2. Штамп при создании = разрешённая запись.
+      discipline: pageDiscipline(null, state.project && state.project.discipline),
       view: { x: 0, y: 0, zoom: 1 },
       sheetNo: _nextSheetNo(),
       title: '',
@@ -838,6 +846,8 @@ export function initToolbar() {
       name: (p.name || 'Страница') + ' (копия)',
       type: p.type || 'independent',
       kind: getPageKind(p),
+      // Ф-B: копия наследует immutable-дисциплину оригинала.
+      discipline: pageDiscipline(p, state.project && state.project.discipline),
       sourcePageId: p.sourcePageId || null,
       view: { ...(p.view || state.view) },
       sheetNo: _nextSheetNo(),

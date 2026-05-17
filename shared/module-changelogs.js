@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.724', date: '2026-05-18', items: [
+      '📐 <b>Конструктор/дисциплины — Ф-B1: страница несёт immutable-дисциплину (X.4.5.3, Вариант I)</b>. Контракт данных: addPage/duplicatePage штампуют page.discipline через pageDiscipline (по умолчанию = дисциплина проекта, backward-compat; копия наследует тип оригинала) — штамп при создании = осознанное создание типизированной схемы. serialization round-trip: сохраняем page.discipline ТОЛЬКО если явно задана (no-auto-write, memory:user-params-sacred; legacy-страница без поля → эффективная дисциплина через pageDiscipline-fallback при чтении, проект не мутируется). Поведение recalc/render НЕ затронуто (scope per-page — Ф-C). Потребитель shared/disciplines.js появился ПОСЛЕ распространения экспорта Ф-A (cache-safe, memory:cache_safe_exports). changelog-lint/audit-contracts зелёные. Файлы: js/engine/export.js, js/engine/serialization.js, js/engine/constants.js.',
+    ] },
     { version: '0.60.723', date: '2026-05-18', items: [
       '📐 <b>Конструктор/дисциплины — Ф-A: контракт дисциплины СТРАНИЦЫ (X.4.5.3, Вариант I)</b>. shared/disciplines.js +pageDiscipline(page, projectDiscipline) (эффективная дисциплина страницы-схемы: page.discipline → project.discipline → DEFAULT electrical; неизвестный id → fallback) и +isPageTyped(page) (явный immutable-тип присвоен). Аддитивно, БЕЗ авто-записи (typeof-guard, memory:user-params-sacred); поле page.discipline переживает serialization round-trip как любое не-_ поле. <b>0 потребителей — cache-safe</b> (разводка в Конструктор/serialization — Ф-B…Ф-C). changelog-lint/audit-contracts --strict зелёные. Файлы: shared/disciplines.js, js/engine/constants.js.',
     ] },
