@@ -2,7 +2,7 @@
   "id": "cooling",
   "name": "Подбор холодильных систем",
   "description": "Подбор чиллеров/DX-систем, free-cooling, расчёт CAPEX/TCO/payback и технико-экономическое сравнение нескольких опций. Климат — из проекта (Meteo) через мост.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
@@ -28,18 +28,33 @@
     "cooling"
   ],
   "dependsOnContracts": {
-    "storageKeys": [],
+    "storageKeys": [
+      "raschet.project.<pid>.cooling.selections.v1",
+      "raschet.project.<pid>.cooling.activeSelectionId.v1",
+      "raschet.project.<pid>.cooling.cols.v1",
+      "raschet.project.<pid>.cooling.tariff.v1",
+      "raschet.project.<pid>.cooling.tariffCurrency.v1",
+      "raschet.project.<pid>.cooling.tariffProfile.v1",
+      "raschet.project.<pid>.cooling.currency.v1",
+      "raschet.cooling.ratesDate.v1",
+      "raschet.cooling.standalone.*",
+      "raschet.cooling.prefill.v1"
+    ],
     "events": {
       "emits": [],
       "consumes": []
     },
     "urlParams": [
       "project",
+      "pid",
       "nodeId",
-      "capacityKw"
+      "capacityKw",
+      "openSelection",
+      "return",
+      "navResult"
     ],
     "bridges": [
-      "cooling/meteo-bridge.js",
+      "shared/meteo-bridge.js",
       "shared/service-bridge.js"
     ]
   }

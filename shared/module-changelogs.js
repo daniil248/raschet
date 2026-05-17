@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.616', date: '2026-05-17', items: [
+      '📋 <b>Фаза 1: манифест cooling честный (dependsOnContracts по факту кода)</b>. apps/cooling/manifest.json: storageKeys был пуст — заполнен по cooling.js: 7 per-project ключей (raschet.project.&lt;pid&gt;.cooling.selections/activeSelectionId/cols/tariff/tariffCurrency/tariffProfile/currency .v1) + глобальный raschet.cooling.ratesDate.v1 + raschet.cooling.standalone.* + handoff raschet.cooling.prefill.v1; urlParams дополнены (project/pid/nodeId/capacityKw/openSelection/return/navResult); исправлен путь моста cooling/meteo-bridge.js → shared/meteo-bridge.js (фактический импорт; старый — re-export shim после Фазы 2); +shared/service-bridge.js; version 1.0.0→1.1.0. Изменены ТОЛЬКО непроецируемые поля → modules.json не меняется, паритет 33 OK (python-порт --check), нулевой runtime-риск. Второй модуль ревизии «manifest честен» (после meteo v0.60.615). Файл: apps/cooling/manifest.json.',
+    ] },
     { version: '0.60.615', date: '2026-05-17', items: [
       '📋 <b>Фаза 1: манифест meteo стал честным (dependsOnContracts заполнен по факту кода)</b>. apps/meteo/manifest.json: dependsOnContracts был пуст (storageKeys [], urlParams [project], bridges []) — приведён к реальности по коду meteo.js/meteo-bridge.js: storageKeys = 5 per-project ключей (raschet.project.&lt;pid&gt;.meteo.datasets/activeId/annualCols/globalFilter/autoFetchOk .v1) + IDB meteo.datasets.&lt;pid&gt;; urlParams = project/pid/return/navResult; bridges = shared/meteo-bridge.js; version 1.0.0→1.1.0. Изменены ТОЛЬКО непроецируемые поля (dependsOnContracts/version) — не входят в проекцию gen-modules-json (project()): modules.json НЕ меняется, паритет 33 модулей подтверждён (python-порт --check), нулевой runtime/parity-риск. Первый модуль ревизии «manifest честен»; остальные — по одному в след. инкрементах. Файл: apps/meteo/manifest.json.',
     ] },
