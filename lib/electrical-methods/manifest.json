@@ -1,0 +1,25 @@
+{
+  "id": "electrical-methods",
+  "name": "Методики электротехнического расчёта",
+  "description": "Переиспользуемая библиотека электрики (без UI): подбор сечения/аппарата (IEC 60364-5-52, ПУЭ 7 РФ, ПУЭ РК, NEC/NFPA 70), потеря напряжения (vdrop), РТМ-нагрузки, термины, install-mapping, экономика (IEC/ПУЭ/BS7671). Каждый стандарт — отдельный отключаемый/версионируемый файл; единый реестр METHODS/METHOD_LIST/ALL_META/getMethod. Дисциплина electrical (D1: электрика — calc-модуль класса lib/*-methods, перенесена из js/methods, старые пути — compat-shim). Потребляется ядром recalc и модулями (cable, shared/calc-modules).",
+  "version": "1.0.0",
+  "owner": "unassigned",
+  "kind": "calc-lib",
+  "standalone": false,
+  "path": "lib/electrical-methods/",
+  "icon": "amber",
+  "badge": "lib",
+  "enabled": true,
+  "internalOnly": false,
+  "subscriptionPlan": "free",
+  "requires": [],
+  "dbCollections": [],
+  "permissions": [],
+  "lsNamespacesOwned": [],
+  "dependsOnContracts": {
+    "storageKeys": [],
+    "events": { "emits": [], "consumes": [] },
+    "urlParams": [],
+    "bridges": []
+  }
+}

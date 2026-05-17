@@ -471,7 +471,7 @@
         <li><code>service/ui/</code> — order-form, work-catalog, order-wizard (4-этапная модалка), wizard-catalog (Phase 42.4 CRUD)</li>
         <li><code>js/calc/</code> — hvac-derate, прочие электрические калькуляторы</li>
         <li><code>js/engine/</code> — constants, inspector, ports, render</li>
-        <li><code>js/methods/</code> — электрика как calc-модуль (D1): iec (IEC) / pue (ПУЭ РФ) / nec (NEC US) / <b>pue-rk (ПУЭ РК, D5 v0.60.591)</b> / rtm + vdrop + economic; META region/version/enabled, реестр METHOD_LIST/ALL_META (D4/D5, аддитивно к recalc)</li>
+        <li><code>lib/electrical-methods/</code> — <b>электрика как calc-lib (D1, перенесена из js/methods v0.60.592, старые пути = compat-shim)</b>: iec (IEC 60364) / pue (ПУЭ 7 РФ) / nec (NEC/NFPA 70 US) / pue-rk (ПУЭ РК) / rtm + vdrop + terms + install-mapping + economic (IEC/ПУЭ/BS7671); META region/version/enabled, реестр METHODS/METHOD_LIST/ALL_META/getMethod (<b>kind:'calc-lib'</b>, дисциплина electrical)</li>
         <li><code>lib/suppression-methods/</code> — СП РК 2022 / СП 485-2020 (+Прил. Д) / NFPA 2001 / ISO 14520 + agents + hydraulics (<b>kind:'calc-lib'</b>, первый calc-lib)</li>
         <li><code>lib/hydraulic-methods/</code> — Дарси–Вейсбах + Свами–Джейн + NPSH + свойства воды/ROUGHNESS (<b>kind:'calc-lib'</b>, дисциплина hydraulic, X.4.1 v0.60.570)</li>
         <li><code>lib/hvac-methods/</code> — воздухообмен (кратность/явная теплота/сан.норма) + теплопритоки + психрометрия (<b>kind:'calc-lib'</b>, дисциплина hvac, X.4.1 v0.60.575)</li>

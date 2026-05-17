@@ -1,14 +1,3 @@
-// =========================================================================
-// Экономическая плотность тока — BS 7671 (UK)
-// Заглушка — будет реализован позже
-// =========================================================================
-
-export default {
-  id: 'bs7671_eco',
-  label: 'BS 7671 (UK)',
-  placeholder: true,
-  params: [],
-  calcEconomicSize() {
-    return { jEk: 0, sCalc: 0, sStandard: 0, description: 'BS 7671 — будет добавлен позже' };
-  },
-};
+// COMPAT-SHIM (v0.60.592, D1): см. lib/electrical-methods/economic/bs7671.js
+export * from '../../../lib/electrical-methods/economic/bs7671.js';
+export { default } from '../../../lib/electrical-methods/economic/bs7671.js';
