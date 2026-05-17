@@ -3526,16 +3526,16 @@ async function exportBatteryReport() {
     rsToast('Сначала выполните расчёт.', 'warn');
     return;
   }
-  const rec = await Report.pickTemplate({
-    title: 'Выбор шаблона для отчёта по расчёту АКБ',
-    tags:  ['акб','батарея','расчёты','общее','инженерный'],
-  });
-  if (!rec) return;
-  const tpl = Report.createTemplate(rec.template);
-  tpl.meta.title = 'Расчёт аккумуляторной батареи';
-  tpl.content = buildBatteryReportBlocks(lastBatteryCalc);
-  try { await Report.exportPDF(tpl, 'Расчёт АКБ'); }
-  catch (e) { rsToast('Не удалось сформировать PDF: ' + (e && e.message ? e.message : e), 'err'); }
+  try {
+    const { composeReport } = await import('shared/report/compose.js');
+    await composeReport({
+      tags: ['акб', 'батарея', 'расчёты', 'общее', 'инженерный'],
+      pickTitle: 'Выбор шаблона для отчёта по расчёту АКБ',
+      title: 'Расчёт аккумуляторной батареи',
+      build: () => buildBatteryReportBlocks(lastBatteryCalc),
+      filename: 'Расчёт АКБ',
+    });
+  } catch (e) { rsToast('Не удалось сформировать PDF: ' + (e && e.message ? e.message : e), 'err'); }
 }
 
 function buildBatteryReportBlocks(state) {
@@ -3684,12 +3684,17 @@ async function printBatteryReport() {
     rsToast('Сначала выполните расчёт.', 'warn');
     return;
   }
-  const tpl = Report.createTemplate({
-    meta: { title: 'Расчёт аккумуляторной батареи', kind: 'battery-calc' },
-  });
-  tpl.content = buildBatteryReportBlocks(lastBatteryCalc);
-  try { await Report.exportPDF(tpl, 'Расчёт АКБ'); }
-  catch (e) { rsToast('Не удалось сформировать PDF: ' + (e && e.message ? e.message : e), 'err'); }
+  // Быстрый путь без выбора шаблона (no tags → picker пропускается),
+  // но через общий конвейер: flow + предпросмотр перед сохранением.
+  try {
+    const { composeReport } = await import('shared/report/compose.js');
+    await composeReport({
+      title: 'Расчёт аккумуляторной батареи',
+      kind: 'battery-calc',
+      build: () => buildBatteryReportBlocks(lastBatteryCalc),
+      filename: 'Расчёт АКБ',
+    });
+  } catch (e) { rsToast('Не удалось сформировать PDF: ' + (e && e.message ? e.message : e), 'err'); }
 }
 
 // ================= Вкладки =================

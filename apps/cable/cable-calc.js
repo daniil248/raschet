@@ -874,19 +874,15 @@ async function exportReport() {
     rsToast('Сначала выполните расчёт.', 'warn');
     return;
   }
-  const rec = await Report.pickTemplate({
-    title: 'Выбор шаблона для отчёта по расчёту кабеля',
-    tags:  ['кабель','расчёты','общее','инженерный'],
-  });
-  if (!rec) return;
-
-  const tpl = Report.createTemplate(rec.template);
-  tpl.meta.title  = 'Расчёт кабельной линии';
-  tpl.meta.author = tpl.meta.author || '';
-  tpl.content = buildCableReportBlocks(lastCalc);
-
   try {
-    await Report.exportPDF(tpl, 'Расчёт кабельной линии');
+    const { composeReport } = await import('shared/report/compose.js');
+    await composeReport({
+      tags: ['кабель', 'расчёты', 'общее', 'инженерный'],
+      pickTitle: 'Выбор шаблона для отчёта по расчёту кабеля',
+      title: 'Расчёт кабельной линии',
+      build: () => buildCableReportBlocks(lastCalc),
+      filename: 'Расчёт кабельной линии',
+    });
   } catch (e) {
     rsToast('Не удалось сформировать PDF: ' + (e && e.message ? e.message : e), 'err');
   }

@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.666', date: '2026-05-17', items: [
+      '🧩 <b>Отчёты — RR3: cable + battery на composeReport (конвейер унифицирован полностью)</b>. cable-calc.exportReport и battery-calc.exportBatteryReport (имели pickTemplate, но без flow/preview — exportPDF напрямую) → composeReport (теперь flow + предпросмотр + manifest/persist). battery-calc.printBatteryReport («быстрая печать без выбора шаблона») → composeReport БЕЗ tags (picker пропускается по задумке) но через общий конвейер: flow + previewPDF (раньше exportPDF сразу). Итог: ВСЕ отчёты проекта (tech-workspace ТЗ, service КП, ups-config, pdu-config, logistics, projects-мультидисц., cable, battery×2) идут через единый composeReport / flow-модель — кастомный сохраняемый шаблон, предпросмотр перед сохранением, без наложения структуры на контент. Файлы: apps/cable/cable-calc.js, apps/battery/battery-calc.js.',
+    ] },
     { version: '0.60.665', date: '2026-05-17', items: [
       '🧩 <b>Отчёты — RR2: ups-config / pdu-config / logistics / projects(мультидисц.) на composeReport</b>. Эти 4 отчёта обходили стандарт (createTemplate-direct + exportPDF, без picker/preview/flow; у части баг tpl.margins вместо tpl.page.margins). Переведены на composeReport({tags,title,kind,build,filename}) → теперь: выбор кастомного сохраняемого шаблона (pickTemplate), единый поток (migrateToFlow — нет наложения структуры на тело), sections.manifest+persist, предпросмотр перед сохранением (previewPDF). Удалён неиспользуемый статический import shared/report/index.js из projects/project.js (отчёт лениво через compose.js). compose.js на edge (RR1) → cache-safe. Файлы: apps/ups-config/ups-config.js, apps/pdu-config/pdu-config.js, apps/logistics/logistics.js, apps/projects/project.js.',
     ] },
