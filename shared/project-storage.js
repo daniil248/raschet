@@ -365,19 +365,6 @@ export function projectKey(pid, module, key) {
   return `${APP_NS}.project.${pid}.${module}.${key}`;
 }
 
-// Префиксы для startsWith/итерации по LS (вместо сырых `raschet.project.…`
-// литералов — R2 + единый rename-seam APP_NS). Байт-идентичны прежним
-// литералам: projectPrefix(pid)        === `raschet.project.${pid}.`
-//            projectModulePrefix(p,m)  === `raschet.project.${p}.${m}.`
-export function projectPrefix(pid) {
-  if (!pid) pid = getActiveProjectId() || 'default';
-  return `${APP_NS}.project.${pid}.`;
-}
-export function projectModulePrefix(pid, module) {
-  if (!pid) pid = getActiveProjectId() || 'default';
-  return `${APP_NS}.project.${pid}.${module}.`;
-}
-
 // Прозрачное чтение/запись в проектный неймспейс. В 1.27.1 adapter'ы в
 // модулях (scs-design и т.д.) вызывают projectLoad/projectSave вместо
 // loadJson/saveJson напрямую.

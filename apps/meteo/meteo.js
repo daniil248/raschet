@@ -16,7 +16,7 @@
 //                           источник, регистрирующийся через registry.
 // =========================================================================
 
-import { ensureDefaultProject, projectKey, projectModulePrefix, getProject, setActiveProjectId } from 'shared/project-storage.js';
+import { ensureDefaultProject, projectKey, getProject, setActiveProjectId } from 'shared/project-storage.js';
 import { detectNavMode, renderModuleActions, completeReturn, cancelReturn } from 'shared/module-nav.js';
 import { idbGet, idbSet, idbDelete, idbAvailable } from 'shared/idb-store.js';
 import { historyAppend, historyTrash, historyRestore, historyPurge, historyList } from 'shared/history-log.js';
@@ -522,7 +522,7 @@ async function init() {
   // .id в projectKey, всё писалось под единым [object Object] namespace.
   try {
     const legacyPrefix = 'raschet.project.[object Object].meteo.';
-    const targetPrefix = projectModulePrefix(_pid, 'meteo');
+    const targetPrefix = `raschet.project.${_pid}.meteo.`;
     const keys = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);

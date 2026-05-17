@@ -22,7 +22,7 @@
 //   raschet.project.<pid>.cooling.cols.v1
 //   raschet.project.<pid>.cooling.tariff.v1
 
-import { ensureDefaultProject, projectKey, projectModulePrefix, listProjects, getProject, setActiveProjectId, getActiveProjectId } from 'shared/project-storage.js';
+import { ensureDefaultProject, projectKey, listProjects, getProject, setActiveProjectId, getActiveProjectId } from 'shared/project-storage.js';
 import * as util from 'shared/meteo-util.js'; // v0.60.522: SHARED (burndown cooling→meteo)
 
 import { DEFAULT_CHILLER, COLUMNS, DEFAULT_COLS, CHILLER_COLS, isCracType as isCracTypeLocal } from './calc/chiller-defaults.js';
@@ -263,7 +263,7 @@ function persist() {
 function migrateLegacyObjectObjectKeys() {
   if (_standalone || !_pid?.id) return;
   const legacyPrefix = 'raschet.project.[object Object].cooling.';
-  const targetPrefix = projectModulePrefix(_pid.id, 'cooling');
+  const targetPrefix = `raschet.project.${_pid.id}.cooling.`;
   let migrated = 0;
   try {
     const keys = [];
