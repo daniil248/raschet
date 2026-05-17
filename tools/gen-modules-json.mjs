@@ -35,7 +35,7 @@ const REGISTRY_ORDER = [
   'mdc-config', 'genset-config', 'pdu-config', 'suppression-config',
   'psychrometrics', 'facility-inventory', 'configurator3d',
   // calc-lib (kind:'calc-lib') — без UI/subscription-check, auto-included.
-  'suppression-methods', 'hydraulic-methods',
+  'suppression-methods', 'hydraulic-methods', 'hvac-methods',
 ];
 
 // Папка модуля по id (для constructor манифест — в корне).

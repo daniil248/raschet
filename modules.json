@@ -639,6 +639,21 @@
       "kind": "calc-lib",
       "subscriptionPlan": "free",
       "internalOnly": false
+    },
+    {
+      "id": "hvac-methods",
+      "name": "Методики ОВиК-расчёта",
+      "description": "Переиспользуемая библиотека вентиляции и кондиционирования (без UI): воздухообмен помещения (кратность / отвод явной теплоты / санитарная норма), теплопритоки (трансмиссия + солнце + люди + освещение + оборудование), психрометрические примитивы влажного воздуха. Единый интерфейс { META, compute(input) }. Дисциплина hvac (47.4.1). Второй из per-discipline движков X.4.1.",
+      "path": "lib/hvac-methods/",
+      "icon": "teal",
+      "badge": "lib",
+      "requires": [],
+      "dbCollections": [],
+      "permissions": [],
+      "enabled": true,
+      "kind": "calc-lib",
+      "subscriptionPlan": "free",
+      "internalOnly": false
     }
   ]
 }
