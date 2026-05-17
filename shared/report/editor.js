@@ -1,1307 +1,546 @@
 // ======================================================================
-// shared/report/editor.js
-// Canvas-редактор шаблона отчёта. Слева — вкладки свойств листа, зоны
-// и properties выбранной зоны. Справа — холст со страницей, на котором
-// пользователь перетаскивает логотип, колонтитулы и свободные текстовые
-// зоны (инфо о компании, адресат, дата, произвольный текст).
+// shared/report/editor.js  (R3: flow-редактор шаблона отчёта)
 //
-// Важно: редактор не пересобирает форму на каждом вводе — иначе поля
-// теряют фокус после одного символа. Форма собирается только при
-// смене вкладки или смене выделения, а события ввода обновляют лишь
-// данные и канвас.
+// Прежний canvas-редактор (absolute overlays + drag/resize) заменён на
+// редактор ЕДИНОГО ПОТОКА (flow). Структура документа, колонтитулы,
+// плавающий слой, лист и стили правятся списком/полями; справа —
+// живой WYSIWYG через renderPreview (тот же effectiveFlow, что и
+// PDF) → наложение блоков невозможно конструктивно.
 //
-// API:
+// API (контракт сохранён):
 //   import { openTemplateEditor } from '../shared/report/editor.js';
-//   openTemplateEditor(tpl, {
-//     onSave(newTpl) { ... },   // глубокая копия с правками
-//     onCancel()     { ... },
-//   });
+//   openTemplateEditor(tpl, { onSave(newTpl){...}, onCancel(){...} });
 // ======================================================================
 
-import { PAGE_SIZES, FONT_FAMILIES, createTemplate, pageSizeMm } from './template.js';
+import { PAGE_SIZES, FONT_FAMILIES, createTemplate, pageSizeMm, migrateToFlow }
+  from './template.js';
 import { renderPreview } from './preview.js';
 
 let _cssInjected = false;
 function ensureCss() {
   if (_cssInjected) return;
   const link = document.createElement('link');
-  link.rel  = 'stylesheet';
+  link.rel = 'stylesheet';
   link.href = new URL('./editor.css', import.meta.url).href;
   document.head.appendChild(link);
   _cssInjected = true;
 }
 
-// ——————————————————————————————————————————————————————————————————————
-// Пресеты зон — пользователь добавляет зону выбором из этого списка.
-// Каждый пресет задаёт стартовый размер, стиль и текст-заглушку.
-// ——————————————————————————————————————————————————————————————————————
-const ZONE_PRESETS = [
-  { id: 'title',       label: 'Заголовок документа', w: 120, h: 12, styleRef: 'h1',      text: '{{meta.title}}',                 align: 'left'   },
-  { id: 'subtitle',    label: 'Подзаголовок',        w: 120, h:  9, styleRef: 'h2',      text: 'Подзаголовок',                   align: 'left'   },
-  { id: 'company',     label: 'Информация о компании', w: 80, h: 16, styleRef: 'caption', text: 'ООО «Компания»\nАдрес, телефон', align: 'left'   },
-  { id: 'addressee',   label: 'Адресат',             w: 80, h: 14, styleRef: 'caption', text: 'Кому: Ф.И.О.\nДолжность',         align: 'left'   },
-  { id: 'date',        label: 'Дата',                w: 40, h:  6, styleRef: 'caption', text: '{{date}}',                        align: 'right'  },
-  { id: 'pageNum',     label: 'Номер страницы',      w: 40, h:  6, styleRef: 'caption', text: 'стр. {{page}} из {{pages}}',      align: 'center' },
-  { id: 'author',      label: 'Автор',               w: 60, h:  6, styleRef: 'caption', text: '{{meta.author}}',                 align: 'left'   },
-  { id: 'freeText',    label: 'Свободный текст',     w: 80, h: 10, styleRef: 'body',    text: 'Текст',                           align: 'left'   },
-  { id: 'respSign',    label: 'Подпись ответственного лица', w: 90, h: 22, styleRef: 'caption', text: '{{meta.custom.respRole}}\n_______________ / {{meta.custom.respName}} /\n«___» __________ 20__ г.', align: 'left' },
-  { id: 'executor',    label: 'Контакты исполнителя', w: 80, h: 16, styleRef: 'caption', text: 'Исполнитель: {{meta.custom.execName}}\nтел. {{meta.custom.execPhone}} · {{meta.custom.execEmail}}', align: 'left' },
-  { id: 'seal',        label: 'Печать организации',   w: 38, h: 38, kind: 'image' },
-  { id: 'signScan',    label: 'Подпись (скан)',      w: 50, h: 20, kind: 'image' },
+// Структурные блоки, которые можно добавить в поток.
+const STRUCT_ADD = [
+  { type: 'docTitle',    label: 'Заголовок документа', mk: () => ({ type: 'docTitle', text: '{{meta.title}}', align: 'left' }) },
+  { type: 'companyInfo', label: 'Реквизиты компании',  mk: () => ({ type: 'companyInfo', text: 'Компания: {{meta.custom.companyName}}\n{{meta.custom.companyAddr}}', align: 'left' }) },
+  { type: 'addressee',   label: 'Адресат',             mk: () => ({ type: 'addressee', text: 'Кому: {{meta.custom.recipient}}\n{{meta.custom.recipientPost}}', align: 'left' }) },
+  { type: 'metaLine',    label: 'Дата / № / город',    mk: () => ({ type: 'metaLine', text: '{{date}}', align: 'right' }) },
+  { type: 'tocAuto',     label: 'Содержание (авто)',   mk: () => ({ type: 'tocAuto', title: 'Содержание' }) },
+  { type: 'signature',   label: 'Подпись ответственного', mk: () => ({ type: 'signature', role: 'Должность', name: '', mp: true }) },
+  { type: 'heading',     label: 'Заголовок (текст)',   mk: () => ({ type: 'heading', level: 2, text: 'Заголовок' }) },
+  { type: 'paragraph',   label: 'Абзац (текст)',       mk: () => ({ type: 'paragraph', text: 'Текст' }) },
 ];
 
-// ——————————————————————————————————————————————————————————————————————
-// Главная функция
-// ——————————————————————————————————————————————————————————————————————
+const TYPE_LABEL = {
+  docTitle: 'Заголовок документа', companyInfo: 'Реквизиты компании',
+  addressee: 'Адресат', metaLine: 'Дата/№', tocAuto: 'Содержание',
+  signature: 'Подпись ответственного', stamp: 'Печать',
+  heading: 'Заголовок', paragraph: 'Абзац', list: 'Список',
+  table: 'Таблица', image: 'Изображение', spacer: 'Отступ',
+  hr: 'Линия', pagebreak: 'Разрыв страницы', custom: 'Блок',
+};
+
 export function openTemplateEditor(tpl, opts = {}) {
   ensureCss();
   const working = createTemplate(tpl);
-  if (!Array.isArray(working.overlays)) working.overlays = [];
+  migrateToFlow(working);                       // редактор работает на flow
+  if (!Array.isArray(working.flow)) working.flow = [];
+  if (!Array.isArray(working.floating)) working.floating = [];
   if (!working.sections || typeof working.sections !== 'object') working.sections = {};
-  if (!Array.isArray(working.sections.order))    working.sections.order = [];
-  if (!Array.isArray(working.sections.hidden))   working.sections.hidden = [];
+  if (!Array.isArray(working.sections.order))  working.sections.order = [];
+  if (!Array.isArray(working.sections.hidden)) working.sections.hidden = [];
   if (!Array.isArray(working.sections.manifest)) working.sections.manifest = [];
 
-  // ——— состояние ———
-  const state = {
-    activeTab:  'page',            // 'page' | 'zones' | 'props'
-    selectedId: null,              // 'logo' | 'header' | 'footer' | overlay.id
-    scale:      2.2,               // px на мм (пересчитывается по размеру холста)
-  };
+  const state = { tab: 'structure', sel: -1 };
 
-  // ——— DOM ———
   const backdrop = el('div', 'rpt-modal-backdrop');
-  const modal    = el('div', 'rpt-modal rpt-modal--canvas');
+  const modal = el('div', 'rpt-modal rpt-modal--canvas');
   backdrop.appendChild(modal);
 
   const hdr = el('div', 'rpt-modal__hdr');
-  const title = el('div', 'rpt-modal__title');
-  title.textContent = 'Настройка шаблона отчёта';
-  hdr.appendChild(title);
-  const hdrBtns = el('div');
-  const btnCancel = buttonEl('Отмена');
-  const btnSave   = buttonEl('Сохранить', 'primary');
-  hdrBtns.appendChild(btnCancel);
-  hdrBtns.appendChild(btnSave);
-  hdr.appendChild(hdrBtns);
+  const ttl = el('div', 'rpt-modal__title');
+  ttl.textContent = 'Настройка шаблона отчёта (поток)';
+  hdr.appendChild(ttl);
+  const hb = el('div');
+  const bCancel = btn('Отмена');
+  const bSave = btn('Сохранить', 'primary');
+  hb.appendChild(bCancel); hb.appendChild(bSave);
+  hdr.appendChild(hb);
   modal.appendChild(hdr);
 
-  const body = el('div', 'rpt-modal__body');
-  const sidebar  = el('div', 'rpt-editor__sidebar');
-  const canvasWrap = el('div', 'rpt-editor__canvas-wrap');
-  body.appendChild(sidebar);
-  body.appendChild(canvasWrap);
-  modal.appendChild(body);
+  const bodyEl = el('div', 'rpt-modal__body');
+  const sidebar = el('div', 'rpt-editor__sidebar');
+  const previewWrap = el('div', 'rpt-editor__canvas-wrap');
+  bodyEl.appendChild(sidebar);
+  bodyEl.appendChild(previewWrap);
+  modal.appendChild(bodyEl);
 
-  // Вкладки слева
-  const tabs = el('div', 'rpt-editor__tabs');
-  sidebar.appendChild(tabs);
+  const tabsEl = el('div', 'rpt-editor__tabs');
+  sidebar.appendChild(tabsEl);
   const tabContent = el('div', 'rpt-editor__tab-content');
   sidebar.appendChild(tabContent);
 
-  const TABS = [
-    { id: 'page',   label: 'Лист' },
-    { id: 'zones',  label: 'Зоны' },
-    { id: 'sections', label: 'Разделы' },
-    { id: 'styles', label: 'Стили' },
-    { id: 'props',  label: 'Свойства' },
-  ];
-  const tabButtons = {};
-  for (const t of TABS) {
-    const b = buttonEl(t.label);
-    b.className = '';
-    b.addEventListener('click', () => {
-      state.activeTab = t.id;
-      rebuildTab();
-      updateTabButtons();
-    });
-    tabButtons[t.id] = b;
-    tabs.appendChild(b);
-  }
+  const previewEl = el('div', 'rpt-canvas');
+  previewWrap.appendChild(previewEl);
 
-  // Холст
-  const canvas = el('div', 'rpt-canvas');
-  canvasWrap.appendChild(canvas);
+  const TABS = [
+    ['structure', 'Структура'],
+    ['chrome',    'Колонтитулы'],
+    ['floating',  'Плавающий слой'],
+    ['page',      'Лист'],
+    ['styles',    'Стили'],
+  ];
+  const tabBtns = {};
+  for (const [id, label] of TABS) {
+    const b = btn(label);
+    b.className = '';
+    b.addEventListener('click', () => { state.tab = id; rebuild(); });
+    tabBtns[id] = b;
+    tabsEl.appendChild(b);
+  }
 
   document.body.appendChild(backdrop);
+  rebuild();
 
-  // ——— первичный рендер ———
-  computeScale();
-  rebuildTab();
-  updateTabButtons();
-  redrawCanvas();
-
-  // ——— события кнопок ———
-  const closeEditor = (save) => {
+  const close = (save) => {
     backdrop.remove();
-    window.removeEventListener('keydown', onKeyDown);
-    if (save) { if (opts.onSave) opts.onSave(working); }
-    else      { if (opts.onCancel) opts.onCancel(); }
+    window.removeEventListener('keydown', onKey);
+    if (save) opts.onSave && opts.onSave(working);
+    else opts.onCancel && opts.onCancel();
   };
-  btnCancel.addEventListener('click', () => closeEditor(false));
-  btnSave.addEventListener('click',   () => closeEditor(true));
-  backdrop.addEventListener('click', (e) => {
-    if (e.target === backdrop) closeEditor(false);
-  });
-
-  // ——— клавиатурные сокращения ———
-  // Работают только когда фокус НЕ внутри текстового поля (иначе
-  // пользователь не сможет ввести текст в textarea, а Escape закрыл бы
-  // редактор во время правки). Ctrl+S / Ctrl+D обрабатываются всегда,
-  // потому что браузерное действие по Ctrl+S/Ctrl+D надо
-  // предотвращать независимо от фокуса.
-  function onKeyDown(e) {
+  bCancel.addEventListener('click', () => close(false));
+  bSave.addEventListener('click', () => close(true));
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(false); });
+  function onKey(e) {
     const ae = document.activeElement;
-    const inField = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT');
-    const mod = e.ctrlKey || e.metaKey;
-
-    // Ctrl+S — сохранить шаблон (как клик по «Сохранить»).
-    if (mod && (e.key === 's' || e.key === 'S')) {
-      e.preventDefault();
-      if (inField) ae.blur();
-      closeEditor(true);
-      return;
+    const inField = ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);
+    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+      e.preventDefault(); if (inField) ae.blur(); close(true); return;
     }
-
-    // Ctrl+D — дублировать выделенную зону (логотип не дублируется).
-    if (mod && (e.key === 'd' || e.key === 'D')) {
-      e.preventDefault();
-      const id = state.selectedId;
-      if (!id || id === 'logo') return;
-      const ov = working.overlays.find(o => o.id === id);
-      if (!ov) return;
-      const copy = JSON.parse(JSON.stringify(ov));
-      copy.id = 'ov-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
-      // Смещаем копию на 4 мм вниз-вправо и клэмпаем по полям
-      const clamped = clampBox(copy.x + 4, copy.y + 4, copy.width, copy.height);
-      copy.x = round1(clamped.x);
-      copy.y = round1(clamped.y);
-      working.overlays.push(copy);
-      state.selectedId = copy.id;
-      if (state.activeTab === 'props' || state.activeTab === 'zones') rebuildTab();
-      redrawCanvas();
-      return;
-    }
-
-    if (e.key === 'Escape') {
-      if (inField) { ae.blur(); return; }
-      if (state.selectedId) {
-        state.selectedId = null;
-        if (state.activeTab === 'props') rebuildTab();
-        redrawCanvas();
-        e.preventDefault();
-        return;
-      }
-      closeEditor(false);
-      e.preventDefault();
-      return;
-    }
-    if (inField) return;
-    const id = state.selectedId;
-    if (!id) return;
-    if (e.key === 'Delete' || e.key === 'Backspace') {
-      if (id === 'logo' && working.logo.src) {
-        working.logo.src = null;
-        state.selectedId = null;
-      } else {
-        working.overlays = working.overlays.filter(o => o.id !== id);
-        state.selectedId = null;
-      }
-      if (state.activeTab === 'props' || state.activeTab === 'zones') rebuildTab();
-      redrawCanvas();
-      e.preventDefault();
-      return;
-    }
-    // Стрелки — nudge. Shift = 10 мм, иначе 1 мм.
-    const step = e.shiftKey ? 10 : 1;
-    let dx = 0, dy = 0;
-    if (e.key === 'ArrowLeft')  dx = -step;
-    if (e.key === 'ArrowRight') dx =  step;
-    if (e.key === 'ArrowUp')    dy = -step;
-    if (e.key === 'ArrowDown')  dy =  step;
-    if (dx === 0 && dy === 0) return;
-    const snap = snapshot(id);
-    if (!snap) return;
-    const clamped = clampBox(snap.x + dx, snap.y + dy, snap.width, snap.height);
-    applyPos(id, clamped.x, clamped.y);
-    redrawCanvas();
-    e.preventDefault();
+    if (e.key === 'Escape' && !inField) { close(false); }
   }
-  window.addEventListener('keydown', onKeyDown);
-
-  // Пересчёт масштаба при ресайзе окна
-  const resizeObs = new ResizeObserver(() => {
-    computeScale();
-    redrawCanvas();
-  });
-  resizeObs.observe(canvasWrap);
+  window.addEventListener('keydown', onKey);
 
   // ——————————————————————————————————————————————————————
-  // Вспомогательные
-  // ——————————————————————————————————————————————————————
-
-  function updateTabButtons() {
-    for (const t of TABS) {
-      tabButtons[t.id].classList.toggle('active', t.id === state.activeTab);
-    }
-  }
-
-  function computeScale() {
-    const { width, height } = pageSizeMm(working.page);
-    const padding = 48;
-    const wrapRect = canvasWrap.getBoundingClientRect();
-    const availW = Math.max(200, wrapRect.width - padding);
-    const availH = Math.max(200, wrapRect.height - padding);
-    state.scale = Math.min(availW / width, availH / height);
-    if (!isFinite(state.scale) || state.scale <= 0) state.scale = 2.2;
-  }
-
-  // ——— перестройка формы (только при смене вкладки/выделения) ———
-  function rebuildTab() {
+  function rebuild() {
+    for (const [id] of TABS) tabBtns[id].classList.toggle('active', id === state.tab);
     tabContent.innerHTML = '';
-    if (state.activeTab === 'page')   buildPageTab(tabContent);
-    if (state.activeTab === 'zones')  buildZonesTab(tabContent);
-    if (state.activeTab === 'sections') buildSectionsTab(tabContent);
-    if (state.activeTab === 'styles') buildStylesTab(tabContent);
-    if (state.activeTab === 'props')  buildPropsTab(tabContent);
+    if (state.tab === 'structure') buildStructure(tabContent);
+    else if (state.tab === 'chrome') buildChrome(tabContent);
+    else if (state.tab === 'floating') buildFloating(tabContent);
+    else if (state.tab === 'page') buildPage(tabContent);
+    else if (state.tab === 'styles') buildStyles(tabContent);
+    renderPane();
   }
 
-  // ——————————————————————————————————————————————————————
-  // Вкладка «Лист»
-  // ——————————————————————————————————————————————————————
-  function buildPageTab(parent) {
-    sectionTitle(parent, 'Формат');
-    const fmtField = field(parent, 'Размер');
-    const fmtSel = document.createElement('select');
-    ['A3','A4','A5','Letter','Legal','Custom'].forEach(k => {
-      const o = document.createElement('option'); o.value = k; o.textContent = k;
-      fmtSel.appendChild(o);
-    });
-    fmtSel.value = working.page.format;
-    fmtSel.addEventListener('change', () => {
-      working.page.format = fmtSel.value;
-      if (working.page.format !== 'Custom') {
-        const sz = PAGE_SIZES[working.page.format];
-        working.page.width = sz.width; working.page.height = sz.height;
-        inpW.value = sz.width; inpH.value = sz.height;
-      }
-      inpW.disabled = working.page.format !== 'Custom';
-      inpH.disabled = working.page.format !== 'Custom';
-      fitAllZonesToPage();
-      computeScale(); redrawCanvas();
-    });
-    fmtField.appendChild(fmtSel);
-
-    const row = el('div', 'rpt-row');
-    const fw = field(row, 'Ширина, мм');
-    const inpW = numInput(working.page.width, v => {
-      working.page.width = v;
-      fitAllZonesToPage();
-      computeScale(); redrawCanvas();
-    });
-    inpW.disabled = working.page.format !== 'Custom';
-    fw.appendChild(inpW);
-    const fh = field(row, 'Высота, мм');
-    const inpH = numInput(working.page.height, v => {
-      working.page.height = v;
-      fitAllZonesToPage();
-      computeScale(); redrawCanvas();
-    });
-    inpH.disabled = working.page.format !== 'Custom';
-    fh.appendChild(inpH);
-    parent.appendChild(row);
-
-    const fo = field(parent, 'Ориентация');
-    const so = document.createElement('select');
-    [['portrait','Книжная'],['landscape','Альбомная']].forEach(([v,l]) => {
-      const o = document.createElement('option'); o.value = v; o.textContent = l; so.appendChild(o);
-    });
-    so.value = working.page.orientation;
-    so.addEventListener('change', () => {
-      working.page.orientation = so.value;
-      fitAllZonesToPage();
-      computeScale(); redrawCanvas();
-    });
-    fo.appendChild(so);
-
-    sectionTitle(parent, 'Поля печати, мм');
-    ['top','right','bottom','left'].forEach(k => {
-      const f = field(parent, labelForMargin(k));
-      f.appendChild(numInput(working.page.margins[k], v => {
-        working.page.margins[k] = v;
-        fitAllZonesToPage();
-        redrawCanvas();
-      }));
-    });
-
-    sectionTitle(parent, 'Метаданные');
-    const ft = field(parent, 'Заголовок');
-    ft.appendChild(textInput(working.meta.title, v => {
-      working.meta.title = v; redrawCanvas();
-    }));
-    const fa = field(parent, 'Автор');
-    fa.appendChild(textInput(working.meta.author, v => {
-      working.meta.author = v; redrawCanvas();
-    }));
+  function renderPane() {
+    try {
+      const { width } = pageSizeMm(working.page);
+      const avail = Math.max(220, previewWrap.getBoundingClientRect().width - 40);
+      const scale = Math.max(1.4, Math.min(3.4, avail / width));
+      renderPreview(working, previewEl, { mode: 'view', scale });
+    } catch (e) {
+      previewEl.innerHTML = '<div style="padding:20px;color:#b91c1c;font:13px system-ui">' +
+        'Ошибка превью: ' + (e && e.message || e) + '</div>';
+    }
   }
 
-  function labelForMargin(k) {
-    return ({ top: 'Верхнее', right: 'Правое', bottom: 'Нижнее', left: 'Левое' })[k];
-  }
-
-  // ——————————————————————————————————————————————————————
-  // Вкладка «Зоны»
-  // ——————————————————————————————————————————————————————
-  function buildZonesTab(parent) {
-    sectionTitle(parent, 'Добавить зону');
-
-    const grid = el('div', 'rpt-zone-grid');
-    for (const p of ZONE_PRESETS) {
-      const b = buttonEl('+ ' + p.label);
+  // ——— Вкладка «Структура» (flow) ———
+  function buildStructure(p) {
+    sect(p, 'Добавить блок в поток');
+    const add = el('div', 'rpt-zone-add');
+    for (const s of STRUCT_ADD) {
+      const b = btn('+ ' + s.label);
       b.className = 'rpt-zone-add-btn';
       b.addEventListener('click', () => {
-        addOverlayFromPreset(p);
+        const blk = s.mk();
+        const sgIdx = working.flow.findIndex(x => x && x.section === 'doc-sign');
+        if (s.type === 'signature' || sgIdx < 0) working.flow.push(blk);
+        else working.flow.splice(sgIdx, 0, blk);
+        state.sel = working.flow.indexOf(blk);
+        rebuild();
       });
-      grid.appendChild(b);
+      add.appendChild(b);
     }
-    parent.appendChild(grid);
+    p.appendChild(add);
 
-    const logoFld = field(parent, 'Логотип');
-    const logoBtn = buttonEl(working.logo.src ? '📷 Заменить логотип…' : '+ 📷 Добавить логотип');
-    logoBtn.className = 'rpt-zone-add-btn';
-    logoBtn.addEventListener('click', () => pickLogo());
-    logoFld.appendChild(logoBtn);
-    if (working.logo.src) {
-      const rm = buttonEl('Убрать логотип');
-      rm.className = 'rpt-zone-add-btn';
-      rm.addEventListener('click', () => {
-        working.logo.src = null;
-        if (state.selectedId === 'logo') state.selectedId = null;
-        rebuildTab();
-        redrawCanvas();
-      });
-      logoFld.appendChild(rm);
-    }
-
-    sectionTitle(parent, 'Зоны на шаблоне');
-    const listBox = el('div', 'rpt-zone-list');
-    const items = listZoneItems();
-    if (items.length === 0) {
-      const empty = el('div', 'rpt-zone-list__empty');
-      empty.textContent = 'Пока нет зон — добавьте из списка выше.';
-      listBox.appendChild(empty);
-    } else {
-      for (const it of items) {
-        const row = el('div', 'rpt-zone-list__item');
-        if (it.id === state.selectedId) row.classList.add('active');
-        row.textContent = it.label;
-        row.addEventListener('click', () => {
-          state.selectedId = it.id;
-          state.activeTab = 'props';
-          rebuildTab();
-          updateTabButtons();
-          redrawCanvas();
-        });
-        listBox.appendChild(row);
-      }
-    }
-    parent.appendChild(listBox);
-  }
-
-  function listZoneItems() {
-    const items = [];
-    if (working.logo.src) items.push({ id: 'logo', label: '📷 Логотип' });
-    for (const ov of working.overlays) {
-      if (ov.type === 'image') {
-        items.push({ id: ov.id, label: '🖼 ' + (ov.content?.label || 'Изображение') + (ov.content?.src ? '' : ' (нет файла)') });
-      } else {
-        items.push({ id: ov.id, label: '▦ ' + shortText(ov.content?.text || '(пусто)') });
-      }
-    }
-    return items;
-  }
-  function shortText(s) {
-    s = String(s).replace(/\s+/g, ' ').trim();
-    return s.length > 32 ? s.slice(0, 29) + '…' : s;
-  }
-
-  function addOverlayFromPreset(p) {
-    // Новая зона помещается в центре печатной области
-    const { width, height } = pageSizeMm(working.page);
-    const m = working.page.margins;
-    const pw = width - m.left - m.right;
-    const ph = height - m.top - m.bottom;
-    const x = Math.max(m.left, m.left + (pw - p.w) / 2);
-    const y = Math.max(m.top,  m.top  + (ph - p.h) / 2);
-    const id = 'ov-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
-    if (p.kind === 'image') {
-      working.overlays.push({
-        id, type: 'image', scope: 'all',
-        x: round1(x), y: round1(y),
-        width: p.w, height: p.h,
-        content: { src: null, fit: 'contain', label: p.label },
-      });
-      state.selectedId = id;
-      state.activeTab  = 'props';
-      rebuildTab();
-      updateTabButtons();
-      redrawCanvas();
-      pickOverlayImage(id);
-      return;
-    }
-    working.overlays.push({
-      id, type: 'text', scope: 'all',
-      x: round1(x), y: round1(y),
-      width: p.w, height: p.h,
-      content: { text: p.text, styleRef: p.styleRef, align: p.align },
-    });
-    state.selectedId = id;
-    state.activeTab  = 'props';
-    rebuildTab();
-    updateTabButtons();
-    redrawCanvas();
-  }
-
-  function pickOverlayImage(ovId) {
-    const inp = document.createElement('input');
-    inp.type = 'file';
-    inp.accept = 'image/png,image/jpeg';
-    inp.addEventListener('change', async () => {
-      const f = inp.files && inp.files[0];
-      if (!f) return;
-      const ov = working.overlays.find(o => o.id === ovId);
-      if (!ov) return;
-      if (!ov.content) ov.content = {};
-      ov.content.src = await readAsDataUrl(f);
-      rebuildTab();
-      redrawCanvas();
-    });
-    inp.click();
-  }
-
-  function pickLogo() {
-    const inp = document.createElement('input');
-    inp.type = 'file';
-    inp.accept = 'image/png,image/jpeg';
-    inp.addEventListener('change', async () => {
-      const f = inp.files && inp.files[0];
-      if (!f) return;
-      working.logo.src = await readAsDataUrl(f);
-      // если логотип только что появился — разместим его в левом верхнем углу
-      if (!working.logo.width)  working.logo.width  = 30;
-      if (!working.logo.height) working.logo.height = 15;
-      state.selectedId = 'logo';
-      rebuildTab();
-      redrawCanvas();
-    });
-    inp.click();
-  }
-
-  // ——————————————————————————————————————————————————————
-  // Вкладка «Стили» — настройка типографики
-  // ——————————————————————————————————————————————————————
-  // Вкладка «Разделы» — порядок и видимость разделов тела отчёта
-  // ——————————————————————————————————————————————————————
-  function orderedSectionIds() {
-    const manifest = working.sections.manifest || [];
-    const ids = manifest.map(m => m.id);
-    const order = working.sections.order || [];
-    const res = [];
-    for (const id of order) if (ids.includes(id) && !res.includes(id)) res.push(id);
-    for (const id of ids)   if (!res.includes(id)) res.push(id);
-    return res;
-  }
-
-  function buildSectionsTab(parent) {
-    sectionTitle(parent, 'Разделы документа');
-
-    const manifest = working.sections.manifest || [];
-    const labelOf = (id) =>
-      (manifest.find(m => m.id === id) || {}).label || id;
-
+    sect(p, 'Блоки документа (сверху вниз)');
     const hint = el('div', 'rpt-hint');
-    if (!manifest.length) {
-      hint.innerHTML = 'Состав разделов задаёт подпрограмма при формировании отчёта. '
-        + 'Сформируйте отчёт этой подпрограммой хотя бы раз — список разделов появится здесь, '
-        + 'и заданный порядок/видимость сохранятся в шаблоне для повторного использования.';
-      parent.appendChild(hint);
-      return;
-    }
-    hint.innerHTML = 'Перетаскивание стрелками меняет порядок следования разделов в документе. '
-      + 'Снятая галочка — раздел скрыт (не попадёт в PDF/DOCX). Сохраняется в шаблоне.';
-    parent.appendChild(hint);
+    hint.textContent = 'Порядок = порядок в документе. 👁 — скрыть из PDF/DOCX. Тело отчёта подставляет подпрограмма; структурные блоки и порядок сохраняются в шаблоне.';
+    p.appendChild(hint);
 
-    const ids = orderedSectionIds();
+    const list = el('div', 'rpt-zone-list');
     const hidden = new Set(working.sections.hidden || []);
-
-    const listBox = el('div', 'rpt-zone-list');
-    ids.forEach((id, idx) => {
+    working.flow.forEach((b, i) => {
       const row = el('div', 'rpt-zone-list__item');
-      row.style.display = 'flex';
-      row.style.alignItems = 'center';
-      row.style.gap = '4px';
+      row.style.cssText = 'display:flex;align-items:center;gap:4px';
+      if (i === state.sel) row.classList.add('active');
 
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = !hidden.has(id);
-      cb.title = 'Показывать раздел в документе';
-      cb.style.marginRight = '6px';
-      cb.addEventListener('change', () => {
-        const h = new Set(working.sections.hidden || []);
-        if (cb.checked) h.delete(id); else h.add(id);
-        working.sections.hidden = [...h];
+      const eye = btn(b._hidden || (b.section && hidden.has(b.section)) ? '🚫' : '👁');
+      eye.title = 'Показать/скрыть блок';
+      eye.style.padding = '2px 6px';
+      eye.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (b.section) {
+          const h = new Set(working.sections.hidden || []);
+          h.has(b.section) ? h.delete(b.section) : h.add(b.section);
+          working.sections.hidden = [...h];
+        } else { b._hidden = !b._hidden; }
+        rebuild();
       });
-      row.appendChild(cb);
+      row.appendChild(eye);
 
-      const name = document.createElement('span');
-      name.textContent = labelOf(id);
-      name.style.flex = '1';
-      if (hidden.has(id)) { name.style.opacity = '0.5'; name.style.textDecoration = 'line-through'; }
-      row.appendChild(name);
+      const nm = el('span');
+      nm.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      nm.textContent = blockLabel(b);
+      if (b._hidden || (b.section && hidden.has(b.section))) {
+        nm.style.opacity = '0.5'; nm.style.textDecoration = 'line-through';
+      }
+      row.appendChild(nm);
 
-      const up = buttonEl('▲');
-      up.title = 'Выше';
-      up.disabled = idx === 0;
-      up.style.padding = '2px 6px';
-      up.addEventListener('click', () => { moveSection(ids, idx, -1); });
-      row.appendChild(up);
-
-      const dn = buttonEl('▼');
-      dn.title = 'Ниже';
-      dn.disabled = idx === ids.length - 1;
-      dn.style.padding = '2px 6px';
-      dn.addEventListener('click', () => { moveSection(ids, idx, 1); });
-      row.appendChild(dn);
-
-      listBox.appendChild(row);
+      const up = btn('▲'); up.style.padding = '2px 6px'; up.disabled = i === 0;
+      up.addEventListener('click', (ev) => { ev.stopPropagation(); moveBlock(i, -1); });
+      const dn = btn('▼'); dn.style.padding = '2px 6px'; dn.disabled = i === working.flow.length - 1;
+      dn.addEventListener('click', (ev) => { ev.stopPropagation(); moveBlock(i, 1); });
+      const rm = btn('✕', 'danger'); rm.style.padding = '2px 6px';
+      rm.title = 'Удалить блок';
+      rm.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        working.flow.splice(i, 1);
+        state.sel = -1;
+        rebuild();
+      });
+      row.appendChild(up); row.appendChild(dn); row.appendChild(rm);
+      row.addEventListener('click', () => { state.sel = i; rebuild(); });
+      list.appendChild(row);
     });
-    parent.appendChild(listBox);
+    if (!working.flow.length) {
+      const e0 = el('div', 'rpt-hint');
+      e0.textContent = 'Поток пуст. Добавьте структурные блоки выше — тело отчёта подставит подпрограмма.';
+      list.appendChild(e0);
+    }
+    p.appendChild(list);
 
-    const reset = buttonEl('Сбросить порядок');
-    reset.addEventListener('click', () => {
-      working.sections.order = [];
-      working.sections.hidden = [];
-      rebuildTab();
-    });
-    parent.appendChild(reset);
+    if (state.sel >= 0 && working.flow[state.sel]) {
+      sect(p, 'Свойства блока');
+      buildBlockProps(p, working.flow[state.sel]);
+    }
   }
 
-  function moveSection(ids, idx, dir) {
-    const next = ids.slice();
-    const j = idx + dir;
-    if (j < 0 || j >= next.length) return;
-    const t = next[idx]; next[idx] = next[j]; next[j] = t;
-    working.sections.order = next;
-    rebuildTab();
+  function moveBlock(i, d) {
+    const j = i + d;
+    if (j < 0 || j >= working.flow.length) return;
+    const a = working.flow;
+    [a[i], a[j]] = [a[j], a[i]];
+    if (state.sel === i) state.sel = j;
+    else if (state.sel === j) state.sel = i;
+    rebuild();
   }
 
-  // ——————————————————————————————————————————————————————
-  function buildStylesTab(parent) {
-    const STYLES = [
-      ['h1',      'Заголовок 1'],
-      ['h2',      'Заголовок 2'],
-      ['h3',      'Заголовок 3'],
-      ['body',    'Основной текст'],
-      ['caption', 'Подпись'],
-      ['list',    'Элемент списка'],
-    ];
-    STYLES.forEach(([key, label]) => buildStyleCard(parent, key, label));
-
-    // Стиль таблицы отдельно — у него другие поля
-    const card = el('div', 'rpt-style-card');
-    const h = document.createElement('h4');
-    h.textContent = 'Таблица';
-    card.appendChild(h);
-
-    const row1 = el('div', 'rpt-row');
-    const f1 = field(row1, 'Шрифт');
-    const sf = document.createElement('select');
-    FONT_FAMILIES.forEach(f => {
-      const o = document.createElement('option'); o.value = f; o.textContent = f; sf.appendChild(o);
-    });
-    sf.value = working.styles.table.font || 'Helvetica';
-    sf.addEventListener('change', () => {
-      working.styles.table.font = sf.value; redrawCanvas();
-    });
-    f1.appendChild(sf);
-    const f2 = field(row1, 'Размер, pt');
-    f2.appendChild(numInput(working.styles.table.size, v => {
-      working.styles.table.size = v; redrawCanvas();
-    }, { step: 0.5 }));
-    card.appendChild(row1);
-
-    const row2 = el('div', 'rpt-row');
-    const fC = field(row2, 'Цвет');
-    fC.appendChild(colorInput(working.styles.table.color || '#222222', v => {
-      working.styles.table.color = v; redrawCanvas();
-    }));
-    const fB = field(row2, 'Фон шапки');
-    fB.appendChild(colorInput(working.styles.table.headBg, v => {
-      working.styles.table.headBg = v; redrawCanvas();
-    }));
-    const fBr = field(row2, 'Границы');
-    fBr.appendChild(colorInput(working.styles.table.borderColor, v => {
-      working.styles.table.borderColor = v; redrawCanvas();
-    }));
-    card.appendChild(row2);
-
-    const row3 = el('div', 'rpt-row');
-    const fP = field(row3, 'Поля ячеек, мм');
-    fP.appendChild(numInput(working.styles.table.cellPadding || 1.8, v => {
-      working.styles.table.cellPadding = v; redrawCanvas();
-    }, { step: 0.2 }));
-    const fHB = field(row3, '');
-    fHB.appendChild(checkbox('Жирная шапка', !!working.styles.table.headBold, v => {
-      working.styles.table.headBold = v; redrawCanvas();
-    }));
-    card.appendChild(row3);
-
-    parent.appendChild(card);
+  function blockLabel(b) {
+    if (!b) return '—';
+    const t = TYPE_LABEL[b.type] || b.type || 'блок';
+    if (b.type === 'docTitle') return '📌 ' + t;
+    if (b.type === 'signature') return '✍ ' + t;
+    if (b.type === 'companyInfo' || b.type === 'addressee' || b.type === 'metaLine')
+      return '🏢 ' + t;
+    if (b.type === 'tocAuto') return '🗂 ' + t;
+    if (b.section) return '▸ ' + (b.sectionLabel || t) + ' · ' + t;
+    const txt = (b.text || (Array.isArray(b.items) ? b.items[0] : '') || '').toString();
+    return '· ' + t + (txt ? ' — ' + txt.slice(0, 28) : '');
   }
 
-  function buildStyleCard(parent, key, label) {
-    const s = working.styles[key];
-    const card = el('div', 'rpt-style-card');
-    const h = document.createElement('h4');
-    h.textContent = label;
-    card.appendChild(h);
-
-    const rFont = el('div', 'rpt-row');
-    const fF = field(rFont, 'Шрифт');
-    const sf = document.createElement('select');
-    FONT_FAMILIES.forEach(f => {
-      const o = document.createElement('option'); o.value = f; o.textContent = f; sf.appendChild(o);
-    });
-    sf.value = s.font;
-    sf.addEventListener('change', () => {
-      s.font = sf.value; redrawCanvas();
-    });
-    fF.appendChild(sf);
-
-    const fSz = field(rFont, 'Размер, pt');
-    fSz.appendChild(numInput(s.size, v => {
-      s.size = v; redrawCanvas();
-    }, { step: 0.5 }));
-
-    const fCl = field(rFont, 'Цвет');
-    fCl.appendChild(colorInput(s.color, v => {
-      s.color = v; redrawCanvas();
-    }));
-    card.appendChild(rFont);
-
-    const rToggles = el('div', 'rpt-row');
-    const fB = field(rToggles, '');
-    fB.appendChild(checkbox('Жирный', s.bold, v => { s.bold = v; redrawCanvas(); }));
-    const fI = field(rToggles, '');
-    fI.appendChild(checkbox('Курсив', s.italic, v => { s.italic = v; redrawCanvas(); }));
-    card.appendChild(rToggles);
-
-    const rSpace = el('div', 'rpt-row');
-    const fBf = field(rSpace, 'Отступ до, мм');
-    fBf.appendChild(numInput(s.spaceBefore || 0, v => {
-      s.spaceBefore = v; redrawCanvas();
-    }, { step: 0.5 }));
-    const fAf = field(rSpace, 'Отступ после, мм');
-    fAf.appendChild(numInput(s.spaceAfter || 0, v => {
-      s.spaceAfter = v; redrawCanvas();
-    }, { step: 0.5 }));
-    card.appendChild(rSpace);
-
-    parent.appendChild(card);
-  }
-
-  // ——————————————————————————————————————————————————————
-  // Вкладка «Свойства»
-  // ——————————————————————————————————————————————————————
-  function buildPropsTab(parent) {
-    const id = state.selectedId;
-    if (!id) {
-      const hint = el('div', 'rpt-hint');
-      hint.textContent = 'Кликните зону на холсте или в списке зон, чтобы настроить её свойства.';
-      parent.appendChild(hint);
+  function buildBlockProps(p, b) {
+    if (b.type === 'signature') {
+      fld(p, 'Должность', textInput(b.role || '', v => { b.role = v; renderPane(); }));
+      fld(p, 'Ф.И.О.', textInput(b.name || '', v => { b.name = v; renderPane(); }));
+      const lbl = el('label', 'chk');
+      const cb = document.createElement('input'); cb.type = 'checkbox';
+      cb.checked = b.mp !== false;
+      cb.addEventListener('change', () => { b.mp = cb.checked; renderPane(); });
+      lbl.appendChild(cb);
+      const sp = document.createElement('span'); sp.textContent = ' М.П. (место печати)';
+      lbl.appendChild(sp);
+      const w = fld(p, '', lbl);
+      void w;
       return;
     }
+    if (b.type === 'tocAuto') {
+      fld(p, 'Заголовок', textInput(b.title || 'Содержание', v => { b.title = v; renderPane(); }));
+      return;
+    }
+    if (b.type === 'docTitle' || b.type === 'companyInfo' || b.type === 'addressee' ||
+        b.type === 'metaLine' || b.type === 'heading' || b.type === 'paragraph') {
+      fld(p, 'Текст (можно {{плейсхолдеры}})',
+        textArea(b.text || '', v => { b.text = v; renderPane(); }));
+      fld(p, 'Выравнивание', selectInput(
+        [['left', 'Слева'], ['center', 'По центру'], ['right', 'Справа']],
+        b.align || 'left', v => { b.align = v; renderPane(); }));
+      const h = el('div', 'rpt-hint');
+      h.innerHTML = 'Плейсхолдеры: <code>{{meta.title}}</code> <code>{{meta.author}}</code> ' +
+        '<code>{{date}}</code> <code>{{meta.custom.recipient}}</code> ' +
+        '<code>{{meta.custom.companyName}}</code>';
+      p.appendChild(h);
+      return;
+    }
+    const h = el('div', 'rpt-hint');
+    h.textContent = 'Этот блок формирует подпрограмма — здесь только порядок/видимость.';
+    p.appendChild(h);
+  }
 
-    if (id === 'logo' && working.logo.src) {
-      buildLogoProps(parent);
-      return;
-    }
-    const ov = working.overlays.find(o => o.id === id);
-    if (ov) {
-      if (ov.type === 'image') buildImageOverlayProps(parent, ov);
-      else buildOverlayProps(parent, ov);
-      return;
-    }
+  // ——— Вкладка «Колонтитулы» ———
+  function buildChrome(p) {
     const hint = el('div', 'rpt-hint');
-    hint.textContent = 'Зона не найдена.';
-    parent.appendChild(hint);
+    hint.textContent = 'Колонтитулы повторяются на страницах и могут выходить за поля печати. Текст поддерживает {{page}} {{pages}} {{date}} {{meta.title}}.';
+    p.appendChild(hint);
+    chromeBand(p, 'Шапка — первая страница', working.header.firstPage);
+    chromeBand(p, 'Шапка — остальные', working.header.otherPages);
+    chromeBand(p, 'Подвал — первая страница', working.footer.firstPage);
+    chromeBand(p, 'Подвал — остальные', working.footer.otherPages);
   }
-
-  function buildLogoProps(parent) {
-    sectionTitle(parent, 'Логотип');
-    // Предпросмотр
-    const img = document.createElement('img');
-    img.src = working.logo.src;
-    img.className = 'rpt-logo-preview';
-    parent.appendChild(img);
-
-    const row = el('div', 'rpt-row');
-    const fW = field(row, 'Ширина, мм');
-    fW.appendChild(numInput(working.logo.width, v => {
-      working.logo.width = v; redrawCanvas();
-    }));
-    const fH = field(row, 'Высота, мм');
-    fH.appendChild(numInput(working.logo.height, v => {
-      working.logo.height = v; redrawCanvas();
-    }));
-    parent.appendChild(row);
-
-    const fOnly = field(parent, '');
+  function chromeBand(p, label, band) {
+    sect(p, label);
+    if (!band || typeof band !== 'object') return;
     const lbl = el('label', 'chk');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = !!working.logo.onFirstPageOnly;
-    cb.addEventListener('change', () => {
-      working.logo.onFirstPageOnly = cb.checked; redrawCanvas();
-    });
+    const cb = document.createElement('input'); cb.type = 'checkbox';
+    cb.checked = band.enabled !== false;
+    cb.addEventListener('change', () => { band.enabled = cb.checked; renderPane(); });
     lbl.appendChild(cb);
-    const sp = document.createElement('span');
-    sp.textContent = 'Только на первой странице';
+    const sp = document.createElement('span'); sp.textContent = ' включена';
     lbl.appendChild(sp);
-    fOnly.appendChild(lbl);
-
-    const rm = buttonEl('Удалить логотип', 'danger');
-    rm.addEventListener('click', () => {
-      working.logo.src = null;
-      state.selectedId = null;
-      state.activeTab = 'zones';
-      rebuildTab();
-      updateTabButtons();
-      redrawCanvas();
-    });
-    parent.appendChild(rm);
+    fld(p, '', lbl);
+    fld(p, 'Высота, мм', numInput(band.height || 12, v => { band.height = v; renderPane(); }));
+    const first = (band.blocks && band.blocks[0]) || null;
+    const txt = first && first.text || '';
+    fld(p, 'Текст', textInput(txt, v => {
+      band.blocks = v ? [{ type: 'paragraph', style: 'caption',
+        align: (first && first.align) || 'center', text: v }] : [];
+      renderPane();
+    }));
+    fld(p, 'Выравнивание', selectInput(
+      [['left', 'Слева'], ['center', 'По центру'], ['right', 'Справа']],
+      (first && first.align) || 'center', v => {
+        if (band.blocks && band.blocks[0]) { band.blocks[0].align = v; renderPane(); }
+      }));
   }
 
-  function buildImageOverlayProps(parent, ov) {
-    sectionTitle(parent, ov.content?.label || 'Изображение');
-
-    if (ov.content?.src) {
-      const img = document.createElement('img');
-      img.src = ov.content.src;
-      img.className = 'rpt-logo-preview';
-      parent.appendChild(img);
-    } else {
-      const hint = el('div', 'rpt-hint');
-      hint.textContent = 'Файл не выбран. Поддерживаются PNG/JPEG. Для печати и подписи рекомендуется PNG с прозрачным фоном.';
-      parent.appendChild(hint);
-    }
-
-    const pick = buttonEl(ov.content?.src ? '📷 Заменить изображение…' : '+ 📷 Выбрать изображение…');
-    pick.className = 'rpt-zone-add-btn';
-    pick.addEventListener('click', () => pickOverlayImage(ov.id));
-    parent.appendChild(pick);
-
-    const fFit = field(parent, 'Вписывание');
-    const fitSel = document.createElement('select');
-    [['contain', 'Сохранять пропорции'], ['fill', 'Растягивать']].forEach(([v, l]) => {
-      const o = document.createElement('option'); o.value = v; o.textContent = l; fitSel.appendChild(o);
-    });
-    fitSel.value = ov.content?.fit || 'contain';
-    fitSel.addEventListener('change', () => {
-      if (!ov.content) ov.content = {};
-      ov.content.fit = fitSel.value; redrawCanvas();
-    });
-    fFit.appendChild(fitSel);
-
-    const fSc = field(parent, 'На каких страницах');
-    const scSel = document.createElement('select');
-    [['all', 'На всех'], ['first', 'Только на первой'], ['other', 'На всех кроме первой']].forEach(([v, l]) => {
-      const o = document.createElement('option'); o.value = v; o.textContent = l; scSel.appendChild(o);
-    });
-    scSel.value = ov.scope || 'all';
-    scSel.addEventListener('change', () => { ov.scope = scSel.value; redrawCanvas(); });
-    fSc.appendChild(scSel);
-
-    sectionTitle(parent, 'Положение и размер');
-    const row1 = el('div', 'rpt-row');
-    const fx = field(row1, 'X, мм');
-    fx.appendChild(numInput(round1(ov.x), v => { ov.x = clampX(v, ov); redrawCanvas(); }));
-    const fy = field(row1, 'Y, мм');
-    fy.appendChild(numInput(round1(ov.y), v => { ov.y = clampY(v, ov); redrawCanvas(); }));
-    parent.appendChild(row1);
-    const row2 = el('div', 'rpt-row');
-    const fw = field(row2, 'Ширина, мм');
-    fw.appendChild(numInput(round1(ov.width), v => { ov.width = Math.max(8, v); redrawCanvas(); }));
-    const fh = field(row2, 'Высота, мм');
-    fh.appendChild(numInput(round1(ov.height), v => { ov.height = Math.max(8, v); redrawCanvas(); }));
-    parent.appendChild(row2);
-
-    const rmBtn = buttonEl('Удалить зону', 'danger');
-    rmBtn.addEventListener('click', () => {
-      working.overlays = working.overlays.filter(o => o.id !== ov.id);
-      state.selectedId = null;
-      state.activeTab = 'zones';
-      rebuildTab();
-      updateTabButtons();
-      redrawCanvas();
-    });
-    parent.appendChild(rmBtn);
-  }
-
-  function buildOverlayProps(parent, ov) {
-    sectionTitle(parent, 'Зона текста');
-
-    const fT = field(parent, 'Текст');
-    const ta = document.createElement('textarea');
-    ta.value = ov.content.text || '';
-    ta.rows = 4;
-    ta.addEventListener('input', () => {
-      ov.content.text = ta.value;
-      redrawCanvas();
-    });
-    fT.appendChild(ta);
-
+  // ——— Вкладка «Плавающий слой» ———
+  function buildFloating(p) {
     const hint = el('div', 'rpt-hint');
-    hint.innerHTML = 'Плейсхолдеры: <code>{{meta.title}}</code>, <code>{{meta.author}}</code>, <code>{{date}}</code>, <code>{{page}}</code>, <code>{{pages}}</code>';
-    parent.appendChild(hint);
+    hint.innerHTML = 'Единственное намеренное наложение поверх потока. ' +
+      'Привязка к подписанту — печать/скан поверх блока подписи; ' +
+      'без привязки — фон/водяной знак (можно за поля).';
+    p.appendChild(hint);
 
-    const fS = field(parent, 'Стиль');
-    const sSel = document.createElement('select');
-    [['h1','Заголовок 1'],['h2','Заголовок 2'],['h3','Заголовок 3'],['body','Основной'],['caption','Подпись']].forEach(([v,l]) => {
-      const o = document.createElement('option'); o.value = v; o.textContent = l; sSel.appendChild(o);
+    const addRow = el('div', 'rpt-zone-add');
+    const aW = btn('+ Водяной знак');
+    aW.className = 'rpt-zone-add-btn';
+    aW.addEventListener('click', () => {
+      working.floating.push({ id: 'flt-' + Date.now().toString(36), type: 'text',
+        scope: 'all', x: 40, y: 130, width: 120, height: 20, opacity: 0.12,
+        rotate: -30, content: { text: 'ЧЕРНОВИК', size: 48, color: '#c8c8c8' } });
+      rebuild();
     });
-    sSel.value = ov.content.styleRef || 'body';
-    sSel.addEventListener('change', () => {
-      ov.content.styleRef = sSel.value; redrawCanvas();
+    const aS = btn('+ Печать (над подписью)');
+    aS.className = 'rpt-zone-add-btn';
+    aS.addEventListener('click', () => {
+      const f = { id: 'flt-' + Date.now().toString(36), type: 'image',
+        anchor: { role: 'signature', dx: 60, dy: -4 }, scope: 'all',
+        width: 38, height: 38, opacity: 1, content: { src: null, label: 'Печать организации' } };
+      working.floating.push(f);
+      pickImage(src => { f.content.src = src; rebuild(); });
+      rebuild();
     });
-    fS.appendChild(sSel);
+    addRow.appendChild(aW); addRow.appendChild(aS);
+    p.appendChild(addRow);
 
-    const fA = field(parent, 'Выравнивание');
-    const aSel = document.createElement('select');
-    [['left','Слева'],['center','По центру'],['right','Справа']].forEach(([v,l]) => {
-      const o = document.createElement('option'); o.value = v; o.textContent = l; aSel.appendChild(o);
-    });
-    aSel.value = ov.content.align || 'left';
-    aSel.addEventListener('change', () => {
-      ov.content.align = aSel.value; redrawCanvas();
-    });
-    fA.appendChild(aSel);
-
-    const fSc = field(parent, 'На каких страницах');
-    const scSel = document.createElement('select');
-    [['all','На всех'],['first','Только на первой'],['other','На всех кроме первой']].forEach(([v,l]) => {
-      const o = document.createElement('option'); o.value = v; o.textContent = l; scSel.appendChild(o);
-    });
-    scSel.value = ov.scope || 'all';
-    scSel.addEventListener('change', () => {
-      ov.scope = scSel.value; redrawCanvas();
-    });
-    fSc.appendChild(scSel);
-
-    sectionTitle(parent, 'Положение и размер');
-    const row1 = el('div', 'rpt-row');
-    const fx = field(row1, 'X, мм');
-    fx.appendChild(numInput(round1(ov.x), v => { ov.x = clampX(v, ov); redrawCanvas(); }));
-    const fy = field(row1, 'Y, мм');
-    fy.appendChild(numInput(round1(ov.y), v => { ov.y = clampY(v, ov); redrawCanvas(); }));
-    parent.appendChild(row1);
-    const row2 = el('div', 'rpt-row');
-    const fw = field(row2, 'Ширина, мм');
-    fw.appendChild(numInput(round1(ov.width), v => { ov.width = Math.max(10, v); redrawCanvas(); }));
-    const fh = field(row2, 'Высота, мм');
-    fh.appendChild(numInput(round1(ov.height), v => { ov.height = Math.max(4, v); redrawCanvas(); }));
-    parent.appendChild(row2);
-
-    const rmBtn = buttonEl('Удалить зону', 'danger');
-    rmBtn.addEventListener('click', () => {
-      working.overlays = working.overlays.filter(o => o.id !== ov.id);
-      state.selectedId = null;
-      state.activeTab = 'zones';
-      rebuildTab();
-      updateTabButtons();
-      redrawCanvas();
-    });
-    parent.appendChild(rmBtn);
-  }
-
-  // ——————————————————————————————————————————————————————
-  // Холст
-  // ——————————————————————————————————————————————————————
-  function redrawCanvas() {
-    canvas.innerHTML = '';
-    const { width, height } = pageSizeMm(working.page);
-    const m = working.page.margins;
-    const s = state.scale;
-
-    const page = el('div', 'rpt-cv-page');
-    page.style.width  = (width  * s) + 'px';
-    page.style.height = (height * s) + 'px';
-    canvas.appendChild(page);
-
-    // поля печати — пунктирная рамка
-    const box = el('div', 'rpt-cv-printarea');
-    box.style.left   = (m.left  * s) + 'px';
-    box.style.top    = (m.top   * s) + 'px';
-    box.style.width  = ((width  - m.left - m.right)  * s) + 'px';
-    box.style.height = ((height - m.top  - m.bottom) * s) + 'px';
-    page.appendChild(box);
-
-    // «Зона отчёта» — подсказка в центре
-    const bodyLabel = el('div', 'rpt-cv-body-label');
-    bodyLabel.textContent = 'Зона отчёта\n(сюда подпрограмма подставит содержимое)';
-    page.appendChild(bodyLabel);
-    bodyLabel.style.left = (m.left * s) + 'px';
-    bodyLabel.style.top  = (m.top  * s) + 'px';
-    bodyLabel.style.width  = ((width  - m.left - m.right)  * s) + 'px';
-    bodyLabel.style.height = ((height - m.top  - m.bottom) * s) + 'px';
-
-    // Логотип
-    if (working.logo.src) {
-      const lz = el('div', 'rpt-cv-zone rpt-cv-zone--logo');
-      const lx = getLogoXY();
-      lz.style.left   = (lx.x * s) + 'px';
-      lz.style.top    = (lx.y * s) + 'px';
-      lz.style.width  = (working.logo.width  * s) + 'px';
-      lz.style.height = (working.logo.height * s) + 'px';
-      if (state.selectedId === 'logo') lz.classList.add('selected');
-      const img = document.createElement('img');
-      img.src = working.logo.src;
-      img.style.width = '100%';
-      img.style.height = '100%';
-      img.style.objectFit = 'contain';
-      img.draggable = false;
-      lz.appendChild(img);
-      attachZoneHandlers(lz, 'logo');
-      const rz = el('div', 'rpt-cv-resize');
-      lz.appendChild(rz);
-      attachResizeHandlers(rz, 'logo');
-      page.appendChild(lz);
-    }
-
-    // Overlay-зоны
-    for (const ov of working.overlays) {
-      if (ov.type === 'image') {
-        const zd = el('div', 'rpt-cv-zone rpt-cv-zone--logo');
-        zd.style.left   = (ov.x * s) + 'px';
-        zd.style.top    = (ov.y * s) + 'px';
-        zd.style.width  = (ov.width  * s) + 'px';
-        zd.style.height = (ov.height * s) + 'px';
-        if (state.selectedId === ov.id) zd.classList.add('selected');
-        if (ov.content?.src) {
-          const img = document.createElement('img');
-          img.src = ov.content.src;
-          img.style.width = '100%';
-          img.style.height = '100%';
-          img.style.objectFit = ov.content.fit === 'fill' ? 'fill' : 'contain';
-          img.draggable = false;
-          zd.appendChild(img);
-        } else {
-          const ph = el('div', 'rpt-cv-zone__text');
-          ph.style.font = '10px system-ui';
-          ph.style.color = '#9aa1ad';
-          ph.textContent = '🖼 ' + (ov.content?.label || 'Изображение');
-          zd.appendChild(ph);
-        }
-        const rzi = el('div', 'rpt-cv-resize');
-        zd.appendChild(rzi);
-        attachZoneHandlers(zd, ov.id);
-        attachResizeHandlers(rzi, ov.id);
-        page.appendChild(zd);
-        continue;
+    sect(p, 'Элементы');
+    working.floating.forEach((f, i) => {
+      const card = el('div', 'rpt-style-card');
+      const h = document.createElement('h4');
+      h.textContent = (f.type === 'image' ? '🖼 ' : '🅰 ') +
+        (f.content?.label || (f.type === 'image' ? 'Изображение' : 'Текст')) +
+        (f.anchor ? ' · над подписью' : ' · фон');
+      card.appendChild(h);
+      if (f.type === 'image') {
+        const pk = btn(f.content?.src ? '📷 Заменить' : '📷 Выбрать файл');
+        pk.addEventListener('click', () => pickImage(src => {
+          if (!f.content) f.content = {}; f.content.src = src; rebuild();
+        }));
+        card.appendChild(pk);
+      } else {
+        fld(card, 'Текст', textInput(f.content?.text || '', v => {
+          if (!f.content) f.content = {}; f.content.text = v; renderPane();
+        }));
       }
-      const zd = el('div', 'rpt-cv-zone rpt-cv-zone--text');
-      zd.style.left   = (ov.x * s) + 'px';
-      zd.style.top    = (ov.y * s) + 'px';
-      zd.style.width  = (ov.width  * s) + 'px';
-      zd.style.height = (ov.height * s) + 'px';
-      if (state.selectedId === ov.id) zd.classList.add('selected');
-      const inner = el('div', 'rpt-cv-zone__text');
-      const st = working.styles[ov.content.styleRef || 'body'] || working.styles.body;
-      inner.style.fontFamily = st.font;
-      inner.style.fontSize   = (st.size * 0.9) + 'pt'; // чуть уменьшаем для экрана
-      inner.style.fontWeight = st.bold ? '700' : '400';
-      inner.style.fontStyle  = st.italic ? 'italic' : 'normal';
-      inner.style.color      = st.color;
-      inner.style.lineHeight = st.lineHeight;
-      inner.style.textAlign  = ov.content.align || 'left';
-      inner.textContent = (ov.content.text || '').replace(/\{\{(\w+\.?\w*)\}\}/g, (_, k) => '{{' + k + '}}');
-      zd.appendChild(inner);
-      const rz = el('div', 'rpt-cv-resize');
-      zd.appendChild(rz);
-      attachZoneHandlers(zd, ov.id);
-      attachResizeHandlers(rz, ov.id);
-      page.appendChild(zd);
-    }
-
-    // Клик по пустому месту — снять выделение
-    page.addEventListener('mousedown', (e) => {
-      if (e.target === page || e.target === box || e.target === bodyLabel) {
-        if (state.selectedId) {
-          state.selectedId = null;
-          if (state.activeTab === 'props') rebuildTab();
-          redrawCanvas();
-        }
+      const r1 = el('div', 'rpt-row');
+      fld(r1, 'Ширина', numInput(f.width || 40, v => { f.width = v; renderPane(); }));
+      fld(r1, 'Высота', numInput(f.height || 20, v => { f.height = v; renderPane(); }));
+      card.appendChild(r1);
+      fld(card, 'Прозрачность (0..1)', numInput(
+        typeof f.opacity === 'number' ? f.opacity : 1,
+        v => { f.opacity = Math.max(0, Math.min(1, v)); renderPane(); }));
+      if (f.anchor) {
+        const r2 = el('div', 'rpt-row');
+        fld(r2, 'Смещение X', numInput(f.anchor.dx || 0, v => { f.anchor.dx = v; renderPane(); }));
+        fld(r2, 'Смещение Y', numInput(f.anchor.dy || 0, v => { f.anchor.dy = v; renderPane(); }));
+        card.appendChild(r2);
+      } else {
+        const r2 = el('div', 'rpt-row');
+        fld(r2, 'X, мм', numInput(f.x || 0, v => { f.x = v; renderPane(); }));
+        fld(r2, 'Y, мм', numInput(f.y || 0, v => { f.y = v; renderPane(); }));
+        card.appendChild(r2);
       }
+      const del = btn('Удалить', 'danger');
+      del.addEventListener('click', () => { working.floating.splice(i, 1); rebuild(); });
+      card.appendChild(del);
+      p.appendChild(card);
     });
-  }
-
-  function getLogoXY() {
-    // Если у логотипа есть абсолютные x/y — используем, иначе считаем по
-    // legacy position (header-left / center / right и т.д.)
-    if (typeof working.logo.x === 'number' && typeof working.logo.y === 'number') {
-      return { x: working.logo.x, y: working.logo.y };
+    if (!working.floating.length) {
+      const e0 = el('div', 'rpt-hint');
+      e0.textContent = 'Плавающих элементов нет.';
+      p.appendChild(e0);
     }
-    const { width, height } = pageSizeMm(working.page);
-    const m = working.page.margins;
-    const pos = working.logo.position || 'header-left';
-    const isHeader = pos.startsWith('header');
-    const y = isHeader ? m.top : (height - m.bottom - working.logo.height);
-    let x = m.left;
-    if (pos.endsWith('center')) x = (width - working.logo.width) / 2;
-    if (pos.endsWith('right'))  x = width - m.right - working.logo.width;
-    return { x, y };
   }
 
-  // ——————————————————————————————————————————————————————
-  // Drag & resize
-  // ——————————————————————————————————————————————————————
-  function attachZoneHandlers(el, id) {
-    el.addEventListener('mousedown', (e) => {
-      if (e.target.classList.contains('rpt-cv-resize')) return;
-      e.preventDefault();
-      state.selectedId = id;
-      if (state.activeTab === 'props') rebuildTab();
-      redrawCanvas();
-
-      const s = state.scale;
-      const startX = e.clientX, startY = e.clientY;
-      const start = snapshot(id);
-      if (!start) return;
-
-      const onMove = (ev) => {
-        const dxMm = (ev.clientX - startX) / s;
-        const dyMm = (ev.clientY - startY) / s;
-        let nx = start.x + dxMm;
-        let ny = start.y + dyMm;
-        // Снап к сетке 5 мм — можно временно отключить удержанием Alt,
-        // если нужно тонкое позиционирование.
-        if (!ev.altKey) {
-          nx = snapMm(nx);
-          ny = snapMm(ny);
-        }
-        const clamped = clampBox(nx, ny, start.width, start.height);
-        applyPos(id, clamped.x, clamped.y);
-        redrawCanvas();
-      };
-      const onUp = () => {
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup',   onUp);
-      };
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup',   onUp);
-    });
+  // ——— Вкладка «Лист» ———
+  function buildPage(p) {
+    sect(p, 'Формат');
+    const fmt = Object.keys(PAGE_SIZES).concat(['Custom']);
+    fld(p, 'Размер', selectInput(fmt.map(f => [f, f]), working.page.format || 'A4',
+      v => { working.page.format = v; renderPane(); }));
+    fld(p, 'Ориентация', selectInput(
+      [['portrait', 'Книжная'], ['landscape', 'Альбомная']],
+      working.page.orientation || 'portrait', v => { working.page.orientation = v; renderPane(); }));
+    const r = el('div', 'rpt-row');
+    fld(r, 'Ширина, мм', numInput(working.page.width || 210, v => { working.page.width = v; renderPane(); }));
+    fld(r, 'Высота, мм', numInput(working.page.height || 297, v => { working.page.height = v; renderPane(); }));
+    p.appendChild(r);
+    sect(p, 'Поля печати, мм');
+    const m = working.page.margins || (working.page.margins = { top: 20, right: 15, bottom: 20, left: 20 });
+    const r2 = el('div', 'rpt-row');
+    fld(r2, 'Верхнее', numInput(m.top, v => { m.top = v; renderPane(); }));
+    fld(r2, 'Нижнее', numInput(m.bottom, v => { m.bottom = v; renderPane(); }));
+    p.appendChild(r2);
+    const r3 = el('div', 'rpt-row');
+    fld(r3, 'Левое', numInput(m.left, v => { m.left = v; renderPane(); }));
+    fld(r3, 'Правое', numInput(m.right, v => { m.right = v; renderPane(); }));
+    p.appendChild(r3);
+    sect(p, 'Метаданные');
+    fld(p, 'Заголовок', textInput(working.meta?.title || '', v => {
+      working.meta = working.meta || {}; working.meta.title = v; renderPane();
+    }));
+    fld(p, 'Автор', textInput(working.meta?.author || '', v => {
+      working.meta = working.meta || {}; working.meta.author = v; renderPane();
+    }));
   }
 
-  function attachResizeHandlers(el, id) {
-    el.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const s = state.scale;
-      const startX = e.clientX, startY = e.clientY;
-      const start = snapshot(id);
-      if (!start) return;
-
-      const onMove = (ev) => {
-        const dxMm = (ev.clientX - startX) / s;
-        const dyMm = (ev.clientY - startY) / s;
-        let nw = Math.max(10, start.width  + dxMm);
-        let nh = Math.max(4,  start.height + dyMm);
-        // Снап размеров к сетке 5 мм (Alt отключает)
-        if (!ev.altKey) {
-          nw = snapMm(nw);
-          nh = snapMm(nh);
-          if (nw < 10) nw = 10;
-          if (nh < 5)  nh = 5;
-        }
-        // не вылезаем за печатную область
-        const { width, height } = pageSizeMm(working.page);
-        const m = working.page.margins;
-        nw = Math.min(nw, width  - m.right  - start.x);
-        nh = Math.min(nh, height - m.bottom - start.y);
-        applySize(id, nw, nh);
-        redrawCanvas();
-      };
-      const onUp = () => {
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup',   onUp);
-      };
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup',   onUp);
-    });
-  }
-
-  function snapshot(id) {
-    if (id === 'logo') {
-      const p = getLogoXY();
-      return { x: p.x, y: p.y, width: working.logo.width, height: working.logo.height };
-    }
-    const ov = working.overlays.find(o => o.id === id);
-    if (!ov) return null;
-    return { x: ov.x, y: ov.y, width: ov.width, height: ov.height };
-  }
-  function applyPos(id, x, y) {
-    if (id === 'logo') { working.logo.x = round1(x); working.logo.y = round1(y); return; }
-    const ov = working.overlays.find(o => o.id === id);
-    if (!ov) return;
-    ov.x = round1(x); ov.y = round1(y);
-  }
-  function applySize(id, w, h) {
-    if (id === 'logo') { working.logo.width = round1(w); working.logo.height = round1(h); return; }
-    const ov = working.overlays.find(o => o.id === id);
-    if (!ov) return;
-    ov.width = round1(w); ov.height = round1(h);
-  }
-
-  function clampBox(x, y, w, h) {
-    // Overlay-зоны (логотип, шапка, футер, произвольный текст) могут
-    // лежать ГДЕ УГОДНО на странице, включая верхнее и нижнее поля —
-    // это аналог колонтитулов Word, которые по определению в margin
-    // region. Ограничение — только 2 мм safety border от краёв листа,
-    // чтобы зона не оказалась под физическим обрезом.
-    const { width, height } = pageSizeMm(working.page);
-    const SAFETY = 2;
-    const minX = SAFETY;
-    const minY = SAFETY;
-    const maxX = width  - SAFETY - w;
-    const maxY = height - SAFETY - h;
-    return {
-      x: Math.min(Math.max(x, minX), Math.max(minX, maxX)),
-      y: Math.min(Math.max(y, minY), Math.max(minY, maxY)),
-    };
-  }
-  function clampX(x, ov) {
-    return clampBox(x, ov.y, ov.width, ov.height).x;
-  }
-  function clampY(y, ov) {
-    return clampBox(ov.x, y, ov.width, ov.height).y;
-  }
-
-  // Снап к сетке 5 мм при перетаскивании.
-  function snapMm(v) { return Math.round(v / 5) * 5; }
-
-  // Автоматически подгоняет все зоны (overlays + logo) под текущие
-  // размеры листа и поля печати. Вызывается, когда пользователь меняет
-  // формат, ориентацию, ширину/высоту или margins — чтобы ни одна зона
-  // визуально не вылезала за границу печати.
-  function fitAllZonesToPage() {
-    const { width, height } = pageSizeMm(working.page);
-    const SAFETY = 2;
-    const pageW = Math.max(10, width  - 2 * SAFETY);
-    const pageH = Math.max(5,  height - 2 * SAFETY);
-
-    const fit = (box) => {
-      // Зона ограничивается полной страницей с safety-рамкой 2 мм —
-      // такая же модель, как в clampBox. Колонтитульные зоны
-      // располагаются в верхнем/нижнем поле (вне body area).
-      const w = Math.min(box.width  ?? pageW, pageW);
-      const h = Math.min(box.height ?? pageH, pageH);
-      const maxX = width  - SAFETY - w;
-      const maxY = height - SAFETY - h;
-      return {
-        width:  round1(w),
-        height: round1(h),
-        x: round1(Math.min(Math.max(box.x ?? SAFETY, SAFETY), Math.max(SAFETY, maxX))),
-        y: round1(Math.min(Math.max(box.y ?? SAFETY, SAFETY), Math.max(SAFETY, maxY))),
-      };
-    };
-
-    for (const ov of working.overlays) {
-      const f = fit(ov);
-      ov.x = f.x; ov.y = f.y; ov.width = f.width; ov.height = f.height;
-    }
-    if (working.logo && working.logo.src) {
-      // Подтянем координаты из legacy position, если ещё не было x/y
-      if (typeof working.logo.x !== 'number' || typeof working.logo.y !== 'number') {
-        const p = getLogoXY();
-        working.logo.x = p.x; working.logo.y = p.y;
+  // ——— Вкладка «Стили» ———
+  function buildStyles(p) {
+    const KEYS = [['h1', 'Заголовок 1'], ['h2', 'Заголовок 2'], ['h3', 'Заголовок 3'],
+      ['body', 'Основной текст'], ['caption', 'Подпись'], ['list', 'Список'], ['table', 'Таблица']];
+    for (const [k, label] of KEYS) {
+      const s = working.styles[k] || (working.styles[k] = {});
+      const card = el('div', 'rpt-style-card');
+      const h = document.createElement('h4'); h.textContent = label; card.appendChild(h);
+      const r = el('div', 'rpt-row');
+      fld(r, 'Размер, pt', numInput(s.size || 11, v => { s.size = v; renderPane(); }));
+      fld(r, 'Цвет', colorInput(s.color || '#222222', v => { s.color = v; renderPane(); }));
+      card.appendChild(r);
+      if (k !== 'table') {
+        const lbl = el('label', 'chk');
+        const cb = document.createElement('input'); cb.type = 'checkbox';
+        cb.checked = !!s.bold;
+        cb.addEventListener('change', () => { s.bold = cb.checked; renderPane(); });
+        lbl.appendChild(cb);
+        const sp = document.createElement('span'); sp.textContent = ' жирный';
+        lbl.appendChild(sp);
+        fld(card, '', lbl);
       }
-      const f = fit(working.logo);
-      working.logo.x = f.x; working.logo.y = f.y;
-      working.logo.width = f.width; working.logo.height = f.height;
+      p.appendChild(card);
     }
+  }
+
+  // ——— общий picker картинки ———
+  function pickImage(cb) {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/png,image/jpeg';
+    inp.addEventListener('change', () => {
+      const f = inp.files && inp.files[0];
+      if (!f) return;
+      const rd = new FileReader();
+      rd.onload = () => cb(rd.result);
+      rd.readAsDataURL(f);
+    });
+    inp.click();
   }
 }
 
 // ——————————————————————————————————————————————————————————————————————
-// мелкие хелперы
+// Мелкие DOM-утилиты
 // ——————————————————————————————————————————————————————————————————————
 function el(tag, cls) { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
-function buttonEl(text, cls) {
+function btn(text, variant) {
   const b = document.createElement('button');
   b.type = 'button';
+  b.className = 'btn' + (variant ? ' ' + variant : '');
   b.textContent = text;
-  if (cls) b.className = cls;
   return b;
 }
-function field(parent, label) {
-  const f = el('div','rpt-field');
-  if (label) {
-    const l = document.createElement('label');
-    l.textContent = label;
-    f.appendChild(l);
-  }
-  parent.appendChild(f);
-  return f;
-}
-function sectionTitle(parent, text) {
-  const s = el('div','rpt-section-title');
+function sect(parent, text) {
+  const s = el('div', 'rpt-sect-title');
   s.textContent = text;
   parent.appendChild(s);
 }
-function numInput(value, onChange, opts = {}) {
+function fld(parent, label, control) {
+  const wrap = el('div', 'rpt-field');
+  if (label) { const l = el('label'); l.textContent = label; wrap.appendChild(l); }
+  if (control) wrap.appendChild(control);
+  parent.appendChild(wrap);
+  return wrap;
+}
+function textInput(val, onChange) {
   const i = document.createElement('input');
-  i.type = 'number';
-  i.step = opts.step || 1;
-  i.value = value;
-  i.addEventListener('input', () => {
-    const v = parseFloat(i.value);
-    if (!Number.isNaN(v)) onChange(v);
+  i.type = 'text'; i.value = val == null ? '' : val;
+  i.addEventListener('change', () => onChange(i.value));
+  return i;
+}
+function textArea(val, onChange) {
+  const t = document.createElement('textarea');
+  t.rows = 3; t.value = val == null ? '' : val;
+  t.addEventListener('change', () => onChange(t.value));
+  return t;
+}
+function numInput(val, onChange) {
+  const i = document.createElement('input');
+  i.type = 'number'; i.value = val;
+  i.addEventListener('change', () => {
+    const n = parseFloat(i.value);
+    if (!isNaN(n)) onChange(n);
   });
   return i;
 }
-function textInput(value, onChange) {
+function colorInput(val, onChange) {
   const i = document.createElement('input');
-  i.type = 'text';
-  i.value = value || '';
-  i.addEventListener('input', () => onChange(i.value));
+  i.type = 'color'; i.value = /^#[0-9a-f]{6}$/i.test(val) ? val : '#222222';
+  i.addEventListener('change', () => onChange(i.value));
   return i;
 }
-function colorInput(value, onChange) {
-  const i = document.createElement('input');
-  i.type = 'color';
-  i.value = value || '#222222';
-  i.addEventListener('input', () => onChange(i.value));
-  return i;
+function selectInput(options, val, onChange) {
+  const s = document.createElement('select');
+  for (const [v, l] of options) {
+    const o = document.createElement('option');
+    o.value = v; o.textContent = l;
+    s.appendChild(o);
+  }
+  s.value = val;
+  s.addEventListener('change', () => onChange(s.value));
+  return s;
 }
-function checkbox(label, value, onChange) {
-  const l = document.createElement('label');
-  l.className = 'chk';
-  const i = document.createElement('input');
-  i.type = 'checkbox';
-  i.checked = !!value;
-  i.addEventListener('change', () => onChange(i.checked));
-  l.appendChild(i);
-  const s = document.createElement('span');
-  s.textContent = label;
-  l.appendChild(s);
-  return l;
-}
-function readAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload  = () => resolve(r.result);
-    r.onerror = () => reject(r.error);
-    r.readAsDataURL(file);
-  });
-}
-function round1(v) { return Math.round(v * 10) / 10; }
