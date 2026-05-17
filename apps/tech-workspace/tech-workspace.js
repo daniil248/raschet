@@ -957,11 +957,10 @@ function renderCoolCard(cu, isReadOnly, rooms) {
       <label title="Модель / серия (если известна из ТЗ).">Модель:<input type="text" data-field="model" value="${escAttr(cu.model || '')}" placeholder="напр. PCW / CyberAir" ${ro}></label>
     </div>
     ${_bindBtnHtml('cool', cu.id, cu.modelRef)}
-    <a class="tw-bind-btn tw-bind-btn-bound" style="text-decoration:none;display:inline-block;margin-left:6px"
-       href="../cooling/?project=${escAttr(_pid || '')}" target="_blank"
-       title="Открыть «Подбор холодильных систем» в контексте проекта (ТЭО-сравнение чиллеров/CRAC/DX/free-cooling с требуемой холодопроизводительностью и климатом объекта).">
-      ⚙ Конфигуратор холода — подобрать →
-    </a>
+    <button type="button" class="tw-bind-btn tw-bind-btn-bound" data-tw-action="open-cooling-prefill" style="margin-left:6px" ${ro}
+       title="Открыть «Подбор холодильных систем» в режиме ВОЗВРАТА: подобрать варианты, отметить нужный как ★ основной, затем «✓ Применить и вернуться» — выбранный вариант вернётся в Технолог (ТЭО-сравнение чиллеров/CRAC/DX/free-cooling; требуемая холодопроизводительность и климат берутся из проекта).">
+      ⚙ Конфигуратор холода — подобрать и вернуть →
+    </button>
   </div>`;
 }
 
@@ -5344,6 +5343,27 @@ function init() {
   }
   // _pid должен быть string id (для совместимости с projectKey/storage)
   if (typeof _pid === 'object' && _pid?.id) _pid = _pid.id;
+
+  // v0.60.614 (репорт Пользователя: «непонятно как выбрать вариант холода
+  // и вернуть в Технолог»). Замыкаем round-trip: если вернулись из
+  // /cooling/ через «✓ Применить и вернуться» (module-nav), читаем payload
+  // и подтверждаем привязку. Сам подбор холода хранится per-project
+  // (cooling.selections) и уже читается _readCoolingSummary() →
+  // renderActiveVariant ниже отрисует выбранный ★ основной вариант;
+  // здесь — явное подтверждение, чтобы возврат был очевиден.
+  try {
+    if (new URLSearchParams(location.search).get('navResult')) {
+      import('shared/module-nav.js').then(({ readEmbedResult }) => {
+        try {
+          const r = readEmbedResult();
+          if (r && (r.selectionName || r.selectionId)) {
+            twToast(`✓ Из «Подбор холода» применён подбор «${r.selectionName || r.selectionId}». Основной (★) вариант привязан к концепции.`, 'ok');
+            try { renderActiveVariant(); } catch {}
+          }
+        } catch (e) { console.warn('[tw] readEmbedResult', e); }
+      }).catch(() => {});
+    }
+  } catch {}
 
   _variants = (loadJson(KEY_VARIANTS, []) || []).map(migrateVariant);
   _activeId = loadJson(KEY_ACTIVE, null);
