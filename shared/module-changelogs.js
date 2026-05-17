@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.628', date: '2026-05-17', items: [
+      '📋 <b>Фаза 1 (хвост): манифест pdu-config честный</b>. apps/pdu-config/manifest.json: storageKeys = raschet.lastPduConfig.v1 (handoff: pdu-config ПИШЕТ, rack-config/scs-config читают при подборе PDU); urlParams +embed (?embed=1 — встраиваемый режим); bridges shared/catalog-bridge.js (уже верно). Исключён raschet.pdu-config.v1 — schema-id импорта/экспорта (wire-format, RENAME.md §3). version 1.0.0→1.1.0. Непроецируемые поля → modules.json не меняется, паритет 33 OK, нулевой runtime-риск. Файл: apps/pdu-config/manifest.json.',
+    ] },
     { version: '0.60.627', date: '2026-05-17', items: [
       '📋 <b>Фаза 1 (хвост): манифест mdc-config честный</b>. apps/mdc-config/manifest.json: storageKeys по факту кода — глобальный raschet.activeProject.v1 (чтение указателя активного проекта) + handoff raschet.mdcToSuppression.v1 (mdc-config ПИШЕТ, suppression-config читает на init). СОЗНАТЕЛЬНО исключён raschet.mdc-config.v1 — это schema-id импорта/экспорта (schema: …), wire-format, санкц. RENAME.md §3 (не storage-key; аудитор tools/audit-contracts.py его over-captures — это его известная advisory-граница). version 1.0.0→1.1.0. Изменены только непроецируемые поля → modules.json не меняется, паритет 33 OK, нулевой runtime-риск. Файл: apps/mdc-config/manifest.json.',
     ] },

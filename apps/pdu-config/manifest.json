@@ -2,7 +2,7 @@
   "id": "pdu-config",
   "name": "Конфигуратор PDU",
   "description": "Standalone-подбор PDU из единой библиотеки элементов: расчёт тока стойки по контексту (серверов, кВт/серв, cos φ, 2N), автоподбор номинала и количества розеток C13, ранжирование вариантов.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
@@ -17,9 +17,9 @@
   "permissions": ["pdu-config.use"],
   "lsNamespacesOwned": ["pdu-config"],
   "dependsOnContracts": {
-    "storageKeys": [],
+    "storageKeys": ["raschet.lastPduConfig.v1"],
     "events": { "emits": [], "consumes": [] },
-    "urlParams": ["project"],
+    "urlParams": ["project", "embed"],
     "bridges": ["shared/catalog-bridge.js"]
   }
 }
