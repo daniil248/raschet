@@ -953,7 +953,7 @@ const PLAN_STATUSES = [
   { id: 'blocked',     label: '🛑 Заблокирована', color: '#991b1b' },
 ];
 
-function _planKey(pid) { return `raschet.project.${pid}.plan.tasks.v1`; }
+function _planKey(pid) { return projectKey(pid, 'plan', 'tasks.v1'); }
 function _loadPlanTasks(pid) {
   try { return JSON.parse(localStorage.getItem(_planKey(pid)) || '[]'); }
   catch { return []; }
@@ -1684,7 +1684,7 @@ const LCM_CHECKLISTS = {
     { label: 'Концепция в Технологе ЦОД', hint: 'Хотя бы один вариант с заполненным «🏷 Объект»',
       check: (pid) => {
         try {
-          const v = JSON.parse(localStorage.getItem(`raschet.project.${pid}.tech-workspace.variants.v1`) || '[]');
+          const v = JSON.parse(localStorage.getItem(projectKey(pid, 'tech-workspace', 'variants.v1')) || '[]');
           return Array.isArray(v) && v.length > 0;
         } catch { return false; }
       } },
@@ -1700,7 +1700,7 @@ const LCM_CHECKLISTS = {
       hint: 'В TW есть variant с approvedAt',
       check: (pid) => {
         try {
-          const v = JSON.parse(localStorage.getItem(`raschet.project.${pid}.tech-workspace.variants.v1`) || '[]');
+          const v = JSON.parse(localStorage.getItem(projectKey(pid, 'tech-workspace', 'variants.v1')) || '[]');
           return Array.isArray(v) && v.some(x => x.approvedAt);
         } catch { return false; }
       } },
@@ -1708,7 +1708,7 @@ const LCM_CHECKLISTS = {
       hint: 'rackGroups.count × kwPerRack > 0',
       check: (pid) => {
         try {
-          const v = JSON.parse(localStorage.getItem(`raschet.project.${pid}.tech-workspace.variants.v1`) || '[]');
+          const v = JSON.parse(localStorage.getItem(projectKey(pid, 'tech-workspace', 'variants.v1')) || '[]');
           if (!Array.isArray(v)) return false;
           const primary = v.find(x => x.primary) || v[0];
           if (!primary?.concept?.rackGroups) return false;
@@ -1722,7 +1722,7 @@ const LCM_CHECKLISTS = {
       hint: 'Хотя бы один узел в схеме',
       check: (pid) => {
         try {
-          const sch = JSON.parse(localStorage.getItem(`raschet.project.${pid}.engine.scheme.v1`) || '{}');
+          const sch = JSON.parse(localStorage.getItem(projectKey(pid, 'engine', 'scheme.v1')) || '{}');
           return Array.isArray(sch.nodes) && sch.nodes.length > 0;
         } catch { return false; }
       } },
@@ -1730,7 +1730,7 @@ const LCM_CHECKLISTS = {
       hint: 'Хотя бы один cooling-подбор с ★ вариантом',
       check: (pid) => {
         try {
-          const s = JSON.parse(localStorage.getItem(`raschet.project.${pid}.cooling.selections.v1`) || '[]');
+          const s = JSON.parse(localStorage.getItem(projectKey(pid, 'cooling', 'selections.v1')) || '[]');
           return Array.isArray(s) && s.some(x => x.options?.length > 0);
         } catch { return false; }
       } },
@@ -1738,7 +1738,7 @@ const LCM_CHECKLISTS = {
       hint: 'Активный climate dataset в meteo',
       check: (pid) => {
         try {
-          const ds = JSON.parse(localStorage.getItem(`raschet.project.${pid}.meteo.datasets.v1`) || '[]');
+          const ds = JSON.parse(localStorage.getItem(projectKey(pid, 'meteo', 'datasets.v1')) || '[]');
           return Array.isArray(ds) && ds.length > 0;
         } catch { return false; }
       } },
@@ -1746,7 +1746,7 @@ const LCM_CHECKLISTS = {
       hint: 'scs-design.scs (опционально для электр.-only)',
       check: (pid) => {
         try {
-          const scs = localStorage.getItem(`raschet.project.${pid}.scs-design.scs.v1`);
+          const scs = localStorage.getItem(projectKey(pid, 'scs-design', 'scs.v1'));
           return !!scs && scs !== 'null' && scs !== '{}';
         } catch { return false; }
       }, optional: true },
@@ -1756,7 +1756,7 @@ const LCM_CHECKLISTS = {
       hint: 'service.orders с type=install',
       check: (pid) => {
         try {
-          const o = JSON.parse(localStorage.getItem(`raschet.project.${pid}.service.orders.v1`) || '[]');
+          const o = JSON.parse(localStorage.getItem(projectKey(pid, 'service', 'orders.v1')) || '[]');
           return Array.isArray(o) && o.some(x => x.type === 'install');
         } catch { return false; }
       } },
@@ -1771,7 +1771,7 @@ const LCM_CHECKLISTS = {
       hint: 'service.orders с type=maintenance',
       check: (pid) => {
         try {
-          const o = JSON.parse(localStorage.getItem(`raschet.project.${pid}.service.orders.v1`) || '[]');
+          const o = JSON.parse(localStorage.getItem(projectKey(pid, 'service', 'orders.v1')) || '[]');
           return Array.isArray(o) && o.some(x => x.type === 'maintenance');
         } catch { return false; }
       } },
@@ -1779,7 +1779,7 @@ const LCM_CHECKLISTS = {
       hint: 'Реестр оборудования объекта заполнен',
       check: (pid) => {
         try {
-          const fi = JSON.parse(localStorage.getItem(`raschet.project.${pid}.facility-inventory.items.v1`) || '[]');
+          const fi = JSON.parse(localStorage.getItem(projectKey(pid, 'facility-inventory', 'items.v1')) || '[]');
           return Array.isArray(fi) && fi.length > 0;
         } catch { return false; }
       }, optional: true },
@@ -1886,20 +1886,20 @@ function prStatusPicker(current) {
 function projectStats(pid) {
   const s = { nodes: 0, racks: 0, links: 0, inventory: 0, facility: 0 };
   try {
-    const sch = localStorage.getItem(`raschet.project.${pid}.engine.scheme.v1`);
+    const sch = localStorage.getItem(projectKey(pid, 'engine', 'scheme.v1'));
     if (sch) { try { s.nodes = (JSON.parse(sch).nodes || []).length; } catch {} }
   } catch {}
   try {
     // v0.59.379: предпочитаем считать по реальным экземплярам стоек проекта
     // (rack-config.instances.v1), а не по orphan-данным contents/rackTags.
-    const inst = localStorage.getItem(`raschet.project.${pid}.rack-config.instances.v1`);
+    const inst = localStorage.getItem(projectKey(pid, 'rack-config', 'instances.v1'));
     let nInst = 0;
     try { const arr = inst ? JSON.parse(inst) : []; nInst = Array.isArray(arr) ? arr.length : 0; } catch {}
     if (nInst > 0) {
       s.racks = nInst;
     } else {
-      const cont = localStorage.getItem(`raschet.project.${pid}.scs-config.contents.v1`);
-      const tags = localStorage.getItem(`raschet.project.${pid}.scs-config.rackTags.v1`);
+      const cont = localStorage.getItem(projectKey(pid, 'scs-config', 'contents.v1'));
+      const tags = localStorage.getItem(projectKey(pid, 'scs-config', 'rackTags.v1'));
       const ids = new Set();
       try { const o = cont ? JSON.parse(cont) : {}; Object.keys(o || {}).forEach(k => { if (Array.isArray(o[k]) && o[k].length) ids.add(k); }); } catch {}
       try { const o = tags ? JSON.parse(tags) : {}; Object.keys(o || {}).forEach(k => { if ((o[k] || '').trim()) ids.add(k); }); } catch {}
@@ -1907,15 +1907,15 @@ function projectStats(pid) {
     }
   } catch {}
   try {
-    const ln = localStorage.getItem(`raschet.project.${pid}.scs-design.links.v1`);
+    const ln = localStorage.getItem(projectKey(pid, 'scs-design', 'links.v1'));
     if (ln) { try { s.links = (JSON.parse(ln) || []).length; } catch {} }
   } catch {}
   try {
-    const cont = localStorage.getItem(`raschet.project.${pid}.scs-config.contents.v1`);
+    const cont = localStorage.getItem(projectKey(pid, 'scs-config', 'contents.v1'));
     if (cont) { try { const o = JSON.parse(cont) || {}; s.inventory = Object.values(o).reduce((n, a) => n + (Array.isArray(a) ? a.length : 0), 0); } catch {} }
   } catch {}
   try {
-    const f = localStorage.getItem(`raschet.project.${pid}.facility-inventory.v1`);
+    const f = localStorage.getItem(projectKey(pid, 'facility-inventory', 'v1'));
     if (f) {
       try {
         const o = JSON.parse(f);
@@ -2569,8 +2569,8 @@ function render() {
     // legacy остались, scs-design сам перенесёт их в default sub-project
     // (без явного шага создания), пользователь увидит уже единый «СКС».
     try {
-      const scsLinksRaw = localStorage.getItem(`raschet.project.${p.id}.scs-design.links.v1`);
-      const scsPlanRaw  = localStorage.getItem(`raschet.project.${p.id}.scs-design.plan.v1`);
+      const scsLinksRaw = localStorage.getItem(projectKey(p.id, 'scs-design', 'links.v1'));
+      const scsPlanRaw  = localStorage.getItem(projectKey(p.id, 'scs-design', 'plan.v1'));
       let scsLinks = []; let hasPlan = false;
       try { scsLinks = scsLinksRaw ? (JSON.parse(scsLinksRaw) || []) : []; } catch {}
       try { const o = scsPlanRaw ? JSON.parse(scsPlanRaw) : null; hasPlan = !!(o && (o.items || []).length); } catch {}
@@ -2681,9 +2681,9 @@ function render() {
     // — также учитываем legacy: rackId, под которыми есть contents/rackTags
     //   (это данные размещения и тегов; инстансы могли быть удалены, а содержимое осталось).
     try {
-      const instRaw    = localStorage.getItem(`raschet.project.${p.id}.rack-config.instances.v1`);
-      const rcContents = localStorage.getItem(`raschet.project.${p.id}.scs-config.contents.v1`);
-      const rcTags     = localStorage.getItem(`raschet.project.${p.id}.scs-config.rackTags.v1`);
+      const instRaw    = localStorage.getItem(projectKey(p.id, 'rack-config', 'instances.v1'));
+      const rcContents = localStorage.getItem(projectKey(p.id, 'scs-config', 'contents.v1'));
+      const rcTags     = localStorage.getItem(projectKey(p.id, 'scs-config', 'rackTags.v1'));
       let nInstances = 0;
       try { const arr = instRaw ? JSON.parse(instRaw) : []; nInstances = Array.isArray(arr) ? arr.length : 0; } catch {}
       const orphanIds = new Set();
@@ -2747,13 +2747,13 @@ function render() {
         'В этот проект скопируется текущее содержимое главного Конструктора схем. Существующая схема проекта (если есть) будет перезаписана.'
       );
       if (!ok) return;
-      localStorage.setItem(`raschet.project.${p.id}.engine.scheme.v1`, raw);
+      localStorage.setItem(projectKey(p.id, 'engine', 'scheme.v1'), raw);
       updateProject(p.id, {});
       prToast('✔ Схема скопирована в проект');
       render();
     });
     actionsHost.querySelector('[data-act="apply-scheme"]').addEventListener('click', async () => {
-      const key = `raschet.project.${p.id}.engine.scheme.v1`;
+      const key = projectKey(p.id, 'engine', 'scheme.v1');
       const raw = localStorage.getItem(key);
       if (!raw) { prToast('⚠ В проекте нет схемы. Сначала «⬇ Взять глобальную схему»', 'err'); return; }
       const ok = await prConfirm(
@@ -3114,18 +3114,18 @@ function render() {
     };
     const pid = p.id;
     // ⚡ Конструктор схем
-    const scheme = _readJSON(`raschet.project.${pid}.engine.scheme.v1`, null);
+    const scheme = _readJSON(projectKey(pid, 'engine', 'scheme.v1'), null);
     const schemeNodes = scheme?.nodes ? (Array.isArray(scheme.nodes) ? scheme.nodes.length : Object.keys(scheme.nodes).length) : 0;
     const schemeConns = scheme?.conns ? (Array.isArray(scheme.conns) ? scheme.conns.length : Object.keys(scheme.conns).length) : 0;
     // 🏗 Технолог объекта
-    const twVariants = _readJSON(`raschet.project.${pid}.tech-workspace.variants.v1`, []);
-    const twActiveId = (() => { try { return JSON.parse(localStorage.getItem(`raschet.project.${pid}.tech-workspace.activeVariantId.v1`) || '""'); } catch { return null; } })();
+    const twVariants = _readJSON(projectKey(pid, 'tech-workspace', 'variants.v1'), []);
+    const twActiveId = (() => { try { return JSON.parse(localStorage.getItem(projectKey(pid, 'tech-workspace', 'activeVariantId.v1')) || '""'); } catch { return null; } })();
     const twActive = Array.isArray(twVariants) ? twVariants.find(v => v.id === twActiveId) || twVariants[0] : null;
     const twRacks = twActive?.concept?.rackGroups ? twActive.concept.rackGroups.reduce((s, rg) => s + (Number(rg.count) || 0), 0) : 0;
     const twUps = twActive?.concept?.upsSystems ? twActive.concept.upsSystems.reduce((s, u) => s + (Number(u.count) || 0), 0) : 0;
     const twCool = twActive?.concept?.coolingUnits ? twActive.concept.coolingUnits.reduce((s, c) => s + (Number(c.count) || 0), 0) : 0;
     // 🔗 СКС
-    const scsLinks = _readJSON(`raschet.project.${pid}.scs-design.snapshot`, null);
+    const scsLinks = _readJSON(projectKey(pid, 'scs-design', 'snapshot'), null);
     const scsCount = scsLinks?.links ? (Array.isArray(scsLinks.links) ? scsLinks.links.length : 0) : 0;
     // Метаданные проекта
     const ok = p.objectKind || 'datacenter';
@@ -3213,9 +3213,9 @@ function render() {
       catch { return fallback; }
     };
     const pid = p.id;
-    const scheme = _readJSON(`raschet.project.${pid}.engine.scheme.v1`, null);
-    const twVariants = _readJSON(`raschet.project.${pid}.tech-workspace.variants.v1`, []);
-    const twActiveId = (() => { try { return JSON.parse(localStorage.getItem(`raschet.project.${pid}.tech-workspace.activeVariantId.v1`) || '""'); } catch { return null; } })();
+    const scheme = _readJSON(projectKey(pid, 'engine', 'scheme.v1'), null);
+    const twVariants = _readJSON(projectKey(pid, 'tech-workspace', 'variants.v1'), []);
+    const twActiveId = (() => { try { return JSON.parse(localStorage.getItem(projectKey(pid, 'tech-workspace', 'activeVariantId.v1')) || '""'); } catch { return null; } })();
     const twActive = Array.isArray(twVariants) ? twVariants.find(v => v.id === twActiveId) || twVariants[0] : null;
 
     // ── 1. Из Конструктора схем ──
@@ -3387,9 +3387,9 @@ function render() {
       catch { return fallback; }
     };
     const pid = p.id;
-    const scheme = _readJSON(`raschet.project.${pid}.engine.scheme.v1`, null);
-    const twVariants = _readJSON(`raschet.project.${pid}.tech-workspace.variants.v1`, []);
-    const twActiveId = (() => { try { return JSON.parse(localStorage.getItem(`raschet.project.${pid}.tech-workspace.activeVariantId.v1`) || '""'); } catch { return null; } })();
+    const scheme = _readJSON(projectKey(pid, 'engine', 'scheme.v1'), null);
+    const twVariants = _readJSON(projectKey(pid, 'tech-workspace', 'variants.v1'), []);
+    const twActiveId = (() => { try { return JSON.parse(localStorage.getItem(projectKey(pid, 'tech-workspace', 'activeVariantId.v1')) || '""'); } catch { return null; } })();
     const twActive = Array.isArray(twVariants) ? twVariants.find(v => v.id === twActiveId) || twVariants[0] : null;
 
     const issues = []; // { level: 'error'|'warn'|'info', area, msg, hint }
@@ -3596,7 +3596,7 @@ function render() {
     // N-1, перегрузы) — карточка проекта пересчитать их статически не может
     // (underscore-флаги stripRuntime убирает из сохранённой схемы). Берём
     // компактный снапшот, который Конструктор пишет при каждом изменении.
-    const issuesSnap = _readJSON(`raschet.project.${pid}.engine.issues.v1`, null);
+    const issuesSnap = _readJSON(projectKey(pid, 'engine', 'issues.v1'), null);
     if (issuesSnap && Array.isArray(issuesSnap.cats) && issuesSnap.cats.length) {
       let ago = '';
       try {
