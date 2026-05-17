@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.622', date: '2026-05-17', items: [
+      '📋 <b>Фаза 1: манифест rack-config честный</b>. apps/rack-config/manifest.json: storageKeys заполнен по коду (raschet.project.&lt;pid&gt;.rack-config.instances/templates .v1); urlParams +pid/embedded/mode/nodeId; bridges shared/catalog-bridge.js (фактический импорт — верен); version 1.0.0→1.1.0. Непроецируемые поля → modules.json не меняется, паритет 33 OK, нулевой runtime-риск. Восьмой модуль ревизии «manifest честен» (meteo/cooling/tech-workspace/service/projects/scs-design/scs-config/rack-config). Файл: apps/rack-config/manifest.json.',
+    ] },
     { version: '0.60.621', date: '2026-05-17', items: [
       '📋 <b>Фаза 1: манифест scs-config честный</b>. apps/scs-config/manifest.json: storageKeys заполнен по коду (11 per-project: raschet.project.&lt;pid&gt;.scs-config.contents/rackTags/inventory/matrix/warehouse/cart/catalog/assemblyTemplates/catFilter/faceMode/uNumDir .v1); urlParams дополнены (project/pid/from/rackId/schemeNodeId/tag); bridges shared/scheme-rack-bridge.js (фактический импорт — верен); version 1.0.0→1.1.0. Непроецируемые поля → modules.json не меняется, паритет 33 OK, нулевой runtime-риск. Седьмой модуль ревизии. Файл: apps/scs-config/manifest.json.',
     ] },

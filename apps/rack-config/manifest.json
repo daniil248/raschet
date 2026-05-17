@@ -2,7 +2,7 @@
   "id": "rack-config",
   "name": "Конфигуратор стойки",
   "description": "Конфигуратор 19\" стойки: каталог готовых комплектов или произвольная сборка (корпус, двери, стенки, крыша/пол, вводы, заглушки U); PDU со смешанным набором розеток и проверкой ёмкости.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
@@ -17,9 +17,12 @@
   "permissions": ["rack-config.use"],
   "lsNamespacesOwned": ["rack-config"],
   "dependsOnContracts": {
-    "storageKeys": [],
+    "storageKeys": [
+      "raschet.project.<pid>.rack-config.instances.v1",
+      "raschet.project.<pid>.rack-config.templates.v1"
+    ],
     "events": { "emits": [], "consumes": [] },
-    "urlParams": ["project"],
+    "urlParams": ["project", "pid", "embedded", "mode", "nodeId"],
     "bridges": ["shared/catalog-bridge.js"]
   }
 }
