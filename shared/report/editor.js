@@ -104,17 +104,17 @@ export function openTemplateEditor(tpl, opts = {}) {
   const zFull = btn('⛶ Весь экран');
   zFull.style.padding = '2px 8px';
   let _full = false;
-  zFull.addEventListener('click', () => {
-    _full = !_full;
-    if (_full) {
-      modal.style.cssText = 'width:100vw;height:100vh;max-width:none;max-height:none;border-radius:0';
-      zFull.textContent = '⤡ Свернуть';
-    } else {
-      modal.style.cssText = '';
-      zFull.textContent = '⛶ Весь экран';
-    }
+  // Полноэкранный режим через CSS-класс (не cssText: тот стирал
+  // flex-раскладку, шапка с кнопкой «Свернуть» пропадала — Пользователь
+  // не мог выйти иначе чем Esc). Класс сохраняет колонку flex и держит
+  // шапку sticky сверху.
+  const setFull = (on) => {
+    _full = on;
+    modal.classList.toggle('rpt-modal--full', on);
+    zFull.textContent = on ? '⤡ Свернуть' : '⛶ Весь экран';
     setTimeout(renderPane, 30);
-  });
+  };
+  zFull.addEventListener('click', () => setFull(!_full));
   zWrap.appendChild(zMinus); zWrap.appendChild(zLabel); zWrap.appendChild(zPlus);
   zWrap.appendChild(zFit); zWrap.appendChild(zFull);
   hb.insertBefore(zWrap, bCancel);
@@ -206,7 +206,11 @@ export function openTemplateEditor(tpl, opts = {}) {
     if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
       e.preventDefault(); if (inField) ae.blur(); close(true); return;
     }
-    if (e.key === 'Escape' && !inField) { close(false); }
+    if (e.key === 'Escape' && !inField) {
+      // Esc в полноэкранном — сначала сворачиваем, не закрываем редактор.
+      if (_full) { setFull(false); return; }
+      close(false);
+    }
   }
   window.addEventListener('keydown', onKey);
 
@@ -230,7 +234,11 @@ export function openTemplateEditor(tpl, opts = {}) {
       const avail = Math.max(220, previewWrap.getBoundingClientRect().width - 40);
       const fit = Math.max(1.4, Math.min(3.4, avail / width));
       // mode:'edit' → видны направляющие полей печати (.rpt-page__margins)
-      renderPreview(working, previewEl, { mode: 'edit', scale: fit * (state.zoom || 1) });
+      // guides:true — видны поля печати; pageLabel:false — без
+      // служебной «Стр. N из M» (она дублировала номер из колонтитула
+      // → «2 колонтитула» в репорте Пользователя).
+      renderPreview(working, previewEl,
+        { mode: 'edit', guides: true, pageLabel: false, scale: fit * (state.zoom || 1) });
     } catch (e) {
       previewEl.innerHTML = '<div style="padding:20px;color:#b91c1c;font:13px system-ui">' +
         'Ошибка превью: ' + (e && e.message || e) + '</div>';

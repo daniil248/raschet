@@ -245,6 +245,26 @@
   width: min(1280px, 96vw);
   height: min(880px, 94vh);
 }
+/* Полноэкранный режим: сохраняем flex-колонку, шапка с кнопкой
+   «Свернуть» остаётся видимой (sticky сверху). */
+.rpt-modal--full {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: none !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+  z-index: 9100;
+  display: flex !important;
+  flex-direction: column !important;
+}
+.rpt-modal--full .rpt-modal__hdr {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
 .rpt-editor__sidebar {
   flex: none;
   width: 300px;
