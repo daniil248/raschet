@@ -120,6 +120,37 @@ export function defaultTemplate() {
     // Массив блоков — см. blocks.js для конструкторов.
     content: [],
 
+    // ——— ЕДИНЫЙ ПОТОК ДОКУМЕНТА (новая модель, redesign R1) ———
+    // flow[] — упорядоченный список блоков, который РЕНДЕРИТСЯ СВЕРХУ
+    // ВНИЗ С РЕЗЕРВИРОВАНИЕМ МЕСТА. Сюда входят и структурные блоки
+    // (title/company/addressee/metaLine/toc/signature/stamp), и тело
+    // отчёта (heading/paragraph/list/table/...). Наложение контента и
+    // «шапки/подписи» невозможно конструктивно — всё в одном потоке.
+    //
+    // Структурные блоки (type из набора ниже; reserve = да):
+    //   { type:'docTitle',    text, styleRef:'h1', align }
+    //   { type:'companyInfo', text|null (null → из company-profile), align }
+    //   { type:'addressee',   text, align }
+    //   { type:'metaLine',    text (дата/№/город, {{...}}), align }
+    //   { type:'tocAuto',     title }                 // авто-содержание
+    //   { type:'signature',   role, name, withDate, mp, scanSrc|null }
+    //   { type:'stamp',       src|null, width, height, align }
+    // плюс любые блоки content (blocks.js). Каждый блок может нести
+    // section/sectionLabel — порядок/видимость через sections +
+    // effectiveFlow().
+    //
+    // Пусто → модель ещё не задействована; рендер использует content
+    // (legacy). migrateToFlow() собирает flow из content+overlays для
+    // сохранённых шаблонов (обратная совместимость, идемпотентно).
+    flow: [],
+
+    // Плавающий слой — ЕДИНСТВЕННОЕ намеренное наложение поверх
+    // потока: водяной знак («ЧЕРНОВИК»), печать поверх подписи.
+    //   { id, type:'text'|'image', scope:'first'|'all'|'other',
+    //     x,y,width,height (мм), opacity, rotate,
+    //     content:{...} }  // как у overlay
+    floating: [],
+
     // ——— разделы документа (порядок и видимость) ———
     // Подпрограмма при формировании отчёта помечает блоки content
     // полями block.section (id) и block.sectionLabel (человекочитаемо)
@@ -366,6 +397,121 @@ export function effectiveContent(tpl) {
     if (hidden.has(id)) continue;
     out.push(...groups.get(id));
   }
+  return out;
+}
+
+// ——————————————————————————————————————————————————————————————————————
+// Redesign R1: единый поток документа (flow). Структурные блоки в
+// потоке резервируют место → наложение «шапка/подпись поверх
+// контента» невозможно конструктивно. Здесь — только МОДЕЛЬ и
+// миграция; рендереры/редактор подключаются в R2/R3 (нет потребителей
+// в этом деплое — cache-safe).
+// ——————————————————————————————————————————————————————————————————————
+
+/** Структурные типы блоков потока (резервируют высоту, не absolute). */
+export const STRUCT_FLOW_TYPES = new Set([
+  'docTitle', 'companyInfo', 'addressee', 'metaLine',
+  'tocAuto', 'signature', 'stamp',
+]);
+
+/** Классификация legacy-overlay по содержимому/стилю → роль flow.
+ *  Возвращает тип структурного блока либо null (обычный текст/картинка). */
+function classifyOverlay(ov) {
+  if (!ov) return null;
+  if (ov.type === 'image') {
+    const lbl = String(ov.content?.label || '').toLowerCase();
+    if (lbl.includes('печат')) return 'stamp';
+    if (lbl.includes('подпис')) return 'signatureScan';
+    return null; // прочие картинки (логотип и т.п.) — не структурные
+  }
+  const t = String(ov.content?.text || '');
+  const low = t.toLowerCase();
+  if (t.includes('{{meta.title}}') || ov.content?.styleRef === 'h1') return 'docTitle';
+  if (low.includes('кому') || low.includes('адресат')) return 'addressee';
+  if (low.includes('м.п.') || low.includes('{{meta.custom.resp') ||
+      low.includes('подпись ответствен')) return 'signature';
+  if (low.includes('ооо') || low.includes('компани') ||
+      low.includes('исполнитель') || low.includes('{{meta.custom.exec')) return 'companyInfo';
+  if (t.includes('{{date}}') || /№|город|дата/i.test(t)) return 'metaLine';
+  return null;
+}
+
+/** Собрать flow[] из legacy content[]+overlays[] (обратная
+ *  совместимость сохранённых шаблонов). Идемпотентно: если flow уже
+ *  непуст — только гарантирует наличие floating[] и выходит. Контент
+ *  НИКОГДА не теряется (неклассифицированные overlay → текст/картинка
+ *  в начале потока). Не мутирует content/overlays. */
+export function migrateToFlow(tpl) {
+  if (!tpl || typeof tpl !== 'object') return tpl;
+  if (!Array.isArray(tpl.floating)) tpl.floating = [];
+  if (Array.isArray(tpl.flow) && tpl.flow.length > 0) return tpl;
+
+  const overlays = Array.isArray(tpl.overlays) ? tpl.overlays : [];
+  const content  = Array.isArray(tpl.content)  ? tpl.content  : [];
+  const top = [];      // структурные сверху
+  const bottom = [];   // подпись/печать снизу
+  const extras = [];   // неклассифицированное — не теряем
+
+  for (const ov of overlays) {
+    const role = classifyOverlay(ov);
+    if (role === 'docTitle') {
+      top.push({ type: 'docTitle', text: ov.content?.text || '{{meta.title}}',
+        styleRef: 'h1', align: ov.content?.align || 'left' });
+    } else if (role === 'companyInfo') {
+      top.push({ type: 'companyInfo', text: ov.content?.text || null,
+        align: ov.content?.align || 'left' });
+    } else if (role === 'addressee') {
+      top.push({ type: 'addressee', text: ov.content?.text || '',
+        align: ov.content?.align || 'left' });
+    } else if (role === 'metaLine') {
+      top.push({ type: 'metaLine', text: ov.content?.text || '{{date}}',
+        align: ov.content?.align || 'right' });
+    } else if (role === 'signature') {
+      bottom.push({ type: 'signature', text: ov.content?.text || '',
+        align: ov.content?.align || 'left' });
+    } else if (role === 'stamp') {
+      bottom.push({ type: 'stamp', src: ov.content?.src || null,
+        width: ov.width || 38, height: ov.height || 38,
+        align: ov.content?.align || 'left' });
+    } else if (role === 'signatureScan') {
+      bottom.push({ type: 'signature', scanSrc: ov.content?.src || null,
+        width: ov.width || 50, height: ov.height || 20 });
+    } else if (ov.type === 'image') {
+      // нелого/неструктурная картинка — сохранить как image-блок
+      if (ov.content?.src) extras.push({ type: 'image', src: ov.content.src,
+        width: ov.width, height: ov.height });
+    } else {
+      const txt = ov.content?.text;
+      if (txt) extras.push({ type: 'paragraph', text: txt,
+        style: ov.content?.styleRef === 'caption' ? 'caption' : undefined });
+    }
+  }
+
+  tpl.flow = [...top, ...extras, ...content, ...bottom];
+  return tpl;
+}
+
+/** Поток с применённым порядком/видимостью разделов — аналог
+ *  effectiveContent, но над tpl.flow. Если flow пуст — fallback на
+ *  effectiveContent (legacy), чтобы рендереры R2 звали единообразно. */
+export function effectiveFlow(tpl) {
+  const flow = Array.isArray(tpl?.flow) ? tpl.flow : [];
+  if (!flow.length) return effectiveContent(tpl);
+  if (!flow.every(b => b && b.section)) return flow;
+  const sec = tpl.sections || {};
+  const hidden = new Set(Array.isArray(sec.hidden) ? sec.hidden : []);
+  const groups = new Map();
+  const natural = [];
+  for (const b of flow) {
+    if (!groups.has(b.section)) { groups.set(b.section, []); natural.push(b.section); }
+    groups.get(b.section).push(b);
+  }
+  const wanted = Array.isArray(sec.order) && sec.order.length ? sec.order : natural;
+  const finalIds = [];
+  for (const id of wanted) if (groups.has(id) && !finalIds.includes(id)) finalIds.push(id);
+  for (const id of natural) if (!finalIds.includes(id)) finalIds.push(id);
+  const out = [];
+  for (const id of finalIds) { if (hidden.has(id)) continue; out.push(...groups.get(id)); }
   return out;
 }
 
