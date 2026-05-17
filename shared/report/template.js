@@ -478,9 +478,57 @@ function classifyOverlay(ov) {
  *  tpl.overlays перезаписывается только колонтитулами (page-number),
  *  чтобы drawOverlays не рисовал их absolute поверх потока. content
  *  не мутируется (работает копия tpl от createTemplate). */
+// Базовый шаблон = ТОЛЬКО оформление (поля/размер/стили/колонтитулы).
+// Никакого тела документа: из overlays берём лишь бегущие колонтитулы
+// ({{page}}/{{pages}}) → band header/footer. Структурные зоны
+// (заголовок/адресат/подпись) к базе не относятся — они в шаблоне
+// документа. Идемпотентно. (Репорт Пользователя: «почему на базовом
+// шаблоне есть какие-то данные?».)
+function applyColontitleBands(tpl) {
+  const overlays = Array.isArray(tpl.overlays) ? tpl.overlays : [];
+  const pageH = pageSizeMm(tpl.page || {}).height || 297;
+  const cts = [];
+  for (const ov of overlays) {
+    if (ov && ov.type !== 'image' &&
+        /\{\{\s*pages?\s*\}\}/.test(String(ov.content?.text || ''))) {
+      cts.push({
+        where: (Number(ov.y) || 0) < pageH / 2 ? 'header' : 'footer',
+        scope: ov.scope || 'all',
+        h: Math.max(8, Number(ov.height) || 8),
+        block: { type: 'paragraph', style: ov.content?.styleRef || 'caption',
+          align: ov.content?.align || 'center', text: ov.content?.text || '' },
+      });
+    }
+  }
+  if (cts.length) {
+    if (!tpl.header) tpl.header = { firstPage: {}, otherPages: {} };
+    if (!tpl.footer) tpl.footer = { firstPage: {}, otherPages: {} };
+    const apply = (band, c) => {
+      band.enabled = true;
+      band.height = Math.max(band.height || 0, c.h);
+      band.blocks = [c.block];
+    };
+    for (const c of cts) {
+      const grp = c.where === 'header' ? tpl.header : tpl.footer;
+      if (!grp.firstPage)  grp.firstPage  = {};
+      if (!grp.otherPages) grp.otherPages = {};
+      if (c.scope === 'first') apply(grp.firstPage, c);
+      else if (c.scope === 'other') apply(grp.otherPages, c);
+      else { apply(grp.firstPage, c); apply(grp.otherPages, c); }
+    }
+  }
+}
+
 export function migrateToFlow(tpl) {
   if (!tpl || typeof tpl !== 'object') return tpl;
   if (!Array.isArray(tpl.floating)) tpl.floating = [];
+  if (tpl.level === 'base') {
+    applyColontitleBands(tpl);
+    tpl.flow = [];          // базовый шаблон не несёт тела документа
+    tpl.content = [];
+    tpl.overlays = [];
+    return tpl;
+  }
   if (Array.isArray(tpl.flow) && tpl.flow.length > 0) {
     // flow уже есть (сохранённый редактором шаблон: структура/
     // колонтитулы/floating настроены). Если подпрограмма положила
@@ -604,6 +652,10 @@ export function migrateToFlow(tpl) {
  *  effectiveContent, но над tpl.flow. Если flow пуст — fallback на
  *  effectiveContent (legacy), чтобы рендереры R2 звали единообразно. */
 export function effectiveFlow(tpl) {
+  // Базовый шаблон не имеет тела документа — только оформление.
+  // Без этого fallback на effectiveContent синтезировал бы дефолтные
+  // docTitle/addressee/signature и они снова появлялись бы на базе.
+  if (tpl && tpl.level === 'base') return [];
   const flow = Array.isArray(tpl?.flow) ? tpl.flow : [];
   if (!flow.length) return effectiveContent(tpl);
 
