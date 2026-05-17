@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.721', date: '2026-05-18', items: [
+      '🏁 <b>Разделение ядро/модули — Фазы 0–2 ЗАКРЫТЫ ПОЛНОСТЬЮ</b>. Repo-wide верификация: 0 sibling-module relative-import (apps/**), 0 сырых foreign-project LS-литералов вне шва, boundary-lint allowlist пуст (allow:[]), audit-contracts --strict = 0 drift по 33 модулям. Финал — projects/project.js на шве (v0.60.714–720). ROADMAP: X.1.1 (контракты+lint+CI), X.1.2 (29 manifest+генератор modules.json), X.1.3 (упрочнение границ+allowlist) отмечены ✅ ЗАКРЫТО; статус-хедер синхронизирован. Остаток раздела (X.1.4 опц. calc/ui battery/panel/mdc; X.1.5 owner-board=орг-решение; X.1.6 DB-adapter; X.1.7 submodules/pnpm; X.2 коммерция; X.3 i18n) — намеренно будущие/опциональные фазы, НЕ часть контрактного разделения. Файлы: ROADMAP.md, js/engine/constants.js.',
+    ] },
     { version: '0.60.720', date: '2026-05-18', items: [
       '🧱 <b>Разделение ядро/модули — Фаза 2 R2 ЗАВЕРШЕНА для projects/project.js (Инкремент C5 + чистка)</b>. Последний read-блок (rack-config.instances.v1, scs-config.contents/rackTags.v1 — статистика legacy-стоек) переведён на projectLoad. Итог: в projects/project.js <b>0</b> сырых cross-module localStorage(get|set|removeItem)(projectKey/raschet.project-литерал) — ВСЁ через шов project-storage (projectLoad/projectSave/projectModulePrefix/listSubProjects/loadSketchList). Удалён неиспользуемый импорт projectKey; комментарии актуализированы. boundary-lint/audit-contracts --strict/changelog-lint — зелёные. Файлы: apps/projects/project.js, js/engine/constants.js.',
     ] },
