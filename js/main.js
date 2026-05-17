@@ -38,7 +38,7 @@ import { getContext, usesCurrentPalette, listContexts } from '../shared/discipli
 // Ф-B2 (X.4.5.3, Вариант I): тип схемы immutable. Если в проекте есть
 // хоть одна типизированная страница — дисциплина задаётся в мастере
 // страницы, а dropdown в свойствах проекта 🔒 read-only.
-import { isPageTyped, getDiscipline } from '../shared/disciplines.js';
+import { isPageTyped, getDiscipline, pageDiscipline } from '../shared/disciplines.js';
 import { selectNode as _engineSelectNode } from './engine/inspector.js';
 
 (function () {
@@ -2814,7 +2814,17 @@ let _previewDiscCtx = null;
 function applyDisciplineContextUI() {
   const pal = document.getElementById('palette');
   if (!pal) return;
-  const projDisc = (_engineState.project && _engineState.project.discipline) || 'electrical';
+  // Ф-C (X.4.5.3, Вариант I): контекст следует дисциплине АКТИВНОЙ
+  // СТРАНИЦЫ (страница = типизированная схема), не проекта. Для
+  // legacy-проектов (страница без page.discipline) pageDiscipline
+  // даёт fallback project.discipline → electrical — поведение
+  // байт-идентично Increment 2/3, электро-инвариант сохранён
+  // (#palette-sections не трогаем для electrical, нулевая регрессия).
+  const _pages = (_engineState && _engineState.pages) || [];
+  const _curPage = Array.isArray(_pages)
+    ? _pages.find(p => p && p.id === _engineState.currentPageId) : null;
+  const projDisc = pageDiscipline(
+    _curPage, _engineState.project && _engineState.project.discipline);
   // Превью валидно только если контекст существует; иначе игнор.
   if (_previewDiscCtx && !listContexts().some(c => c.id === _previewDiscCtx)) _previewDiscCtx = null;
   const previewing = !!_previewDiscCtx && _previewDiscCtx !== projDisc;
@@ -2872,6 +2882,18 @@ function applyDisciplineContextUI() {
   if (sections) sections.style.display = 'none';
   scaffold.style.display = '';
 }
+
+// Ф-C: движок (export.js switchPage/addPage) дёргает этот хук при
+// смене активной страницы — контекст-палитра переключается на
+// дисциплину новой страницы. Эфемерное превью (_previewDiscCtx) при
+// смене страницы сбрасывается (превью привязано к контексту, не к
+// странице — иначе «залипнет» чужой каркас).
+try {
+  window.__raschetApplyDiscCtx = function () {
+    _previewDiscCtx = null;
+    applyDisciplineContextUI();
+  };
+} catch {}
 
 function renderPalettePresets() {
   if (!window.Presets) return;

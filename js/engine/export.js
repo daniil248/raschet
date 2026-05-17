@@ -782,6 +782,19 @@ export function initToolbar() {
         window.__raschetRenderInspector();
       }
     } catch {}
+    _notifyPageCtx();
+  };
+
+  // Ф-C (X.4.5.3, Вариант I): уведомить UI-слой о смене активной
+  // страницы → контекст-палитра/инспектор-табы переключаются на
+  // дисциплину новой страницы. Хук опционален (движок не зависит от
+  // main.js): нет хука → no-op.
+  const _notifyPageCtx = () => {
+    try {
+      if (typeof window !== 'undefined' && typeof window.__raschetApplyDiscCtx === 'function') {
+        window.__raschetApplyDiscCtx();
+      }
+    } catch {}
   };
 
   // Авто-назначение № листа: максимальный числовой sheetNo + 1
@@ -839,6 +852,7 @@ export function initToolbar() {
     state.selection.clear();
     renderPageTabs();
     render();
+    _notifyPageCtx();
   };
 
   const duplicatePage = (pageId) => {
@@ -970,6 +984,7 @@ export function initToolbar() {
     }
     renderPageTabs();
     render();
+    if (deletedIsCurrent) _notifyPageCtx();
     notifyChange();  // v0.60.317: persist deletion (autosave + cloud sync)
   };
 
