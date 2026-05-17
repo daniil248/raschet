@@ -27,7 +27,7 @@ import * as Report from './index.js';
 
 // Смена версии → переcев встроенных (пользовательские не трогаем).
 // v3 — все шаблоны на чистой canvas-модели (overlays в margin).
-export const BUILTIN_VERSION = 3;
+export const BUILTIN_VERSION = 4;
 
 // ——— палитра ———
 const INK       = '#1f2430';
@@ -106,6 +106,7 @@ export const BUILTIN_TEMPLATES = [
     tags: ['общее','пустой'],
     source: 'builtin',
     template: T({
+      level: 'base',
       meta: { title: 'Отчёт' },
       page: { margins: { top: 20, right: 18, bottom: 20, left: 22 } },
       overlays: [],
@@ -120,6 +121,7 @@ export const BUILTIN_TEMPLATES = [
     tags: ['общее','простой'],
     source: 'builtin',
     template: T({
+      level: 'base',
       meta: { title: 'Отчёт' },
       page: { margins: { top: 24, right: 18, bottom: 22, left: 22 } },
       overlays: [
@@ -274,6 +276,7 @@ export const BUILTIN_TEMPLATES = [
     tags: ['официальный','документ','гост'],
     source: 'builtin',
     template: T({
+      level: 'base',
       meta: { title: 'Пояснительная записка' },
       page: { margins: { top: 30, right: 20, bottom: 28, left: 25 } },
       styles: {
@@ -331,6 +334,7 @@ export const BUILTIN_TEMPLATES = [
     tags: ['ведомость','таблица','спецификация'],
     source: 'builtin',
     template: T({
+      level: 'base',
       meta: { title: 'Ведомость материалов' },
       page: {
         format: 'A4', orientation: 'landscape',
@@ -357,6 +361,7 @@ export const BUILTIN_TEMPLATES = [
     tags: ['a5','справка','карточка'],
     source: 'builtin',
     template: T({
+      level: 'base',
       meta: { title: 'Справка' },
       page: {
         format: 'A5', orientation: 'portrait',

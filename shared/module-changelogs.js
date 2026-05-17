@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.690', date: '2026-05-17', items: [
+      '📑 <b>Отчёты: 5 встроенных generic-оформлений помечены базовыми</b> (выбор Пользователя). shared/report/templates-seed.js: builtin-blank-a4 / simple-a4 / formal-a4 / bom-landscape / compact-a5 получили level:base (только поля/колонтитулы/стили) → попадают в группу «Базовые шаблоны»; документные (Инженерный отчёт, Конфигурация ИБП/щита, кабель/АКБ/трансформатор, Техническая записка) остаются документами и могут наследовать базу. BUILTIN_VERSION 3→4 (пересев builtin-записей; пользовательские шаблоны не затрагиваются). Файлы: shared/report/templates-seed.js, js/engine/constants.js.',
+    ] },
     { version: '0.60.689', date: '2026-05-17', items: [
       '📑 <b>Отчёты: разделение базовых/документных шаблонов + просмотрщик</b> (репорт Пользователя). 1) Список (apps/reports/reports.js renderList) сгруппирован: «Шаблоны документов» и «Базовые шаблоны» (level===base) с заголовками групп и бейджем «База». 2) Превью каталога перестроено в просмотрщик: тулбар с тумблером «Поля вкл/выкл» (направляющие полей печати), масштаб −/%/+/«Вписать», Ctrl+колесо-зум, индикатор «Страниц: N» (многостраничный просмотр). 3) Устранён дубль колонтитула в демо: shared/report/preview.js — guides и pageLabel отвязаны от mode (renderPreview opts.guides/opts.pageLabel; обратная совместимость: при отсутствии — поведение по mode); просмотрщик зовёт mode:final + pageLabel:false → подпись «Стр. N из M» больше не двоит номер из футера. Файлы: shared/report/preview.js, apps/reports/reports.js, apps/reports/reports.css, js/engine/constants.js.',
     ] },
