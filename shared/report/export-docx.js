@@ -140,6 +140,22 @@ function blocksToDocx(blocks, tpl, D, opts) {
     const items = blockToDocx(block, tpl, D, opts);
     if (Array.isArray(items)) out.push(...items);
     else if (items) out.push(items);
+    // Печать/скан-подпись (floating с anchor) — DOCX не умеет
+    // настоящее перекрытие, поэтому ставим их сразу ПОД блоком
+    // подписанта (визуально рядом). Фон/водяной знак (absolute)
+    // в DOCX-v1 не выводим.
+    if (block && block._anchorTag) {
+      for (const f of (Array.isArray(tpl.floating) ? tpl.floating : [])) {
+        if (!f || !f.anchor || f.anchor.role !== block._anchorTag) continue;
+        if (f.type === 'image' && f.content?.src) {
+          const bytes = dataUrlToUint8(f.content.src);
+          if (bytes) out.push(new D.Paragraph({ children: [ new D.ImageRun({
+            data: bytes,
+            transformation: { width: f.width || 40, height: f.height || 40 },
+          }) ] }));
+        }
+      }
+    }
   }
   // docx не допускает пустой массив children в headers/footers
   if (out.length === 0) {

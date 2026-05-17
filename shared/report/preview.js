@@ -31,9 +31,70 @@ export function renderPreview(tpl, container, opts = {}) {
     const isFirst = i === 0;
     const pageEl = buildPageShell(tpl, scale, mode, isFirst, i + 1, totalPages);
     const body   = pageEl.querySelector('.rpt-page__body');
-    pageBlocks.forEach(block => body.appendChild(renderBlock(block, tpl, { page: i + 1, pages: totalPages })));
+    pageBlocks.forEach(block => {
+      const bel = renderBlock(block, tpl, { page: i + 1, pages: totalPages });
+      if (block && block._anchorTag && bel && bel.dataset) bel.dataset.rptAnchor = block._anchorTag;
+      body.appendChild(bel);
+    });
     container.appendChild(pageEl);
   });
+
+  // Плавающий слой поверх потока (фон/водяной знак + печать/подпись
+  // с привязкой к подписанту). Единственное (с колонтитулами)
+  // санкционированное наложение.
+  placeFloating(container, tpl, scale);
+}
+
+function placeFloating(container, tpl, scale) {
+  const list = Array.isArray(tpl.floating) ? tpl.floating : [];
+  if (!list.length) return;
+  const pageEls = [...container.querySelectorAll('.rpt-page')];
+  if (!pageEls.length) return;
+  const mk = (pageEl, f, leftPx, topPx) => {
+    const el = document.createElement('div');
+    el.style.cssText = 'position:absolute;pointer-events:none;z-index:5;overflow:hidden';
+    el.style.left   = leftPx + 'px';
+    el.style.top    = topPx + 'px';
+    el.style.width  = ((f.width  || 40) * scale) + 'px';
+    el.style.height = ((f.height || 40) * scale) + 'px';
+    el.style.opacity = (typeof f.opacity === 'number' ? f.opacity : 1);
+    if (f.rotate) el.style.transform = 'rotate(' + f.rotate + 'deg)';
+    if (f.type === 'image' && f.content?.src) {
+      const im = document.createElement('img');
+      im.src = f.content.src;
+      im.style.cssText = 'width:100%;height:100%;object-fit:contain';
+      im.draggable = false;
+      el.appendChild(im);
+    } else if (f.type === 'text' && f.content?.text) {
+      el.textContent = f.content.text;
+      el.style.font  = (f.content.size || 24) + 'pt system-ui,sans-serif';
+      el.style.color = f.content.color || '#c8c8c8';
+      el.style.whiteSpace = 'nowrap';
+    }
+    if (getComputedStyle(pageEl).position === 'static') pageEl.style.position = 'relative';
+    pageEl.appendChild(el);
+  };
+  for (const f of list) {
+    if (!f) continue;
+    if (f.anchor) {
+      const aEl = container.querySelector('[data-rpt-anchor="' + f.anchor.role + '"]');
+      if (!aEl) continue;
+      const pageEl = aEl.closest('.rpt-page');
+      if (!pageEl) continue;
+      const pr = pageEl.getBoundingClientRect();
+      const ar = aEl.getBoundingClientRect();
+      mk(pageEl, f, (ar.left - pr.left) + (f.anchor.dx || 0) * scale,
+                    (ar.top  - pr.top ) + (f.anchor.dy || 0) * scale);
+    } else {
+      const sc = f.scope || 'all';
+      pageEls.forEach((pageEl, idx) => {
+        const p = idx + 1;
+        if (sc === 'first' && p !== 1) return;
+        if (sc === 'other' && p === 1) return;
+        mk(pageEl, f, (f.x || 0) * scale, (f.y || 0) * scale);
+      });
+    }
+  }
 }
 
 // ——————————————————————————————————————————————————————————————————————

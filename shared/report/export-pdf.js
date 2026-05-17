@@ -115,15 +115,71 @@ async function buildPdfDoc(tpl) {
   const pages = paginate(tpl);
   const total = Math.max(1, pages.length);
 
+  const anchors = {};   // _anchorTag → { page, x, y, w } (для floating)
   pages.forEach((pageBlocks, i) => {
     if (i > 0) doc.addPage([width, height], width > height ? 'l' : 'p');
     const isFirst = i === 0;
     drawHeaderFooter(doc, tpl, isFirst, i + 1, total);
     drawLogo(doc, tpl, isFirst);
-    drawBody(doc, tpl, isFirst, pageBlocks, { page: i + 1, pages: total });
+    drawBody(doc, tpl, isFirst, pageBlocks, { page: i + 1, pages: total, anchors });
     drawOverlays(doc, tpl, isFirst, i + 1, total);
   });
+  // Плавающий слой — поверх всего, ПОСЛЕ раскладки (нужны позиции
+  // _anchorTag). Единственное (с колонтитулами) санкц. наложение.
+  drawFloatingLayer(doc, tpl, total, anchors);
   return doc;
+}
+
+/** Рисует tpl.floating: absolute (фон/водяной знак — можно за поля)
+ *  и anchor-к-блоку (печать/скан-подпись поверх подписанта). */
+function drawFloatingLayer(doc, tpl, total, anchors) {
+  const list = Array.isArray(tpl.floating) ? tpl.floating : [];
+  if (!list.length) return;
+  const { width, height } = pageSizeMm(tpl.page);
+  for (const f of list) {
+    if (!f) continue;
+    const pages = [];
+    if (f.anchor) {
+      const a = anchors[f.anchor.role];
+      if (!a) continue;                       // нет подписанта — пропуск
+      pages.push({ p: a.page,
+        x: a.x + (f.anchor.dx || 0),
+        y: a.y + (f.anchor.dy || 0) });
+    } else {
+      const sc = f.scope || 'all';
+      for (let p = 1; p <= total; p++) {
+        if (sc === 'first' && p !== 1) continue;
+        if (sc === 'other' && p === 1) continue;
+        pages.push({ p, x: f.x || 0, y: f.y || 0 });
+      }
+    }
+    for (const pos of pages) {
+      try { doc.setPage(pos.p); } catch (e) { continue; }
+      const op = (typeof f.opacity === 'number') ? f.opacity : 1;
+      let gs = null;
+      try {
+        if (op < 1 && doc.GState) { gs = new doc.GState({ opacity: op }); doc.setGState(gs); }
+      } catch (e) { /* нет GState — без прозрачности */ }
+      try {
+        if (f.type === 'image' && f.content?.src) {
+          const m = /^data:image\/(png|jpe?g)/i.exec(f.content.src);
+          const ty = m && /jp/i.test(m[1]) ? 'JPEG' : 'PNG';
+          doc.addImage(f.content.src, ty, pos.x, pos.y,
+            f.width || 40, f.height || 40, undefined, 'FAST');
+        } else if (f.type === 'text' && f.content?.text) {
+          const s = tpl.styles[f.content.styleRef || 'h1'] || tpl.styles.h1;
+          setFont(doc, { size: f.content.size || s.size, color: f.content.color || s.color,
+            bold: !!s.bold, italic: false });
+          doc.text(String(f.content.text), pos.x, pos.y,
+            { align: f.content.align === 'center' ? 'center'
+              : f.content.align === 'right' ? 'right' : undefined,
+              angle: f.rotate || 0 });
+        }
+      } catch (e) { /* битый элемент — пропуск */ }
+      try { if (gs && doc.GState) doc.setGState(new doc.GState({ opacity: 1 })); }
+      catch (e) { /* ignore */ }
+    }
+  }
 }
 
 /** Главный экспорт. filename — имя файла (с .pdf или без). */
@@ -284,6 +340,10 @@ function drawBody(doc, tpl, isFirst, blocks, ctx) {
 function drawBlocks(doc, tpl, blocks, box, ctx) {
   let y = box.y;
   for (const block of blocks) {
+    if (block && block._anchorTag && ctx && ctx.anchors &&
+        !ctx.anchors[block._anchorTag]) {
+      ctx.anchors[block._anchorTag] = { page: ctx.page, x: box.x, y, w: box.width };
+    }
     y = drawBlock(doc, tpl, block, { ...box, y }, ctx);
   }
 }
