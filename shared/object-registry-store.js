@@ -15,7 +15,7 @@
    ========================================================================= */
 
 import { projectLoad, projectSave } from './project-storage.js';
-import { objectPorts, disciplineSlice } from './object-registry.js';
+import { objectPorts, disciplineSlice, aggregateRegistry } from './object-registry.js';
 
 /** Модуль-namespace и ключ реестра в project-storage шве. */
 export const REGISTRY_MODULE = 'object-registry';
@@ -204,4 +204,4 @@ export function deriveRegistry(pid) {
  * Нормализованные порты объекта реестра (тонкий ре-экспорт чистого
  * аксессора — потребителям store достаточно одного импорта).
  */
-export { objectPorts };
+export { objectPorts, aggregateRegistry };

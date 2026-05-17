@@ -42,7 +42,7 @@ import { hasPermission, currentRole, ROLES } from 'shared/subscriptions.js';
 // (порт-driven видимость). Технолог-ГИП = координатор всех дисциплин
 // (memory:architecture_layers D7) → координационная панель здесь.
 // deriveRegistry — ЧИСТОЕ чтение (источники остаются владельцами).
-import { deriveRegistry, objectPorts } from 'shared/object-registry-store.js';
+import { deriveRegistry, objectPorts, aggregateRegistry } from 'shared/object-registry-store.js';
 // v0.60.537: чистый расчётный слой нагрузок/площадей концепции выделен
 // в calc/ (без DOM, переиспользуемо: карточки, отчёты, сравнение, тесты).
 import {
@@ -1747,7 +1747,22 @@ function renderListRail(c, ro) {
               return `<div class="tw-rail-item" style="cursor:default;opacity:.7"><span class="tw-rail-sub">Нет объектов (стойки появятся из Конфигуратора стоек / СКС)</span></div>`;
             }
             const PI = { power: '⚡', data: '🔌', fieldbus: '🛰', pipe: '🚰', duct: '🌬', gas: '⛽' };
-            return reg.slice(0, 60).map(o => {
+            // Ф-G (§6/§8): сводная агрегация BOM по ВСЕМ дисциплинам
+            // (технолог-ГИП — единая точка, memory D7). Read-only.
+            let aggHtml = '';
+            try {
+              const a = aggregateRegistry(reg);
+              const discN = Object.entries(a.byDiscipline)
+                .map(([d, n]) => `${escHtml(d)}:${n}`).join(' · ') || '—';
+              const portN = Object.entries(a.byPort)
+                .map(([p, n]) => `${PI[p] || p}${n}`).join(' ') || '—';
+              aggHtml = `<div class="tw-rail-item" style="cursor:default;background:#f8fafc" title="Сводная агрегация реестра по всем дисциплинам (технолог-ГИП — единая точка сборки, §6). Read-only снимок.">
+                <span class="tw-rail-name">Σ Сводно: ${a.total} объект(ов)</span>
+                <span class="tw-rail-sub">дисц.: ${discN} · порты: ${portN}</span>
+                <span class="tw-rail-chip">${a.demandKwTotal ? a.demandKwTotal + ' кВт' : '—'}</span>
+              </div>`;
+            } catch (e) { console.warn('[tw objreg agg]', e); }
+            return aggHtml + reg.slice(0, 60).map(o => {
               const ports = objectPorts(o);
               const badges = ports.map(p => PI[p.type] || '•').join(' ') || '—';
               const ptitle = ports.map(p => `${PI[p.type] || '•'} ${p.type}${p.label ? ' · ' + p.label : ''}`).join('; ') || 'портов нет';

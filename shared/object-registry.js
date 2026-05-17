@@ -115,6 +115,44 @@ export function objectsVisibleToPort(registry, portType) {
 }
 
 /**
+ * Ф-G (§6/§8): сводная агрегация реестра — единая точка по ВСЕМ
+ * дисциплинам (технолог-ГИП координатор, memory:architecture_layers
+ * D7). Чистая функция: считает объекты по kind, по дисциплинам
+ * (через наличие disciplineAttrs-среза), по типам портов; суммирует
+ * известные числовые электро-показатели (demandKw). Не мутирует,
+ * не пишет.
+ * @param {RegistryObject[]} registry
+ * @returns {{total:number, byKind:Object<string,number>,
+ *   byDiscipline:Object<string,number>, byPort:Object<string,number>,
+ *   demandKwTotal:number}}
+ */
+export function aggregateRegistry(registry) {
+  const out = { total: 0, byKind: {}, byDiscipline: {}, byPort: {}, demandKwTotal: 0 };
+  if (!Array.isArray(registry)) return out;
+  for (const o of registry) {
+    if (!o || typeof o !== 'object') continue;
+    out.total++;
+    const k = typeof o.kind === 'string' && o.kind ? o.kind : 'object';
+    out.byKind[k] = (out.byKind[k] || 0) + 1;
+    const da = o.disciplineAttrs;
+    if (da && typeof da === 'object') {
+      for (const d of Object.keys(da)) {
+        if (da[d] && typeof da[d] === 'object') {
+          out.byDiscipline[d] = (out.byDiscipline[d] || 0) + 1;
+        }
+      }
+      const dk = da.electrical && da.electrical.demandKw;
+      if (typeof dk === 'number' && isFinite(dk)) out.demandKwTotal += dk;
+    }
+    for (const p of objectPorts(o)) {
+      out.byPort[p.type] = (out.byPort[p.type] || 0) + 1;
+    }
+  }
+  out.demandKwTotal = Math.round(out.demandKwTotal * 100) / 100;
+  return out;
+}
+
+/**
  * Кандидаты-дубли по совпадению tag (fallback для legacy, §6 /
  * memory:rack-merge — общий реестр by-design, авто-suggest «Связать»).
  * Чистая функция: не сливает, только находит группы одинаковых tag.
