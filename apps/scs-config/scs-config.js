@@ -31,7 +31,7 @@
    ========================================================================= */
 
 import {
-  ensureDefaultProject, getActiveProjectId, projectKey, listProjects
+  ensureDefaultProject, getActiveProjectId, projectKey, projectPrefix, listProjects
 } from 'shared/project-storage.js';
 // v0.59.278: единая точка доступа к стойкам. Шаблоны — глобальные
 // (rack-config.templates.v1), экземпляры — project-scoped.
@@ -4186,8 +4186,8 @@ async function bulkDelete() {
   const _scsDesignLinks = (function() {
     try {
       // Try sub first, then parent.
-      const subKey = `raschet.project.${_pid}.scs-design.links.v1`;
-      const parentKey = `raschet.project.${_schemePid}.scs-design.links.v1`;
+      const subKey = projectKey(_pid, 'scs-design', 'links.v1');
+      const parentKey = projectKey(_schemePid, 'scs-design', 'links.v1');
       const sub = JSON.parse(localStorage.getItem(subKey) || 'null') || [];
       const par = JSON.parse(localStorage.getItem(parentKey) || 'null') || [];
       return Array.isArray(sub) ? sub : (Array.isArray(par) ? par : []);
@@ -4195,7 +4195,7 @@ async function bulkDelete() {
   })();
   const _engineSchema = (function() {
     try {
-      const k = `raschet.project.${_schemePid}.engine.scheme.v1`;
+      const k = projectKey(_schemePid, 'engine', 'scheme.v1');
       return JSON.parse(localStorage.getItem(k) || 'null');
     } catch { return null; }
   })();
@@ -5052,7 +5052,7 @@ function init() {
   window.addEventListener('storage', e => {
     if (!e.key) return;
     const pid = (typeof getActiveProjectId === 'function') ? getActiveProjectId() : null;
-    const projPrefix = pid ? `raschet.project.${pid}.` : null;
+    const projPrefix = pid ? projectPrefix(pid) : null;
     const isProjectScoped = projPrefix && e.key.startsWith(projPrefix);
     const matters =
       e.key === LS_RACK                                    // глобальная библиотека шаблонов корпусов
