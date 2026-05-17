@@ -864,6 +864,7 @@
       if (d.kind && d.kind !== 'battery') return;
       activeSel = d.selectionName || null;
       sp.setSelection(activeSel);
+      _syncCalcHorizonFromSelection();
     });
     // v0.60.434: смена «Контекст подбора» (проект ↔ разовый) — перепривязка.
     window.addEventListener('rs-cs-context', (ev) => {
@@ -882,6 +883,24 @@
       if (mountEl) mountEl.style.display = variant ? 'none' : '';
       if (editorEl) editorEl.style.display = variant ? '' : 'none';
     }
+    // v0.60.613 (репорт Пользователя: «срок проекта 20 в подборе, а в
+    // калькуляторе 10»). Горизонт проекта — ЕДИНЫЙ источник: финансы
+    // подбора (eco.projectLifetimeYears, общие для всех вариантов
+    // — feedback_selection_model). Пропагируем его в «Срок службы
+    // системы, лет» (#calc-design-life) калькулятора варианта, чтобы
+    // ТЭО/жизненный цикл считались на тот же горизонт. Вызывается при
+    // входе в зону варианта и при смене активного подбора.
+    function _syncCalcHorizonFromSelection() {
+      try {
+        if (!activeSel) return;
+        const m = getSelectionMeta('battery', { projectCode: pc, selectionName: activeSel });
+        const yrs = Number(m && m.eco && m.eco.projectLifetimeYears);
+        if (Number.isFinite(yrs) && yrs > 0) {
+          const el = document.getElementById('calc-design-life');
+          if (el && Number(el.value) !== yrs) el.value = yrs;
+        }
+      } catch {}
+    }
     window.addEventListener('rs-cs-focus', (ev) => {
       const d = ev.detail || {};
       if (d.kind && d.kind !== 'battery') return;
@@ -891,6 +910,7 @@
         setScope('selection');
       } else if (d.scope === 'variant') {
         setScope('variant');
+        _syncCalcHorizonFromSelection();
       }
     });
     // Старт: зона подбора (условия + TCO). Редактор — по выбору варианта.
