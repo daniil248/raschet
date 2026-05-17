@@ -15,7 +15,7 @@
 // второй TTF.
 // ======================================================================
 
-import { pageSizeMm, contentBox, contentBoxFor, substitute, overlaysForPage } from './template.js';
+import { pageSizeMm, contentBoxFor, substitute, overlaysForPage } from './template.js';
 import { paginate, estimateBlockHeight, tableLayout, wrapCell } from './preview.js';
 
 const JSPDF_URL = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js';

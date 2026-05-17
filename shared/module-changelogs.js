@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.679', date: '2026-05-17', items: [
+      '🧹 <b>Dead-code sweep reports-редизайна: чисто</b>. Проверка после большого редизайна: старый canvas-редактор (buildZonesTab/addOverlayFromPreset/redrawCanvas/ZONE_PRESETS) — в живом коде ОТСУТСТВУЕТ (только в историческом changelog-тексте); contentBox/effectiveContent — НЕ мертвы (используются preview.estimateBlockHeight/tableLayout и effectiveFlow-fallback). Единственный реальный мусор — неиспользуемый named-import contentBox в export-pdf.js (после DS2a перешёл на contentBoxFor) — удалён. Больше мёртвого кода от редизайна нет. Файл: shared/report/export-pdf.js.',
+    ] },
     { version: '0.60.678', date: '2026-05-17', items: [
       '📚 <b>Живые документы синк (memory feedback_modules_index): modules/index.html техсписок</b>. Обновлён под reports-редизайн: shared/report/ — flow-документ (cover/firstPage/sectionBreak/flow/floating, migrateToFlow/effectiveFlow/flowSegments, flow-редактор WYSIWYG, export-docx мульти-Section, compose=единый composeReport для ВСЕХ отчётов). В shared-инфра добавлены отсутствовавшие: shared/report-catalog.js (per-user каталог шаблонов), shared/money.js (locale-aware fmtMoney/Number/Date/Unit), shared/i18n/ (Фаза 5 инфра t/tAsync/loadNamespace, ru-fallback, ленивая загрузка — плейсхолдер). Фаза 5 (i18n-инфра + money locale-утилиты) подтверждена выполненной (из прошлого чата). Аудит: *-bridge.js без сырых raschet.*-литералов (шов чист). Файл: modules/index.html.',
     ] },
