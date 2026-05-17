@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.719', date: '2026-05-18', items: [
+      '🧱 <b>Разделение ядро/модули — Фаза 2 R2: legacy-миграция СКС parent→sub через шов (Инкремент C4)</b>. Блок авто-merge и handler «🔀 Объединить»: сырые литералы «raschet.project.&lt;pid&gt;.scs-design.» заменены на шов-аксессор projectModulePrefix(pid,scs-design) (байт-идентичен, rename-safe — устраняет boundary-lint нарушение сырого cross-module LS-литерала). Чтение links.v1/plan.v1 родителя — через projectLoad. Логика переноса ключей (итерация LS по префиксу, dst-priority, removeItem источника) сохранена без изменений. Остаётся изолированным PR: rack-config/scs-config legacy-блок (C5). Файлы: apps/projects/project.js, js/engine/constants.js.',
+    ] },
     { version: '0.60.718', date: '2026-05-18', items: [
       '🧱 <b>Разделение ядро/модули — Фаза 2 R2: создание подбора холода из карточки проекта (Инкремент C3)</b>. «+ Подбор холодильных систем» (opt.kind=multi-cooling): чтение cooling.selections.v1 и запись selections.v1 + activeSelectionId.v1 переведены с сырых localStorage.get/setItem(projectKey)+JSON.parse/stringify на шов projectLoad/projectSave. activeSelectionId хранит JSON.stringify(id) — projectSave даёт идентичный байт. Bump updatedAt добавлен (создание подбора = правка проекта). Остаются изолированными PR: legacy-миграции scs-design (C4) и rack/scs-config (C5). Файлы: apps/projects/project.js, js/engine/constants.js.',
     ] },

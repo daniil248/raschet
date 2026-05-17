@@ -14,6 +14,9 @@ import {
   // (projectLoad/projectSave — централизовано, типобезоп., bump updatedAt).
   projectLoad,
   projectSave,
+  // Фаза 2 (R2): префикс LS-неймспейса модуля для legacy-миграций
+  // (байт-идентичен прежнему сырому префиксу, rename-safe).
+  projectModulePrefix,
   // Фаза 2: список sketch'ей через шов, не сырым литералом.
   loadSketchList,
 } from 'shared/project-storage.js';
@@ -2595,11 +2598,10 @@ function render() {
     // legacy остались, scs-design сам перенесёт их в default sub-project
     // (без явного шага создания), пользователь увидит уже единый «СКС».
     try {
-      const scsLinksRaw = localStorage.getItem(projectKey(p.id, 'scs-design', 'links.v1'));
-      const scsPlanRaw  = localStorage.getItem(projectKey(p.id, 'scs-design', 'plan.v1'));
+      // Фаза 2 (R2): чтение legacy-данных СКС родителя — через шов.
       let scsLinks = []; let hasPlan = false;
-      try { scsLinks = scsLinksRaw ? (JSON.parse(scsLinksRaw) || []) : []; } catch {}
-      try { const o = scsPlanRaw ? JSON.parse(scsPlanRaw) : null; hasPlan = !!(o && (o.items || []).length); } catch {}
+      try { const v = projectLoad(p.id, 'scs-design', 'links.v1', []); scsLinks = Array.isArray(v) ? v : []; } catch {}
+      try { const o = projectLoad(p.id, 'scs-design', 'plan.v1', null); hasPlan = !!(o && (o.items || []).length); } catch {}
       if ((Array.isArray(scsLinks) && scsLinks.length) || hasPlan) {
         // v0.60.208 (по репорту Пользователя 2026-05-04 «постоянно появляется
         // легаси СКС»): если у проекта УЖЕ есть scs-design подпроект,
@@ -2611,8 +2613,8 @@ function render() {
           const existingSubs = listSubProjects(p.id, 'scs-design');
           if (existingSubs && existingSubs[0] && existingSubs[0].id) {
             const dest = existingSubs[0];
-            const prefix = 'raschet.project.' + p.id + '.scs-design.';
-            const subPrefix = 'raschet.project.' + dest.id + '.scs-design.';
+            const prefix = projectModulePrefix(p.id, 'scs-design');
+            const subPrefix = projectModulePrefix(dest.id, 'scs-design');
             const toMove = [];
             for (let i = 0; i < localStorage.length; i++) {
               const k = localStorage.key(i);
@@ -2672,8 +2674,8 @@ function render() {
             }
             if (!dest || !dest.id) { prToast('Не удалось создать/найти СКС-подпроект', 'error'); return; }
             // Force-merge: копируем все scs-design.* ключи parent → sub, удаляем источник.
-            const prefix = 'raschet.project.' + p.id + '.scs-design.';
-            const subPrefix = 'raschet.project.' + dest.id + '.scs-design.';
+            const prefix = projectModulePrefix(p.id, 'scs-design');
+            const subPrefix = projectModulePrefix(dest.id, 'scs-design');
             const toMove = [];
             for (let i = 0; i < localStorage.length; i++) {
               const k = localStorage.key(i);
