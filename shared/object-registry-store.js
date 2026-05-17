@@ -109,6 +109,97 @@ export function writeDisciplineSlice(pid, objectId, disciplineId, slice) {
   return list;
 }
 
+/* -------------------------------------------------------------------------
+   Ф-E деривация (read-only проекция). Строит RegistryObject[] из УЖЕ
+   существующих данных модулей (rack-config/scs-config/scs-design)
+   через project-storage шов. ЧИСТОЕ ЧТЕНИЕ: не пишет реестр, не
+   мутирует источники, не бампит updatedAt. Назначение — дать §6
+   порт-driven видимость на реальных данных БЕЗ ручного наполнения
+   реестра. Источники остаются владельцами своих данных (§5/§6);
+   деривация — координационный снимок. 0 потребителей (cache-safe).
+   ------------------------------------------------------------------------- */
+
+/** Тег стойки из scs-config.rackTags.v1 (map rackId→tag | массив). */
+function _rackTag(tags, rackId) {
+  if (!tags) return null;
+  if (Array.isArray(tags)) {
+    const e = tags.find(t => t && (t.id === rackId || t.rackId === rackId));
+    return e ? (e.tag || e.label || null) : null;
+  }
+  if (typeof tags === 'object') {
+    const v = tags[rackId];
+    return typeof v === 'string' ? v : (v && (v.tag || v.label)) || null;
+  }
+  return null;
+}
+
+/**
+ * Read-only проекция: единый реестр объектов из существующих данных
+ * проекта. Стойки берутся из rack-config.instances.v1; порт-driven
+ * видимость инферится: power-порт если есть PDU/нагрузка (→ электрика),
+ * data-порт если стойка несёт СКС-устройства/связи (→ СКС). НИЧЕГО НЕ
+ * ПИШЕТ. Для пустого проекта — [].
+ * @param {string} pid
+ * @returns {import('./object-registry.js').RegistryObject[]}
+ */
+export function deriveRegistry(pid) {
+  if (!pid) return [];
+  const racks = projectLoad(pid, 'rack-config', 'instances.v1', []);
+  if (!Array.isArray(racks) || !racks.length) return [];
+  const tags = projectLoad(pid, 'scs-config', 'rackTags.v1', {});
+  const contents = projectLoad(pid, 'scs-config', 'contents.v1', {});
+  const links = projectLoad(pid, 'scs-design', 'links.v1', []);
+
+  // Множество rackId, участвующих в СКС (есть устройства ИЛИ связи).
+  const scsRacks = new Set();
+  if (contents && typeof contents === 'object') {
+    for (const rid of Object.keys(contents)) {
+      const arr = contents[rid];
+      if (Array.isArray(arr) && arr.length) scsRacks.add(rid);
+    }
+  }
+  if (Array.isArray(links)) {
+    for (const l of links) {
+      if (!l) continue;
+      if (l.fromRackId) scsRacks.add(l.fromRackId);
+      if (l.toRackId) scsRacks.add(l.toRackId);
+    }
+  }
+
+  const out = [];
+  for (const r of racks) {
+    if (!r || typeof r.id !== 'string' || !r.id) continue;
+    const ports = [];
+    const hasPower = (Array.isArray(r.pdus) && r.pdus.length)
+      || (typeof r.demandKw === 'number' && r.demandKw > 0);
+    if (hasPower) ports.push({ id: 'pwr', type: 'power', label: 'Электропитание' });
+    if (scsRacks.has(r.id)) ports.push({ id: 'data', type: 'data', label: 'СКС / слаботочка' });
+
+    const electrical = {};
+    if (typeof r.demandKw === 'number') electrical.demandKw = r.demandKw;
+    if (typeof r.cosphi === 'number') electrical.cosphi = r.cosphi;
+    if (r.pduRedundancy) electrical.pduRedundancy = r.pduRedundancy;
+    const mechanical = {};
+    if (typeof r.u === 'number') mechanical.u = r.u;
+    if (typeof r.width === 'number') mechanical.widthMm = r.width;
+    if (typeof r.depth === 'number') mechanical.depthMm = r.depth;
+
+    const disciplineAttrs = {};
+    if (Object.keys(electrical).length) disciplineAttrs.electrical = electrical;
+    if (Object.keys(mechanical).length) disciplineAttrs.mechanical = mechanical;
+
+    out.push({
+      id: r.id,
+      kind: 'rack',
+      tag: _rackTag(tags, r.id) || r.name || null,
+      ownerModule: 'rack-config',
+      ports,
+      disciplineAttrs,
+    });
+  }
+  return out;
+}
+
 /**
  * Нормализованные порты объекта реестра (тонкий ре-экспорт чистого
  * аксессора — потребителям store достаточно одного импорта).

@@ -150,6 +150,15 @@ scs-* не затронуты); copyProject/clearProjectData несут namespac
 существующих rack/device-данных + wiring tech-workspace/rack-merge
 — следующие инкременты Ф-E.
 
+**Ф-E деривация (v0.60.731):** `deriveRegistry(pid)` в store —
+read-only проекция RegistryObject[] из rack-config.instances.v1 +
+порт-driven инференс (PDU/нагрузка→power→электрика; СКС-
+устройства/связи→data→СКС) + дисципл-срезы (electrical/mechanical).
+Чистое чтение: источники остаются владельцами (§5/§6), деривация =
+координационный снимок, не мутирует/не пишет. 0 потребителей.
+Дальше: wiring снимка в Конструктор/tech-workspace UI + опц.
+материализация в namespace (явная, не авто) — следующие инкременты.
+
 ## 7. Маппинг на существующий код (что переиспользуем)
 
 - `shared/disciplines.js` — реестр дисциплин + node.disciplines
