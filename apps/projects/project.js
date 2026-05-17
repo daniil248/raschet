@@ -2402,9 +2402,9 @@ function render() {
         // cooling.selections.v1 этого проекта, затем редиректит в cooling.
         if (opt.kind === 'multi-cooling') {
           try {
-            const key = projectKey(p.id, 'cooling', 'selections.v1');
-            const activeKey = projectKey(p.id, 'cooling', 'activeSelectionId.v1');
-            const arr = JSON.parse(localStorage.getItem(key) || '[]');
+            // Фаза 2 (R2): чтение/запись cooling-данных проекта — через шов.
+            const raw = projectLoad(p.id, 'cooling', 'selections.v1', []);
+            const arr = Array.isArray(raw) ? raw : [];
             const newSel = {
               id: 'sel-' + Date.now(),
               name: name.trim() || opt.defaultName,
@@ -2413,8 +2413,8 @@ function render() {
               options: [],
             };
             arr.push(newSel);
-            localStorage.setItem(key, JSON.stringify(arr));
-            localStorage.setItem(activeKey, JSON.stringify(newSel.id));
+            projectSave(p.id, 'cooling', 'selections.v1', arr);
+            projectSave(p.id, 'cooling', 'activeSelectionId.v1', newSel.id);
             setActiveProjectId(p.id);
             prToast(`✔ Создан подбор «${newSel.name}»`);
             try { clearNavStack(); } catch {}

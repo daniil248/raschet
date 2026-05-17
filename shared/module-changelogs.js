@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.718', date: '2026-05-18', items: [
+      '🧱 <b>Разделение ядро/модули — Фаза 2 R2: создание подбора холода из карточки проекта (Инкремент C3)</b>. «+ Подбор холодильных систем» (opt.kind=multi-cooling): чтение cooling.selections.v1 и запись selections.v1 + activeSelectionId.v1 переведены с сырых localStorage.get/setItem(projectKey)+JSON.parse/stringify на шов projectLoad/projectSave. activeSelectionId хранит JSON.stringify(id) — projectSave даёт идентичный байт. Bump updatedAt добавлен (создание подбора = правка проекта). Остаются изолированными PR: legacy-миграции scs-design (C4) и rack/scs-config (C5). Файлы: apps/projects/project.js, js/engine/constants.js.',
+    ] },
     { version: '0.60.717', date: '2026-05-18', items: [
       '🧱 <b>Разделение ядро/модули — Фаза 2 R2: запись схемы из cross-discipline-редакторов (Инкремент C2)</b>. Две write-точки engine.scheme.v1 в карточке проекта (сохранение назначенных дисциплин узлам #xd-disc-save; сохранение параметров методики в узел #xdc-save) переведены с localStorage.setItem(projectKey)+JSON.stringify на шов projectSave (read уже шёл через projectLoad/readScheme). Bump updatedAt теперь корректно фиксирует правку схемы. Окружающий try/catch (quota) сохранён. Остаются изолированными PR: cooling multi-create (C3), legacy-миграции scs-design/rack (C4/C5). Файлы: apps/projects/project.js, js/engine/constants.js.',
     ] },
