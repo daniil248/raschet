@@ -1,6 +1,6 @@
 # Raschet — Роадмап (модуль-ориентированный, сжатый)
 
-> **Статус:** v0.60.713 (2026-05-18). Модуль отчётов (X.6.3)
+> **Статус:** v0.60.720 (2026-05-18). Модуль отчётов (X.6.3)
 > **завершён ПОЛНОСТЬЮ** + по-раздельная модель (sections-as-base,
 > SPEC-section-model.md): база владеет `pageSections[]` (геом+
 > колонтитул+логотип на раздел), документ наследует и явно выбирает
@@ -20,11 +20,14 @@
 > (пилот) + `ups-config/calc/ups-sizing.js` + `rack-config/calc/rack-power.js`
 > + `scs-config/calc/rack-slots.js` + `scs-design/calc/cable-route.js`
 > + `tech-workspace/calc/concept-loads.js` (финал).
-> R2 (advisory): projects/project.js — **read-side завершено**
-> (v0.60.705/713): 0 сырых cross-module чтений, всё через
-> `projectLoad` шва (17 вызовов); audit --strict зелёный. Остаток —
-> 3 мутации (merge/migrate `setItem(projectKey)`): по плану —
-> отдельными изолированными PR с round-trip-проверкой (высокий риск).
+> R2 (advisory): projects/project.js — **ЗАВЕРШЕНО ПОЛНОСТЬЮ**
+> (v0.60.714–720, инкременты A/B/C1–C5, по 1 деплою+verify):
+> read-side + все write/migrate-пути переведены на шов
+> `projectLoad`/`projectSave`/`projectModulePrefix`; сырые литералы
+> `raschet.project.*` и `localStorage(get|set)Item(projectKey)`
+> устранены — **0** в project.js; неиспользуемый импорт `projectKey`
+> убран. boundary/audit --strict/changelog-lint зелёные; карточка
+> проекта (25013_Qarmet) — round-trip OK, console-clean.
 > Прошлый детальный роадмап (~4570 строк, ~287 открытых пунктов) заморожен
 > целиком в **[ROADMAP-archive.md](ROADMAP-archive.md)** — ничего не
 > потеряно; здесь — компактный активный план, ссылки на архив по `arch:Фаза N`.
