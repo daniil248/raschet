@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.715', date: '2026-05-18', items: [
+      '🧱 <b>Разделение ядро/модули — Фаза 2 R2: упрочнение чтения projects/project.js (Инкремент B)</b>. Удалены 3 локальных дубля-хелпера _readJSON (summary/equipment/validation блоки); все их вызовы (engine scheme.v1, tech-workspace variants.v1, scs-design snapshot, engine issues.v1) переведены на шов projectLoad. Также completeness-check «СКС-проект если есть» (scs-design scs.v1) — с сырого localStorage.getItem на projectLoad с корректной проверкой пустоты (вместо строкового сравнения с null/{} — теперь и [] трактуется как «нет данных», что соответствует смыслу). Остаётся Инкремент C: write/migrate-пути (2595+/2707+/2773/3347/3492 — copy/apply/save схемы, legacy-миграции), отдельными изолированными PR (высокий риск). Файлы: apps/projects/project.js, js/engine/constants.js.',
+    ] },
     { version: '0.60.714', date: '2026-05-18', items: [
       '🧱 <b>Разделение ядро/модули — Фаза 2 R2: упрочнение чтения projects/project.js (Инкремент A)</b>. projectStats, subCoolings/subServiceOrders, _lsHasContent→_hasContent, план задач (_loadPlanTasks/_savePlanTasks) переведены с сырых localStorage.getItem/setItem(projectKey(...))+JSON.parse на шов-аксессоры projectLoad/projectSave. Семантика идентична (projectLoad=loadJson(projectKey); projectSave доп. bump updatedAt — для собственного ns plan желателен). Удалён неиспользуемый _planKey. Остаются изолированными PR: _readJSON×3 (Инкремент B) и write/migrate-пути 2410/2603+/2715+/2781/3358 (Инкремент C, высокий риск). Файлы: apps/projects/project.js, js/engine/constants.js.',
     ] },

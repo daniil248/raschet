@@ -1766,8 +1766,11 @@ const LCM_CHECKLISTS = {
       hint: 'scs-design.scs (опционально для электр.-only)',
       check: (pid) => {
         try {
-          const scs = localStorage.getItem(projectKey(pid, 'scs-design', 'scs.v1'));
-          return !!scs && scs !== 'null' && scs !== '{}';
+          const scs = projectLoad(pid, 'scs-design', 'scs.v1', null);
+          if (scs == null) return false;
+          if (Array.isArray(scs)) return scs.length > 0;
+          if (typeof scs === 'object') return Object.keys(scs).length > 0;
+          return true;
         } catch { return false; }
       }, optional: true },
   ],
@@ -3131,24 +3134,21 @@ function render() {
   // Минимальный viable view: метрики из existing modules. Будущие подэтапы
   // (47.2.3-47.2.6): полный equipment list / validation / approval checklist.
   if (summaryHost) {
-    const _readJSON = (key, fallback) => {
-      try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); }
-      catch { return fallback; }
-    };
+    // Фаза 2 (R2): cross-module чтение — через шов projectLoad (был _readJSON).
     const pid = p.id;
     // ⚡ Конструктор схем
-    const scheme = _readJSON(projectKey(pid, 'engine', 'scheme.v1'), null);
+    const scheme = projectLoad(pid, 'engine', 'scheme.v1', null);
     const schemeNodes = scheme?.nodes ? (Array.isArray(scheme.nodes) ? scheme.nodes.length : Object.keys(scheme.nodes).length) : 0;
     const schemeConns = scheme?.conns ? (Array.isArray(scheme.conns) ? scheme.conns.length : Object.keys(scheme.conns).length) : 0;
     // 🏗 Технолог объекта
-    const twVariants = _readJSON(projectKey(pid, 'tech-workspace', 'variants.v1'), []);
+    const twVariants = projectLoad(pid, 'tech-workspace', 'variants.v1', []);
     const twActiveId = (() => { try { return projectLoad(pid, 'tech-workspace', 'activeVariantId.v1', ''); } catch { return null; } })();
     const twActive = Array.isArray(twVariants) ? twVariants.find(v => v.id === twActiveId) || twVariants[0] : null;
     const twRacks = twActive?.concept?.rackGroups ? twActive.concept.rackGroups.reduce((s, rg) => s + (Number(rg.count) || 0), 0) : 0;
     const twUps = twActive?.concept?.upsSystems ? twActive.concept.upsSystems.reduce((s, u) => s + (Number(u.count) || 0), 0) : 0;
     const twCool = twActive?.concept?.coolingUnits ? twActive.concept.coolingUnits.reduce((s, c) => s + (Number(c.count) || 0), 0) : 0;
     // 🔗 СКС
-    const scsLinks = _readJSON(projectKey(pid, 'scs-design', 'snapshot'), null);
+    const scsLinks = projectLoad(pid, 'scs-design', 'snapshot', null);
     const scsCount = scsLinks?.links ? (Array.isArray(scsLinks.links) ? scsLinks.links.length : 0) : 0;
     // Метаданные проекта
     const ok = p.objectKind || 'datacenter';
@@ -3561,13 +3561,10 @@ function render() {
   // ГИП / Администратора — все позиции в одном месте, можно увидеть какие
   // позиции есть в одной дисциплине но отсутствуют в другой.
   if (equipmentHost) {
-    const _readJSON = (key, fallback) => {
-      try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); }
-      catch { return fallback; }
-    };
+    // Фаза 2 (R2): cross-module чтение — через шов projectLoad (был _readJSON).
     const pid = p.id;
-    const scheme = _readJSON(projectKey(pid, 'engine', 'scheme.v1'), null);
-    const twVariants = _readJSON(projectKey(pid, 'tech-workspace', 'variants.v1'), []);
+    const scheme = projectLoad(pid, 'engine', 'scheme.v1', null);
+    const twVariants = projectLoad(pid, 'tech-workspace', 'variants.v1', []);
     const twActiveId = (() => { try { return projectLoad(pid, 'tech-workspace', 'activeVariantId.v1', ''); } catch { return null; } })();
     const twActive = Array.isArray(twVariants) ? twVariants.find(v => v.id === twActiveId) || twVariants[0] : null;
 
@@ -3735,13 +3732,10 @@ function render() {
   // (без полного recalc). Полная валидация (с расчётом нагрузок, ΔU, селективности)
   // — в Конструкторе схем через Ctrl+Shift+I (Project Issues modal).
   if (validationHost) {
-    const _readJSON = (key, fallback) => {
-      try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); }
-      catch { return fallback; }
-    };
+    // Фаза 2 (R2): cross-module чтение — через шов projectLoad (был _readJSON).
     const pid = p.id;
-    const scheme = _readJSON(projectKey(pid, 'engine', 'scheme.v1'), null);
-    const twVariants = _readJSON(projectKey(pid, 'tech-workspace', 'variants.v1'), []);
+    const scheme = projectLoad(pid, 'engine', 'scheme.v1', null);
+    const twVariants = projectLoad(pid, 'tech-workspace', 'variants.v1', []);
     const twActiveId = (() => { try { return projectLoad(pid, 'tech-workspace', 'activeVariantId.v1', ''); } catch { return null; } })();
     const twActive = Array.isArray(twVariants) ? twVariants.find(v => v.id === twActiveId) || twVariants[0] : null;
 
@@ -3949,7 +3943,7 @@ function render() {
     // N-1, перегрузы) — карточка проекта пересчитать их статически не может
     // (underscore-флаги stripRuntime убирает из сохранённой схемы). Берём
     // компактный снапшот, который Конструктор пишет при каждом изменении.
-    const issuesSnap = _readJSON(projectKey(pid, 'engine', 'issues.v1'), null);
+    const issuesSnap = projectLoad(pid, 'engine', 'issues.v1', null);
     if (issuesSnap && Array.isArray(issuesSnap.cats) && issuesSnap.cats.length) {
       let ago = '';
       try {
