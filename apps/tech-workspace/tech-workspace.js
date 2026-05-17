@@ -1777,15 +1777,6 @@ function renderDetails(c, ro) {
           <div class="tw-grid">
             <label title="Шифр проекта (короткий код по системе ГИП). Шапка чертежей. Авто-заполняется из метаданных проекта.">Обозначение проекта:<input type="text" data-field="projectData.designation" value="${escAttr(pd.designation || '')}" placeholder="напр. 25013-GEP-ENG-ELC" ${ro ? 'disabled' : ''}></label>
             <label title="Заказчик / клиент (юр. или физ. лицо). Авто-заполняется из реквизитов проекта.">Заказчик:<input type="text" data-field="projectData.customer" value="${escAttr(pd.customer || '')}" placeholder="ТОО «...»" ${ro ? 'disabled' : ''}></label>
-            <label title="Тип ЦОД определяет какие блоки доступны:&#10;• Стационарный — своё здание, классические машзалы.&#10;• Модульный — блок «🏢 МЦОД» доступен (GDM-600, контейнерные блоки).&#10;• Мобильный — на колёсах / в перевозимом контейнере.&#10;• В помещении — в существующем здании (overlay).&#10;• Капсула (гермозона) — мини-ЦОД в офисе, изолированный.">Тип ЦОД:
-              <select data-field="projectData.dcType" ${ro ? 'disabled' : ''}>
-                <option value="stationary"${(pd.dcType || 'stationary') === 'stationary' ? ' selected' : ''}>🏢 Стационарный (своё здание)</option>
-                <option value="modular"${pd.dcType === 'modular' ? ' selected' : ''}>📦 Модульный (МЦОД, GDM-600)</option>
-                <option value="mobile"${pd.dcType === 'mobile' ? ' selected' : ''}>🚛 Мобильный (контейнер, колёса)</option>
-                <option value="indoor"${pd.dcType === 'indoor' ? ' selected' : ''}>🏠 В помещении (overlay)</option>
-                <option value="capsule"${pd.dcType === 'capsule' ? ' selected' : ''}>🛡 Капсула (гермозона, офис)</option>
-              </select>
-            </label>
             <label title="Стадия проектирования: концепция / эскиз (П) / рабочая (РД) / исполнительная (As-built).">Стадия:
               <select data-field="projectData.stage" ${ro ? 'disabled' : ''}>
                 <option value="concept"${pd.stage === 'concept' ? ' selected' : ''}>Концепция</option>
@@ -3348,6 +3339,36 @@ function renderActiveVariant() {
   if (_syncProjectDataFromProject(v.concept)) persistVariants();
   const c = v.concept;
   const ro = !!v.readOnly;
+  // v0.60.606 (правка Пользователя): «тип ЦОД должен относиться к варианту,
+  // а не к общим данным». Тип ЦОД — параметр ВАРИАНТА концепции (разные
+  // варианты могут предлагать разные решения площадки: стационарное здание /
+  // модульный МЦОД / контейнер / капсула; определяет доступные блоки, напр.
+  // «🏢 МЦОД» при модульном). Хранится per-variant (concept.projectData.dcType
+  // — уже было), но выведен из общего блока «🏷 Объект» в шапку варианта.
+  // Только для objectKind='datacenter' (для прочих типов объекта неприменим).
+  try {
+    const _dctMount = $('tw-variant-dctype');
+    if (_dctMount) {
+      const _okind = (_pid ? getProject(_pid) : null)?.objectKind || 'datacenter';
+      if (_okind !== 'datacenter') {
+        _dctMount.innerHTML = '';
+      } else {
+        const _dct = c.projectData?.dcType || 'stationary';
+        const _opt = (val, lbl) => `<option value="${val}"${_dct === val ? ' selected' : ''}>${lbl}</option>`;
+        _dctMount.innerHTML = `<div class="tw-card" data-card-kind="project" data-card-id="-">
+          <label class="tw-variant-dctype-lbl" title="Тип ЦОД — параметр ВАРИАНТА концепции (разные варианты = разные решения площадки). Определяет доступные блоки:&#10;• Стационарный — своё здание, классические машзалы.&#10;• Модульный — блок «🏢 МЦОД» (GDM-600, контейнерные блоки).&#10;• Мобильный — на колёсах / в перевозимом контейнере.&#10;• В помещении — в существующем здании (overlay).&#10;• Капсула (гермозона) — мини-ЦОД в офисе.">🏗 Тип ЦОД (вариант):
+            <select data-field="projectData.dcType" ${ro ? 'disabled' : ''}>
+              ${_opt('stationary', '🏢 Стационарный (своё здание)')}
+              ${_opt('modular', '📦 Модульный (МЦОД, GDM-600)')}
+              ${_opt('mobile', '🚛 Мобильный (контейнер, колёса)')}
+              ${_opt('indoor', '🏠 В помещении (overlay)')}
+              ${_opt('capsule', '🛡 Капсула (гермозона, офис)')}
+            </select>
+          </label>
+        </div>`;
+      }
+    }
+  } catch (e) { console.warn('[tw] variant dcType render', e); }
   // Compute summaries
   const itKw = calcITTotal(c);
   const upsByPurpose = calcUpsByPurpose(c);

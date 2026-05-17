@@ -122,6 +122,11 @@
           <span class="muted" id="tw-content-summary"></span>
           <span class="tw-readonly-badge" id="tw-readonly-badge" hidden>🔒 read-only (после handoff)</span>
         </div>
+        <!-- v0.60.606 (правка Пользователя): «тип ЦОД должен относиться к
+             варианту, а не к общим данным». Тип ЦОД — параметр ВАРИАНТА
+             концепции (разные варианты = разные решения площадки). Рендерится
+             из renderActiveVariant() в #tw-variant-dctype. -->
+        <div id="tw-variant-dctype" class="tw-variant-dctype"></div>
       </div>
 
       <!-- Mode: List — содержимое рендерится из tech-workspace.js

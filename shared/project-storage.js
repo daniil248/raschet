@@ -152,7 +152,7 @@ export function listSubProjects(parentProjectId, moduleId, opts = {}) {
 // объект. Имя/обозначение задаёт пользователь; ownerModule = тот модуль,
 // откуда был открыт мастер.
 export function createSubProject(parentProjectId, moduleId, { name, designation = '' } = {}) {
-  return createProject({
+  const sub = createProject({
     name: name || `Подпроект ${moduleId}`,
     description: `Подпроект «${designation || moduleId}» внутри проекта ${parentProjectId}.`,
     kind: 'sketch',
@@ -160,6 +160,30 @@ export function createSubProject(parentProjectId, moduleId, { name, designation 
     parentProjectId,
     designation,
   });
+  // v0.60.606: подпроект — это работа ВНУТРИ родительского объекта, а не
+  // независимый проект «с нуля». Наследуем идентичность площадки из
+  // родительского full-проекта: location (правило feedback_project_location —
+  // задаётся ОДИН раз на объекте, читается всеми модулями/подпроектами),
+  // а также customer/category, чтобы карточка подпроекта и calc-модули
+  // (meteo/cooling/ID-диаграмма) не открывались пустыми «со своими новыми
+  // данными». Локально (deep-clone) — отвязано от мутаций родителя; правило
+  // «менять координаты в модулях нельзя» сохраняется (read-only вниз).
+  try {
+    const par = parentProjectId ? getProject(parentProjectId) : null;
+    if (par) {
+      const patch = {};
+      if (par.location && typeof par.location === 'object') {
+        patch.location = JSON.parse(JSON.stringify(par.location));
+      }
+      if (par.customer && !sub.customer) patch.customer = par.customer;
+      if (par.category && !sub.category) patch.category = par.category;
+      if (Object.keys(patch).length) {
+        const updated = updateProject(sub.id, patch);
+        if (updated) return updated;
+      }
+    }
+  } catch (e) { /* best-effort: подпроект всё равно создан */ }
+  return sub;
 }
 
 // Мини-проект для модуля — создаёт sketch-проект, привязанный к модулю.
