@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.559', date: '2026-05-17', items: [
+      '🔐 <b>R2-финал, ДЕПЛОЙ B: 5 модулей переключены на helper</b>. project-storage с projectPrefix/projectModulePrefix полностью распространён по edge (деплой A v0.60.558, проверено curl + браузерный PoP) → теперь cache-safe переключить потребителей. cooling.js (cooling.), meteo.js (meteo.), service.js (service.), scs-design.js (scs-design. ×2) — на projectModulePrefix; scs-config.js — projectPrefix (тернар pid?...:null сохранён) + 3 остаточных full-key (scs-design.links.v1 ×2, engine.scheme.v1) на projectKey. Все pid в сайтах truthy (guard-ы), байт-идентично. Итог R2 (с учётом project.js 36 + батч 18): raw raschet.project.dollar литералов в модулях не осталось; мосты — санкционированы отдельно. Инцидент 556→557 закрыт правильным двухдеплойным паттерном §6a.',
+    ] },
     { version: '0.60.558', date: '2026-05-17', items: [
       '🧱 <b>R2-финал, ДЕПЛОЙ A (cache-safe §6a): только export helper в shared</b>. В shared/project-storage.js добавлены projectPrefix(pid) и projectModulePrefix(pid,module) (через APP_NS; байт-идентичны прежним сырым префиксам). Потребители их ещё НЕ импортируют — поэтому деплой нерушим при любом edge-кэш-скью Pages (старые потребители новый символ не упоминают, остальное project-storage байт-в-байт). После полного распространения (curl голого URL отдаёт символ на всех PoP) — отдельный ДЕПЛОЙ B переключит 5 модулей (cooling/meteo/service/scs-design/scs-config) на helper + остаток full-key. Реализация правила, выведенного из инцидента v0.60.556→557.',
     ] },

@@ -8,6 +8,7 @@
 
 import {
   ensureDefaultProject, getActiveProjectId, setActiveProjectId, getProject, projectKey,
+  projectModulePrefix,
   listProjectsForModule, createSketchForModule,
   // v0.59.372: подпроекты внутри родительского.
   listSubProjects, createSubProject
@@ -76,8 +77,8 @@ function _isEmptyValue(raw) {
 function _migrateLegacyScsToSub(parentPid, subPid, opts = {}) {
   if (!parentPid || !subPid || parentPid === subPid) return [];
   const force = opts.force === true;
-  const prefix = `raschet.project.${parentPid}.scs-design.`;
-  const subPrefix = `raschet.project.${subPid}.scs-design.`;
+  const prefix = projectModulePrefix(parentPid, 'scs-design');
+  const subPrefix = projectModulePrefix(subPid, 'scs-design');
   const toMove = [];
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);

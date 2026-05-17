@@ -16,7 +16,7 @@
 console.info('%c[service v0.60.37] script LOADED', 'color:#16a34a;font-weight:bold');
 
 import { detectNavMode, renderModuleActions, completeReturn, cancelReturn } from 'shared/module-nav.js';
-import { ensureDefaultProject, projectKey, listProjects, getProject, setActiveProjectId, createProject } from 'shared/project-storage.js';
+import { ensureDefaultProject, projectKey, projectModulePrefix, listProjects, getProject, setActiveProjectId, createProject } from 'shared/project-storage.js';
 import { fetchRates, convert as convertRate } from 'shared/currency-rates/index.js';
 import { open as openRatesDialog } from 'shared/currency-rates/rates-dialog.js';
 import 'shared/currency-rates/sources/index.js';
@@ -344,7 +344,7 @@ function quickCreateFromCooling(selId, optId, type) {
 
 function projectHasServiceData(pid) {
   if (!pid) return false;
-  const prefix = `raschet.project.${pid}.service.`;
+  const prefix = projectModulePrefix(pid, 'service');
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
