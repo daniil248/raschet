@@ -12,9 +12,11 @@
   `ROUGHNESS`, `LOW_PRESSURE_LIMIT`.
 - Потери давления — ОБОСОБЛЕНЫ ПО СТАНДАРТУ (D4, пользователь
   выбирает методику через picker = METHOD_LIST):
-  - `pressure-drop.js` — СП 42-101-2003 / СП 62.13330 (Darcy низкое
-    / изотерм. P1²−P2² среднее-высокое; id `gas-pressure-drop`
+  - `pressure-drop.js` — РФ: СП 42-101-2003 / СП 62.13330 (Darcy
+    низкое / изотерм. P1²−P2² среднее-высокое; id `gas-pressure-drop`
     сохранён для backward-compat).
+  - `pressure-drop-sprk.js` — КЗ: СН РК 4.03-01 / СП РК 4.03-101
+    (D5; своя META, переиспользует РФ-ядро).
   - `pressure-drop-renouard.js` — Renouard linéaire / quadratique.
   - `pressure-drop-weymouth.js` — Weymouth (λ=0.009407/D^⅓).
 - `throughput.js` — `{META,compute}`: обратная задача — макс.
