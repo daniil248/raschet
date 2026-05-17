@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.737', date: '2026-05-18', items: [
+      '📐 <b>Конструктор/дисциплины — Ф-F3: role-gate дисциплины data в scs-design/scs-config (X.4.5.3 §5.1/§4)</b>. Шапка (mountHeader) и project-context chip уже унифицированы в обоих scs-*; добавлен недостающий кусок §5.1 — role-gate дисциплины `data` как read-only индикатор в бейдже контекста: если internal-роль не может создавать дисциплину `data` (Ф-D canCreateDiscipline) → «🔒 роль без прав на data» + tooltip. <b>Только индикатор</b>, действия НЕ блокируются (action-level gating вне §5.1: оболочка, не движок). Не-internal → canCreateDiscipline=true → бейдж без пометки (<b>нулевая регрессия</b> для обычного пользователя). scs-design: идемпотентный _applyDiscRoleGate() в DOMContentLoaded; scs-config: inline в renderProjectBadge. Первые потребители subscriptions.js в scs-* — cache-safe (Ф-D v0.60.728 распространён). Файлы: apps/scs-design/scs-design.js, apps/scs-config/scs-config.js, shared/module-changelogs.js, ROADMAP.md, js/engine/constants.js.',
+    ] },
     { version: '0.60.736', date: '2026-05-18', items: [
       '📐 <b>Конструктор/дисциплины — Ф-F2: sidebar-аккордеон single-open в scs-design (X.4.5.3 §5.1)</b>. apps/scs-design/scs-design.js +_initSidebarAccordion(): блоки .sd-plan-side-block в каждом aside.rs-sidebar → single-open аккордеон (первый раскрыт, клик по .sd-plan-side-h сворачивает остальные); одноблочный сайдбар (sd-links-side) не сворачивается. Идемпотентно (dataset.accBound). +CSS: кликабельный заголовок, стрелка ▾/▸, .sd-acc-collapsed прячет всё кроме заголовка. memory:sidebar_accordion (project-wide UX). <b>Чистая ОБОЛОЧКА</b> — UI-chrome, 0 изменений движка: «План зала»/связи/длины/владение СКС-данными не затронуты (§5.1). Файлы: apps/scs-design/scs-design.js, apps/scs-design/scs-design.css, shared/module-changelogs.js, ROADMAP.md, js/engine/constants.js.',
     ] },

@@ -153,6 +153,9 @@ rescopeToActiveProject();
 import { SCS_DEFAULT_CATALOG, KIND_LABEL as _KIND_LABEL } from 'shared/scs-catalog-data.js';
 import { wireExportImport } from 'shared/config-io.js';
 import { APP_VERSION } from 'engine/constants.js';
+// Ф-F3 (X.4.5.3 §5.1 / §4): role-gate дисциплины `data` — read-only
+// индикатор. Не-internal → true (нулевая регрессия).
+import { canCreateDiscipline as _canCreateDiscipline } from 'shared/subscriptions.js';
 // v0.60.535: чистый расчётный слой геометрии U-слотов выделен в calc/
 // (без DOM). Тонкие обёртки ниже подставляют state.catalog.
 import {
@@ -4636,7 +4639,10 @@ function renderProjectBadge() {
     d.id = 'sc-disc-ctx';
     d.className = 'sc-disc-ctx';
     d.title = 'Этот модуль работает в дисциплине «СКС / слаботочка» (data) единого Конструктора схем. Индикатор только для координации — компоновка шкафа, контент, матрица и владение СКС-данными не изменены (контракт §5.1).';
-    d.innerHTML = '🔌 Контекст: <b>СКС / слаботочка</b> <span style="opacity:.65">· дисциплина data · только индикатор</span>';
+    let _dataOk = true;
+    try { _dataOk = _canCreateDiscipline('data'); } catch {}
+    d.innerHTML = '🔌 Контекст: <b>СКС / слаботочка</b> <span style="opacity:.65">· дисциплина data · только индикатор</span>'
+      + (_dataOk ? '' : ' <span style="margin-left:8px;color:#fbbf24;font-size:11px" title="Ваша internal-роль не имеет прав на создание схем дисциплины data. Просмотр/координация доступны; создание — у ГИП/менеджера.">🔒 роль без прав на data</span>');
     el.insertAdjacentElement('afterend', d);
   }
 }

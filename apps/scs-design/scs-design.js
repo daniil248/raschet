@@ -32,6 +32,10 @@ import {
   ptsToPath,
   routeCells as _calcRouteCells,
 } from './calc/cable-route.js';
+// Ф-F3 (X.4.5.3 §5.1 / §4): role-gate дисциплины `data` как
+// read-only индикатор в бейдже контекста. Только для internal-роли
+// (canCreateDiscipline → true для не-internal: нулевая регрессия).
+import { canCreateDiscipline } from 'shared/subscriptions.js';
 
 const LS_RACK      = LS_TEMPLATES_GLOBAL;              // для совместимости storage-listener
 const LS_CATALOG   = 'scs-config.catalog.v1';          // глобальный каталог IT
@@ -4862,10 +4866,29 @@ function _initSidebarAccordion() {
   });
 }
 
+// Ф-F3: дополнить индикатор контекста статусом role-gate дисциплины
+// `data`. Идемпотентно. Не блокирует действия (только индикатор —
+// action-level gating вне scope §5.1: оболочка, не движок).
+function _applyDiscRoleGate() {
+  const el = document.querySelector('.sd-disc-ctx');
+  if (!el || el.dataset.roleGate === '1') return;
+  el.dataset.roleGate = '1';
+  let ok = true;
+  try { ok = canCreateDiscipline('data'); } catch {}
+  if (!ok) {
+    const s = document.createElement('span');
+    s.style.cssText = 'margin-left:8px;color:#fbbf24;font-size:11px';
+    s.title = 'Ваша internal-роль не имеет прав на создание схем дисциплины «СКС / слаботочка» (data). Просмотр/координация доступны; создание — у ГИП/менеджера. memory:role_based_access.';
+    s.textContent = '🔒 роль без прав на data';
+    el.appendChild(s);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const { pid, migrated } = rescopeToActiveProject();
   renderProjectBadge(pid);
   try { _initSidebarAccordion(); } catch (e) { console.warn('[sd accordion]', e); }
+  try { _applyDiscRoleGate(); } catch (e) { console.warn('[sd role-gate]', e); }
   if (migrated > 0) {
     updateStatus(`ℹ Данные СКС перенесены в активный проект (перенесено ключей: ${migrated}). Старые глобальные ключи оставлены как резерв.`);
   }
