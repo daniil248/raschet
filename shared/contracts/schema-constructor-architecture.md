@@ -108,6 +108,37 @@ contracts/README.md в силе):
 Конструктора (метрический 2D ≠ граф; высокий риск регрессий). Общая
 только ОБОЛОЧКА, не движок канвы.
 
+### 5.1 Шов «оболочка vs движок СКС» (Ф-F контракт-задел, v0.60.733)
+
+Точная граница, чтобы код-инкременты Ф-F были изолированы и
+обратимы. SHELL = переиспользуемые UI-слои (НЕ node-graph движок):
+
+| Слой | Источник | Берёт ли СКС | Примечание |
+|---|---|---|---|
+| app-header (шапка) | `shared/app-header*` | да | единый вид |
+| sidebar-аккордеон | shared CSS/`.rs-sidebar` + single-open | да | memory:sidebar_accordion |
+| project-context (header chip) | `shared/project-context.js` | да (уже) | memory:unified_project_picker |
+| zoom Ctrl+wheel | общий wheel-handler | да | memory:zoom_ctrl_scroll |
+| экспорт→reports | `shared/report/*` blocks | да | memory:reports_via_module |
+| role-gate | `shared/subscriptions.js` (Ф-D) | да | дисциплина `data` |
+| discipline-context бар | `shared/discipline-context.js` | да (как индикатор) | контекст `data` |
+| **движок «План зала»** | scs-design/scs-config own | **НЕТ — остаётся** | авто-раскладка/каналы/фитинги/длины |
+| **владение СКС-данными** | scs-* project-storage `data`-ns | **НЕТ — остаётся** | Конструктор только ПО ССЫЛКЕ (§6 порт `data`) |
+
+Порядок код-инкрементов Ф-F (низкий→высокий риск, по одному, с
+verify естественной загрузкой scs-* index.html,
+memory:verify_methodology):
+- **Ф-F1** — discipline-context бар-индикатор `data` в scs-* (тот же
+  бейдж, read-only; 0 поведенческих изменений движка).
+- **Ф-F2** — sidebar-аккордеон single-open привести к общему
+  паттерну (CSS/класс, без логики движка).
+- **Ф-F3** — header/project-context унификация (chip, role-gate
+  дисциплины `data`).
+- **Ф-F4** — экспорт плана зала через `shared/report/*` blocks
+  (вместо локального HTML, memory:reports_via_module).
+Каждый Ф-Fn — отдельный инкремент/ход; движок и владение данными
+не трогаются НИ в одном.
+
 ## 6. Общий реестр объектов + порт-driven видимость
 
 (Q4 — выбрано; «текущая концепция остаётся».)
