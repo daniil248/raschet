@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.691', date: '2026-05-17', items: [
+      '🩹 <b>Фикс: «Ошибка превью: Cannot access guides before initialization»</b> (репорт Пользователя, регрессия v0.60.689). В preview.js replace_all (mode===edit→guides) ошибочно затронул сами объявления: const guides = … : (guides) и pageLabel = … : (guides) → TDZ-самоссылка, превью в редакторе шаблона падало. Стало: введена const editMode = mode===edit, дефолты guides/pageLabel ссылаются на editMode. Файлы: shared/report/preview.js, js/engine/constants.js.',
+    ] },
     { version: '0.60.690', date: '2026-05-17', items: [
       '📑 <b>Отчёты: 5 встроенных generic-оформлений помечены базовыми</b> (выбор Пользователя). shared/report/templates-seed.js: builtin-blank-a4 / simple-a4 / formal-a4 / bom-landscape / compact-a5 получили level:base (только поля/колонтитулы/стили) → попадают в группу «Базовые шаблоны»; документные (Инженерный отчёт, Конфигурация ИБП/щита, кабель/АКБ/трансформатор, Техническая записка) остаются документами и могут наследовать базу. BUILTIN_VERSION 3→4 (пересев builtin-записей; пользовательские шаблоны не затрагиваются). Файлы: shared/report/templates-seed.js, js/engine/constants.js.',
     ] },

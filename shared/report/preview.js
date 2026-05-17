@@ -22,8 +22,9 @@ export function renderPreview(tpl, container, opts = {}) {
   // Направляющие полей и подпись «Стр. N из M» — отвязаны от mode:
   // их можно включать/выключать независимо (просмотрщик каталога
   // показывает поля по тумблеру, но без дубля колонтитула-номера).
-  const guides    = opts.guides    !== undefined ? !!opts.guides    : (guides);
-  const pageLabel = opts.pageLabel !== undefined ? !!opts.pageLabel : (guides);
+  const editMode  = mode === 'edit';
+  const guides    = opts.guides    !== undefined ? !!opts.guides    : editMode;
+  const pageLabel = opts.pageLabel !== undefined ? !!opts.pageLabel : editMode;
   container.innerHTML = '';
   container.classList.add('rpt-preview');
   container.classList.toggle('rpt-preview--edit', guides);
