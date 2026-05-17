@@ -15,7 +15,7 @@
 // второй TTF.
 // ======================================================================
 
-import { pageSizeMm, contentBox, substitute, overlaysForPage } from './template.js';
+import { pageSizeMm, contentBox, contentBoxFor, substitute, overlaysForPage } from './template.js';
 import { paginate, estimateBlockHeight, tableLayout, wrapCell } from './preview.js';
 
 const JSPDF_URL = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js';
@@ -94,11 +94,14 @@ function registerCyrillicFont(doc, fontCache) {
 async function buildPdfDoc(tpl) {
   const JsPDF = await loadJsPDF();
   const fontCache = await loadCyrillicFont();
-  const { width, height } = pageSizeMm(tpl.page);
+  const pages = paginate(tpl);
+  const total = Math.max(1, pages.length);
+  const g0 = pages[0]?.geom || tpl.page;
+  const sz0 = pageSizeMm(g0);
   const doc = new JsPDF({
     unit: 'mm',
-    format: [width, height],
-    orientation: width > height ? 'l' : 'p',
+    format: [sz0.width, sz0.height],
+    orientation: sz0.width > sz0.height ? 'l' : 'p',
     compress: true,
   });
 
@@ -112,17 +115,17 @@ async function buildPdfDoc(tpl) {
     if (tpl.meta.subject) doc.setProperties({ subject: tpl.meta.subject });
   }
 
-  const pages = paginate(tpl);
-  const total = Math.max(1, pages.length);
-
   const anchors = {};   // _anchorTag → { page, x, y, w } (для floating)
-  pages.forEach((pageBlocks, i) => {
-    if (i > 0) doc.addPage([width, height], width > height ? 'l' : 'p');
-    const isFirst = i === 0;
-    drawHeaderFooter(doc, tpl, isFirst, i + 1, total);
-    drawLogo(doc, tpl, isFirst);
-    drawBody(doc, tpl, isFirst, pageBlocks, { page: i + 1, pages: total, anchors });
-    drawOverlays(doc, tpl, isFirst, i + 1, total);
+  pages.forEach((pg, i) => {
+    const sz = pageSizeMm(pg.geom || tpl.page);
+    if (i > 0) doc.addPage([sz.width, sz.height], sz.width > sz.height ? 'l' : 'p');
+    const chromeOn = pg.chrome !== false;
+    if (chromeOn) {
+      drawHeaderFooter(doc, tpl, pg, i + 1, total);
+      drawLogo(doc, tpl, pg);
+    }
+    drawBody(doc, tpl, pg, pg.blocks || [], { page: i + 1, pages: total, anchors });
+    if (chromeOn) drawOverlays(doc, tpl, pg, i + 1, total);
   });
   // Плавающий слой — поверх всего, ПОСЛЕ раскладки (нужны позиции
   // _anchorTag). Единственное (с колонтитулами) санкц. наложение.
@@ -278,9 +281,11 @@ export async function previewPDF(tpl, filename) {
 // ——————————————————————————————————————————————————————————————————————
 // Колонтитулы и логотип
 // ——————————————————————————————————————————————————————————————————————
-function drawHeaderFooter(doc, tpl, isFirst, pageNum, total) {
-  const m = tpl.page.margins;
-  const { width, height } = pageSizeMm(tpl.page);
+function drawHeaderFooter(doc, tpl, pg, pageNum, total) {
+  const geom = (pg && pg.geom) || tpl.page;
+  const isFirst = !!(pg && pg.isFirst);
+  const m = geom.margins || tpl.page.margins;
+  const { width, height } = pageSizeMm(geom);
 
   const hdr = isFirst ? tpl.header.firstPage : tpl.header.otherPages;
   if (hdr && hdr.enabled) {
@@ -301,7 +306,8 @@ function drawHeaderFooter(doc, tpl, isFirst, pageNum, total) {
   }
 }
 
-function drawOverlays(doc, tpl, isFirst, pageNum, total) {
+function drawOverlays(doc, tpl, pg, pageNum, total) {
+  const isFirst = !!(pg && pg.isFirst);
   const ovs = overlaysForPage(tpl, isFirst);
   const ctx = { page: pageNum, pages: total };
   for (const ov of ovs) {
@@ -335,12 +341,14 @@ function drawOverlays(doc, tpl, isFirst, pageNum, total) {
   }
 }
 
-function drawLogo(doc, tpl, isFirst) {
+function drawLogo(doc, tpl, pg) {
   const l = tpl.logo;
   if (!l || !l.src) return;
+  const isFirst = !!(pg && pg.isFirst);
   if (l.onFirstPageOnly && !isFirst) return;
-  const m = tpl.page.margins;
-  const { width, height } = pageSizeMm(tpl.page);
+  const geom = (pg && pg.geom) || tpl.page;
+  const m = geom.margins || tpl.page.margins;
+  const { width, height } = pageSizeMm(geom);
 
   // Абсолютные координаты из canvas-редактора имеют приоритет над legacy
   // position ('header-left' и т.п.), которая оставлена для совместимости.
@@ -366,8 +374,9 @@ function drawLogo(doc, tpl, isFirst) {
 // ——————————————————————————————————————————————————————————————————————
 // Основное содержимое страницы
 // ——————————————————————————————————————————————————————————————————————
-function drawBody(doc, tpl, isFirst, blocks, ctx) {
-  const box = contentBox(tpl, isFirst);
+function drawBody(doc, tpl, pg, blocks, ctx) {
+  const geom = (pg && pg.geom) || tpl.page;
+  const box = contentBoxFor(tpl, geom, pg ? pg.chrome !== false : true, !!(pg && pg.isFirst));
   drawBlocks(doc, tpl, blocks, box, ctx);
 }
 

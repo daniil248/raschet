@@ -12,7 +12,8 @@
 // tpl.meta + ctx (дата, номер страницы / общее число страниц).
 // ======================================================================
 
-import { pageSizeMm, contentBox, substitute, overlaysForPage, effectiveFlow } from './template.js';
+import { pageSizeMm, contentBox, substitute, overlaysForPage, effectiveFlow,
+         flowSegments, contentBoxFor } from './template.js';
 
 /** Рендер всего шаблона в переданный контейнер. */
 export function renderPreview(tpl, container, opts = {}) {
@@ -27,11 +28,10 @@ export function renderPreview(tpl, container, opts = {}) {
   const pages = paginate(tpl);
   const totalPages = Math.max(1, pages.length);
 
-  pages.forEach((pageBlocks, i) => {
-    const isFirst = i === 0;
-    const pageEl = buildPageShell(tpl, scale, mode, isFirst, i + 1, totalPages);
+  pages.forEach((pg, i) => {
+    const pageEl = buildPageShell(tpl, scale, mode, pg, i + 1, totalPages);
     const body   = pageEl.querySelector('.rpt-page__body');
-    pageBlocks.forEach(block => {
+    (pg.blocks || []).forEach(block => {
       const bel = renderBlock(block, tpl, { page: i + 1, pages: totalPages });
       if (block && block._anchorTag && bel && bel.dataset) bel.dataset.rptAnchor = block._anchorTag;
       body.appendChild(bel);
@@ -102,69 +102,86 @@ function placeFloating(container, tpl, scale) {
 // страницы по очереди. Этого достаточно для превью и совпадает с тем,
 // как считает PDF-экспорт (см. export-pdf.js).
 // ——————————————————————————————————————————————————————————————————————
+// Пагинация по Word-style сегментам (DS2): каждый сегмент
+// (обложка / контент / после sectionBreak) имеет свою геометрию
+// (формат/ориентация/поля) и колонтитулы. Возвращает массив
+// page-объектов { blocks, geom, chrome, isCover, isFirst }.
+// Дефолтный документ (нет обложки/sectionBreak) даёт ОДИН
+// контент-сегмент с базовой геометрией → разбиение идентично
+// прежнему (нулевая регрессия).
 export function paginate(tpl) {
-  const pages = [];
-  let current = [];
-  let usedH = 0;
-  let pageIdx = 0;
+  const out = [];
+  const segs = flowSegments(tpl);
+  let firstContentDone = false;
 
-  const pushPage = () => {
-    pages.push(current);
-    current = [];
-    usedH = 0;
-    pageIdx += 1;
-  };
+  for (const seg of segs) {
+    const segIsContent = !seg.isCover;
+    let current = [];
+    let usedH = 0;
+    let segPageIdx = 0;
 
-  const availH = () => contentBox(tpl, pageIdx === 0).height;
+    // Особый header/footer первой страницы — только на самой первой
+    // странице ВСЕГО контента (как в Word: «особая первая страница»).
+    const isFirstNow = () => segIsContent && !firstContentDone && segPageIdx === 0;
+    const availH = () => contentBoxFor(tpl, seg.geom, seg.chrome, isFirstNow()).height;
 
-  for (const block of effectiveFlow(tpl)) {
-    if (block.type === 'pagebreak') {
-      pushPage();
-      continue;
-    }
+    const pushPage = () => {
+      out.push({ blocks: current, geom: seg.geom, chrome: seg.chrome,
+        isCover: !!seg.isCover, isFirst: isFirstNow() });
+      if (segIsContent && !firstContentDone) firstContentDone = true;
+      current = [];
+      usedH = 0;
+      segPageIdx += 1;
+    };
 
-    // Таблицы режем построчно по страницам с повтором шапки —
-    // иначе длинная таблица «уезжает» под колонтитул следующей
-    // страницы (визуальный «ужас», репорт Пользователя).
-    if (block.type === 'table' && (block.rows || []).length) {
-      const lay = tableLayout(block, tpl);
-      let idx = 0;
-      const rows = block.rows;
-      while (idx < rows.length) {
-        let free = availH() - usedH;
-        // на странице уже есть контент и не влезает даже шапка+1 строка → новая
-        if (current.length > 0 && free < lay.headH + lay.rowHs[idx] + 2) {
-          pushPage();
-          free = availH();
+    for (const block of (seg.blocks || [])) {
+      if (block && block.type === 'pagebreak') { pushPage(); continue; }
+
+      // Таблицы режем построчно по страницам с повтором шапки.
+      if (block && block.type === 'table' && (block.rows || []).length) {
+        const lay = tableLayout(block, tpl);
+        let idx = 0;
+        const rows = block.rows;
+        while (idx < rows.length) {
+          let free = availH() - usedH;
+          if (current.length > 0 && free < lay.headH + lay.rowHs[idx] + 2) {
+            pushPage();
+            free = availH();
+          }
+          let h = lay.headH;
+          const chunk = [];
+          while (idx < rows.length && h + lay.rowHs[idx] + 2 <= free) {
+            h += lay.rowHs[idx];
+            chunk.push(rows[idx]);
+            idx += 1;
+          }
+          if (chunk.length === 0) {
+            chunk.push(rows[idx]);
+            h += lay.rowHs[idx];
+            idx += 1;
+          }
+          current.push({ ...block, rows: chunk });
+          usedH += h + 2;
+          if (idx < rows.length) pushPage();
         }
-        let h = lay.headH;
-        const chunk = [];
-        while (idx < rows.length && h + lay.rowHs[idx] + 2 <= free) {
-          h += lay.rowHs[idx];
-          chunk.push(rows[idx]);
-          idx += 1;
-        }
-        if (chunk.length === 0) {                 // гарантия прогресса
-          chunk.push(rows[idx]);
-          h += lay.rowHs[idx];
-          idx += 1;
-        }
-        current.push({ ...block, rows: chunk });
-        usedH += h + 2;
-        if (idx < rows.length) pushPage();
+        continue;
       }
-      continue;
-    }
 
-    const h = estimateBlockHeight(block, tpl);
-    if (usedH + h > availH() && current.length > 0) {
-      pushPage();
+      const h = estimateBlockHeight(block, tpl);
+      if (usedH + h > availH() && current.length > 0) pushPage();
+      current.push(block);
+      usedH += h;
     }
-    current.push(block);
-    usedH += h;
+    // Завершаем сегмент: пустой контент-сегмент не плодит страницу
+    // (кроме случая полностью пустого документа).
+    if (current.length || (!seg.isCover && out.length === 0)) pushPage();
+    else if (seg.isCover) pushPage();
   }
-  if (current.length || pages.length === 0) pushPage();
-  return pages;
+  if (out.length === 0) {
+    out.push({ blocks: [], geom: flowSegments(tpl)[0]?.geom || tpl.page,
+      chrome: true, isCover: false, isFirst: true });
+  }
+  return out;
 }
 
 /** Грубая оценка высоты блока в мм. Используется и пагинатором, и
@@ -279,11 +296,14 @@ export function tableLayout(block, tpl) {
 // ——————————————————————————————————————————————————————————————————————
 // Каркас страницы: лист + поля + колонтитулы + область body + логотип.
 // ——————————————————————————————————————————————————————————————————————
-function buildPageShell(tpl, scale, mode, isFirst, pageNum, totalPages) {
-  const { width, height } = pageSizeMm(tpl.page);
-  const m    = tpl.page.margins;
-  const hdr  = isFirst ? tpl.header.firstPage : tpl.header.otherPages;
-  const ftr  = isFirst ? tpl.footer.firstPage : tpl.footer.otherPages;
+function buildPageShell(tpl, scale, mode, pg, pageNum, totalPages) {
+  const geom = (pg && pg.geom) || tpl.page;
+  const isFirst = !!(pg && pg.isFirst);
+  const chromeOn = !pg || pg.chrome !== false;
+  const { width, height } = pageSizeMm(geom);
+  const m    = geom.margins || tpl.page.margins;
+  const hdr  = chromeOn ? (isFirst ? tpl.header.firstPage : tpl.header.otherPages) : { enabled: false };
+  const ftr  = chromeOn ? (isFirst ? tpl.footer.firstPage : tpl.footer.otherPages) : { enabled: false };
 
   const page = div('rpt-page');
   page.style.width  = (width  * scale) + 'px';
@@ -327,7 +347,7 @@ function buildPageShell(tpl, scale, mode, isFirst, pageNum, totalPages) {
 
   // Основная область
   const body = div('rpt-page__body');
-  const cb = contentBox(tpl, isFirst);
+  const cb = contentBoxFor(tpl, geom, chromeOn, isFirst);
   body.style.left   = (cb.x * scale) + 'px';
   body.style.top    = (cb.y * scale) + 'px';
   body.style.width  = (cb.width  * scale) + 'px';
@@ -336,7 +356,7 @@ function buildPageShell(tpl, scale, mode, isFirst, pageNum, totalPages) {
   page.appendChild(body);
 
   // Логотип
-  if (tpl.logo && tpl.logo.src && (!tpl.logo.onFirstPageOnly || isFirst)) {
+  if (chromeOn && tpl.logo && tpl.logo.src && (!tpl.logo.onFirstPageOnly || isFirst)) {
     const img = document.createElement('img');
     img.className = 'rpt-logo';
     img.src = tpl.logo.src;
@@ -346,8 +366,8 @@ function buildPageShell(tpl, scale, mode, isFirst, pageNum, totalPages) {
     page.appendChild(img);
   }
 
-  // Overlay-зоны (свободно позиционируемые)
-  const ovs = overlaysForPage(tpl, isFirst);
+  // Overlay-зоны (колонтитул-номер и т.п.) — только при chrome
+  const ovs = chromeOn ? overlaysForPage(tpl, isFirst) : [];
   for (const ov of ovs) {
     const el = document.createElement('div');
     el.className = 'rpt-overlay';
