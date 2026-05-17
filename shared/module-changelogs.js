@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.621', date: '2026-05-17', items: [
+      '📋 <b>Фаза 1: манифест scs-config честный</b>. apps/scs-config/manifest.json: storageKeys заполнен по коду (11 per-project: raschet.project.&lt;pid&gt;.scs-config.contents/rackTags/inventory/matrix/warehouse/cart/catalog/assemblyTemplates/catFilter/faceMode/uNumDir .v1); urlParams дополнены (project/pid/from/rackId/schemeNodeId/tag); bridges shared/scheme-rack-bridge.js (фактический импорт — верен); version 1.0.0→1.1.0. Непроецируемые поля → modules.json не меняется, паритет 33 OK, нулевой runtime-риск. Седьмой модуль ревизии. Файл: apps/scs-config/manifest.json.',
+    ] },
     { version: '0.60.620', date: '2026-05-17', items: [
       '📋 <b>Фаза 1: манифест scs-design честный</b>. apps/scs-design/manifest.json: storageKeys заполнен по коду (6 per-project: raschet.project.&lt;pid&gt;.scs-design.links/plan/selection/linksOverlay.overrack/sag/visible .v1 + sessionStorage-флаг legacy-migrate-attempted); urlParams +pid; bridges shared/scheme-rack-bridge.js (фактический импорт — уже верен); version 1.0.0→1.1.0. Schema-id raschet.scs-design/1 — намеренно литерал (wire-format, RENAME.md §3, не трогаем). Непроецируемые поля → modules.json не меняется, паритет 33 OK, нулевой runtime-риск. Шестой модуль ревизии. Файл: apps/scs-design/manifest.json.',
     ] },

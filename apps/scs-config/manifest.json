@@ -2,7 +2,7 @@
   "id": "scs-config",
   "name": "Компоновщик шкафа",
   "description": "Конфигуратор СКС / телеком-оборудования: содержимое стойки (юниты, заглушки, PDU-раскладка), реестр шкафов проекта, инвентаризация.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
@@ -17,9 +17,21 @@
   "permissions": ["scs-config.use"],
   "lsNamespacesOwned": ["scs-config"],
   "dependsOnContracts": {
-    "storageKeys": [],
+    "storageKeys": [
+      "raschet.project.<pid>.scs-config.contents.v1",
+      "raschet.project.<pid>.scs-config.rackTags.v1",
+      "raschet.project.<pid>.scs-config.inventory.v1",
+      "raschet.project.<pid>.scs-config.matrix.v1",
+      "raschet.project.<pid>.scs-config.warehouse.v1",
+      "raschet.project.<pid>.scs-config.cart.v1",
+      "raschet.project.<pid>.scs-config.catalog.v1",
+      "raschet.project.<pid>.scs-config.assemblyTemplates.v1",
+      "raschet.project.<pid>.scs-config.catFilter.v1",
+      "raschet.project.<pid>.scs-config.faceMode.v1",
+      "raschet.project.<pid>.scs-config.uNumDir.v1"
+    ],
     "events": { "emits": [], "consumes": [] },
-    "urlParams": ["project"],
+    "urlParams": ["project", "pid", "from", "rackId", "schemeNodeId", "tag"],
     "bridges": ["shared/scheme-rack-bridge.js"]
   }
 }
