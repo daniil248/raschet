@@ -5,7 +5,7 @@
 
 import {
   listProjects, getProject, updateProject, deleteProject, copyProject,
-  setActiveProjectId, exportProject,
+  setActiveProjectId, getActiveProjectId, exportProject,
   // v0.59.373: подпроекты — артефакты внутри родителя (схемы, СКС, шкафы).
   listSubProjects, createSubProject,
   // v0.59.862: hide-when-empty — для определения «есть ли данные модуля».
@@ -1946,9 +1946,22 @@ function projectStats(pid) {
 }
 
 /* ---------- Получаем pid из URL ---------- */
+// v0.60.610 (репорт Пользователя: переключение проекта через плашку
+// в шапке открывает пустую карточку, а через /projects/ — работает).
+// Причина: shared/app-header.js при switch ставит активный проект и
+// перезагружает БЕЗ ?project= (чтобы calc-модули не залипали в URL-mode);
+// карточка же читала ТОЛЬКО ?project= → без параметра pid=null → пусто.
+// Фикс: fallback на getActiveProjectId() (как во всех calc-модулях),
+// явный ?project= по-прежнему имеет приоритет (открытие из /projects/).
 function getPid() {
-  try { return new URLSearchParams(location.search).get('project') || null; }
-  catch { return null; }
+  try {
+    const url = new URLSearchParams(location.search).get('project');
+    if (url) return url;
+  } catch {}
+  try {
+    const a = getActiveProjectId();
+    return (a && getProject(a)) ? a : null;
+  } catch { return null; }
 }
 
 /* ---------- Rendering ---------- */
