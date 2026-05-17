@@ -12,8 +12,8 @@
 // с расчётными значениями.
 
 import { register } from './registry.js';
-import { pickStation } from '../../station-picker.js';
-import { findStation } from '../../stations/wmo-list.js';
+import { pickStation } from '../station-picker.js';
+import { findStation } from '../stations/wmo-list.js';
 
 register({
   id: 'ashrae',

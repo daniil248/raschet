@@ -21,7 +21,7 @@
 // Кодировка обычно UTF-8 (новый формат) или CP1251 (старый).
 
 import { register } from './registry.js';
-import { getStationByWmo } from '../../stations/wmo-list.js';
+import { getStationByWmo } from '../stations/wmo-list.js';
 
 register({
   id: 'rp5',

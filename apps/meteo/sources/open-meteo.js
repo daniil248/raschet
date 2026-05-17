@@ -3,7 +3,7 @@
 // Поддерживает выбор локации через picker (карта/список) или вручную.
 
 import { register } from './registry.js';
-import { pickStation } from '../../station-picker.js';
+import { pickStation } from '../station-picker.js';
 
 register({
   id: 'open-meteo',
