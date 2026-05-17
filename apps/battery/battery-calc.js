@@ -8,7 +8,7 @@
 import { listBatteries, addBattery, removeBattery, clearCatalog, getBattery, makeBatteryId, setBatteryPrice } from 'shared/battery-catalog.js';
 import { rsToast, rsConfirm, rsPrompt } from 'shared/dialog.js';
 import { parseBatteryXlsx } from './battery-data-parser.js';
-import { calcAutonomy, calcRequiredBlocks, interpTimeByPower } from './battery-discharge.js';
+import { calcAutonomy, calcRequiredBlocks, interpTimeByPower } from '../../lib/battery-calc/battery-discharge.js';
 import * as Report from 'shared/report/index.js';
 import * as B      from 'shared/report/blocks.js';
 

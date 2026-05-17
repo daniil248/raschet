@@ -1173,7 +1173,7 @@ let _dischargeModule = null;
 async function _loadDischargeModule() {
   if (_dischargeModule) return _dischargeModule;
   try {
-    _dischargeModule = await import('../../../battery/battery-discharge.js');
+    _dischargeModule = await import('../../../lib/battery-calc/battery-discharge.js');
     return _dischargeModule;
   } catch (e) {
     console.warn('[ups] battery-discharge module not available:', e);
@@ -1791,7 +1791,7 @@ function _renderUpsBatteryBody(n) {
   } catch (e) { console.warn('[inspector] s3 3d mount failed', e); }
 
   // Если выбрана модель из справочника — точный расчёт автономии по
-  // таблице Constant Power Discharge из battery/battery-discharge.js.
+  // таблице Constant Power Discharge из lib/battery-calc/battery-discharge.js.
   // Загружаем модуль лениво; после вычисления обновляем DOM spans.
   if (selectedBattery && loadKw > 0) {
     _loadDischargeModule().then(mod => {
