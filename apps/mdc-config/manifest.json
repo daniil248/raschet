@@ -2,7 +2,7 @@
   "id": "mdc-config",
   "name": "Конфигуратор модульного ЦОД",
   "description": "Конфигуратор модульного ЦОД серии GDM-600: цепочка типовых модулей, стены/рама/фальшпол, тамбур, ODU на балконе, климат, cosφ, загрузка ИБП, Li-ion АКБ, трубопровод АГПТ.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
@@ -17,7 +17,10 @@
   "permissions": ["mdc-config.use"],
   "lsNamespacesOwned": ["mdc-config"],
   "dependsOnContracts": {
-    "storageKeys": [],
+    "storageKeys": [
+      "raschet.activeProject.v1",
+      "raschet.mdcToSuppression.v1"
+    ],
     "events": { "emits": [], "consumes": [] },
     "urlParams": ["project"],
     "bridges": []
