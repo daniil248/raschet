@@ -48,9 +48,18 @@ const SKIP_FILES = new Set([
 ]);
 
 function rel(p) { return relative(ROOT, p).split(sep).join('/'); }
+// D1 (2026-05-17, memory:architecture_layers): ЯДРО = только ПЛАТФОРМА
+// схемного редактора js/engine/* (state/render/serialization/...).
+// Электрорасчёты — НЕ ядро: js/calc и lib/*-methods это calc-МОДУЛИ
+// (см. isCalcLib). js/methods удалён (электрика → lib/electrical-methods).
 function isCore(p) {
-  return p.startsWith('js/engine/') || p.startsWith('js/calc/') ||
-    p.startsWith('js/methods/');
+  return p.startsWith('js/engine/');
+}
+// D2: calc-модуль (расчётная библиотека) — lib/* и js/calc. Отдельный
+// класс: импортируется НАТИВНО любым слоём (module/core/shared) —
+// закон импортов это разрешает (правила бьют только по tgt==='module').
+function isCalcLib(p) {
+  return p.startsWith('lib/') || p.startsWith('js/calc/');
 }
 function isCatalog(p) {
   return p.startsWith('shared/catalogs/') ||
@@ -62,8 +71,8 @@ function isShared(p) { return p.startsWith('shared/') && !isCatalog(p); }
 function moduleOf(p) {
   const seg = p.split('/');
   if (MODULE_DIRS.has(seg[0])) return seg[0];
-  // корневые js/* (не core) — модуль "constructor" (склейка приложения)
-  if (seg[0] === 'js' && !isCore(p)) return 'constructor';
+  // корневые js/* (не core, не calc-lib) — модуль "constructor".
+  if (seg[0] === 'js' && !isCore(p) && !isCalcLib(p)) return 'constructor';
   if (seg[0] === 'index.html' || seg[0] === 'main.js') return 'constructor';
   return null;
 }
@@ -100,6 +109,7 @@ function resolveSpec(fileRel, spec) {
 
 function classify(p) {
   if (isCore(p)) return 'core';
+  if (isCalcLib(p)) return 'calclib';   // D1/D2: lib/* + js/calc
   if (isCatalog(p)) return 'catalog';
   if (isShared(p)) return 'shared';
   if (moduleOf(p)) return 'module';

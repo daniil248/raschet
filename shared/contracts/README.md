@@ -6,17 +6,25 @@
 > `url-params.md`, `lint-allowlist.json`, корневой `CONTRIBUTING.md`.
 > Архитектурный мастер-план: `dapper-munching-petal.md`.
 
-## 1. Пять слоёв
+## 1. Слои (пересмотрено 2026-05-17 — D1/D2, memory:architecture_layers)
 
 | Слой | Где | Может импортировать | Импортируется |
 |---|---|---|---|
-| **CORE** | `js/engine/*`, `js/calc/*`, `js/methods/*` | только CORE | модулями, shared |
-| **SHARED-CONTRACTS** | `shared/*` (см. §2) | CORE, shared, CATALOGS | модулями |
+| **CORE** (платформа) | `js/engine/*` — schematic-редактор: state/render/serialization/interaction/geometry/history. Владеет `APP_VERSION` (`js/engine/constants.js`) | CORE, CALC-LIB, SHARED, CATALOGS | модулями, shared |
+| **CALC-LIB** (расчётные модули) | `lib/*-methods/*` (gas/hydraulic/hvac/suppression/**electrical**) + `js/calc/*`. **D1:** электрорасчёты — МОДУЛЬ, не ядро | CORE, CALC-LIB, SHARED, CATALOGS | **нативно кем угодно** (module/core/shared) — **D2** |
+| **SHARED-CONTRACTS** | `shared/*` (см. §2) | CORE, CALC-LIB, shared, CATALOGS | модулями |
 | **CATALOGS** | `shared/catalogs/*`, `shared/*-seed.js`, `shared/ups-types/*`, `shared/battery-types/*`, `shared/por-types/*` | ничего | модулями, shared |
-| **PLUGGABLE-MODULES** | `<module>/` со своим `index.html` | CORE, SHARED, CATALOGS | — (никем) |
-| **STANDALONE-APPS** | подмножество модулей `kind:"ui"`, помечены в manifest `standalone:true` | как модуль | — |
+| **PLUGGABLE-MODULES** | `<module>/` со своим `index.html` | CORE, CALC-LIB, SHARED, CATALOGS | — |
+| **STANDALONE-APPS** | подмножество модулей `kind:"ui"`, `standalone:true` | как модуль | — |
 
-CORE владеет единым `APP_VERSION` (`js/engine/constants.js`).
+**D1** (директива Пользователя 2026-05-17): «ядро программы» = ПЛАТФОРМА
+схемного редактора (`js/engine`), универсальная база ВСЕХ типов схем.
+Электротехнические *расчёты* — calc-МОДУЛЬ класса `lib/*-methods`
+(`js/calc`; электрика физически перенесена в `lib/electrical-methods`,
+v0.60.593). **D2**: модули могут НАТИВНО использовать calc-модули
+(прямой импорт `lib/*`/`js/calc` разрешён). Сырой чужой LS —
+по-прежнему только через helpers (R2). Запрет «module→внутренности
+ДРУГОГО pluggable-модуля» сохранён (calc-lib — НЕ pluggable-модуль).
 
 ## 2. Что относится к SHARED-CONTRACTS (шов)
 `project-storage.js`, `project-context.js`, `configuration-catalog.js`,
@@ -29,28 +37,26 @@ CORE владеет единым `APP_VERSION` (`js/engine/constants.js`).
 `shared/<module>-bridge.js` (service-bridge, scheme-rack-bridge,
 inventory-bridge, meteo-bridge, legacy-rack-migration).
 
-## 3. Закон импортов
+## 3. Закон импортов (АКТУАЛИЗИРОВАН 2026-05-17 — D1/D2 применены)
 
-> **⚠ ПЕРЕСМОТР (2026-05-17, memory:architecture_layers, ROADMAP
-> X.4.5).** Дополнения Пользователя: (D1) электрорасчёты — МОДУЛЬ,
-> не ядро; ядро = платформа `js/engine` (универсальная база всех
-> схем). (D2) модули могут НАТИВНО использоваться в др. модулях —
-> запрет `module → ../другой-module` СМЯГЧАЕТСЯ: нативный импорт
-> calc-модуля (`lib/*`, `js/calc`) допустим; сырой чужой LS —
-> по-прежнему через helpers. (D3) Конструктор — база ВСЕХ типов
-> схем с контекстом систем (отменяет «чистая электрика»
-> v0.60.277/278). Полный пересмотр правил ниже + boundary-lint —
-> подфаза X.4.5; до неё текущие правила действуют как есть.
+D1/D2 РЕАЛИЗОВАНЫ в `tools/boundary-lint.mjs` (X.4.5.1/.2,
+v0.60.599): ядро = только `js/engine/*`; `lib/*` + `js/calc/*` =
+класс **CALC-LIB** (отдельный от module); `js/methods` удалён
+(электрика → `lib/electrical-methods`).
 
-**Разрешено:** `module → CORE | SHARED | CATALOGS`;
-`CORE → CORE | SHARED | CATALOGS`; `SHARED → CORE | SHARED | CATALOGS`;
-`CATALOGS` — без импортов. *(Уточнено по аудиту 2026-05-16: ядро
-`js/engine/*` фактически широко использует `shared/*` — это
-нижний стабильный контракт-слой; запрещена лишь зависимость ядра
-от ПОДКЛЮЧАЕМОГО модуля.)*
+**Разрешено:** `module → CORE | CALC-LIB | SHARED | CATALOGS`;
+`CORE → CORE | CALC-LIB | SHARED | CATALOGS`;
+`CALC-LIB → CORE | CALC-LIB | SHARED | CATALOGS`;
+`SHARED → CORE | CALC-LIB | SHARED | CATALOGS`; `CATALOGS` — без
+импортов. **D2:** calc-модуль (`lib/*`, `js/calc`) импортируется
+НАТИВНО любым слоём (это отдельный класс, не `module` — правила
+запрета бьют только по `tgt==='module'`). *(Аудит 2026-05-16: ядро
+`js/engine/*` использует `shared/*` — нижний стабильный шов;
+запрещена лишь зависимость ядра от ПОДКЛЮЧАЕМОГО модуля.)*
 
 **Запрещено (жёсткие правила boundary-lint):**
-- `CORE → <module>` (ядро не зависит от подключаемого модуля).
+- `CORE → <pluggable-module>` (ядро не зависит от подключаемого
+  модуля; CALC-LIB — НЕ pluggable-модуль, импорт ядром разрешён).
 - `SHARED → <module>` (включая `*-seed.js`/CATALOGS → модуль).
   Бывшее нарушение `battery-seed → battery/battery-catalog` погашено
   (v0.60.525): каталог АКБ перенесён в `shared/battery-catalog.js`
