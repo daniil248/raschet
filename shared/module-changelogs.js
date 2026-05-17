@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.564', date: '2026-05-17', items: [
+      '📄 <b>Фаза 3 / 1.7: battery «Печать отчёта АКБ» — direct-HTML → общий blocks-builder</b>. printBatteryReport() (156 строк прямого HTML+window.open+w.print) заменён 16-строчной делегацией на buildBatteryReportBlocks(lastBatteryCalc) — ТОТ ЖЕ builder, что использует уже-рабочий exportBatteryReport (парность вывода гарантирована, нулевой риск расхождения). Прямой PDF через Report.createTemplate+exportPDF без выбора шаблона (быстрый print). battery уже статически импортировал shared/report — без изменения импортов. window.open в battery-calc = 0. Канонический отчёт (buildBatteryReportBlocks) — единый источник истины для содержимого. Остаток 1.7: ups-config:2221.',
+    ] },
     { version: '0.60.563', date: '2026-05-17', items: [
       '📄 <b>Фаза 3 / 1.7: logistics «Проформа отправления» — direct-HTML → reports/ blocks[]</b>. printShipment() переписан с window.open(empty)+document.write(захардкоженный proforma HTML) на blocks[]: h1/caption + таблица реквизитов + таблица спецификации (итоговая строка ИТОГО в rows[]) + параграфы итогов + таблица подписей; Report.createTemplate + exportPDF (паттерн export-offer). Динамический import shared/report (cache-safe). window.open в logistics = 0. Ошибки → flash (in-page, не молчат). Остаток 1.7: battery:3787, ups-config:2221.',
     ] },

@@ -3639,161 +3639,21 @@ function buildBatteryReportBlocks(state) {
 // v0.59.414: открывает новое окно с печатным отчётом — таблицами + обоими
 // SVG-графиками — и вызывает window.print(). Альтернатива PDF-экспорту,
 // удобна для быстрой печати без выбора шаблона.
-function printBatteryReport() {
+// v0.60.564 (Фаза 3, memory:reports_via_module): «Печать» отчёта АКБ
+// делегирует общий blocks-builder buildBatteryReportBlocks (тот же,
+// что exportBatteryReport — парность вывода гарантирована), прямой
+// PDF без выбора шаблона. Прямой HTML+window.open убран.
+async function printBatteryReport() {
   if (!lastBatteryCalc) {
     rsToast('Сначала выполните расчёт.', 'warn');
     return;
   }
-  const s = lastBatteryCalc;
-  const p = s.params, r = s.calcResult;
-  const batName = p.battery
-    ? [p.battery.supplier, p.battery.type || p.battery.model, p.battery.capacityAh ? (p.battery.capacityAh + ' А·ч') : ''].filter(Boolean).join(' · ')
-    : 'усреднённая модель, тип АКБ: ' + chemLabel(p.chemistry);
-  const blockV = p.battery ? p.battery.blockVoltage : (s.blockV || 12);
-  const capAh = p.battery ? p.battery.capacityAh : p.capacityAh;
-  const blocksPerString = r.blocksPerString;
-
-  const row = (k, v, u) => `<tr><td>${escHtml(k)}</td><td style="text-align:right">${escHtml(String(v))}</td><td style="text-align:center;color:#666">${escHtml(u || '')}</td></tr>`;
-  const tbl = (rows) => `<table class="rep"><thead><tr><th>Параметр</th><th style="text-align:right">Значение</th><th style="text-align:center">Ед.</th></tr></thead><tbody>${rows.filter(Boolean).join('')}</tbody></table>`;
-
-  let html = `<!doctype html><html><head><meta charset="utf-8"><title>Расчёт АКБ — ${escHtml(batName)}</title>`;
-  html += `<style>
-    body { font-family: -apple-system, "Segoe UI", Arial, sans-serif; color:#1f2430; max-width: 920px; margin: 20px auto; padding: 0 16px; line-height:1.45; }
-    h1 { font-size: 20px; margin: 0 0 4px; }
-    h2 { font-size: 15px; margin: 18px 0 6px; padding-bottom: 3px; border-bottom: 1px solid #ccd;
-         break-after: avoid-page; page-break-after: avoid; break-inside: avoid; }
-    .muted { color:#666; font-size: 12px; }
-    table.rep { border-collapse: collapse; width: 100%; font-size: 12px; margin: 6px 0 10px; }
-    table.rep th, table.rep td { border: 1px solid #ddd; padding: 4px 8px; }
-    table.rep th { background: #f4f6fa; text-align: left; }
-    .warn { background:#fff3e0; border:1px solid #ffb74d; padding:6px 10px; border-radius:4px; margin:6px 0; font-size:12px; }
-    .chart { background:#fafbfc; border:1px solid #e0e3ea; border-radius:6px; padding:10px; margin: 6px 0 12px;
-             break-inside: avoid; page-break-inside: avoid; }
-    /* v0.59.418: «секция» = h2 + следующий блок (таблица / график / параграф).
-       break-inside: avoid удерживает заголовок вместе с первым следующим блоком,
-       чтобы заголовок не висел в одиночестве в конце страницы. */
-    .section { break-inside: avoid; page-break-inside: avoid; }
-    .actions { position:fixed; top:10px; right:14px; }
-    .actions button { padding: 6px 12px; font-size: 13px; cursor: pointer; }
-    @media print {
-      .actions { display:none; }
-      body { margin: 0; max-width: none; }
-      h2 { break-after: avoid-page; page-break-after: avoid; }
-      h2 + table, h2 + .chart, h2 + p, h2 + div { break-before: avoid-page; page-break-before: avoid; }
-      .section { break-inside: avoid; page-break-inside: avoid; }
-      .chart { break-inside: avoid; page-break-inside: avoid; }
-      tr, thead { break-inside: avoid; page-break-inside: avoid; }
-    }
-  </style></head><body>`;
-  html += `<div class="actions"><button onclick="window.print()">🖨 Печать</button> <button onclick="window.close()">✕ Закрыть</button></div>`;
-  html += `<h1>Отчёт о расчёте аккумуляторной батареи</h1>`;
-  html += `<div class="muted">Модель: <b>${escHtml(batName)}</b> · Дата: ${new Date().toLocaleString('ru-RU')}</div>`;
-
-  html += `<div class="section"><h2>1. Исходные данные</h2>`;
-  html += tbl([
-    row('Мощность нагрузки', p.loadKw, 'кВт'),
-    row('КПД инвертора', (p.invEff * 100).toFixed(0), '%'),
-    row('Напряжение DC-шины', p.dcVoltage, 'В'),
-    row('Конечное напряжение элемента', p.endV, 'В'),
-    row('Ёмкость блока', capAh, 'Ач'),
-    row('Номинальное напряжение блока', blockV, 'В'),
-    row('Параллельных цепочек', p.strings, '—'),
-    row('Блоков в цепочке', blocksPerString, '—'),
-    row('Режим расчёта', p.mode === 'autonomy' ? 'Прямой (автономия по блокам)' : 'Обратный (блоки по автономии)', ''),
-    p.mode === 'required' ? row('Требуемая автономия', p.targetMin, 'мин') : '',
-  ]);
-  html += `</div>`;
-
-  html += `<div class="section"><h2>2. Результаты</h2>`;
-  if (r.kind === 'autonomy' && r.r) {
-    html += tbl([
-      row('Автономия', Number.isFinite(r.r.autonomyMin) ? fmt(r.r.autonomyMin) : '∞', 'мин'),
-      row('Метод', r.r.method === 'table' ? 'по таблице АКБ' : 'усреднённая модель', ''),
-      row('Мощность на блок', fmt(r.r.blockPowerW), 'Вт'),
-      row('Всего блоков', p.strings * blocksPerString, 'шт.'),
-      row('Конфигурация', p.strings + ' цеп. × ' + blocksPerString + ' бл.', ''),
-    ]);
-    if (r.r.extrapolated) html += `<div class="warn">⚠ Условный расчёт: запрошенное время вне таблицы производителя — линейная экстраполяция.</div>`;
-    if (r.r.warnings && r.r.warnings.length) html += r.r.warnings.map(w => `<div class="warn">⚠ ${escHtml(w)}</div>`).join('');
-  } else if (r.kind === 'required' && r.found) {
-    const f = r.found;
-    html += tbl([
-      row('Минимум блоков', f.totalBlocks, 'шт.'),
-      row('Параллельных цепочек', f.strings, '—'),
-      row('Блоков в цепочке', f.blocksPerString, '—'),
-      row('Реальная автономия', fmt(f.result.autonomyMin), 'мин'),
-      row('Метод', f.result.method === 'table' ? 'по таблице АКБ' : 'усреднённая модель', ''),
-    ]);
-    if (f.result.extrapolated) html += `<div class="warn">⚠ Условный расчёт: запрошенное время вне таблицы — линейная экстраполяция.</div>`;
-  }
-  html += `</div>`;
-
-  // Дерейтинг
-  const d = r.derate;
-  if (d && (d.kTotal > 1.001 || d.vdcSafetyPct > 0 || d.socMinPct > 0)) {
-    html += `<div class="section"><h2>3. Расчётные коэффициенты (IEEE 485 / IEC 62040)</h2>`;
-    html += tbl([
-      row('k_age', d.kAge.toFixed(2), '—'),
-      row('k_temp', d.kTemp.toFixed(2), '—'),
-      row('k_design', d.kDesign.toFixed(2), '—'),
-      row('k_total', d.kTotal.toFixed(3), '—'),
-      row('Окно V_DC', '±' + d.vdcSafetyPct.toFixed(1), '%'),
-      row('Резерв SoC (Li-ion)', d.socMinPct.toFixed(0), '%'),
-      Number.isFinite(r.loadKwEff) ? row('Расчётная нагрузка', fmt(r.loadKwEff), 'кВт') : '',
-    ]);
-    html += `</div>`;
-  }
-
-  // Подбор N
-  if (s.opt && s.vRange) {
-    const o = s.opt, vR = s.vRange;
-    html += `<div class="section"><h2>${(d && (d.kTotal > 1.001 || d.vdcSafetyPct > 0 || d.socMinPct > 0)) ? '4' : '3'}. Подбор числа блоков (V_DC оптимизация)</h2>`;
-    html += `<p style="font-size:12px">Минимальное N в цепочке при условии: V_DC в окне ИБП и при разряде, и при float-заряде.</p>`;
-    html += tbl([
-      row('Диапазон V_DC ИБП', vR.min + '…' + vR.max, 'В'),
-      row('Окно после safety', o.vMinEff.toFixed(0) + '…' + o.vMaxEff.toFixed(0), 'В'),
-      row('Элементов в блоке', o.cellsPerBlock, 'шт.'),
-      row('endV на блок', o.endVperBlock.toFixed(2), 'В'),
-      row('floatV на блок', o.floatVperBlock.toFixed(2), 'В'),
-      row('N_min (разряд)', o.nMinDischarge, 'шт.'),
-      row('N_max (float)', o.nMaxFloat, 'шт.'),
-      row('Принято N', blocksPerString, 'шт.'),
-    ]);
-    html += `<p style="font-size:12px;color:#444">Формулы: N_min = ⌈V_DC_min_eff / (endV · cellsPerBlock)⌉; N_max = ⌊V_DC_max_eff / (floatV · cellsPerBlock)⌋. Выбран минимум — экономически оптимально.</p>`;
-    if (s.dcWarn) html += `<div class="warn">⚠ ${escHtml(s.dcWarn)}</div>`;
-    html += `</div>`;
-  }
-
-  // Графики (вытягиваем innerHTML текущих SVG)
-  const mainChart = document.getElementById('calc-chart-mount');
-  const zoomChart = document.getElementById('calc-chart-zoom-mount');
-  const nextN = (d && (d.kTotal > 1.001 || d.vdcSafetyPct > 0 || d.socMinPct > 0)) ? (s.opt ? '5' : '4') : (s.opt ? '4' : '3');
-  if (mainChart && mainChart.innerHTML.trim()) {
-    html += `<div class="section"><h2>${nextN}. График разряда АКБ</h2>`;
-    html += `<div class="chart">${mainChart.innerHTML}</div>`;
-    html += `<p class="muted">Красный маркер — рассчитанная рабочая точка. Оранжевый — экстраполированная (за пределами таблицы производителя).</p>`;
-    html += `</div>`;
-  }
-  if (zoomChart && zoomChart.innerHTML.trim()) {
-    html += `<div class="section"><h2>${+nextN + 1}. Детализация в рабочей зоне</h2>`;
-    html += `<div class="chart">${zoomChart.innerHTML}</div>`;
-    html += `<p class="muted">Окно вокруг рабочей точки. Линейные шкалы для оценки запаса по обеим осям.</p>`;
-    html += `</div>`;
-  }
-
-  html += `<hr style="margin-top:18px"><p class="muted">Документ сформирован автоматически Raschet · ${new Date().toLocaleDateString('ru-RU')}</p>`;
-  html += `</body></html>`;
-
-  const w = window.open('', '_blank');
-  if (!w) {
-    rsToast('Не удалось открыть окно печати — проверьте блокировщик всплывающих окон.', 'err');
-    return;
-  }
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
-  // Auto-focus и небольшая задержка для рендера SVG перед печатью
-  setTimeout(() => { try { w.focus(); } catch (e) {} }, 200);
+  const tpl = Report.createTemplate({
+    meta: { title: 'Расчёт аккумуляторной батареи', kind: 'battery-calc' },
+  });
+  tpl.content = buildBatteryReportBlocks(lastBatteryCalc);
+  try { await Report.exportPDF(tpl, 'Расчёт АКБ'); }
+  catch (e) { rsToast('Не удалось сформировать PDF: ' + (e && e.message ? e.message : e), 'err'); }
 }
 
 // ================= Вкладки =================
