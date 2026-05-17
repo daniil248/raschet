@@ -14,7 +14,7 @@
 //   tpl.logo            → ImageRun в соответствующем колонтитуле
 // ======================================================================
 
-import { pageSizeMm, substitute, effectiveFlow } from './template.js';
+import { pageSizeMm, substitute, effectiveFlow, flowSegments } from './template.js';
 
 const DOCX_URL = 'https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.min.js';
 const FILE_SAVER_URL = 'https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js';
@@ -55,50 +55,50 @@ export async function exportDOCX(tpl, filename) {
     ImageRun, LevelFormat, PageBreak,
   } = D;
 
-  const { width, height } = pageSizeMm(tpl.page);
-  const m = tpl.page.margins;
-
-  const section = {
-    properties: {
-      page: {
-        size: {
-          width:  mm2tw(width),
-          height: mm2tw(height),
-          orientation: tpl.page.orientation === 'landscape'
-            ? PageOrientation.LANDSCAPE : PageOrientation.PORTRAIT,
+  // Word-style: каждый flow-сегмент → отдельная docx-Section со
+  // своей геометрией/ориентацией (обложка/landscape-раздел и т.п.).
+  const segs = flowSegments(tpl);
+  const docSections = segs.map((seg, si) => {
+    const geom = seg.geom || tpl.page;
+    const sz = pageSizeMm(geom);
+    const m = geom.margins || tpl.page.margins;
+    const chromeOn = seg.chrome !== false;
+    const sct = {
+      properties: {
+        page: {
+          size: {
+            width:  mm2tw(sz.width),
+            height: mm2tw(sz.height),
+            orientation: geom.orientation === 'landscape'
+              ? PageOrientation.LANDSCAPE : PageOrientation.PORTRAIT,
+          },
+          margin: {
+            top:    mm2tw(m.top),
+            right:  mm2tw(m.right),
+            bottom: mm2tw(m.bottom),
+            left:   mm2tw(m.left),
+            header: mm2tw(Math.max(5, m.top - (tpl.header.otherPages.height || 0))),
+            footer: mm2tw(Math.max(5, m.bottom - (tpl.footer.otherPages.height || 0))),
+          },
+          titlePage: si === 0 && !seg.isCover,
         },
-        margin: {
-          top:    mm2tw(m.top),
-          right:  mm2tw(m.right),
-          bottom: mm2tw(m.bottom),
-          left:   mm2tw(m.left),
-          header: mm2tw(Math.max(5, m.top - (tpl.header.otherPages.height || 0))),
-          footer: mm2tw(Math.max(5, m.bottom - (tpl.footer.otherPages.height || 0))),
-        },
-        titlePage: true,  // отдельные колонтитулы для первой страницы
       },
-    },
-    headers: {
-      first:   tpl.header.firstPage.enabled  ? new Header({ children: blocksToDocx(tpl.header.firstPage.blocks,  tpl, D, { first: true })  }) : undefined,
-      default: tpl.header.otherPages.enabled ? new Header({ children: blocksToDocx(tpl.header.otherPages.blocks, tpl, D, { first: false }) }) : undefined,
-    },
-    footers: {
-      first:   tpl.footer.firstPage.enabled  ? new Footer({ children: blocksToDocx(tpl.footer.firstPage.blocks,  tpl, D, { first: true,  footer: true }) }) : undefined,
-      default: tpl.footer.otherPages.enabled ? new Footer({ children: blocksToDocx(tpl.footer.otherPages.blocks, tpl, D, { first: false, footer: true }) }) : undefined,
-    },
-    children: blocksToDocx(effectiveFlow(tpl), tpl, D, {}),
-  };
-
-  // Overlay-зоны: DOCX не поддерживает свободное позиционирование
-  // текста прямо в теле секции, поэтому приближаем — верхние overlays
-  // дописываем в header, нижние в footer. Точные координаты не
-  // сохраняются (это задокументированное ограничение DOCX-экспорта).
-  injectOverlays(section, tpl, D, height);
-
-  // Если есть логотип — ставим его первым ребёнком соответствующего колонтитула
-  if (tpl.logo && tpl.logo.src) {
-    injectLogo(section, tpl, D);
-  }
+      headers: chromeOn ? {
+        first:   tpl.header.firstPage.enabled  ? new Header({ children: blocksToDocx(tpl.header.firstPage.blocks,  tpl, D, { first: true })  }) : undefined,
+        default: tpl.header.otherPages.enabled ? new Header({ children: blocksToDocx(tpl.header.otherPages.blocks, tpl, D, { first: false }) }) : undefined,
+      } : {},
+      footers: chromeOn ? {
+        first:   tpl.footer.firstPage.enabled  ? new Footer({ children: blocksToDocx(tpl.footer.firstPage.blocks,  tpl, D, { first: true,  footer: true }) }) : undefined,
+        default: tpl.footer.otherPages.enabled ? new Footer({ children: blocksToDocx(tpl.footer.otherPages.blocks, tpl, D, { first: false, footer: true }) }) : undefined,
+      } : {},
+      children: blocksToDocx(seg.blocks || [], tpl, D, {}),
+    };
+    if (chromeOn) {
+      injectOverlays(sct, tpl, D, sz.height);
+      if (tpl.logo && tpl.logo.src) injectLogo(sct, tpl, D);
+    }
+    return sct;
+  });
 
   const doc = new Document({
     creator: tpl.meta.author || '',
@@ -123,7 +123,9 @@ export async function exportDOCX(tpl, filename) {
         }],
       }],
     },
-    sections: [section],
+    sections: docSections.length ? docSections : [{
+      properties: {}, children: blocksToDocx(effectiveFlow(tpl), tpl, D, {}),
+    }],
   });
 
   const blob = await Packer.toBlob(doc);

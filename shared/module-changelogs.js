@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.672', date: '2026-05-17', items: [
+      '🏗 <b>Отчёты — DS2c: DOCX мульти-Section (полный Word-аналог)</b>. export-docx: каждый flowSegment → отдельная docx-Section со своей геометрией (size/orientation/margins из seg.geom), своими колонтитулами (или без — обложка при chrome:false), children=blocksToDocx(seg.blocks). titlePage только для первого нес-cover сегмента. injectOverlays/injectLogo — на chrome-сегменты. Нулевая регрессия: обычный документ → flowSegments=1 сегмент base-геометрии → одна Section, идентичная прежней (page/margins/headers/footers/children те же). Landscape-разделы и обложка теперь корректно экспортируются в Word отдельными секциями. Файл: shared/report/export-docx.js (мульти-Section по flowSegments).',
+    ] },
     { version: '0.60.671', date: '2026-05-17', items: [
       '🏗 <b>Отчёты — DS3: редактор для Word-style разделов/обложки</b>. editor.js: «Структура» → пресет «⮐ Разрыв раздела (ориентация)» (вставляет sectionBreak); свойства sectionBreak — формат/ориентация/поля (пусто=наследовать); метка блока показывает ориентацию/формат. «Лист» → секция «Обложка/титул»: вкл отдельной титульной страницы, её ориентация, колонтитулы на обложке (вкл/выкл), добавление блоков обложки (Заголовок/Текст) + правка/удаление; секция «Первая страница (геометрия)»: своя ориентация 1-й страницы контента. Опирается на DS1/DS2a (модель+рендереры flowSegments на edge — cache-safe). Файл: shared/report/editor.js (STRUCT_ADD, buildBlockProps sectionBreak, blockLabel, buildPage cover/firstPage).',
     ] },
