@@ -35,8 +35,19 @@
 
 // ---------------- Константы ----------------
 
-const LS_PROJECTS       = 'raschet.projects.v1';          // массив метаданных
-const LS_ACTIVE_PROJECT = 'raschet.activeProjectId.v1';   // id активного
+// Корень LS-неймспейса всего приложения. ЕДИНАЯ точка истины:
+// будущее переименование продукта/проекта = смена ЭТОЙ строки + одноразовая
+// LS-миграция старый-префикс → новый (см. RENAME.md). Все построители
+// ключей ниже (projectKey, префиксы, sketch, copy/scan) идут через APP_NS,
+// поэтому подавляющая часть данных пользователя переезжает автоматически.
+// ВАЖНО: schema-id экспортируемого JSON (`raschet.project/1`) — стабильный
+// wire-format, НЕ привязан к APP_NS (иначе сломается импорт ранее
+// экспортированных файлов). См. exportProject/importProject ниже.
+export const APP_NS = 'raschet';
+const NS = (suffix) => `${APP_NS}.${suffix}`;
+
+const LS_PROJECTS       = NS('projects.v1');          // массив метаданных
+const LS_ACTIVE_PROJECT = NS('activeProjectId.v1');   // id активного
 
 const PROJECT_SCHEMA_VERSION = 1;
 
@@ -48,9 +59,9 @@ const PROJECT_SCHEMA_VERSION = 1;
 // будут переведены в неймспейс. Пока это справочник для миграции.
 export const PROJECT_SCOPED_KEYS = [
   // 1.27.1 — СКС
-  'raschet.scs-design.links.v1',
-  'raschet.scs-design.selection.v1',
-  'raschet.scs-design.plan.v1',
+  NS('scs-design.links.v1'),
+  NS('scs-design.selection.v1'),
+  NS('scs-design.plan.v1'),
   // 1.27.3 — содержимое шкафов и IT-реестр
   'scs-config.contents.v1',
   'scs-config.rackTags.v1',
@@ -58,7 +69,7 @@ export const PROJECT_SCOPED_KEYS = [
   // 1.27.3 — не-IT имущество
   'facility-inventory.v1',
   // 1.27.2 — главная схема
-  'raschet.schema.v1',
+  NS('schema.v1'),
 ];
 
 // ---------------- LS utils ----------------
@@ -213,8 +224,8 @@ export function copyProject(srcId, { nameSuffix = ' (копия)', kind } = {}) 
     ownerModule: src.ownerModule || null,
   });
   // Сканируем LS, собираем все ключи srcPid и записываем под dstPid.
-  const srcPrefix = `raschet.project.${src.id}.`;
-  const dstPrefix = `raschet.project.${dst.id}.`;
+  const srcPrefix = `${APP_NS}.project.${src.id}.`;
+  const dstPrefix = `${APP_NS}.project.${dst.id}.`;
   const payload = [];
   try {
     for (let i = 0; i < localStorage.length; i++) {
@@ -270,8 +281,8 @@ export function copyProject(srcId, { nameSuffix = ' (копия)', kind } = {}) 
   // конфликта с другими проектами нет, plus refs внутри sketch'a ссылаются
   // на entity того же проекта (которые могли быть переименованы через idMap).
   // Прогоняем sketch-данные через idMap rack instances для consistency.
-  const srcSkPrefix = `raschet.sketch.${src.id}.`;
-  const dstSkPrefix = `raschet.sketch.${dst.id}.`;
+  const srcSkPrefix = `${APP_NS}.sketch.${src.id}.`;
+  const dstSkPrefix = `${APP_NS}.sketch.${dst.id}.`;
   const skKeys = [];
   try {
     for (let i = 0; i < localStorage.length; i++) {
@@ -351,7 +362,7 @@ export function ensureDefaultProject() {
 // Пример: projectKey('scs-design', 'links.v1') → 'raschet.project.p_x4y2z8.scs-design.links.v1'
 export function projectKey(pid, module, key) {
   if (!pid) pid = getActiveProjectId() || 'default';
-  return `raschet.project.${pid}.${module}.${key}`;
+  return `${APP_NS}.project.${pid}.${module}.${key}`;
 }
 
 // Прозрачное чтение/запись в проектный неймспейс. В 1.27.1 adapter'ы в
@@ -374,7 +385,7 @@ export function projectSave(pid, module, key, value) {
 // raschet.project.<pid>. и собираем относительные ключи как `<module>.<key>`.
 function collectScoped(pid) {
   const scoped = {};
-  const prefix = `raschet.project.${pid}.`;
+  const prefix = `${APP_NS}.project.${pid}.`;
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
@@ -393,7 +404,7 @@ function collectScoped(pid) {
 // sketch'и теряются и связи с другими модулями обрываются.
 function collectSketches(pid) {
   const sketches = {};
-  const prefix = `raschet.sketch.${pid}.`;
+  const prefix = `${APP_NS}.sketch.${pid}.`;
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
@@ -409,6 +420,10 @@ function collectSketches(pid) {
 export function exportProject(id) {
   const p = getProject(id); if (!p) return null;
   const data = {
+    // ВНИМАНИЕ: 'raschet.project/1' — стабильный wire-format ID экспортного
+    // JSON, НАМЕРЕННО не через APP_NS. Переименование продукта НЕ меняет его,
+    // иначе ранее экспортированные пользователями файлы перестанут импор-
+    // тироваться. См. RENAME.md.
     schema: 'raschet.project/1',
     exportedAt: Date.now(),
     project: p,
@@ -435,14 +450,14 @@ export function importProject(obj) {
         return obj.project;
       })();
   if (obj.scoped && typeof obj.scoped === 'object') {
-    const prefix = `raschet.project.${p.id}.`;
+    const prefix = `${APP_NS}.project.${p.id}.`;
     for (const [rel, value] of Object.entries(obj.scoped)) {
       try { localStorage.setItem(prefix + rel, JSON.stringify(value)); } catch {}
     }
   }
   // v0.60.174: восстановление sketch'ей (если были экспортированы).
   if (obj.sketches && typeof obj.sketches === 'object') {
-    const prefix = `raschet.sketch.${p.id}.`;
+    const prefix = `${APP_NS}.sketch.${p.id}.`;
     for (const [rel, value] of Object.entries(obj.sketches)) {
       try { localStorage.setItem(prefix + rel, JSON.stringify(value)); } catch {}
     }
@@ -455,8 +470,8 @@ export function importProject(obj) {
 // v0.60.174: также чистим sketch'и проекта (raschet.sketch.<pid>.* — другой
 // namespace, не подпадал под общий префикс).
 export function clearProjectData(pid) {
-  const prefix1 = `raschet.project.${pid}.`;
-  const prefix2 = `raschet.sketch.${pid}.`;
+  const prefix1 = `${APP_NS}.project.${pid}.`;
+  const prefix2 = `${APP_NS}.sketch.${pid}.`;
   const toRemove = [];
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
