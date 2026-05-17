@@ -2773,21 +2773,28 @@ function render() {
         'В этот проект скопируется текущее содержимое главного Конструктора схем. Существующая схема проекта (если есть) будет перезаписана.'
       );
       if (!ok) return;
-      localStorage.setItem(projectKey(p.id, 'engine', 'scheme.v1'), raw);
-      updateProject(p.id, {});
+      // Фаза 2 (R2): запись проектной схемы — через шов projectSave
+      // (bump updatedAt включён). raw — JSON-строка глобальной схемы
+      // Конструктора; парсим под guard, чтобы не записать мусор.
+      let parsed;
+      try { parsed = JSON.parse(raw); }
+      catch { prToast('⚠ Глобальная схема повреждена (не JSON)', 'err'); return; }
+      projectSave(p.id, 'engine', 'scheme.v1', parsed);
       prToast('✔ Схема скопирована в проект');
       render();
     });
     actionsHost.querySelector('[data-act="apply-scheme"]').addEventListener('click', async () => {
-      const key = projectKey(p.id, 'engine', 'scheme.v1');
-      const raw = localStorage.getItem(key);
-      if (!raw) { prToast('⚠ В проекте нет схемы. Сначала «⬇ Взять глобальную схему»', 'err'); return; }
+      // Фаза 2 (R2): чтение проектной схемы — через шов projectLoad.
+      const data = projectLoad(p.id, 'engine', 'scheme.v1', null);
+      if (data == null) { prToast('⚠ В проекте нет схемы. Сначала «⬇ Взять глобальную схему»', 'err'); return; }
       const ok = await prConfirm(
         'Применить схему проекта в Конструкторе?',
         'Текущая глобальная схема Конструктора будет ПЕРЕЗАПИСАНА схемой этого проекта. Действие необратимо без backup.'
       );
       if (!ok) return;
-      localStorage.setItem('raschet.scheme', raw);
+      // Глобальная схема Конструктора (raschet.scheme) — собственный
+      // global-ключ engine, не project-scoped; задокументированный мост.
+      localStorage.setItem('raschet.scheme', JSON.stringify(data));
       prToast('✔ Схема применена. Откройте Конструктор схем для проверки.');
     });
     actionsHost.querySelector('[data-act="export"]').addEventListener('click', () => {

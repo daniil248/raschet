@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.716', date: '2026-05-18', items: [
+      '🧱 <b>Разделение ядро/модули — Фаза 2 R2: мост глобальной↔проектной схемы (Инкремент C1)</b>. Кнопки «⬇ Взять глобальную схему» и «⬆ Применить схему проекта»: запись/чтение project-scoped engine.scheme.v1 переведены на шов projectSave/projectLoad. «Взять»: JSON.parse под guard (повреждённую глобальную схему не записываем) + projectSave (bump updatedAt встроен, убран дублирующий updateProject). «Применить»: projectLoad → JSON.stringify в собственный global-ключ engine raschet.scheme (задокументированный мост, не project-scoped). Семантика для валидного JSON идентична (parse↔stringify round-trip). Файлы: apps/projects/project.js, js/engine/constants.js.',
+    ] },
     { version: '0.60.715', date: '2026-05-18', items: [
       '🧱 <b>Разделение ядро/модули — Фаза 2 R2: упрочнение чтения projects/project.js (Инкремент B)</b>. Удалены 3 локальных дубля-хелпера _readJSON (summary/equipment/validation блоки); все их вызовы (engine scheme.v1, tech-workspace variants.v1, scs-design snapshot, engine issues.v1) переведены на шов projectLoad. Также completeness-check «СКС-проект если есть» (scs-design scs.v1) — с сырого localStorage.getItem на projectLoad с корректной проверкой пустоты (вместо строкового сравнения с null/{} — теперь и [] трактуется как «нет данных», что соответствует смыслу). Остаётся Инкремент C: write/migrate-пути (2595+/2707+/2773/3347/3492 — copy/apply/save схемы, legacy-миграции), отдельными изолированными PR (высокий риск). Файлы: apps/projects/project.js, js/engine/constants.js.',
     ] },
