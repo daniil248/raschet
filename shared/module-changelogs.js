@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.637', date: '2026-05-17', items: [
+      '📋 <b>Фаза 1 (хвост): манифест sketch честный</b>. apps/sketch/manifest.json: storageKeys = raschet.sketch.&lt;pid&gt;.list.v1 (список скетчей) + raschet.sketch.&lt;pid&gt;.&lt;sketchId&gt;.v2 (XML-данные drawio/mxGraph) + raschet.sketch.refs.sidebar.open.v1 (UI-флаг сайдбара связей); urlParams +sketch (deep-link конкретного скетча). version 1.0.0→1.1.0. Модуль enabled:false (ВРЕМЕННО ОТКЛЮЧЁН) — проецируемые поля не тронуты. Непроецируемые поля → modules.json не меняется, паритет 33 OK, нулевой runtime-риск. Файл: apps/sketch/manifest.json.',
+    ] },
     { version: '0.60.636', date: '2026-05-17', items: [
       '📋 <b>Фаза 1 (хвост): манифест catalog честный</b>. apps/catalog/manifest.json: storageKeys +raschet.currentRole (флаг роли user/catalog-admin); urlParams +filterKind/filterSubtype/filterRole/filterSearch/q (deep-link фильтров каталога); bridges [] → shared/catalog-bridge.js (фактический импорт, был пропущен). Базовые catalog-ключи и события (work-templates/materials/wizards-change) уже верны. version 1.0.0→1.1.0. Непроецируемые поля → modules.json не меняется, паритет 33 OK, нулевой runtime-риск. Файл: apps/catalog/manifest.json.',
     ] },
