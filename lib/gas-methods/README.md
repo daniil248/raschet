@@ -10,9 +10,13 @@
   давления (линейная), P1²−P2² среднего/высокого (изотермическое
   сжимаемое), `GAS_PROPS` (природный/метан/пропан/бутан/воздух),
   `ROUGHNESS`, `LOW_PRESSURE_LIMIT`.
-- `pressure-drop.js` — `{META,compute}`: потери давления с
-  авто-выбором режима по входному избыточному давлению (≤5 кПа →
-  низкое; иначе среднее/высокое).
+- Потери давления — ОБОСОБЛЕНЫ ПО СТАНДАРТУ (D4, пользователь
+  выбирает методику через picker = METHOD_LIST):
+  - `pressure-drop.js` — СП 42-101-2003 / СП 62.13330 (Darcy низкое
+    / изотерм. P1²−P2² среднее-высокое; id `gas-pressure-drop`
+    сохранён для backward-compat).
+  - `pressure-drop-renouard.js` — Renouard linéaire / quadratique.
+  - `pressure-drop-weymouth.js` — Weymouth (λ=0.009407/D^⅓).
 - `throughput.js` — `{META,compute}`: обратная задача — макс.
   расход при допустимом ΔP (итерация λ(Re) с фикс. точкой).
 - `index.js` — реестр `METHODS`/`METHOD_LIST`/`run(id,input)` +
