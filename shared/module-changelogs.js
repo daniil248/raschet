@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.632', date: '2026-05-17', items: [
+      '📋 <b>Фаза 1 (хвост): манифест battery честный</b>. apps/battery/manifest.json: storageKeys +raschet.battery.lifecycleCostItems.v1 (глобальная форма LC_KEY) +raschet.battery.lastCalcInputs.v1 (кэш входов калькулятора, +::ctx суффикс) +raschet.battActiveSel +raschet.battHandoffSeeded (флаги handoff из ИБП); urlParams +vdcMin/vdcMax/invEff/capacityKw (приём из ?fromUps-handoff). Базовые ключи/события (battery:configs-changed) уже верны. version 1.0.0→1.1.0. Непроецируемые поля → modules.json не меняется, паритет 33 OK, нулевой runtime-риск. Файл: apps/battery/manifest.json.',
+    ] },
     { version: '0.60.631', date: '2026-05-17', items: [
       '📋 <b>Фаза 1 (хвост): манифест ups-config честный</b>. apps/ups-config/manifest.json: storageKeys (7) и events (rs-selection-change/rs-cs-focus/ups-config:configs-changed/ups:open-master) уже корректны; schema-id raschet.ups-config.v1 уже верно НЕ включён (wire-format, RENAME.md §3). Дополнены urlParams +vdcMin/vdcMax/canParallel/maxLoadFactor/maxLoadFactorActive/pid (pre-fill подбора из ?nodeId/handoff). version 1.0.0→1.1.0. Непроецируемые поля → modules.json не меняется, паритет 33 OK, нулевой runtime-риск. Файл: apps/ups-config/manifest.json.',
     ] },

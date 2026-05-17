@@ -2,7 +2,7 @@
   "id": "battery",
   "name": "Расчёт АКБ",
   "description": "Подбор ёмкости и конфигурации АКБ для ИБП. Загрузка таблиц разряда производителей (Kehua, Panasonic, SVC, Sonnenschein) в XLSX и точный расчёт по ним",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "owner": "unassigned",
   "kind": "ui",
   "standalone": true,
@@ -32,6 +32,10 @@
   "dependsOnContracts": {
     "storageKeys": [
       "raschet.project.<pid>.battery.lifecycleCostItems.v1",
+      "raschet.battery.lifecycleCostItems.v1",
+      "raschet.battery.lastCalcInputs.v1",
+      "raschet.battActiveSel",
+      "raschet.battHandoffSeeded",
       "raschet.batteryCatalog.v1",
       "raschet.upsHandoff.v1",
       "raschet.upsBatteryReturn.v1",
@@ -50,7 +54,11 @@
       "autonomyMin",
       "selected",
       "fromUps",
-      "fromCtx"
+      "fromCtx",
+      "vdcMin",
+      "vdcMax",
+      "invEff",
+      "capacityKw"
     ],
     "bridges": []
   }
