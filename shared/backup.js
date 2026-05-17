@@ -182,8 +182,16 @@ export async function pickBackupFolder() {
   if (!('showDirectoryPicker' in window)) {
     throw new Error('Браузер не поддерживает File System Access API. Используйте «💾 Бэкап» вручную.');
   }
-  // mode:'readwrite' нужен чтобы писать файлы
-  const handle = await window.showDirectoryPicker({ mode: 'readwrite', id: 'raschet-backup' });
+  // mode:'readwrite' нужен чтобы писать файлы.
+  // startIn:'home' — по умолчанию открывать пикер в домашней папке
+  // пользователя (явный запрос). Браузер НЕ даёт тихий доступ к ФС —
+  // папку всё равно выбирает пользователь явно; startIn лишь задаёт
+  // стартовую директорию диалога.
+  const handle = await window.showDirectoryPicker({
+    mode: 'readwrite',
+    id: 'raschet-backup',
+    startIn: 'home',
+  });
   await idbSet('folder', handle);
   return handle;
 }

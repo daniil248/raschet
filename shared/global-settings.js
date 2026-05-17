@@ -324,7 +324,7 @@ function _renderBackupSection(host) {
     <div style="display:flex;flex-direction:column;gap:8px;padding:10px 14px;background:#f0f9ff;border:1px solid #bfdbfe;border-radius:6px">
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button type="button" id="rs-gs-backup-now" style="padding:6px 14px;background:#16a34a;color:#fff;border:0;border-radius:4px;cursor:pointer;font-weight:500">💾 Сделать бэкап сейчас (скачать)</button>
-        ${fsaSupport ? `<button type="button" id="rs-gs-pick-folder" style="padding:6px 14px;background:#2563eb;color:#fff;border:0;border-radius:4px;cursor:pointer">📁 Выбрать папку для авто-бэкапа</button>` : ''}
+        ${fsaSupport ? `<button type="button" id="rs-gs-pick-folder" title="Откроется системный диалог в домашней папке. Данные будут храниться в выбранной папке на ПК, не в браузере." style="padding:6px 14px;background:#2563eb;color:#fff;border:0;border-radius:4px;cursor:pointer">📁 Выбрать папку на ПК (по умолч. домашняя)</button>` : ''}
       </div>
       ${!fsaSupport ? '<div class="muted" style="font-size:11px;color:#92400e">⚠ Авто-бэкап в папку требует File System Access API. Браузер не поддерживает (Safari/Firefox). Используйте «Бэкап сейчас» вручную.</div>' : ''}
 
@@ -345,19 +345,31 @@ function _renderBackupSection(host) {
       </label>
 
       ${lastInfo}
+      <div id="rs-gs-backup-status" role="status" aria-live="polite" style="display:none;font-size:12px;margin-top:2px;padding:6px 10px;border-radius:4px"></div>
     </div>
   `;
 
   const refresh = () => _renderBackupSection(host);
+
+  // In-page статус вместо alert() (memory: no browser dialogs).
+  const setStatus = (msg, ok = true) => {
+    const el = host.querySelector('#rs-gs-backup-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.style.display = 'block';
+    el.style.background = ok ? '#dcfce7' : '#fee2e2';
+    el.style.color = ok ? '#166534' : '#991b1b';
+    el.style.border = '1px solid ' + (ok ? '#86efac' : '#fca5a5');
+  };
 
   // Бэкап сейчас (всегда работает — скачивает .json)
   host.querySelector('#rs-gs-backup-now')?.addEventListener('click', () => {
     try {
       const v = (window.RASCHET_VERSION) || '';
       const r = downloadBackup({ appVersion: v });
-      alert(`✓ Бэкап скачан: ${r.keyCount} ключей.`);
       refresh();
-    } catch (e) { alert('Ошибка: ' + (e.message || e)); }
+      setStatus(`✓ Бэкап скачан: ${r.keyCount} ключей.`, true);
+    } catch (e) { setStatus('Ошибка: ' + (e.message || e), false); }
   });
 
   // Выбрать папку
@@ -366,9 +378,13 @@ function _renderBackupSection(host) {
       await pickBackupFolder();
       const v = (window.RASCHET_VERSION) || '';
       const r = await writeBackupToFolder({ appVersion: v });
-      alert(`✓ Папка выбрана. Тестовый бэкап записан: ${r.fileName} (${r.keyCount} ключей).`);
       refresh();
-    } catch (e) { alert('Не удалось: ' + (e.message || e)); }
+      setStatus(`✓ Папка выбрана (диалог открылся в домашней папке). Тестовый бэкап записан: ${r.fileName} (${r.keyCount} ключей).`, true);
+    } catch (e) {
+      // AbortError = пользователь закрыл пикер — не ошибка.
+      const msg = (e && e.name === 'AbortError') ? 'Выбор папки отменён.' : ('Не удалось: ' + (e?.message || e));
+      setStatus(msg, e && e.name === 'AbortError');
+    }
   });
 
   // Toggle enabled
@@ -785,8 +801,8 @@ export function openSettingsModal() {
         <div class="muted" style="margin-bottom:8px" title="Организация — группа людей с общими проектами и настройками. Уровень между «компанией» (юр.лицом) и «пользователем». Для каскада общих параметров (валюта / НДС / бренд / шаблоны).">Команда / отдел проектирования. Каскадные параметры используются если ни проект, ни компания их не задают.</div>
         <div id="rs-gs-org-section" style="margin-bottom:18px"></div>
 
-        <h4>💾 Резервное копирование</h4>
-        <div class="muted" style="margin-bottom:8px">Защита от потери данных. Раз в час (или другой интервал) приложение автоматически записывает JSON-бэкап в выбранную папку.</div>
+        <h4>💾 Локальные данные на ПК / резервное копирование</h4>
+        <div class="muted" style="margin-bottom:8px">Хранение данных в папке на вашем компьютере (а не только в браузере). Выберите папку — диалог по умолчанию открывается в домашней папке. Приложение записывает JSON-данные туда и периодически авто-обновляет.</div>
         <div id="rs-gs-backup-section" style="margin-bottom:18px"></div>
 
         <h4>Справочник уровней напряжения</h4>
