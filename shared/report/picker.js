@@ -51,18 +51,21 @@ export function pickTemplate(opts = {}) {
     const all = listTemplates().filter(t => !(t.template && t.template.level === 'base'));
     const tags = Array.isArray(opts.tags) ? opts.tags : null;
 
-    // В picker показываем ВСЕГДА все шаблоны — чтобы пользователь мог
-    // выбрать любой, даже если его теги не совпадают с ожиданием
-    // подпрограммы. Шаблоны, теги которых пересекаются с opts.tags,
-    // помечаются как рекомендованные и идут первыми в списке.
+    // Для КОНКРЕТНОГО отчёта показываем ТОЛЬКО подходящие шаблоны
+    // (теги пересекаются с opts.tags) — требование Пользователя
+    // «только шаблоны для этого отчёта». Остальные скрыты, но их
+    // можно раскрыть кнопкой «Показать все шаблоны» (на случай
+    // нестандартного выбора / если рекомендация не сработала).
     const isRecommended = (t) => {
       if (!tags || !tags.length) return false;
       return tags.some(tg => (t.tags || []).includes(tg));
     };
-    const filtered = [
-      ...all.filter(isRecommended),
-      ...all.filter(t => !isRecommended(t)),
-    ];
+    const recommended = (tags && tags.length) ? all.filter(isRecommended) : all;
+    const others = (tags && tags.length) ? all.filter(t => !isRecommended(t)) : [];
+    // По умолчанию: только релевантные. Если релевантных нет —
+    // показываем все (чтобы не было пустого списка).
+    let showAll = !(tags && tags.length) || recommended.length === 0;
+    let filtered = showAll ? [...recommended, ...others] : recommended;
 
     const backdrop = el('div', 'rpt-modal-backdrop');
     const modal = el('div', 'rpt-picker-modal');
@@ -89,6 +92,12 @@ export function pickTemplate(opts = {}) {
     link.className = 'rpt-picker-link';
     link.textContent = 'Открыть каталог шаблонов ↗';
     footer.appendChild(link);
+    // Тумблер «только для этого отчёта ↔ все шаблоны».
+    const btnToggle = document.createElement('button');
+    btnToggle.type = 'button';
+    btnToggle.className = 'btn';
+    if (others.length === 0) btnToggle.style.display = 'none';
+    footer.appendChild(btnToggle);
     const btnCancel = document.createElement('button');
     btnCancel.type = 'button';
     btnCancel.className = 'btn';
@@ -167,6 +176,22 @@ export function pickTemplate(opts = {}) {
       const rec = filtered.find(t => t.id === selectedId);
       finish(rec || null);
     };
+    const syncToggle = () => {
+      btnToggle.textContent = showAll
+        ? '↩ Только для этого отчёта'
+        : 'Показать все шаблоны (' + others.length + ')';
+    };
+    syncToggle();
+    btnToggle.addEventListener('click', () => {
+      showAll = !showAll;
+      filtered = showAll ? [...recommended, ...others] : recommended;
+      if (!filtered.some(t => t.id === selectedId)) {
+        selectedId = (filtered[0] && filtered[0].id) || null;
+        btnOk.disabled = !selectedId;
+      }
+      syncToggle();
+      renderList();
+    });
     closeBtn.addEventListener('click', () => finish(null));
     btnCancel.addEventListener('click', () => finish(null));
     btnOk.addEventListener('click', ok);
