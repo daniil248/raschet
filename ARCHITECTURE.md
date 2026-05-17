@@ -37,8 +37,9 @@
 
 ```
 raschet/
-  index.html login.html hub.html      ПЛАТФОРМА: точки входа сайта
-  app.js app.css manifest.json        (обязаны быть в корне для Pages)
+  index.html login.html hub.html      ЛАУНЧЕРЫ-точки входа сайта
+  changelog.html roadmap.html         (index/login/hub ОБЯЗАНЫ быть в
+  app.js app.css manifest.json         корне для Pages; не модули)
   modules.json                        реестр модулей (проекция manifests)
   firebase-config.js firebase.json    инфра Firebase / firestore.rules
   .nojekyll .gitattributes            служебные (Pages: не трогать)
@@ -57,7 +58,8 @@ raschet/
                        logistics facility-inventory catalog schematic
                        sketch configurator3d
   lib/<id>/            calc-lib (kind:'calc-lib'): suppression-methods
-  modules/ help/ dev/ elements/  лаунчеры/вспом. (на корне, не модули)
+  modules/ help/ dev/ elements/  лаунчеры/вспом. (на корне, НЕ модули;
+                                 modules/index.html — каталог-страница)
   functions/           Cloud Functions
   tools/ scripts/      CI-утилиты + миграционные (mass-move, importmap)
   .github/workflows/   CI (Actions требует ИМЕННО этот путь — не трогать)
@@ -67,6 +69,30 @@ raschet/
 Итог: модули сгруппированы (`apps/`+`lib/`), пути развязаны через
 importmap → переезд дёшев и безопасен. Структуру делает понятной §1
 (единый скелет модуля), `README.md` в каждой папке и эта легенда.
+
+**Лакмус «лаунчер vs модуль»** — почему `modules/index.html` (страница-
+каталог модулей) лежит в корне рядом с `hub.html`, а НЕ в `apps/`:
+
+- **Есть ли `manifest.json` и запись в `modules.json`?** У `apps/<id>/`
+  и `lib/<id>/` — есть (на это опираются `audit-manifest.py`, генератор
+  `modules.json`, будущий packager: «каждая папка в `apps/` = один
+  зарегистрированный SKU-модуль»). У `modules/`, `hub.html`,
+  `index.html`, `login.html`, `changelog.html`, `roadmap.html`,
+  `help/`, `dev/`, `elements/` — НЕТ. Это лаунчеры/каталоги/вспом.
+  страницы платформы, не подключаемые модули.
+- **Положить лаунчер в `apps/` нельзя:** это сломало бы инвариант
+  «`apps/` = реестр модулей» (audit/генератор/packager стали бы видеть
+  папку без манифеста как модуль-дрейф).
+- **Единой папки лаунчеров не будет by design:** `index.html`/
+  `login.html`/`hub.html` ОБЯЗАНЫ быть в корне репо (точки входа
+  GitHub Pages, deploy-from-branch root). Группировка лаунчеров была
+  бы заведомо неполной полумерой → `modules/` намеренно остаётся
+  sibling-лаунчером в корне (а не `modules.html` плоско — у него свой
+  importmap+CSS+cross-links с `hub.html`, переезд = zero-build hazard
+  без выигрыша).
+
+Правило: есть manifest + запись в `modules.json` → `apps/` (ui) или
+`lib/` (calc-lib). Нет → лаунчер/вспом. страница в корне.
 
 ---
 
