@@ -59,7 +59,7 @@ export function openTemplateEditor(tpl, opts = {}) {
   if (!Array.isArray(working.sections.hidden)) working.sections.hidden = [];
   if (!Array.isArray(working.sections.manifest)) working.sections.manifest = [];
 
-  const state = { tab: 'structure', sel: -1 };
+  const state = { tab: 'structure', sel: -1, zoom: 1 };
 
   const backdrop = el('div', 'rpt-modal-backdrop');
   const modal = el('div', 'rpt-modal rpt-modal--canvas');
@@ -88,8 +88,36 @@ export function openTemplateEditor(tpl, opts = {}) {
   const tabContent = el('div', 'rpt-editor__tab-content');
   sidebar.appendChild(tabContent);
 
+  // Панель зума превью (поля печати видны: renderPane → mode:'edit').
+  const zoomBar = el('div', 'rpt-zoombar');
+  zoomBar.style.cssText = 'position:sticky;top:0;z-index:6;display:flex;gap:6px;align-items:center;justify-content:flex-end;padding:6px 10px;background:#eef0f4;border-bottom:1px solid #dfe3ea;font:12px system-ui';
+  const zLabel = el('span');
+  zLabel.style.cssText = 'min-width:42px;text-align:center;color:#475569';
+  const setZoom = (z) => { state.zoom = Math.max(0.4, Math.min(3, z)); zLabel.textContent = Math.round(state.zoom * 100) + '%'; renderPane(); };
+  const zMinus = btn('−'); zMinus.style.padding = '2px 9px';
+  zMinus.addEventListener('click', () => setZoom(state.zoom - 0.1));
+  const zPlus = btn('+'); zPlus.style.padding = '2px 9px';
+  zPlus.addEventListener('click', () => setZoom(state.zoom + 0.1));
+  const zFit = btn('⤢ Вписать'); zFit.style.padding = '2px 8px';
+  zFit.addEventListener('click', () => setZoom(1));
+  const zHint = el('span');
+  zHint.style.cssText = 'margin-right:auto;color:#94a3b8';
+  zHint.textContent = 'Поля печати — пунктир. Ctrl+колесо — зум.';
+  zoomBar.appendChild(zHint);
+  zoomBar.appendChild(zMinus); zoomBar.appendChild(zLabel); zoomBar.appendChild(zPlus); zoomBar.appendChild(zFit);
+  previewWrap.appendChild(zoomBar);
+
   const previewEl = el('div', 'rpt-canvas');
   previewWrap.appendChild(previewEl);
+  zLabel.textContent = '100%';
+
+  // Ctrl+колесо — зум превью; обычное колесо — нативный скролл
+  // (правило memory feedback_zoom_ctrl_scroll).
+  previewWrap.addEventListener('wheel', (ev) => {
+    if (!ev.ctrlKey) return;
+    ev.preventDefault();
+    setZoom(state.zoom + (ev.deltaY < 0 ? 0.1 : -0.1));
+  }, { passive: false });
 
   const TABS = [
     ['structure', 'Структура'],
@@ -145,8 +173,9 @@ export function openTemplateEditor(tpl, opts = {}) {
     try {
       const { width } = pageSizeMm(working.page);
       const avail = Math.max(220, previewWrap.getBoundingClientRect().width - 40);
-      const scale = Math.max(1.4, Math.min(3.4, avail / width));
-      renderPreview(working, previewEl, { mode: 'view', scale });
+      const fit = Math.max(1.4, Math.min(3.4, avail / width));
+      // mode:'edit' → видны направляющие полей печати (.rpt-page__margins)
+      renderPreview(working, previewEl, { mode: 'edit', scale: fit * (state.zoom || 1) });
     } catch (e) {
       previewEl.innerHTML = '<div style="padding:20px;color:#b91c1c;font:13px system-ui">' +
         'Ошибка превью: ' + (e && e.message || e) + '</div>';
@@ -183,6 +212,33 @@ export function openTemplateEditor(tpl, opts = {}) {
       const row = el('div', 'rpt-zone-list__item');
       row.style.cssText = 'display:flex;align-items:center;gap:4px';
       if (i === state.sel) row.classList.add('active');
+
+      // Drag-and-drop ручная перестановка блоков.
+      row.draggable = true;
+      row.addEventListener('dragstart', (ev) => {
+        ev.dataTransfer.effectAllowed = 'move';
+        ev.dataTransfer.setData('text/plain', String(i));
+        row.style.opacity = '0.45';
+      });
+      row.addEventListener('dragend', () => { row.style.opacity = ''; });
+      row.addEventListener('dragover', (ev) => {
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = 'move';
+        row.style.borderTop = '2px solid #1976d2';
+      });
+      row.addEventListener('dragleave', () => { row.style.borderTop = ''; });
+      row.addEventListener('drop', (ev) => {
+        ev.preventDefault();
+        row.style.borderTop = '';
+        const from = parseInt(ev.dataTransfer.getData('text/plain'), 10);
+        if (Number.isInteger(from) && from !== i) moveBlockTo(from, i);
+      });
+
+      const grip = el('span');
+      grip.textContent = '⠿';
+      grip.title = 'Перетащить для перестановки';
+      grip.style.cssText = 'cursor:grab;color:#94a3b8;padding:0 2px;user-select:none';
+      row.appendChild(grip);
 
       const eye = btn(b._hidden || (b.section && hidden.has(b.section)) ? '🚫' : '👁');
       eye.title = 'Показать/скрыть блок';
@@ -242,6 +298,16 @@ export function openTemplateEditor(tpl, opts = {}) {
     [a[i], a[j]] = [a[j], a[i]];
     if (state.sel === i) state.sel = j;
     else if (state.sel === j) state.sel = i;
+    rebuild();
+  }
+
+  // Перенос блока from→to (drag-and-drop).
+  function moveBlockTo(from, to) {
+    const a = working.flow;
+    if (from < 0 || from >= a.length || to < 0 || to >= a.length) return;
+    const [moved] = a.splice(from, 1);
+    a.splice(to, 0, moved);
+    state.sel = to;
     rebuild();
   }
 

@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.680', date: '2026-05-17', items: [
+      '🛠 <b>Редактор отчётов — UX: видимые поля + зум + drag-and-drop блоков</b> (репорты Пользователя «не вижу полей», «нет зума», «блоки должны перетаскиваться»). (1) renderPane: mode «view»→«edit» — направляющие полей печати (.rpt-page__margins, пунктир) теперь видны. (2) Панель зума над превью (− / % / + / ⤢ Вписать) + Ctrl+колесо = зум (обычное колесо — нативный скролл, правило memory feedback_zoom_ctrl_scroll); state.zoom 0.4–3, scale = fit×zoom. (3) Блоки «Структуры» — полноценный drag-and-drop (HTML5 DnD: grip ⠿, dragstart/over/drop, индикатор вставки), функция moveBlockTo(from,to); ▲▼ и ✕-удаление сохранены. Файл: shared/report/editor.js (state.zoom, zoomBar, wheel-handler, renderPane mode edit, DnD-строки, moveBlockTo).',
+    ] },
     { version: '0.60.679', date: '2026-05-17', items: [
       '🧹 <b>Dead-code sweep reports-редизайна: чисто</b>. Проверка после большого редизайна: старый canvas-редактор (buildZonesTab/addOverlayFromPreset/redrawCanvas/ZONE_PRESETS) — в живом коде ОТСУТСТВУЕТ (только в историческом changelog-тексте); contentBox/effectiveContent — НЕ мертвы (используются preview.estimateBlockHeight/tableLayout и effectiveFlow-fallback). Единственный реальный мусор — неиспользуемый named-import contentBox в export-pdf.js (после DS2a перешёл на contentBoxFor) — удалён. Больше мёртвого кода от редизайна нет. Файл: shared/report/export-pdf.js.',
     ] },
