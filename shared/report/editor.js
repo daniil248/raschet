@@ -429,9 +429,10 @@ export function openTemplateEditor(tpl, opts = {}) {
 
   function buildSections(p) {
     const hint = el('div', 'rpt-hint');
-    hint.innerHTML = 'Документ делится на <b>разделы</b> блоками «⮐ Разрыв раздела» — ' +
-      'как в Word. У каждого раздела свои формат/ориентация/поля (со 2-го: ' +
-      'пусто = наследовать предыдущий). Новый раздел начинается с новой страницы.';
+    hint.innerHTML = 'Формат и поля разделов берутся из <b>базового шаблона</b> ' +
+      '(вкладка «Основа»). В документе их отдельно настраивать нельзя — ' +
+      'можно лишь добавить разрыв раздела (новая страница) и для него ' +
+      'выбрать ориентацию (книжная/альбомная).';
     p.appendChild(hint);
 
     const addRow = el('div', 'rpt-zone-add');
@@ -459,43 +460,29 @@ export function openTemplateEditor(tpl, opts = {}) {
       card.appendChild(h);
 
       if (k === 0) {
-        const hh = el('div', 'rpt-hint');
-        hh.textContent = 'Базовая геометрия документа (она же на вкладке «Лист»). ' +
-          'Со 2-го раздела — переопределение относительно предыдущего.';
-        card.appendChild(hh);
-        const pg = working.page || (working.page = {});
-        fld(card, 'Формат', selectInput(
-          [...Object.keys(PAGE_SIZES).map(f => [f, f]), ['Custom', 'Custom']],
-          pg.format || 'A4', v => { pg.format = v; rebuild(); }));
-        fld(card, 'Ориентация', selectInput(
-          [['portrait', 'Книжная'], ['landscape', 'Альбомная']],
-          pg.orientation || 'portrait', v => { pg.orientation = v; rebuild(); }));
-        const m = pg.margins || (pg.margins = { top: 20, right: 15, bottom: 20, left: 20 });
-        const r1 = el('div', 'rpt-row');
-        fld(r1, 'Поле верх', numInput(m.top, v => { m.top = v; renderPane(); }));
-        fld(r1, 'Поле низ', numInput(m.bottom, v => { m.bottom = v; renderPane(); }));
-        card.appendChild(r1);
-        const r2 = el('div', 'rpt-row');
-        fld(r2, 'Поле лево', numInput(m.left, v => { m.left = v; renderPane(); }));
-        fld(r2, 'Поле право', numInput(m.right, v => { m.right = v; renderPane(); }));
-        card.appendChild(r2);
+        const g = s.geom || {};
+        const m = g.margins || {};
+        const ro = el('div', 'rpt-hint');
+        ro.innerHTML = 'Геометрия из базового шаблона (только просмотр): ' +
+          '<b>' + (g.format || 'A4') + '</b>, ' +
+          (g.orientation === 'landscape' ? 'альбомная' : 'книжная') +
+          ', поля ' + [m.top, m.right, m.bottom, m.left]
+            .map(x => x == null ? '—' : x).join(' / ') + ' мм. ' +
+          'Изменить — во вкладке «Основа» (сменить базу) либо в самом ' +
+          'базовом шаблоне.';
+        card.appendChild(ro);
       } else {
         const bp = s.brk.page || (s.brk.page = {});
-        fld(card, 'Формат', selectInput(
-          [['', '(как в предыдущем)'], ...Object.keys(PAGE_SIZES).map(f => [f, f]), ['Custom', 'Custom']],
-          bp.format || '', v => { bp.format = v || undefined; rebuild(); }));
-        fld(card, 'Ориентация', selectInput(
-          [['', '(как в предыдущем)'], ['portrait', 'Книжная'], ['landscape', 'Альбомная']],
-          bp.orientation || '', v => { bp.orientation = v || undefined; rebuild(); }));
-        const m = bp.margins || (bp.margins = {});
-        const r1 = el('div', 'rpt-row');
-        fld(r1, 'Поле верх', numInput(m.top != null ? m.top : '', v => { m.top = v; renderPane(); }));
-        fld(r1, 'Поле низ', numInput(m.bottom != null ? m.bottom : '', v => { m.bottom = v; renderPane(); }));
-        card.appendChild(r1);
-        const r2 = el('div', 'rpt-row');
-        fld(r2, 'Поле лево', numInput(m.left != null ? m.left : '', v => { m.left = v; renderPane(); }));
-        fld(r2, 'Поле право', numInput(m.right != null ? m.right : '', v => { m.right = v; renderPane(); }));
-        card.appendChild(r2);
+        // В документе у раздела настраивается ТОЛЬКО ориентация —
+        // формат и поля наследуются из базы. Отдельных полей нет.
+        fld(card, 'Ориентация раздела', selectInput(
+          [['', '(как в базе)'], ['portrait', 'Книжная'], ['landscape', 'Альбомная']],
+          bp.orientation || '', v => {
+            bp.orientation = v || undefined;
+            // формат/поля раздел из документа не задаёт
+            delete bp.format; delete bp.margins;
+            rebuild();
+          }));
         const act = el('div', 'rpt-row');
         const go = btn('→ К блоку-разрыву');
         go.addEventListener('click', () => {
@@ -529,23 +516,15 @@ export function openTemplateEditor(tpl, opts = {}) {
     if (b.type === 'sectionBreak') {
       if (!b.page || typeof b.page !== 'object') b.page = {};
       const h = el('div', 'rpt-hint');
-      h.textContent = 'С этого места начинается новый раздел документа (новая страница) с указанной геометрией — как разрыв раздела в Word. Пустое поле = наследовать от предыдущего.';
+      h.textContent = 'Новый раздел (новая страница). Формат и поля — из базового шаблона; в документе задаётся только ориентация раздела.';
       p.appendChild(h);
-      fld(p, 'Формат', selectInput(
-        [['', '(как было)'], ...Object.keys(PAGE_SIZES).map(f => [f, f]), ['Custom', 'Custom']],
-        b.page.format || '', v => { b.page.format = v || undefined; renderPane(); }));
-      fld(p, 'Ориентация', selectInput(
-        [['', '(как было)'], ['portrait', 'Книжная'], ['landscape', 'Альбомная']],
-        b.page.orientation || '', v => { b.page.orientation = v || undefined; renderPane(); }));
-      const m = b.page.margins || (b.page.margins = {});
-      const r = el('div', 'rpt-row');
-      fld(r, 'Поле верх', numInput(m.top != null ? m.top : '', v => { m.top = v; renderPane(); }));
-      fld(r, 'Поле низ', numInput(m.bottom != null ? m.bottom : '', v => { m.bottom = v; renderPane(); }));
-      p.appendChild(r);
-      const r2 = el('div', 'rpt-row');
-      fld(r2, 'Поле лево', numInput(m.left != null ? m.left : '', v => { m.left = v; renderPane(); }));
-      fld(r2, 'Поле право', numInput(m.right != null ? m.right : '', v => { m.right = v; renderPane(); }));
-      p.appendChild(r2);
+      fld(p, 'Ориентация раздела', selectInput(
+        [['', '(как в базе)'], ['portrait', 'Книжная'], ['landscape', 'Альбомная']],
+        b.page.orientation || '', v => {
+          b.page.orientation = v || undefined;
+          delete b.page.format; delete b.page.margins;
+          renderPane();
+        }));
       return;
     }
     if (b.type === 'signature') {
@@ -620,16 +599,27 @@ export function openTemplateEditor(tpl, opts = {}) {
     }
     const first = (band.blocks && band.blocks[0]) || null;
     const txt = first && first.text || '';
-    fld(p, 'Текст', textInput(txt, v => {
+    // Многострочный текст: название/версия/заголовок и пр. (перенос
+    // строк сохраняется — \n и в превью, и в PDF/DOCX).
+    fld(p, 'Текст (можно несколько строк)', textArea(txt, v => {
       band.blocks = v ? [{ type: 'paragraph', style: 'caption',
         align: (first && first.align) || 'center', text: v }] : [];
       renderPane();
     }));
-    fld(p, 'Выравнивание', selectInput(
+    const hh = el('div', 'rpt-hint');
+    hh.innerHTML = 'Плейсхолдеры: <code>{{meta.title}}</code> ' +
+      '<code>{{meta.author}}</code> <code>{{meta.subject}}</code> ' +
+      '<code>{{meta.version}}</code> <code>{{date}}</code> ' +
+      '<code>{{page}}</code> <code>{{pages}}</code>. Enter — новая строка.';
+    p.appendChild(hh);
+    fld(p, 'Выравнивание по горизонтали', selectInput(
       [['left', 'Слева'], ['center', 'По центру'], ['right', 'Справа']],
       (first && first.align) || 'center', v => {
         if (band.blocks && band.blocks[0]) { band.blocks[0].align = v; renderPane(); }
       }));
+    fld(p, 'Выравнивание по вертикали', selectInput(
+      [['top', 'Сверху'], ['middle', 'По центру'], ['bottom', 'Снизу']],
+      band.valign || 'middle', v => { band.valign = v; renderPane(); }));
   }
 
   // ——— Вкладка «Плавающий слой» ———

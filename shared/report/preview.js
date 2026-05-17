@@ -325,6 +325,10 @@ function buildPageShell(tpl, scale, guides, pg, pageNum, totalPages, pageLabel) 
     page.appendChild(guide);
   }
 
+  // Вертикальное выравнивание содержимого колонтитула в его зоне.
+  const vJustify = (band) => band && band.valign === 'top' ? 'flex-start'
+    : band && band.valign === 'bottom' ? 'flex-end' : 'center';
+
   // Шапка — в верхнем поле (вне области печати), ширина по режиму
   // band.width (print/page/bleed).
   if (hdr.enabled) {
@@ -334,6 +338,9 @@ function buildPageShell(tpl, scale, guides, pg, pageNum, totalPages, pageLabel) 
     h.style.width  = (hb.width  * scale) + 'px';
     h.style.top    = (hb.y * scale) + 'px';
     h.style.height = (hb.height * scale) + 'px';
+    h.style.display = 'flex';
+    h.style.flexDirection = 'column';
+    h.style.justifyContent = vJustify(hdr);
     if (guides) h.classList.add('rpt-zone--edit');
     (hdr.blocks || []).forEach(b =>
       h.appendChild(renderBlock(b, tpl, { page: pageNum, pages: totalPages })));
@@ -348,6 +355,9 @@ function buildPageShell(tpl, scale, guides, pg, pageNum, totalPages, pageLabel) 
     f.style.width  = (fb.width  * scale) + 'px';
     f.style.top    = (fb.y * scale) + 'px';
     f.style.height = (fb.height * scale) + 'px';
+    f.style.display = 'flex';
+    f.style.flexDirection = 'column';
+    f.style.justifyContent = vJustify(ftr);
     if (guides) f.classList.add('rpt-zone--edit');
     (ftr.blocks || []).forEach(b =>
       f.appendChild(renderBlock(b, tpl, { page: pageNum, pages: totalPages })));
@@ -469,6 +479,7 @@ export function renderBlock(block, tpl, ctx) {
       el.className = 'rpt-p';
       const s = S[block.style || 'body'] || S.body;
       applyStyle(el, s, block);
+      el.style.whiteSpace = 'pre-line';   // сохраняем переносы строк
       el.textContent = substitute(block.text, tpl, ctx);
       return el;
     }

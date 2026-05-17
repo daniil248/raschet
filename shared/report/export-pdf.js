@@ -287,19 +287,31 @@ function drawHeaderFooter(doc, tpl, pg, pageNum, total) {
   const m = geom.margins || tpl.page.margins;
   const { width, height } = pageSizeMm(geom);
 
+  // Вертикальное выравнивание в зоне колонтитула (top/middle/bottom).
+  const vOffset = (band, blocks, boxH) => {
+    let h = 0;
+    for (const b of (blocks || [])) h += estimateBlockHeight(b, tpl);
+    const free = Math.max(0, boxH - h);
+    if (band && band.valign === 'top') return 0;
+    if (band && band.valign === 'bottom') return free;
+    return free / 2;   // middle (по умолчанию)
+  };
+
   const hdr = isFirst ? tpl.header.firstPage : tpl.header.otherPages;
   if (hdr && hdr.enabled) {
     const hb = colontitleBox(geom, hdr, 'header');
+    const dy = vOffset(hdr, hdr.blocks, hb.height);
     drawBlocks(doc, tpl, hdr.blocks || [],
-      { x: hb.x, y: hb.y, width: hb.width, height: hb.height },
+      { x: hb.x, y: hb.y + dy, width: hb.width, height: hb.height },
       { page: pageNum, pages: total });
   }
 
   const ftr = isFirst ? tpl.footer.firstPage : tpl.footer.otherPages;
   if (ftr && ftr.enabled) {
     const fb = colontitleBox(geom, ftr, 'footer');
+    const dy = vOffset(ftr, ftr.blocks, fb.height);
     drawBlocks(doc, tpl, ftr.blocks || [],
-      { x: fb.x, y: fb.y, width: fb.width, height: fb.height },
+      { x: fb.x, y: fb.y + dy, width: fb.width, height: fb.height },
       { page: pageNum, pages: total });
   }
 }
