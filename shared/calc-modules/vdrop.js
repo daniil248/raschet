@@ -9,7 +9,7 @@
 // сечение выбирается runner'ом как max(bump_i по всем модулям).
 // ======================================================================
 
-import { calcVoltageDrop, findMinSizeForVdrop, getMethod } from '../../js/methods/index.js';
+import { calcVoltageDrop, findMinSizeForVdrop, getMethod } from '../../lib/electrical-methods/index.js';
 
 export const vdropModule = {
   id: 'vdrop',

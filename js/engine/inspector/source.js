@@ -10,7 +10,7 @@ import { escHtml, escAttr, fmt, field, flash, helpIcon } from '../utils.js';
 import { effectiveTag } from '../zones.js';
 import { effectiveOn } from '../modes.js';
 import { nodeVoltage, sourceImpedance, formatVoltageLevelLabel, cableVoltageClass } from '../electrical.js';
-import { getTerm, getTermTooltip } from '../../methods/terms.js';
+import { getTerm, getTermTooltip } from '../../../lib/electrical-methods/terms.js';
 import { rtmInfoBlock } from './rtm-block.js';
 import { snapshot, notifyChange } from '../history.js';
 import { getActiveProjectId, getProject, updateProject } from '../../../shared/project-storage.js';

@@ -9,8 +9,8 @@
 // не всегда и требует явного выбора пользователя.
 // ======================================================================
 
-import { getEcoMethod } from '../../js/methods/index.js';
-import { getMethod } from '../../js/methods/index.js';
+import { getEcoMethod } from '../../lib/electrical-methods/index.js';
+import { getMethod } from '../../lib/electrical-methods/index.js';
 
 export const economicModule = {
   id: 'economic',

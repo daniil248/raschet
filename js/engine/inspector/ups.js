@@ -11,7 +11,7 @@ import { snapshot, notifyChange } from '../history.js';
 import { render } from '../render.js';
 import { mountBatteryPicker } from '../../../shared/battery-picker.js';
 import { readUpsDcParams, mountUpsPicker, applyUpsModel } from '../../../shared/ups-picker.js';
-import { getTerm, getTermTooltip } from '../../methods/terms.js';
+import { getTerm, getTermTooltip } from '../../../lib/electrical-methods/terms.js';
 import { rtmInfoBlock } from './rtm-block.js';
 import { listUpses } from '../../../shared/ups-catalog.js';
 // v0.59.386: реестр типов ИБП-плагинов (см. shared/ups-types/).

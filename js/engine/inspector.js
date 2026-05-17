@@ -11,8 +11,8 @@ import { clampPortsInvolvingNode, nextFreeTag } from './graph.js';
 import { panelCosPhi, downstreamPQ } from './recalc.js';
 import { effectiveTag, findZoneForMember, nodesInZone, maxOccupiedPort, copyZoneWithMembers } from './zones.js';
 import { kTempLookup, kGroupLookup, kBundlingFactor, selectCableSize } from './cable.js';
-import { getMethod } from '../methods/index.js';
-import { getTerm, getTermTooltip, isTermUsed } from '../methods/terms.js';
+import { getMethod } from '../../lib/electrical-methods/index.js';
+import { getTerm, getTermTooltip, isTermUsed } from '../../lib/electrical-methods/terms.js';
 import { listTransformers } from '../../shared/transformer-catalog.js';
 import { mountTransformerPicker, applyTransformerModel } from '../../shared/transformer-picker.js';
 // v0.59.351: автоматический матч узла схемы с реестрами проекта по S/N или Инв.№.

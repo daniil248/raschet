@@ -1,7 +1,7 @@
 import { GLOBAL } from 'engine/constants.js';
 import { formatVoltageLevelLabel } from 'engine/electrical.js';
 import { rsToast } from 'shared/dialog.js';
-import { getMethod, listMethods, calcVoltageDrop, findMinSizeForVdrop, getEcoMethod, listEcoMethods } from '../../js/methods/index.js';
+import { getMethod, listMethods, calcVoltageDrop, findMinSizeForVdrop, getEcoMethod, listEcoMethods } from '../../lib/electrical-methods/index.js';
 // v0.60.141: auto-pick методики кабельного расчёта по country проекта
 // (правило feedback_auto_norm_by_location.md). KZ→iec, RU/BY→pue, US/CA→nec, EU→iec.
 import { resolveAutoNormForActiveProject, getProjectCountry, detectCountryCode, countryLabel } from 'shared/auto-norm.js';

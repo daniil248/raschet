@@ -12,7 +12,7 @@ import { render } from '../render.js';
 import { formatVoltageLevelLabel } from '../electrical.js';
 import { rsPrompt, rsConfirm } from '../../../shared/dialog.js';
 import { listCableTypes, getCableType } from '../../../shared/cable-types-catalog.js';
-import { getTerm, getTermTooltip, isTermUsed } from '../../methods/terms.js';
+import { getTerm, getTermTooltip, isTermUsed } from '../../../lib/electrical-methods/terms.js';
 
 let _renderInspector = null;
 export function bindInspectorConsumerDeps({ renderInspector }) {

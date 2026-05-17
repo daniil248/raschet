@@ -595,7 +595,7 @@ window.Raschet = {
         // Динамический импорт чтобы не циклить — install-mapping
         // импортирует state косвенно через GLOBAL/conns, не имеет
         // прямой зависимости от методик.
-        import('../methods/install-mapping.js').then(async mod => {
+        import('../../lib/electrical-methods/install-mapping.js').then(async mod => {
           const count = mod.migrateConnsForMethodChange(state, GLOBAL, _oldMid, _newMid);
           // v0.59.727: уведомление о миграции, если были изменения.
           // Toast через flash() — даёт обратную связь: «эти 12 полей

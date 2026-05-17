@@ -9,7 +9,7 @@
 // Ensure engine modules are loaded and window.Raschet is available
 import './engine/index.js';
 import { mountHelp } from '../shared/help-panel.js';
-import { getMethod, listMethods } from './methods/index.js';
+import { getMethod, listMethods } from '../lib/electrical-methods/index.js';
 import { formatVoltageLevelLabel, consumerTotalDemandKw, consumerCountEffective } from './engine/electrical.js';
 import * as Report from '../shared/report/index.js';
 import { getTemplate as getReportTemplate, saveTemplate as saveReportTemplate } from '../shared/report-catalog.js';

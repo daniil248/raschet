@@ -9,7 +9,7 @@
 // адаптирует методику под единый интерфейс calc-module.
 // ======================================================================
 
-import { getMethod } from '../../js/methods/index.js';
+import { getMethod } from '../../lib/electrical-methods/index.js';
 
 export const ampacityModule = {
   id: 'ampacity',

@@ -26,7 +26,7 @@ import { getCableType } from '../../shared/cable-types-catalog.js';
 import { pricesForElement } from '../../shared/price-records.js';
 import { listElements } from '../../shared/element-library.js';
 import { listShipments, getWarehouse, SHIPMENT_MODES, SHIPMENT_STATUSES } from '../../shared/logistics-schemas.js';
-import { getTerm } from '../methods/terms.js';
+import { getTerm } from '../../lib/electrical-methods/terms.js';
 
 // ——— общие хелперы ———
 function fullTag(n) { if (!n) return ''; return effectiveTag(n) || n.tag || ''; }

@@ -14,7 +14,7 @@ import { snapshot, notifyChange } from '../history.js';
 import { render } from '../render.js';
 import { deleteConn } from '../graph.js';
 import { kTempLookup, kGroupLookup, kBundlingFactor } from '../cable.js';
-import { getMethod } from '../../methods/index.js';
+import { getMethod } from '../../../lib/electrical-methods/index.js';
 import { checkSelectivity } from '../../../shared/tcc-curves.js';
 
 let _renderInspector = null;

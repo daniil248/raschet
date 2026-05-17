@@ -9,7 +9,7 @@ import { snapshot, notifyChange } from '../history.js';
 import { render } from '../render.js';
 import { isTagUnique } from '../graph.js';
 import { consumerGroupItems, nodeVoltage, isThreePhase, computeCurrentA } from '../electrical.js';
-import { getTerm, getTermTooltip } from '../../methods/terms.js';
+import { getTerm, getTermTooltip } from '../../../lib/electrical-methods/terms.js';
 import { rtmInfoBlock } from './rtm-block.js';
 // Фаза 1.19.7: panel-catalog / panel-picker больше не используются в
 // инлайн-модалке параметров щита. Подбор оболочки НКУ перенесён в

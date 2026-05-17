@@ -1,8 +1,8 @@
 import { state } from './state.js';
 import { GLOBAL, CHANNEL_TYPES, BUSBAR_SERIES, BREAKER_SERIES, INSTALL_METHODS, BREAKER_TYPES, autoBreakerMargin, autoBreakerCurve, autoUpsBreakerNominals } from './constants.js';
 import { selectCableSize, selectBreaker, selectFuse, kTempLookup, kGroupLookup, kBundlingFactor, kBundlingIgnoresGrouping, cableTable, hvCableTable, selectHvBreaker } from './cable.js';
-import { getMethod, calcVoltageDrop, findMinSizeForVdrop } from '../methods/index.js';
-import { getEcoMethod } from '../methods/economic/index.js';
+import { getMethod, calcVoltageDrop, findMinSizeForVdrop } from '../../lib/electrical-methods/index.js';
+import { getEcoMethod } from '../../lib/electrical-methods/economic/index.js';
 import { nodeVoltage, nodeVoltageLN, nodeCalcVoltage, nodeCalcVoltageEff, isThreePhase, nodeWireCount, cableWireCount, computeCurrentA,
          consumerNominalCurrent, consumerRatedCurrent, consumerInrushCurrent,
          consumerTotalDemandKw, consumerCountEffective, consumerCalcDemandKw, consumerGroupItems,
