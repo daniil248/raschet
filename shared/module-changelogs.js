@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.586', date: '2026-05-17', items: [
+      '🩹 <b>Сайдбар-аккордеон: секция «📦 Сводки» теперь раскрывается</b>. Прод-проверка v0.60.585 (реальный проект, 10 секций, single-open работает, клик сворачивает остальные — ОК): у секции «📦 Сводки» не было ключа (ни data-objsec, ни data-acc) → она оставалась навсегда свёрнутой без возможности развернуть. Добавлен data-acc="summaries" (фильтр objectKind по data-objsec не затронут). Теперь все 10 секций rail участвуют в аккордеоне. Файл: apps/tech-workspace/tech-workspace.js.',
+    ] },
     { version: '0.60.585', date: '2026-05-17', items: [
       '🗂 <b>Tech-workspace: сайдбар-аккордеон</b> (по замечанию Пользователя «разделы в сайдбаре очень размыты — сделай свёрнутыми, только активный развёрнут»). Секции rail (Объект/Помещения/Стойки/ИБП/Климат/МЦОД/Ввод/Площади) теперь single-open accordion: развёрнута ровно одна, остальные свёрнуты до заголовка. Клик по заголовку секции разворачивает её (кнопки ➕/🛠/cfg внутри головы не триггерят). Активная секция = сохранённая (LS railOpenSec.v1 per-project) → секция выбранного блока (_selectedBlock.kind→ключ) → первая. CSS: каретка ▾/▸ в .tw-rail-title, .tw-collapsed скрывает list+foot. _applyRailAccordion вызывается после objectKind-фильтра секций (переживает re-render). Ключ секции = data-objsec (фильтр objectKind не затронут) или data-acc (добавлен только секции «Объект»). Зафиксировано project-wide правило memory:sidebar_accordion (распространить на service/scs-config/др. многосекционные сайдбары). Файлы: apps/tech-workspace/tech-workspace.js (+KEY_RAILSEC/_railOpenSec/_applyRailAccordion/head-click/data-acc), tech-workspace.css (accordion-стили).',
     ] },

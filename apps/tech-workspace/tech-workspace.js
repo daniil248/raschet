@@ -1731,7 +1731,7 @@ function renderListRail(c, ro) {
       </div>
     </div>
 
-    <div class="tw-rail-section">
+    <div class="tw-rail-section" data-acc="summaries">
       <div class="tw-rail-head">
         <span class="tw-rail-title">📦 Сводки</span>
       </div>
