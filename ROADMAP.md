@@ -7,7 +7,7 @@
 > Репозиторий переименован `daniil248/raschet`→`daniil248/ge-tools`,
 > live `https://daniil248.github.io/ge-tools/` (v0.60.746, ВЫПОЛНЕНО).
 >
-> **Статус:** v0.60.769 (2026-05-18). Платформа + предметные модули.
+> **Статус:** v0.60.770 (2026-05-18). Платформа + предметные модули.
 > Прод: https://getools.netchess.ru (Timeweb VPS, бэкенд+Postgres),
 > двойной деплой git+сервер. GitHub Pages — пока тоже жив.
 > Мультидисциплинарность (X.4.5.3 Вариант I) —
@@ -251,7 +251,12 @@ cross-filter / tooltips / zoom Ctrl+wheel — платформенно.
   (Postgres JSONB); `.gitignore`-защита секретов, `server-access.env`
   ВНЕ репо. ✅ **РАЗВЁРНУТО (v0.60.768): https://getools.netchess.ru**
   живой — статика+бэкенд+Postgres+TLS, чужие проекты не тронуты,
-  двойной деплой git+сервер активен. Остаток (фазами C1–C4): Firestore→
+  двойной деплой git+сервер активен. ✅ C1 backend-сейм (v769) ·
+  ✅ C3 данные→серверный Postgres (v770, server-режим gated, API
+  доказан e2e). Остаток: C2 auth — рекоменд. авторизовать домен
+  getools.netchess.ru в Firebase (Firebase НЕ удаляем; ноль кода/
+  риска) ИЛИ серверный логин (чип уже есть, /api/auth работает);
+  email (SMTP) — позже. Прежний план C1–C4: Firestore→
   Postgres импорт + клиентский транспорт project-storage→HTTP `/kv`;
   Firebase Auth→/api/auth (+Google OAuth); Cloud Functions→SMTP;
   согласованный клиентский cutover. `arch:17.2,17.3,40`

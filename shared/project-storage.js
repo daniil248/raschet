@@ -111,8 +111,15 @@ function loadJson(key, fallback) {
   try { const raw = localStorage.getItem(key); return raw == null ? fallback : JSON.parse(raw); }
   catch { return fallback; }
 }
+// v0.60.770 (C3): write-hook для облачной синхронизации в server-режиме.
+// LS остаётся синхронным рабочим стором (поведение клиента не меняется),
+// hook async-зеркалит ключ в серверный Postgres (/api/kv). На Pages hook
+// НЕ устанавливается → байт-в-байт прежнее поведение (нулевая регрессия).
+let _writeHook = null;
+export function setStorageWriteHook(fn) { _writeHook = (typeof fn === 'function') ? fn : null; }
 function saveJson(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
+  if (_writeHook) { try { _writeHook(key, value); } catch {} }
 }
 
 function uid() {
@@ -740,3 +747,8 @@ export function clearProjectData(pid) {
     localStorage.setItem(GUARD, '1');
   } catch (e) { /* best-effort миграция — не блокируем загрузку */ }
 })();
+
+// v0.60.770 (C3): подгружаем sync-модуль ДИНАМИЧЕСКИ (без циклического
+// импорта). Он сам гейтится IS_SERVER_BACKEND + наличием server-токена;
+// на Pages/github.io — no-op (ни сети, ни hook). Fail-soft.
+try { import('./project-storage-sync.js').catch(() => {}); } catch {}

@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.770', date: '2026-05-18', items: [
+      '☁ <b>C3: облачная синхронизация данных в серверный Postgres (server-режим)</b>. Серверный API доказан e2e (register/login/me/kv put-get-prefix/projects/persist через re-login/401 — Postgres-backed, проверено curl). Клиент: project-storage.js +setStorageWriteHook (LS остаётся синхронным рабочим стором — клиент не переписан; hook async-зеркалит в /api/kv); +динамический import project-storage-sync.js. shared/project-storage-sync.js — строгий гейт IS_SERVER_BACKEND && server-токен: pull всех getools.* в LS при логине (сервер=источник истины), write-through push (debounce, fail-soft retry), минимальный неблокирующий чип/модалка входа (login/register → /api/auth). <b>Pages/github.io: IS_SERVER_BACKEND=false → init выходит сразу, hook не ставится, ни сети ни UI — нулевая регрессия, Firebase не тронут/не удалён</b>. Cache-safe в 1 деплой (новый export потребляется только новым sync-файлом, который грузится только новым project-storage). Файлы: shared/project-storage.js, shared/project-storage-sync.js, ROADMAP.md, js/engine/constants.js.',
+    ] },
     { version: '0.60.769', date: '2026-05-18', items: [
       '🔀 <b>C1: сейм выбора бэкенда (server vs firebase) — runtime, fail-safe</b>. shared/backend-mode.js: один клиент в git раздаётся И на GitHub Pages (Firebase, НЕ удаляем — git-версия продолжает работать), И на getools.netchess.ru (свой /api+Postgres). Режим детерминированно по хосту (SERVER_HOSTS=[getools.netchess.ru]→server; иначе firebase), без сети, override ?backend=/localStorage. <b>0 потребителей — cache-safe</b> (CONTRIBUTING §6a): auth/data-сеймы (C2/C3) подключаются после распространения. Нулевая регрессия Pages (default firebase). Файлы: shared/backend-mode.js, ROADMAP.md, js/engine/constants.js.',
     ] },
