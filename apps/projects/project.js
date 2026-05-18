@@ -12,6 +12,8 @@ import {
   getVariantRole, setVariantRole,
   // v0.60.761 (8.0-E): тип сущности для условной слим-карточки.
   isSlimEntity, entityKindOf, projectDisciplineOf, isConfiguration,
+  // v0.60.765 (6.2-B): матрица ответственности разделов (ГИП).
+  SECTION_SCOPE_MODES, getSectionScope, setSectionScope,
   // Фаза 2 (R2): чтение/запись чужих module-scoped данных через шов
   // (projectLoad/projectSave — централизовано, типобезоп., bump updatedAt).
   projectLoad,
@@ -3375,6 +3377,63 @@ function render() {
         • <b>1.5.5</b>: согласование разделов (✓ checklist с timestamp + подписью + историей ревизий)
       </div>
     `;
+  }
+
+  // v0.60.765 (6.2-B / запрос Пользователя): матрица ответственности по
+  // разделам. ГИП указывает: own — разрабатываем у нас; external —
+  // внешняя разработка (видим только ключевые требования: мощность,
+  // подключение к сети, расстановка — read-only); partial — частично
+  // наше (oursNote — что именно наше). Гейт: owner/gip/admin правят,
+  // остальные — read-only. Только метаданные проекта (sectionScopes).
+  if (summaryHost) {
+    const _scRole = p._role || 'owner';
+    const canEditScopes = _scRole === 'owner' || _scRole === 'gip' || _scRole === 'admin';
+    const SECTIONS = [
+      ['electrical', '⚡ Электроснабжение'],
+      ['scs', '🔗 СКС / слаботочка'],
+      ['telecom-racks', '🗄 Телеком-шкафы'],
+      ['cooling', '❄ Холодоснабжение / ОВиК'],
+      ['fire-suppression', '🧯 ГОТВ'],
+      ['monitoring', '🖥 Мониторинг / АСУ'],
+    ];
+    const ML = { own: '✅ Наш раздел', external: '🔗 Внешний (только требования)', partial: '◑ Частично наше' };
+    const _f = (sid, f, val, ph) => `<label><span class="muted" style="font-size:10.5px;display:block">${ph}</span><input data-sc="${sid}" data-f="${f}" value="${esc(val || '')}"${canEditScopes ? '' : ' disabled'} style="width:100%;padding:4px 6px;border:1px solid #cbd5e1;border-radius:3px;font-size:12px"></label>`;
+    const rows = SECTIONS.map(([sid, label]) => {
+      const sc = getSectionScope(p.id, sid);
+      const m = sc.mode;
+      const bd = m === 'own' ? '#bbf7d0' : (m === 'external' ? '#bfdbfe' : '#fde68a');
+      const bg = m === 'own' ? '#f0fdf4' : (m === 'external' ? '#eff6ff' : '#fffbeb');
+      const req = (m === 'external' || m === 'partial') ? `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px;margin-top:8px">
+          ${_f(sid, 'owner', sc.owner, 'Ответственный / организация')}
+          ${_f(sid, 'reqPowerKw', sc.reqPowerKw, 'Мощность, кВт')}
+          ${_f(sid, 'reqNetwork', sc.reqNetwork, 'Подключение к сети')}
+          ${_f(sid, 'reqPlacement', sc.reqPlacement, 'Расстановка / компоновка')}
+          ${m === 'partial' ? `<div style="grid-column:1/-1">${_f(sid, 'oursNote', sc.oursNote, 'Что именно НАШЕ (компоновка / подключение / расстановка / питание)')}</div>` : ''}
+          <div style="grid-column:1/-1">${_f(sid, 'link', sc.link, 'Ссылка / источник раздела')}</div>
+        </div>` : '';
+      return `<div style="border:1px solid ${bd};background:${bg};border-radius:6px;padding:8px 10px;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <b style="flex:1;min-width:170px">${label}</b>
+          <select data-sc-mode="${sid}"${canEditScopes ? '' : ' disabled'} style="font-size:12px;padding:3px 6px;border:1px solid #cbd5e1;border-radius:3px;background:#fff">
+            ${SECTION_SCOPE_MODES.map(mm => `<option value="${mm}"${mm === m ? ' selected' : ''}>${ML[mm]}</option>`).join('')}
+          </select>
+        </div>${req}</div>`;
+    }).join('');
+    summaryHost.insertAdjacentHTML('beforeend', `
+      <div style="margin-top:18px;border-top:1px solid #e2e8f0;padding-top:14px">
+        <h4 style="margin:0 0 4px;font-size:14px;color:#0f172a">🧭 Ответственность по разделам (ГИП)</h4>
+        <p class="muted" style="font-size:11.5px;margin:0 0 10px;line-height:1.5">Какие разделы разрабатываем мы, какие — внешние (видим только ключевые требования: мощность, подключение к сети, расстановка), какие частично наши (напр. шкафы внешние, но компоновка/подключение — наши). ${canEditScopes ? '' : '<b>Только просмотр</b> — изменять может ГИП / владелец.'}</p>
+        ${rows}
+      </div>`);
+    if (canEditScopes) {
+      summaryHost.querySelectorAll('[data-sc-mode]').forEach(sel => {
+        sel.addEventListener('change', () => { try { setSectionScope(p.id, sel.dataset.scMode, { mode: sel.value }); } catch {} render(); });
+      });
+      summaryHost.querySelectorAll('[data-sc]').forEach(inp => {
+        inp.addEventListener('change', () => { try { setSectionScope(p.id, inp.dataset.sc, { [inp.dataset.f]: inp.value }); } catch {} });
+      });
+    }
   }
 
   // X.4.2 (v0.60.580): членство узлов схемы в дисциплинах + расчётный
