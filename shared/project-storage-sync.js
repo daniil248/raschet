@@ -54,6 +54,30 @@ async function pullAll() {
   return n;
 }
 
+// v0.60.777: залить ВСЕ локальные getools.*-ключи в серверный Postgres
+// (перенос данных git-копии: на сервере restore бэкапа → pushAll →
+// данные в БД). Идёт батчами, fail-soft. Возвращает число залитых.
+async function pushAll() {
+  if (!tok()) return 0;
+  const keys = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf('getools.') === 0
+          && k !== 'getools.srvToken' && k !== 'getools.backendMode') keys.push(k);
+    }
+  } catch {}
+  let n = 0;
+  for (const k of keys) {
+    let v; try { v = JSON.parse(localStorage.getItem(k)); } catch { v = localStorage.getItem(k); }
+    try {
+      await api('/kv/' + encodeURIComponent(k), { method: 'PUT', body: JSON.stringify(v) });
+      n++;
+    } catch (e) { /* fail-soft: пропускаем, повторный pushAll добьёт */ }
+  }
+  return n;
+}
+
 async function login(email, password) {
   const r = await api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
   if (!r || !r.token) throw new Error('no token');
@@ -73,7 +97,7 @@ function logout() { try { localStorage.removeItem(TOK_KEY); } catch {} }
 function expose() {
   window.GEToolsServer = {
     mode: 'server', isAuthed: () => !!tok(),
-    login, register, logout, pullAll,
+    login, register, logout, pullAll, pushAll,
     me: () => api('/auth/me').catch(() => null),
   };
 }
@@ -88,8 +112,32 @@ function injectChip() {
   chip.textContent = authed ? '☁ Сервер ✓' : '☁ Войти на сервер';
   chip.title = authed ? 'Данные синхронизируются с сервером. Клик — выйти.' : 'Войти/регистрация — облачное хранение в серверной БД.';
   chip.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:99999;padding:7px 12px;border-radius:18px;border:1px solid ' + (authed ? '#16a34a;background:#dcfce7;color:#15803d' : '#0ea5e9;background:#e0f2fe;color:#075985') + ';font:600 12px system-ui;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.18)';
-  chip.onclick = () => authed ? (logout(), location.reload()) : openModal();
+  chip.onclick = () => authed ? syncMenu() : openModal();
   document.body.appendChild(chip);
+}
+// Меню синхронизации (авторизован): залить всё → сервер / подтянуть / выйти.
+function syncMenu() {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100000;display:flex;align-items:center;justify-content:center;font:14px system-ui';
+  ov.innerHTML = '<div style="background:#fff;border-radius:10px;padding:18px;width:340px;max-width:92vw;box-shadow:0 12px 40px rgba(0,0,0,.3)">'
+    + '<h3 style="margin:0 0 4px">Синхронизация с сервером</h3>'
+    + '<p style="margin:0 0 12px;color:#64748b;font-size:12px">Данные хранятся в БД на сервере. Перенос из git-копии: там «💾 Бэкап» → здесь «Восстановить» (авто-зальётся), либо «⬆ Залить всё» вручную.</p>'
+    + '<div id="ge-sm-st" style="font-size:12px;color:#0f172a;min-height:18px;margin-bottom:8px"></div>'
+    + '<div style="display:flex;flex-direction:column;gap:8px">'
+    + '<button id="ge-up" style="padding:9px;background:#7c3aed;color:#fff;border:0;border-radius:6px;cursor:pointer;font:600 13px system-ui">⬆ Залить ВСЁ на сервер</button>'
+    + '<button id="ge-dn" style="padding:9px;background:#0ea5e9;color:#fff;border:0;border-radius:6px;cursor:pointer;font:600 13px system-ui">⬇ Подтянуть с сервера</button>'
+    + '<button id="ge-out" style="padding:9px;background:#fff;color:#b91c1c;border:1px solid #fecaca;border-radius:6px;cursor:pointer;font:600 13px system-ui">Выйти из серверного аккаунта</button>'
+    + '<button id="ge-cl" style="padding:7px;background:#f1f5f9;border:0;border-radius:6px;cursor:pointer">Закрыть</button>'
+    + '</div></div>';
+  document.body.appendChild(ov);
+  const Q = s => ov.querySelector(s);
+  const st = m => { Q('#ge-sm-st').textContent = m || ''; };
+  const close = () => ov.remove();
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  Q('#ge-cl').onclick = close;
+  Q('#ge-out').onclick = () => { logout(); location.reload(); };
+  Q('#ge-up').onclick = async () => { st('Заливаю на сервер…'); try { const n = await pushAll(); st('Залито ключей: ' + n + '. Готово.'); } catch (e) { st('Ошибка: ' + (e.message || e)); } };
+  Q('#ge-dn').onclick = async () => { st('Подтягиваю…'); try { const n = await pullAll(); st('Получено ключей: ' + n + '. Перезагрузка…'); setTimeout(() => location.reload(), 800); } catch (e) { st('Ошибка: ' + (e.message || e)); } };
 }
 function openModal() {
   const ov = document.createElement('div');

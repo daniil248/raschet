@@ -105,6 +105,15 @@ export function restoreFromJson(payload, { strategy = 'merge' } = {}) {
       console.warn('[backup] setItem failed for', k, e);
     }
   }
+  // v0.60.777: restore пишет в LS сырым setItem мимо C3 write-hook —
+  // в server-режиме (залогинен) дозаливаем восстановленное в Postgres,
+  // иначе данные git-копии не попадут в серверную БД. Fail-soft, async.
+  try {
+    const S = (typeof window !== 'undefined') && window.GEToolsServer;
+    if (S && S.mode === 'server' && S.isAuthed && S.isAuthed() && S.pushAll) {
+      S.pushAll().catch(() => {});
+    }
+  } catch {}
   return { written, skipped, errors, total: Object.keys(data).length, strategy };
 }
 
