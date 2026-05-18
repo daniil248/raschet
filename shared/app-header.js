@@ -640,7 +640,7 @@ function _openStandaloneProjectMenu(currentModuleId, opts = {}) {
         <div class="rs-proj-variant-list" style="margin-bottom:12px">
           ${_variants.map(v => {
             const isAct = v.id === activeId;
-            return `<button type="button" class="rs-proj-variant-row" data-pid="${esc(v.id)}"${isAct ? ' style="background:#dbeafe;border-color:#93c5fd"' : ''} style="display:flex;align-items:center;width:100%;text-align:left;padding:7px 12px;border:1px solid #e2e8f0;background:${isAct ? '#dbeafe' : '#fff'};border-radius:5px;margin:4px 0;cursor:pointer;font:inherit">
+            return `<button type="button" class="rs-proj-variant-row" data-pid="${esc(v.id)}" style="display:flex;align-items:center;width:100%;text-align:left;padding:7px 12px;border:1px solid ${isAct ? '#93c5fd' : '#e2e8f0'};background:${isAct ? '#dbeafe' : '#fff'};border-radius:5px;margin:4px 0;cursor:pointer;font:inherit">
               <span style="font-weight:600;color:#0f172a">${_varGlyph(v.variantRole)}${esc(v.name || v.id)}</span>${v.designation ? `<span class="muted" style="font-size:11px;margin-left:6px">[${esc(v.designation)}]</span>` : ''}${isAct ? '<span style="color:#1d4ed8;font-weight:700;margin-left:auto">✓ Активен</span>' : '<span style="color:#64748b;font-size:11px;margin-left:auto">→ переключиться</span>'}
             </button>`;
           }).join('')}

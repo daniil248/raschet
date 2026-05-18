@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.757', date: '2026-05-18', items: [
+      '🐞 <b>HOTFIX (8.0-B): дубль атрибута style на строке варианта в picker</b>. В v0.60.756 кнопка .rs-proj-variant-row для АКТИВНОГО варианта рендерилась с двумя style= (условный фон + основной layout) → браузер берёт первый, теряя display:flex (кривая строка у активного варианта). Свёрнуто в один style с условной рамкой/фоном (border:${isAct?#93c5fd:#e2e8f0}, background:${isAct?#dbeafe:#fff}). Чистая косметика, логика переключения не затронута. Файлы: shared/app-header.js, js/engine/constants.js.',
+    ] },
     { version: '0.60.756', date: '2026-05-18', items: [
       '⭐ <b>ROADMAP 8.0-B: variant-aware единый picker (переключение вариантов проекта в одном месте)</b>. shared/app-header.js picker-поповер: новая секция «Варианты проекта «X»» — listVariants(parent, текущий-модуль) с глифом роли ★/🔁, отметкой «✓ Активен» и переключением (тот же механизм setActiveProjectId+reload, что у проектов). Контекстный родитель = родитель активного варианта / активный full / linked-проект из URL. <b>Согласовано с v0.60.349</b> (sketch НЕ как плоский «проект»): варианты сгруппированы ОТДЕЛЬНОЙ секцией под своим проектом и явно названы «варианты», общий список «Переключиться на другой проект:» остался full-only (isRelevant не изменён). Потребляет API 8.0-A1 (listVariants/getVariantRole, уже распространён на edge v0.60.754 — cache-safe в один деплой). Без миграции/namespace-изменений. Дальше отложено: 8.0-C опц. слияние namespace вариантов + миграция sketch (только по явному go). Файлы: shared/app-header.js, ROADMAP.md, js/engine/constants.js.',
     ] },
