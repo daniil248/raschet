@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.761', date: '2026-05-18', items: [
+      '📐 <b>8.0-E (FR2): условная СЛИМ-карточка проекта-дисциплины</b>. apps/projects/project.js render(): для сущности-дисциплины (isSlimEntity — конфигурация ИЛИ 1-дисц. проект) скрываются объект-only вкладки/панели «Сводка ГИП»/«Согласование»/«Модули и связи»/«Команда»/«План» (уровень проекта-комплекса); остаются Общее/Оборудование/Проверки/Экономика/Управление этой дисциплины. Если активная вкладка — скрытая, авто-переход на «Общее». DOM-уровень, реверсивно (object → display восстанавливается), движок/данные/namespace не трогаются. Потребитель 8.0-D (entityKind на edge — cache-safe в 1 деплой). Объект-props в «Общем» (наследование/мини-поля) — 8.0-F. Файлы: apps/projects/project.js, ROADMAP.md, js/engine/constants.js.',
+    ] },
     { version: '0.60.760', date: '2026-05-18', items: [
       '📐 <b>8.0-D (FR1): тип сущности entityKind — API-шов (cache-safe деплой 1/N)</b>. shared/project-storage.js: createProject +параметр/поле entityKind (object|discipline; не задан → инференс из kind: sketch⇒discipline, full⇒object — backward-compat, прежние вызовы не меняются). +хелперы entityKindOf/isObjectProject/isConfiguration (discipline+parent)/isDisciplineProject (discipline без родителя)/isSlimEntity/projectDisciplineOf. Аддитивно, только классификация — namespace/данные НЕ трогаются (спека FR6). <b>0 потребителей — cache-safe §6a</b>: условный рендер карточки (8.0-E) и прочее подключаются после распространения экспортов. Спека: thoughts/shared/specs/2026-05-18-project-configuration-variant-model.md. Файлы: shared/project-storage.js, ROADMAP.md, js/engine/constants.js.',
     ] },

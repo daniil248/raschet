@@ -10,6 +10,8 @@ import {
   listSubProjects, createSubProject,
   // v0.60.755 (8.0-A2): роли варианта — выбранный ★ / резервный 🔁.
   getVariantRole, setVariantRole,
+  // v0.60.761 (8.0-E): тип сущности для условной слим-карточки.
+  isSlimEntity, entityKindOf, projectDisciplineOf, isConfiguration,
   // Фаза 2 (R2): чтение/запись чужих module-scoped данных через шов
   // (projectLoad/projectSave — централизовано, типобезоп., bump updatedAt).
   projectLoad,
@@ -2031,6 +2033,32 @@ function render() {
   const _activeInputSnap = _captureActiveInput();
   const pid = getPid();
   const p = pid ? getProject(pid) : null;
+
+  // v0.60.761 (8.0-E / спека FR2): условная СЛИМ-карточка. Для сущности-
+  // дисциплины (конфигурация ИЛИ 1-дисц. проект) скрываем объект-only
+  // вкладки/панели: «Сводка ГИП», «Согласование», «Модули и связи»,
+  // «Команда», «План» (уровень проекта-комплекса). Остаются: Общее,
+  // Оборудование, Проверки, Экономика, Управление (этой дисциплины).
+  // DOM-уровень, реверсивно (при object — display восстанавливается),
+  // движок/данные не трогаются. Объект-props в Общем — 8.0-F.
+  (function _applySlimCard() {
+    try {
+      const slim = !!(p && isSlimEntity(p));
+      const HIDE = ['summary', 'approvals', 'modules', 'team', 'plan'];
+      document.querySelectorAll('.pr-tab').forEach(b => {
+        if (HIDE.includes(b.dataset.tab)) b.style.display = slim ? 'none' : '';
+      });
+      if (slim) {
+        document.querySelectorAll('.pr-tab-panel').forEach(pl => {
+          if (HIDE.includes(pl.dataset.tabPanel)) pl.hidden = true;
+        });
+        const act = document.querySelector('.pr-tab.pr-tab-active');
+        if (act && HIDE.includes(act.dataset.tab)) {
+          document.querySelector('.pr-tab[data-tab="general"]')?.click();
+        }
+      }
+    } catch {}
+  })();
 
   const headHost = document.getElementById('pr-detail-head');
   const propsHost = document.getElementById('pr-detail-properties');
