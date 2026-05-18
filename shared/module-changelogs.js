@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.769', date: '2026-05-18', items: [
+      '🔀 <b>C1: сейм выбора бэкенда (server vs firebase) — runtime, fail-safe</b>. shared/backend-mode.js: один клиент в git раздаётся И на GitHub Pages (Firebase, НЕ удаляем — git-версия продолжает работать), И на getools.netchess.ru (свой /api+Postgres). Режим детерминированно по хосту (SERVER_HOSTS=[getools.netchess.ru]→server; иначе firebase), без сети, override ?backend=/localStorage. <b>0 потребителей — cache-safe</b> (CONTRIBUTING §6a): auth/data-сеймы (C2/C3) подключаются после распространения. Нулевая регрессия Pages (default firebase). Файлы: shared/backend-mode.js, ROADMAP.md, js/engine/constants.js.',
+    ] },
     { version: '0.60.768', date: '2026-05-18', items: [
       '🌐 <b>СЕРВЕР ЖИВ: https://getools.netchess.ru развёрнут на Timeweb VPS</b>. Статика (приложение) + бэкенд /api (Express+Postgres, systemd getools-api на 127.0.0.1:8090, TLS Let’s Encrypt, http→https). E2E: constants.js APP_VERSION=git HEAD, /api/health={"ok":true}. <b>Общий сервер — чужое НЕ тронуто</b>: добавлен изолированный nginx-vhost (только getools.netchess.ru; reload, не restart), отдельная PG роль/БД getools (idempotent), бэкенд localhost-only (не открыт лишний публичный порт); сайты agregator/netchess/crashgame и docker-проекты 81xx/9xxx целы. Фикс: server/package.json + runbook — `npm install` (lockfile отсутствует, не `ci`). <b>Двойной деплой git+сервер активен</b> (memory:dual_deploy_server): git push + заливка рабочего дерева в /var/www/getools (tar/sftp через ssh_run, вне репо). Клиент по-прежнему на Firebase — cutover на серверный бэкенд НЕ выполнен (фазы C1–C4 миграции — отдельно, при готовности). Файлы: server/package.json, DEPLOY-SERVER.md, ROADMAP.md, js/engine/constants.js.',
     ] },
