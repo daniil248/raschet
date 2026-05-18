@@ -13,6 +13,9 @@ const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
+const { OAuth2Client } = require('google-auth-library'); // вход через Google
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const _gclient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 
 const PORT = process.env.PORT || 8090;
 // Общий сервер: по умолчанию слушаем ТОЛЬКО localhost (nginx проксирует),
@@ -39,6 +42,39 @@ function auth(req, res, next) {
 app.get('/api/health', async (_req, res) => {
   try { await pool.query('SELECT 1'); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ ok: false, error: String(e) }); }
+});
+
+// --- public config (клиент узнаёт, показывать ли Google-вход) ---------------
+app.get('/api/config', (_req, res) => {
+  res.json({ googleClientId: GOOGLE_CLIENT_ID || '' });
+});
+
+// --- Google вход (GIS ID-token flow): клиент шлёт credential (Google JWT),
+//     сервер верифицирует подпись/audience, профиль (email/имя/фото) →
+//     upsert по email (линкуем с email/пароль-аккаунтом того же email),
+//     выдаём СВОЙ JWT. Client Secret НЕ нужен (только Client ID). ---------
+app.post('/api/auth/google', async (req, res) => {
+  try {
+    if (!_gclient) return res.status(503).json({ error: 'google не настроен (нет GOOGLE_CLIENT_ID)' });
+    const credential = (req.body && req.body.credential) || '';
+    if (!credential) return res.status(400).json({ error: 'no credential' });
+    const ticket = await _gclient.verifyIdToken({ idToken: credential, audience: GOOGLE_CLIENT_ID });
+    const p = ticket.getPayload();
+    if (!p || !p.email || p.email_verified === false) return res.status(401).json({ error: 'email не подтверждён Google' });
+    const email = String(p.email).toLowerCase().trim();
+    const r = await pool.query(
+      `INSERT INTO users(email,name,photo,google_sub,last_login)
+       VALUES($1,$2,$3,$4,now())
+       ON CONFLICT (email) DO UPDATE SET
+         name=COALESCE(EXCLUDED.name, users.name),
+         photo=COALESCE(EXCLUDED.photo, users.photo),
+         google_sub=COALESCE(users.google_sub, EXCLUDED.google_sub),
+         last_login=now()
+       RETURNING uid,email,name,photo,is_internal,role`,
+      [email, p.name || null, p.picture || null, p.sub || null]);
+    const u = r.rows[0];
+    res.json({ token: sign(u), user: u });
+  } catch (e) { res.status(401).json({ error: 'google verify failed: ' + String(e && e.message || e) }); }
 });
 
 // --- Auth (замена Firebase Auth; email+пароль; Google OAuth — TODO) ---------

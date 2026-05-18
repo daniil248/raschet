@@ -255,6 +255,39 @@
         card.insertBefore(box, footer);
         const q = s => box.querySelector(s);
         const err = m => { q('#s-err').textContent = m || ''; };
+        // v0.60.774: вход через Google на серверной версии (Google Identity
+        // Services, ID-token → серверная верификация /api/auth/google).
+        // Появляется ТОЛЬКО если сервер настроил GOOGLE_CLIENT_ID (/api/
+        // config). Иначе — остаётся email/пароль (без поломки UI).
+        try {
+          const cfg = await api('/config');
+          if (cfg && cfg.googleClientId) {
+            if (lt) lt.textContent = 'Вход через Google-аккаунт компании (профиль переносится). Либо email/пароль.';
+            const gwrap = document.createElement('div');
+            gwrap.innerHTML = '<div id="g-btn" style="display:flex;justify-content:center;margin:2px 0 8px"></div>'
+              + '<div style="text-align:center;color:#94a3b8;font-size:12px;margin:4px 0 8px">— или email/пароль —</div>';
+            card.insertBefore(gwrap, box);
+            await new Promise((rz, rj) => {
+              const s = document.createElement('script');
+              s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
+              s.onload = rz; s.onerror = rj; document.head.appendChild(s);
+            });
+            /* global google */
+            google.accounts.id.initialize({
+              client_id: cfg.googleClientId,
+              callback: async (resp) => {
+                try {
+                  const d = await api('/auth/google', { credential: resp.credential });
+                  if (!d || !d.token) throw new Error('нет токена');
+                  localStorage.setItem(TOK, d.token);
+                  location.replace(nextUrl());
+                } catch (e) { err('Google-вход: ' + (e.message || 'ошибка')); }
+              },
+            });
+            google.accounts.id.renderButton(document.getElementById('g-btn'),
+              { theme: 'filled_blue', size: 'large', text: 'continue_with', locale: 'ru', width: 280 });
+          }
+        } catch (e) { /* /api/config недоступен — остаётся email/пароль */ }
         const go = async (path) => {
           err(''); const em = q('#s-em').value.trim(), pw = q('#s-pw').value, nm = q('#s-nm').value.trim();
           if (!em || !pw) { err('Укажите email и пароль'); return; }

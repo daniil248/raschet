@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.774', date: '2026-05-18', items: [
+      '🔓 <b>Вход через Google на серверной версии (профиль переносится)</b>. Запрос Пользователя. Серверный Google-вход через Google Identity Services (ID-token → серверная верификация, Client Secret НЕ нужен). server.js: +google-auth-library, +GET /api/config (отдаёт googleClientId), +POST /api/auth/google (verifyIdToken по audience=GOOGLE_CLIENT_ID → email/имя/фото → upsert по email, линкуется с email/пароль-аккаунтом того же email → свой JWT; try/catch crash-safe). schema: users +photo +google_sub (idempotent ALTER). login.html (server-режим): кнопка Google (GIS) появляется ТОЛЬКО если сервер настроил GOOGLE_CLIENT_ID (/api/config), иначе остаётся email/пароль (без поломки UI). Pages/github.io не трогаем (хост-гейт; Firebase Google как был). <b>Требуется ручная настройка Пользователя в Google Cloud</b> (origin getools.netchess.ru + Client ID — см. ответ). Файлы: server/server.js, server/db/schema.sql, server/package.json, login.html, ROADMAP.md, js/engine/constants.js.',
+    ] },
     { version: '0.60.773', date: '2026-05-18', items: [
       '🐞 <b>HOTFIX server.js: краш бэкенда на jsonb-массиве → 502 (прод-стабильность)</b>. Диагностика логов: node-pg НЕ сериализует JS-объект/массив для jsonb — массив (напр. клиентский getools.projects.v1) превращался в PG-array-литерал → «invalid input syntax for type json» (22P02) → необработанный reject → процесс exit(1) → systemd restart → 502 для ВСЕХ в окне рестарта. C3-синк ронял бы бэкенд. Фикс: ВСЕ jsonb-параметры через JSON.stringify + явный ::jsonb-каст (kv PUT, projects meta/members); try/catch в каждом маршруте kv/projects (плохой payload = 400/500, НЕ падение); crash-proof guards (unhandledRejection/uncaughtException — лог, не exit) + express error-handler. Дабл-деплой git+сервер, restart getools-api. Файлы: server/server.js, ROADMAP.md, js/engine/constants.js.',
     ] },
