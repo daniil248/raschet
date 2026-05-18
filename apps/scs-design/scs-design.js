@@ -5199,6 +5199,29 @@ document.addEventListener('DOMContentLoaded', () => {
   // пересчёт линий при скролле ряда стоек, скролле юнитов внутри карточки и ресайзе окна
   document.getElementById('sd-racks-row')?.addEventListener('scroll', scheduleOverlay, true);
   window.addEventListener('resize', scheduleOverlay);
+  // v0.60.741 (репорт Пользователя: «связи уезжают при ресайзе до
+  // перезагрузки» + «расположены неверно»). Причина: scheduleOverlay
+  // делает ОДИН requestAnimationFrame, который срабатывает ДО
+  // завершения reflow (resize/смена шрифта/появление скроллбара/
+  // ре-layout карточек) → координаты getBoundingClientRect устаревшие,
+  // и нет повторной отрисовки до следующего события (reload «чинит»).
+  // Фикс: (1) ResizeObserver на контейнерах оверлея — срабатывает
+  // ПОСЛЕ layout, ловит любые изменения геометрии (не только window
+  // resize); (2) trailing-перерисовка через debounce — финальный
+  // пересчёт когда layout устаканился. Оба аддитивны и идемпотентны.
+  let _ovSettleT = 0;
+  const _ovSettle = () => {
+    clearTimeout(_ovSettleT);
+    _ovSettleT = setTimeout(() => { try { drawLinkOverlay(); } catch {} }, 140);
+  };
+  window.addEventListener('resize', _ovSettle);
+  if (typeof ResizeObserver !== 'undefined') {
+    const _ovRO = new ResizeObserver(() => { scheduleOverlay(); _ovSettle(); });
+    const _ovWrap = document.getElementById('sd-links-svg')?.parentElement;
+    const _ovRow = document.getElementById('sd-racks-row');
+    if (_ovWrap) _ovRO.observe(_ovWrap);
+    if (_ovRow) _ovRO.observe(_ovRow);
+  }
 
   // v0.59.360: sync «выбран rack-узел в схеме → подсветка стойки на плане».
   // Родитель (Конструктор схем) шлёт postMessage с schemeNodeId; находим

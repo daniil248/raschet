@@ -4,6 +4,9 @@
 
 export const CHANGELOGS = {
   'engine': [
+    { version: '0.60.741', date: '2026-05-18', items: [
+      '🐞 <b>HOTFIX: связи scs-design уезжают при ресайзе / расположены неверно (репорт Пользователя)</b>. Причина: scheduleOverlay делал ОДИН requestAnimationFrame, срабатывавший ДО завершения reflow (window resize / появление скроллбара / ре-layout карточек / смена шрифта) → getBoundingClientRect отдавал устаревшую геометрию, повторной отрисовки до следующего события не было (reload «чинил»). Фикс (аддитивно, идемпотентно): (1) ResizeObserver на контейнерах оверлея (.sd-racks-wrap + #sd-racks-row) — перерисовка ПОСЛЕ layout, ловит ЛЮБЫЕ изменения геометрии, не только window.resize; (2) debounce trailing-перерисовка (140мс) — финальный пересчёт когда layout устаканился. Старый scheduleOverlay/rAF и scroll-листенер сохранены. Не трогает движок/данные/кривые-математику — только триггеры перерисовки. Файлы: apps/scs-design/scs-design.js, js/engine/constants.js.',
+    ] },
     { version: '0.60.740', date: '2026-05-18', items: [
       '🐞 <b>HOTFIX: откат Ф-F2 sidebar-аккордеона в scs-design (репорт «кнопки не работают»)</b>. Аккордеон single-open сворачивал блоки .sd-plan-side-block в «План зала» (Раскладка / Каналы / Экспорт / Сбросить) — это панели-ТУЛБАРЫ действий, а не навигационные секции; collapse-by-default прятал основные кнопки до клика по заголовку = регресс UX. Удалены _initSidebarAccordion() + его вызов в DOMContentLoaded + CSS .sd-acc-collapsed/.sd-plan-side-h-clickable. Поведение scs-design восстановлено к состоянию до Ф-F2 (v0.60.736): все кнопки сайдбара видимы сразу. memory:sidebar_accordion применим к НАВИГАЦИОННЫМ сайдбарам (tech-workspace rail), НЕ к тулбар-панелям. Прочие Ф-F (бейдж Ф-F1, role-gate Ф-F3, отчёт Ф-F4) не затронуты. Файлы: apps/scs-design/scs-design.js, apps/scs-design/scs-design.css, js/engine/constants.js.',
     ] },
