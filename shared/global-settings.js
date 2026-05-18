@@ -38,6 +38,7 @@ import {
 import {
   PLANS, getSubscription, saveSubscription, activateTrial, planBadge,
   ROLES, isInternalUser, setInternalUser, currentRole, setRole,
+  listUiModules, setTesterModules,
 } from './subscriptions.js';
 
 const STORAGE_KEY = 'raschet.global.v1';
@@ -598,6 +599,14 @@ function _renderSubscriptionSection(host) {
       ${planRows}
     </div>
 
+    <div id="rs-gs-tester-wrap" style="margin-top:16px;padding:12px 14px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:5px">
+      <h5 style="margin:0 0 4px;font-size:12px;color:#5b21b6;text-transform:uppercase;letter-spacing:0.4px">🧪 Тестовый доступ к модулям</h5>
+      <p class="muted" style="font-size:11px;margin:0 0 8px">
+        Выберите модули для тестировщика — доступ откроется только к ним (а не ко всему приложению). Связанные модули (зависимости) и calc-библиотеки добавятся автоматически. Действует поверх плана.
+      </p>
+      <div id="rs-gs-tester-list" class="muted" style="font-size:12px">Загрузка списка модулей…</div>
+    </div>
+
     <p class="muted" style="font-size:11px;margin:8px 0 0">
       💡 Soft-enforcement: подписка проверяется только в client-side. Calc-библиотеки (cooling/calc, shared/auto-norm, js/methods и т.д.) <b>авто-включаются</b> вместе с любым UI-модулем который их использует — без отдельной подписки.
     </p>
@@ -619,6 +628,50 @@ function _renderSubscriptionSection(host) {
         rsToast('Ошибка активации триала: ' + (e.message || e), 'error');
       }
     });
+  });
+
+  // v0.60.750 (B2): тестовый доступ к выбранным модулям (+связанным).
+  _renderTesterAccess(host.querySelector('#rs-gs-tester-list'), escHtml, escAttr);
+}
+
+/* v0.60.750 (Phase 44.6, приоритетный запрос Пользователя): UI выдачи
+   тестировщику доступа к ВЫБРАННЫМ модулям (не всему приложению).
+   Поверх subscription.modules (аддитивный allowlist); связанные UI-модули
+   и calc-libs добавляются автоматически (setTesterModules/expand). */
+async function _renderTesterAccess(host, escHtml, escAttr) {
+  if (!host) return;
+  let mods;
+  try { mods = await listUiModules(); }
+  catch { host.innerHTML = '<span style="color:#b91c1c">Не удалось загрузить список модулей (modules.json).</span>'; return; }
+  if (!mods || !mods.length) { host.innerHTML = '<span class="muted">Список модулей пуст.</span>'; return; }
+  const sub = getSubscription();
+  const granted = new Set(Array.isArray(sub.modules) ? sub.modules : []);
+  const rows = mods.map(m => `
+    <label title="${escAttr(m.id)}${m.internalOnly ? ' · internalOnly (нужен внутрикорпоративный режим)' : ''}" style="display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 6px;border:1px solid #e2e8f0;border-radius:4px;background:#fff;cursor:pointer">
+      <input type="checkbox" class="rs-gs-tester-mod" value="${escAttr(m.id)}"${granted.has(m.id) ? ' checked' : ''} style="margin:0">
+      <span>${escHtml(m.name)}${m.internalOnly ? ' <span style="color:#b45309;font-size:10px">🏢</span>' : ''}</span>
+    </label>`).join('');
+  host.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:5px;margin-bottom:10px">${rows}</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button type="button" id="rs-gs-tester-apply" style="padding:5px 12px;background:#7c3aed;color:#fff;border:0;border-radius:4px;cursor:pointer;font:inherit;font-size:12px">Применить тестовый доступ</button>
+      <button type="button" id="rs-gs-tester-clear" style="padding:5px 12px;background:#fff;color:#7c3aed;border:1px solid #c4b5fd;border-radius:4px;cursor:pointer;font:inherit;font-size:12px">Сбросить (только план)</button>
+      <span class="muted" style="font-size:11px">🏢 = internalOnly: откроется только во внутрикорпоративном режиме.</span>
+    </div>`;
+  host.querySelector('#rs-gs-tester-apply')?.addEventListener('click', async () => {
+    const ids = Array.from(host.querySelectorAll('.rs-gs-tester-mod:checked')).map(c => c.value);
+    try {
+      const expanded = await setTesterModules(ids);
+      rsToast(`✓ Тестовый доступ: ${expanded.length} модулей (со связанными). Перезагружаем…`, 'success');
+      setTimeout(() => location.reload(), 1400);
+    } catch (e) { rsToast('Ошибка: ' + (e.message || e), 'error'); }
+  });
+  host.querySelector('#rs-gs-tester-clear')?.addEventListener('click', async () => {
+    try {
+      await setTesterModules([]);
+      rsToast('✓ Тестовый доступ сброшен (остался только план). Перезагружаем…', 'success');
+      setTimeout(() => location.reload(), 1400);
+    } catch (e) { rsToast('Ошибка: ' + (e.message || e), 'error'); }
   });
 }
 

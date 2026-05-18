@@ -7,7 +7,7 @@
 > Репозиторий переименован `daniil248/raschet`→`daniil248/ge-tools`,
 > live `https://daniil248.github.io/ge-tools/` (v0.60.746, ВЫПОЛНЕНО).
 >
-> **Статус:** v0.60.749 (2026-05-18). Платформа + предметные модули.
+> **Статус:** v0.60.750 (2026-05-18). Платформа + предметные модули.
 > Мультидисциплинарность (X.4.5.3 Вариант I) —
 > завершена ПОЛНОСТЬЮ (Ф-A…Ф-G). Архитектурная модуляризация (фазы
 > 0–2 плана) — закрыта. Модуль отчётов (flow-редизайн) — закрыт.
@@ -220,10 +220,11 @@ cross-filter / tooltips / zoom Ctrl+wheel — платформенно.
 - i18n-инфра готова (X.3.1, см. §3).
 
 **🔲 Открыто**
-- [~] **9.0 ⭐ПРИОРИТЕТ** Тестовый доступ к выбранным модулям + связанным:
-  B1 API-шов ✅ (v0.60.749 — listUiModules/expandTesterModules/
-  setTesterModules, subscription.modules allowlist); B2 — UI в
-  global-settings (выбор модулей, авто-связанные). `arch:44.6`
+- [x] **9.0 ⭐** Тестовый доступ к выбранным модулям + связанным ✅
+  ЗАВЕРШЕНО (v0.60.749 B1 API-шов · v0.60.750 B2 UI в global-settings):
+  чекбокс-список UI-модулей → `setTesterModules` (subscription.modules
+  allowlist + связанные UI из manifest.requires + calc-libs авто);
+  аддитивно поверх плана; для не-internal. `arch:44.6`
 - [ ] **9.1** Платежи (Stripe/ЮKassa)+webhook+server-валидация+ключи. `arch:44.4`
 - [ ] **9.2** Trial-flow (email-напоминания, авто-rollback, upsell). `arch:44.5`
 - [ ] **9.3** Per-module SKU UI (выбор 3–5 модулей, bundle, B2B per-seat). `arch:44.6`

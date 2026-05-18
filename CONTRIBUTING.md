@@ -113,3 +113,50 @@ self-healing-сбой у части клиентов (только для низ
   продолжают резолвиться; shim не удалять, пока есть импортёры.
 - Per-file revert для точечных правок; данные — миграция/soft-delete,
   не жёсткое удаление.
+
+## 8. Безопасная правка модуля / standalone-приложения
+Цель: менять один модуль, **не задев остальные**.
+
+**Что можно трогать:** только свой `apps/<id>/` (UI) или `lib/<id>/`
+(calc). Кросс-модуль — ТОЛЬКО через контракты: `shared/*`, мосты
+`shared/<x>-bridge.js`, события/URL-параметры из
+`shared/contracts/*`. Чужой проектный LS — только через шов
+`shared/project-storage.js` (`projectKey`/`projectLoad`/`projectSave`),
+никогда сырым литералом.
+**Запрещено без явного согласия:** импорт из соседнего `apps/<other>/`
+(sibling-import), запись в чужой LS-namespace, правка `firestore.rules`/
+schema-id/`APP_NS`, расширение boundary-lint allowlist.
+**Инварианты:** аддитивно + идемпотентно; user-params-sacred
+(миграции с `typeof`-guard, apply preserve-on-miss); calc без DOM,
+DOM только в `ui/`; без браузерных диалогов (`scToast/scConfirm/
+scPrompt`); новый shared-export → §6a (два деплоя).
+**Standalone-приложение:** свой `index.html`, импорт только CORE/
+SHARED/CATALOGS через bare-спецификаторы (importmap/`module-paths`,
+не относительные кросс-модульные пути); гейт доступа —
+`requireModuleAccess()` (подписка / `subscription.modules` allowlist /
+internal-флаг), не самопал.
+**Verify (memory:verify_methodology):** только естественная загрузка
+`apps/<id>/index.html` своего модуля; перед чтением консоли —
+clear+reload, сверять таймстемпы; чистая проба для `shared/`/`calc/`
+— NO-DOM. Чужой entry cross-page не зондировать.
+**Pre-commit:** `boundary-lint` зелёный; `changelog-lint` зелёный;
+при касании контрактов — `audit-contracts.py --strict`.
+
+## 9. Версионирование отдельных модулей
+- **`APP_VERSION`** (`js/engine/constants.js`) — единая ГЛОБАЛЬНАЯ
+  версия продукта. Любая содержательная правка любого модуля
+  инкрементит её + запись в `shared/module-changelogs.js` (§3,
+  ROADMAP-синк). Это единый источник «что и когда менялось».
+- **Независимая версия модуля** (когда нужен свой счётчик, не
+  завязанный на глобальный): модуль ведёт свой changelog-массив
+  (эталон `apps/suppression-config/changelog.js` →
+  `MODULE_CHANGELOG[0].version`) и передаёт `moduleVersion` +
+  `moduleTitle` в `mountFooter`/`app-header`. Футер тогда показывает
+  пару: «GE Tools v0.60.x · <Модуль> vA.B.C · Журнал», tooltip —
+  обе версии. Глобальный `APP_VERSION` всё равно бампится (§3) —
+  модульный счётчик его НЕ заменяет, а дополняет для отслеживания
+  изменений конкретного модуля.
+- Отслеживание: глобально — `changelog.html` (из
+  `module-changelogs.js`) + `git log`; по модулю — его
+  `changelog.js` + футер модуля. ROADMAP — крупные эпики по разделам
+  (не пер-правка).
