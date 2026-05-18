@@ -261,8 +261,8 @@ git push
 
 ## Развёртывание на GitHub Pages
 
-1. https://github.com/daniil248/raschet/settings/pages
+1. https://github.com/daniil248/ge-tools/settings/pages
 2. **Source**: Deploy from a branch
 3. **Branch**: `main` / `(root)` → **Save**
-4. Через ~1 минуту будет доступно на https://daniil248.github.io/raschet/
+4. Через ~1 минуту будет доступно на https://daniil248.github.io/ge-tools/
 5. Не забудьте добавить этот домен в Authorized domains в Firebase (если настраивали его).

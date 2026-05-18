@@ -81,41 +81,30 @@
 
 ---
 
-## Переезд репозитория (ОТЛОЖЕН — нет доступа к Settings)
+## Переезд репозитория — ✅ ВЫПОЛНЕН (v0.60.746)
 
-Состояние на v0.60.745:
-- ✅ **Сделано (бренд, независимо от имени репо):** продукт =
-  Genesis Engineering Tools (GE Tools); `APP_NS='getools'` +
-  идемпотентная LS-миграция; видимые названия/титулы/доки.
-- ⏸ **Отложено (нужен доступ владельца к GitHub):** фактическое
-  переименование репо `daniil248/raschet` → `daniil248/ge-tools`.
-  Slug решён: **`ge-tools`**, целевой live-URL
-  `https://daniil248.github.io/ge-tools/`.
-- URL/slug-литералы в коде НАМЕРЕННО оставлены на рабочем
-  `/raschet/` (иначе на живом сайте битые GitHub-ссылки и
-  functions-fallback).
+Репо `daniil248/raschet` → **`daniil248/ge-tools`**; live-URL
+**`https://daniil248.github.io/ge-tools/`**. Бренд (GE Tools,
+`APP_NS='getools'` + LS-миграция) применён ранее (v0.60.743).
 
-**Применить ЕДИНЫМ коммитом, когда появится доступ:**
-1. GitHub: Settings репо → Repository name → `ge-tools` → Rename.
-2. Локально: `git remote set-url origin
-   git@github.com:daniil248/ge-tools.git` (git GitHub редиректит,
-   но обновить чисто).
-3. Заменить `raschet`→`ge-tools` (slug) ТОЛЬКО в URL/ссылках:
-   - `functions/index.js` — `APP_URL` fallback `/raschet/`→`/ge-tools/`.
-   - `apps/pdu-config/index.html` — `github.com/daniil248/raschet`.
-   - `changelog.html` — `…/raschet/commits/main`.
-   - `roadmap.html` — `…/raschet/blob/main/ROADMAP.md`.
-   - `CLAUDE.md` — verify-URL; `CONTRIBUTING.md` curl-пример;
-     `FUNCTIONS_SETUP.md`; `README.md` Pages-инструкция (×2).
-   - НЕ трогать: `ROADMAP-archive.md` (заморожен),
-     `.claude/settings.local.json` (локальный конфиг), schema-id
-     `raschet.project/1`, код-литералы `raschet.*` (R2-долг,
-     переносит APP_NS-миграция).
-4. Cloud Functions (если используются для писем):
+Что сделано:
+1. ✅ GitHub Settings → Repository name → `ge-tools` (Пользователь).
+2. ✅ `git remote set-url origin git@github.com:daniil248/ge-tools.git`.
+3. ✅ Slug `/raschet/`→`/ge-tools/` в URL/ссылках: `functions/index.js`
+   APP_URL-fallback; `apps/pdu-config/index.html`; `changelog.html`;
+   `roadmap.html`; `CLAUDE.md`; `CONTRIBUTING.md`; `FUNCTIONS_SETUP.md`;
+   `README.md` (×2). НЕ трогалось: `ROADMAP-archive.md` (заморожен),
+   `.claude/settings.local.json` (локальный конфиг), schema-id
+   `raschet.project/1`, код-литералы `raschet.*` (R2-долг — переносит
+   APP_NS-миграция).
+4. ⏳ Опц. инфра-шаг Пользователя (для прод-Cloud-Functions писем):
    `firebase functions:config:set
    app.url="https://daniil248.github.io/ge-tools/"` →
-   `firebase deploy --only functions`.
-5. Firebase Auth: домен тот же `daniil248.github.io` (путь не
-   влияет на Authorized domains) — обычно правок не требуется.
-6. Verify: curl `…/ge-tools/js/engine/constants.js` = APP_VERSION;
-   старый `…/raschet/` Pages больше не обслуживается (норма).
+   `firebase deploy --only functions`. Без него старая deployed-
+   функция шлёт старый URL; fallback в коде уже корректен.
+5. Firebase Auth: домен тот же `daniil248.github.io` (путь не влияет
+   на Authorized domains) — правок не требуется.
+
+Примечания: старый Pages-путь `…/raschet/` больше НЕ обслуживается
+(project-сайты при рейнейме не редиректятся — это норма); git-операции
+GitHub авто-редиректит со старого имени, remote обновлён явно.

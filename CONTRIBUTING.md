@@ -71,7 +71,7 @@
 ## 6. Verify (каждый PR)
 1. `node tools/boundary-lint.mjs` → 0 ошибок.
 2. Deploy = merge в `main`; через ~45 c:
-   `curl -s https://daniil248.github.io/raschet/js/engine/constants.js
+   `curl -s https://daniil248.github.io/ge-tools/js/engine/constants.js
    | grep APP_VERSION` — версия совпала с ожидаемой.
 3. Открыть затронутый модуль + `projects/` + один cross-handoff в
    браузере (Claude-in-Chrome), `read_console` onlyErrors — пусто.
