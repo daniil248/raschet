@@ -15,6 +15,9 @@ const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 
 const PORT = process.env.PORT || 8090;
+// Общий сервер: по умолчанию слушаем ТОЛЬКО localhost (nginx проксирует),
+// чтобы не открывать лишний публичный порт рядом с чужими проектами.
+const HOST = process.env.HOST || '127.0.0.1';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-insecure';
 const JWT_TTL = (Number(process.env.JWT_TTL_HOURS) || 720) + 'h';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -147,4 +150,4 @@ async function mailWorker() {
 }
 setInterval(mailWorker, 30000);
 
-app.listen(PORT, () => console.log(`[getools-server] listening on :${PORT}`));
+app.listen(PORT, HOST, () => console.log(`[getools-server] listening on ${HOST}:${PORT}`));
