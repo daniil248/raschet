@@ -26,6 +26,25 @@ const path = (location.pathname || '').toLowerCase();
 if (path.endsWith('/login.html') || path === '/login.html'
     || path.endsWith('login.html')) return;
 
+// v0.60.771 (C2): server-режим — собственный бэкенд, НЕ форсим Firebase-
+// гейт/редирект (сервер независим: опциональный вход через чип C3 /api/
+// auth). Детект детерминированный по хосту — зеркало backend-mode.js
+// (auth-gate грузится раньше ES-модуля, поэтому проверяем сами).
+// Pages/github.io: хост НЕ серверный → ветка не срабатывает, прежний
+// Firebase-гейт байт-в-байт (нулевая регрессия для текущих пользователей).
+try {
+  var _SRV_HOSTS = ['getools.netchess.ru'];
+  var _ovr = null;
+  try { _ovr = localStorage.getItem('getools.backendMode'); } catch (e) {}
+  try {
+    var _qb = new URLSearchParams(location.search).get('backend');
+    if (_qb === 'server' || _qb === 'firebase') _ovr = _qb;
+  } catch (e) {}
+  var _isSrv = _ovr ? (_ovr === 'server')
+    : (_SRV_HOSTS.indexOf(location.hostname) !== -1);
+  if (_isSrv) return; // сервер: без Firebase-редиректа (свой /api-вход)
+} catch (e) {}
+
 function isFirebaseConfigured() {
   const c = window.FIREBASE_CONFIG;
   return c && typeof c.apiKey === 'string' && c.apiKey.length > 10 && c.projectId;
