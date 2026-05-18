@@ -2151,7 +2151,18 @@ function render() {
             <span class="pr-badge-status" style="background:${st.bg};color:${st.color};padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;cursor:pointer" title="Статус проекта (упрощённый, 5 значений). Клик — изменить.">${esc(st.label)}</span>
             <button type="button" class="pr-badge-lcm" data-act="change-lcm" style="background:${lcm.bg};color:${lcm.color};padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid ${lcm.color}33;font-family:inherit"
                     title="Жизненный цикл объекта по ISO 15288 (8 значений: концепция → ... → decommission). ${esc(lcm.desc)}. Phase 39. Клик — изменить.">${lcm.icon} ${esc(lcm.label)}</button>
-            ${p.kind === 'sketch' ? '<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600">🧪 Мини-проект</span>' : ''}
+            ${(function(){
+              // v0.60.763 (8.0-G / FR5): бейдж типа сущности (канон
+              // Проект›Конфигурация›Вариант). Заменяет «🧪 Мини-проект».
+              const bs = 'padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600';
+              if (!isSlimEntity(p)) return `<span title="Проект-объект (комплекс, мультидисциплина)" style="background:#dbeafe;color:#1e40af;${bs}">📦 Объект</span>`;
+              const disc = projectDisciplineOf(p) || p.ownerModule || 'дисциплина';
+              if (isConfiguration(p)) {
+                const par = p.parentProjectId ? getProject(p.parentProjectId) : null;
+                return `<span title="Конфигурация одной дисциплины внутри проекта-объекта (слим-карточка; объект-свойства от родителя)" style="background:#e0e7ff;color:#3730a3;${bs}">🧩 Конфигурация: ${esc(disc)}${par ? ' · ' + esc(par.name || par.id) : ''}</span>`;
+              }
+              return `<span title="Самостоятельный 1-дисциплинарный проект (слим-карточка)" style="background:#cffafe;color:#155e75;${bs}">🧩 Одна дисциплина: ${esc(disc)}</span>`;
+            })()}
           </div>
           ${p.description ? `<p style="margin:10px 0 0;color:#475569">${esc(p.description)}</p>` : '<p class="muted" style="margin:10px 0 0;font-style:italic">Описание не задано</p>'}
         </div>

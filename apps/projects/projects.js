@@ -76,6 +76,66 @@ function prConfirm(title, text, opts = {}) {
   });
 }
 
+// v0.60.763 (8.0-G / FR4): выбор типа при создании. Возвращает
+// { entityKind:'object' } | { entityKind:'discipline', ownerModule } | null.
+// Тип immutable после создания (спека). Конфигурация создаётся НЕ здесь,
+// а внутри карточки проекта-объекта из его модуля.
+function prChooseProjectType() {
+  const DISCS = [
+    ['scs-design', '🔗 СКС / слаботочка'],
+    ['schematic', '⚡ Электроснабжение'],
+    ['cooling', '❄ Холодоснабжение'],
+    ['mdc-config', '🏗 Модульный ЦОД'],
+    ['suppression-config', '🧯 Газовое пожаротушение'],
+    ['meteo', '🌦 Метеоданные'],
+    ['service', '🛠 Сервис: монтаж и ТО'],
+  ];
+  return new Promise(res => {
+    const overlay = document.createElement('div');
+    overlay.className = 'pr-overlay';
+    overlay.innerHTML = `
+      <div class="pr-modal">
+        <h3>Тип проекта</h3>
+        <p class="muted" style="font-size:12.5px">Тип задаётся при создании и далее НЕ меняется.</p>
+        <label style="display:flex;align-items:flex-start;gap:8px;padding:8px;border:1px solid #cbd5e1;border-radius:5px;margin:6px 0;cursor:pointer">
+          <input type="radio" name="pr-ek" value="object" checked style="margin-top:3px">
+          <span><b>📦 Объект / комплекс</b><br><span class="muted" style="font-size:12px">Мультидисциплинарный объект (ЦОД и т.п.) — полная карточка, все дисциплины.</span></span>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:8px;padding:8px;border:1px solid #cbd5e1;border-radius:5px;margin:6px 0;cursor:pointer">
+          <input type="radio" name="pr-ek" value="discipline" style="margin-top:3px">
+          <span><b>🧩 Одна дисциплина</b><br><span class="muted" style="font-size:12px">Самостоятельный 1-дисциплинарный проект — слим-карточка.</span></span>
+        </label>
+        <label style="display:block;margin:6px 0 0">
+          <span class="muted" style="font-size:12px">Дисциплина (для 1-дисц.):</span>
+          <select id="pr-ek-disc" disabled style="width:100%;padding:6px 8px;border:1px solid #cbd5e1;border-radius:3px;font:inherit">
+            ${DISCS.map(([id, l]) => `<option value="${id}">${l}</option>`).join('')}
+          </select>
+        </label>
+        <div class="pr-modal-actions">
+          <button type="button" class="pr-btn-sel" data-act="no">Отмена</button>
+          <button type="button" class="pr-btn-danger" data-act="yes">Создать</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const discSel = overlay.querySelector('#pr-ek-disc');
+    overlay.querySelectorAll('input[name="pr-ek"]').forEach(r => {
+      r.addEventListener('change', () => { discSel.disabled = overlay.querySelector('input[name="pr-ek"]:checked').value !== 'discipline'; });
+    });
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) { overlay.remove(); res(null); return; }
+      const act = e.target.dataset?.act;
+      if (act === 'no') { overlay.remove(); res(null); }
+      if (act === 'yes') {
+        const ek = overlay.querySelector('input[name="pr-ek"]:checked').value;
+        const out = ek === 'discipline'
+          ? { entityKind: 'discipline', ownerModule: discSel.value }
+          : { entityKind: 'object' };
+        overlay.remove(); res(out);
+      }
+    });
+  });
+}
+
 function prPrompt(title, label, initial = '', placeholder = '') {
   return new Promise(res => {
     const overlay = document.createElement('div');
@@ -1112,12 +1172,19 @@ function _initAfterDom() {
         `Локальные проекты в подпрограммах остаются доступными всем (через chip в шапке).`;
     } else {
       newBtn.addEventListener('click', async () => {
-        const name = await prPrompt('Новый проект', 'Название проекта', '', 'напр. «ЦОД Альфа-1, Тверь»');
+        const t = await prChooseProjectType();
+        if (!t) return;
+        const name = await prPrompt('Новый проект', 'Название проекта', '', t.entityKind === 'discipline' ? 'напр. «СКС Корпус B»' : 'напр. «ЦОД Альфа-1, Тверь»');
         if (!name) return;
         const desc = await prPrompt('Описание', 'Клиент / адрес / контакты (можно оставить пустым)', '');
-        const p = createProject({ name, description: desc || '' });
+        // kind:'full' (top-level в реестре) + entityKind задаёт тип/карточку.
+        const p = createProject({
+          name, description: desc || '', kind: 'full',
+          entityKind: t.entityKind,
+          ownerModule: t.entityKind === 'discipline' ? (t.ownerModule || null) : null,
+        });
         setActiveProjectId(p.id);
-        prToast('✔ Проект создан и сделан активным');
+        prToast(t.entityKind === 'discipline' ? '✔ 1-дисциплинарный проект создан' : '✔ Проект-объект создан и сделан активным');
         render();
       });
     }
