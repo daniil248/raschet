@@ -206,7 +206,75 @@
     }
     renderOverview();
 
-    // Auth wire-up
+    // v0.60.772 (C2-доработка): server-режим — собственный вход (email/
+    // пароль + регистрация → /api/auth, серверный Postgres), БЕЗ Firebase
+    // (на getools.netchess.ru Google OAuth не авторизован — это и была
+    // ошибка auth/unauthorized-domain). Детект детерминированный по хосту
+    // (зеркало backend-mode/auth-gate). Pages/github.io: хост НЕ серверный
+    // → ветка не срабатывает, Firebase-вход байт-в-байт (0 регрессии).
+    const _SRV_HOSTS = ['getools.netchess.ru'];
+    let _ovr = null;
+    try { _ovr = localStorage.getItem('getools.backendMode'); } catch {}
+    try { const q = new URLSearchParams(location.search).get('backend'); if (q === 'server' || q === 'firebase') _ovr = q; } catch {}
+    const IS_SRV = _ovr ? (_ovr === 'server') : (_SRV_HOSTS.indexOf(location.hostname) !== -1);
+
+    if (IS_SRV) {
+      const card = document.querySelector('.login-card');
+      const TOK = 'getools.srvToken';
+      const nextUrl = () => new URLSearchParams(location.search).get('next') || 'hub.html';
+      async function api(path, body) {
+        const r = await fetch('/api' + path, {
+          method: body ? 'POST' : 'GET',
+          headers: Object.assign({ 'Content-Type': 'application/json' },
+            (localStorage.getItem(TOK) ? { Authorization: 'Bearer ' + localStorage.getItem(TOK) } : {})),
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d && d.error || ('HTTP ' + r.status));
+        return d;
+      }
+      (async () => {
+        // Уже авторизован на сервере → сразу в приложение
+        try { if (localStorage.getItem(TOK)) { await api('/auth/me'); location.replace(nextUrl()); return; } }
+        catch { try { localStorage.removeItem(TOK); } catch {} }
+        const lt = document.querySelector('.login-text');
+        if (lt) lt.textContent = 'Вход в серверную версию (данные хранятся в БД на сервере). Войдите по email/паролю или зарегистрируйтесь.';
+        const oldBtn = document.getElementById('login-btn'); if (oldBtn) oldBtn.remove();
+        const oldWarn = document.getElementById('login-warn'); if (oldWarn) oldWarn.remove();
+        const box = document.createElement('div');
+        box.innerHTML =
+          '<input id="s-em" type="email" placeholder="email" autocomplete="username" style="width:100%;padding:10px;margin:6px 0;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box;font:14px system-ui">'
+          + '<input id="s-pw" type="password" placeholder="пароль" autocomplete="current-password" style="width:100%;padding:10px;margin:6px 0;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box;font:14px system-ui">'
+          + '<input id="s-nm" type="text" placeholder="имя (для регистрации, необязательно)" style="width:100%;padding:10px;margin:6px 0;border:1px solid #cbd5e1;border-radius:6px;box-sizing:border-box;font:14px system-ui">'
+          + '<div id="s-err" style="color:#dc2626;font-size:12.5px;min-height:18px;margin:2px 0"></div>'
+          + '<div style="display:flex;gap:8px">'
+          + '<button id="s-login" class="signin-btn" style="flex:1;justify-content:center">Войти</button>'
+          + '<button id="s-reg" class="signin-btn" style="flex:1;justify-content:center;background:#fff;color:#1d4ed8;border:1px solid #1d4ed8">Регистрация</button>'
+          + '</div>';
+        const footer = card.querySelector('.footer');
+        card.insertBefore(box, footer);
+        const q = s => box.querySelector(s);
+        const err = m => { q('#s-err').textContent = m || ''; };
+        const go = async (path) => {
+          err(''); const em = q('#s-em').value.trim(), pw = q('#s-pw').value, nm = q('#s-nm').value.trim();
+          if (!em || !pw) { err('Укажите email и пароль'); return; }
+          q('#s-login').disabled = q('#s-reg').disabled = true;
+          try {
+            const d = await api(path, path === '/auth/register' ? { email: em, password: pw, name: nm } : { email: em, password: pw });
+            if (!d.token) throw new Error('нет токена');
+            localStorage.setItem(TOK, d.token);
+            location.replace(nextUrl());
+          } catch (e) {
+            err(path === '/auth/register' ? ('Регистрация: ' + (e.message || 'ошибка')) : 'Неверный email или пароль');
+            q('#s-login').disabled = q('#s-reg').disabled = false;
+          }
+        };
+        q('#s-login').addEventListener('click', () => go('/auth/login'));
+        q('#s-reg').addEventListener('click', () => go('/auth/register'));
+        q('#s-pw').addEventListener('keydown', e => { if (e.key === 'Enter') go('/auth/login'); });
+      })();
+    } else {
+    // Auth wire-up (Firebase — только НЕ server-режим: Pages/github.io)
     const btn = document.getElementById('login-btn');
     const btnText = document.getElementById('login-btn-text');
     const warn = document.getElementById('login-warn');
@@ -250,6 +318,7 @@
     } else {
       setTimeout(updateLoginUI, 500);
     }
+    } // конец else (Firebase-ветка не-server)
   </script>
 </body>
 </html>
