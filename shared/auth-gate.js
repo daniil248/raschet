@@ -26,12 +26,16 @@ const path = (location.pathname || '').toLowerCase();
 if (path.endsWith('/login.html') || path === '/login.html'
     || path.endsWith('login.html')) return;
 
-// v0.60.771 (C2): server-режим — собственный бэкенд, НЕ форсим Firebase-
-// гейт/редирект (сервер независим: опциональный вход через чип C3 /api/
-// auth). Детект детерминированный по хосту — зеркало backend-mode.js
-// (auth-gate грузится раньше ES-модуля, поэтому проверяем сами).
-// Pages/github.io: хост НЕ серверный → ветка не срабатывает, прежний
-// Firebase-гейт байт-в-байт (нулевая регрессия для текущих пользователей).
+// v0.60.775 (репорт Пользователя): server-режим ВСЁ РАВНО гейтит —
+// без авторизации (и одобрения админом) пользователь НЕ должен видеть
+// модули/начальную страницу, только login + admin-курируемый обзор.
+// Раньше C2 ошибочно снимал гейт целиком (любой видел приложение).
+// Теперь: нет server-токена → сразу на login. Токен есть → пускаем
+// оптимистично, асинхронно валидируем /api/auth/me (+approved);
+// невалид/не одобрен → чистим токен и на login (?pending для не-
+// одобренных). Детект по хосту — зеркало backend-mode (auth-gate
+// раньше ES-модуля). Pages/github.io: хост НЕ серверный → ветка не
+// срабатывает, прежний Firebase-гейт байт-в-байт (0 регрессии).
 try {
   var _SRV_HOSTS = ['getools.netchess.ru'];
   var _ovr = null;
@@ -42,7 +46,29 @@ try {
   } catch (e) {}
   var _isSrv = _ovr ? (_ovr === 'server')
     : (_SRV_HOSTS.indexOf(location.hostname) !== -1);
-  if (_isSrv) return; // сервер: без Firebase-редиректа (свой /api-вход)
+  if (_isSrv) {
+    var _tk = null;
+    try { _tk = localStorage.getItem('getools.srvToken'); } catch (e) {}
+    if (!_tk) { redirectToLogin(); return; }
+    // токен есть — асинхронно проверяем валидность и одобрение
+    try {
+      fetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + _tk } })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(0); })
+        .then(function (u) {
+          if (!u) { throw 0; }
+          if (u.approved === false) {
+            try { localStorage.removeItem('getools.srvToken'); } catch (e) {}
+            var lp = relPathToLogin();
+            location.replace(lp + (lp.indexOf('?') < 0 ? '?' : '&') + 'pending=1');
+          }
+        })
+        .catch(function () {
+          try { localStorage.removeItem('getools.srvToken'); } catch (e) {}
+          redirectToLogin();
+        });
+    } catch (e) {}
+    return; // server-режим обработан, Firebase-логика ниже не нужна
+  }
 } catch (e) {}
 
 function isFirebaseConfigured() {
