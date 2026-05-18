@@ -130,14 +130,24 @@ export function getProject(id) {
   return listProjects().find(p => p.id === id) || null;
 }
 
-export function createProject({ name, description = '', status = 'draft', kind = 'full', ownerModule = null, parentProjectId = null, designation = '' } = {}) {
+export function createProject({ name, description = '', status = 'draft', kind = 'full', ownerModule = null, parentProjectId = null, designation = '', entityKind = null } = {}) {
   const now = Date.now();
+  // v0.60.760 (8.0-D / спека «Проект›Конфигурация›Вариант»): тип сущности.
+  // 'object' = проект-комплекс (мультидисц., полная карточка);
+  // 'discipline' = одна дисциплина (слим-карточка) — конфигурация (есть
+  // parentProjectId) либо самостоятельный 1-дисц. проект (нет родителя).
+  // Иммутабелен. Если не задан — выводим из kind (sketch⇒discipline,
+  // full⇒object), чтобы прежние вызовы не менять (backward-compat).
+  const _ek = (entityKind === 'object' || entityKind === 'discipline')
+    ? entityKind
+    : (kind === 'sketch' ? 'discipline' : 'object');
   const p = {
     id: (kind === 'sketch' ? 's_' : 'p_') + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4),
     name: name || (kind === 'sketch' ? 'Мини-проект' : 'Новый проект'),
     description: description || '',
     status, // draft | planned | installed | operating
     kind,   // full — полноценный; sketch — лёгкий мини-проект внутри модуля
+    entityKind: _ek, // 'object' | 'discipline' (immutable, спека 8.0)
     ownerModule, // для sketch: какой модуль создал ('scs-design', 'scs-config', ...)
     // v0.59.372: подпроекты внутри родительского проекта. parentProjectId
     // ссылается на full-проект (объект-контейнер). designation — короткий
@@ -309,6 +319,39 @@ export function setVariantRole(subId, role) {
     for (const s of siblings) updateProject(s.id, { variantRole: null });
   }
   return updateProject(subId, { variantRole: role });
+}
+
+// ===========================================================================
+// v0.60.760 — 8.0-D (FR1): тип сущности «Проект › Конфигурация › Вариант».
+// Аддитивно; для legacy без поля entityKind — инференс из kind (sketch⇒
+// discipline, full⇒object). Конфигурация = discipline + parentProjectId;
+// 1-дисциплинарный проект = discipline без родителя; объект = object.
+// Только чтение/классификация — namespace данных НЕ трогается (спека FR6).
+// 0 потребителей в этом деплое (cache-safe §6a) — UI подключается далее.
+// ===========================================================================
+export function entityKindOf(p) {
+  if (!p || typeof p !== 'object') return 'object';
+  if (p.entityKind === 'object' || p.entityKind === 'discipline') return p.entityKind;
+  return p.kind === 'sketch' ? 'discipline' : 'object';
+}
+export function isObjectProject(p) { return entityKindOf(p) === 'object'; }
+// Конфигурация: одна дисциплина ВНУТРИ проекта-объекта (есть родитель).
+export function isConfiguration(p) {
+  return entityKindOf(p) === 'discipline' && !!(p && p.parentProjectId);
+}
+// Самостоятельный 1-дисциплинарный проект: дисциплина без родителя.
+export function isDisciplineProject(p) {
+  return entityKindOf(p) === 'discipline' && !(p && p.parentProjectId);
+}
+// Любая «слим»-сущность (конфигурация ИЛИ 1-дисц. проект) — слим-карточка.
+export function isSlimEntity(p) { return entityKindOf(p) === 'discipline'; }
+// Каноничная дисциплина сущности (по ownerModule-семейству); object → null.
+export function projectDisciplineOf(p) {
+  if (!p || entityKindOf(p) !== 'discipline') return null;
+  const m = p.ownerModule || null;
+  if (!m) return null;
+  const fam = _familyOf(m);
+  return fam[0] || m;
 }
 
 // v0.59.278: копирование проекта. Копирует метаданные (name + «(копия)») и
