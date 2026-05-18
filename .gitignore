@@ -10,3 +10,14 @@ __pycache__/
 # Локальные инструкции Claude (не версионируются; не сметать git add -A)
 /CLAUDE.md
 /claude.md
+
+# СЕКРЕТЫ деплоя/сервера — НИКОГДА не коммитить (Timeweb SSH / БД).
+# Реальные доступы хранятся ВНЕ репо (Claude project dir / server-access.env).
+.deploy/credentials.env
+.deploy/secrets/
+server-access.env
+server/.env
+server/node_modules/
+*.pem
+*.key
+id_rsa*

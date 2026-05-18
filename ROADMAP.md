@@ -7,7 +7,7 @@
 > Репозиторий переименован `daniil248/raschet`→`daniil248/ge-tools`,
 > live `https://daniil248.github.io/ge-tools/` (v0.60.746, ВЫПОЛНЕНО).
 >
-> **Статус:** v0.60.765 (2026-05-18). Платформа + предметные модули.
+> **Статус:** v0.60.766 (2026-05-18). Платформа + предметные модули.
 > Мультидисциплинарность (X.4.5.3 Вариант I) —
 > завершена ПОЛНОСТЬЮ (Ф-A…Ф-G). Архитектурная модуляризация (фазы
 > 0–2 плана) — закрыта. Модуль отчётов (flow-редизайн) — закрыт.
@@ -238,6 +238,19 @@ cross-filter / tooltips / zoom Ctrl+wheel — платформенно.
     через read-time `entityKindOf` (sketch+parent ⇒ конфигурация ⇒
     слим-карточка автоматически), БЕЗ переноса данных/namespace.
   memory:selection_model,module_scope_pickers `arch:1.27,17.1`
+- [~] **8.0.1 Self-host на Timeweb VPS + уход от Firebase** (решение
+  Пользователя 2026-05-18; **двойной деплой git+сервер ОБЯЗАТЕЛЕН**,
+  memory:dual_deploy_server). VPS · nginx · PostgreSQL · Node ·
+  systemd · TLS. Подготовлено (kit, exec — при первом SSH):
+  `tools/deploy.sh` (git push + rsync в `getools/`, без рассинхрона);
+  `DEPLOY-SERVER.md` (runbook провижининга + фазы миграции);
+  `server/` (Express+pg+JWT+nodemailer скелет: /api/auth · /kv —
+  зеркало project-storage · /projects · /mail) + `db/schema.sql`
+  (Postgres JSONB); `.gitignore`-защита секретов, `server-access.env`
+  ВНЕ репо. Остаток (при живом сервере, фазами C1–C4): Firestore→
+  Postgres импорт + клиентский транспорт project-storage→HTTP `/kv`;
+  Firebase Auth→/api/auth (+Google OAuth); Cloud Functions→SMTP;
+  согласованный клиентский cutover. `arch:17.2,17.3,40`
 - [ ] **8.1** FS-as-primary за async-интерфейсом project-storage
   (load/save/list/remove), фолбэк LS, не ломая sync-seam. `arch:17.2,34`
 - [ ] **8.2** HTTP/IDB-транспорты; большие датасеты LS→IndexedDB. `arch:17.2,Фаза 34`

@@ -1,0 +1,21 @@
+{
+  "name": "getools-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GE Tools backend (Timeweb VPS): Postgres + Auth + Email — замена Firebase",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "migrate": "psql \"$DATABASE_URL\" -f db/schema.sql"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.12.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.9.14",
+    "cors": "^2.8.5"
+  },
+  "engines": { "node": ">=20" }
+}
